@@ -901,7 +901,9 @@ async function handleOffer(sdp, zoneId) {
 
 // ── PLAYER ───────────────────────────────────────────────
 function loadTrack(url,title) {
-  audio.src=url; isPlaying=true;
+  audio.src=url; 
+  audio.loop=true;
+  isPlaying=true;
   document.getElementById('btn-play').textContent='⏸';
   document.getElementById('btn-play').classList.add('playing');
   document.getElementById('track-name').textContent=title||'Live';
@@ -916,6 +918,11 @@ function togglePlay() {
   document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
   isPlaying?audio.play().catch(()=>{}):audio.pause();
 }
+audio.addEventListener('ended', () => {
+  audio.currentTime = 0;
+  audio.play().catch(()=>{});
+  document.getElementById('progress-fill').style.width = '0%';
+});
 audio.addEventListener('timeupdate',()=>{
   if(!audio.duration)return;
   document.getElementById('progress-fill').style.width=(audio.currentTime/audio.duration*100)+'%';
