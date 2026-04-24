@@ -643,7 +643,7 @@ function launchApp() {
   }
 
   initMap();
-  loadZones(true);
+  loadZones(false);
 }
 
 // boombox click
@@ -782,8 +782,8 @@ function onEnterZone(z) {
   // Switch to Zone tab if not already there
   document.querySelectorAll('.section-label').forEach(()=>{});
 
-  // Auto-join the zone — plays track / starts WebRTC
-  joinZone(z);
+  // Auto-activate the zone — plays track / starts WebRTC
+  activateZone(z);
 }
 
 function onLeaveZone(z) {
@@ -815,38 +815,61 @@ async function loadZones(autoJoin=false) {
       <div class="zc-coords">⊕ ${z.lat?.toFixed(5)}, ${z.lng?.toFixed(5)}</div>
     </div>
     <div class="zc-listeners"><div class="zc-l-dot"></div>${z.listeners||0}</div>`;
-    el.addEventListener('click', () => joinZone(z));
+    el.addEventListener('click', () => previewZone(z));
     list.appendChild(el);
   });
   if (autoJoin && data.length) joinZone(data[0]);
 }
 
-async function joinZone(z) {
+// Tapping a zone just previews it on map + starts navigation
+// Music only starts when physically entering via geofence
+async function previewZone(z) {
   activeZone = z;
   leafletMap.flyTo([z.lat,z.lng], 16, { animate:true, duration:.7 });
+
+  // Show navigation arrow toward zone
+  document.getElementById('zone-nav').classList.add('visible');
+  document.getElementById('nav-name').textContent = z.name;
+  startNavigation(z);
+
+  // Update party modal data
+  document.getElementById('modal-zone-name').textContent = z.name;
+  document.getElementById('modal-coords').textContent = z.lat?.toFixed(5)+', '+z.lng?.toFixed(5);
+  document.getElementById('modal-radius').textContent = z.radius_m+'m';
+  document.getElementById('modal-listeners').textContent = z.listeners||0;
+  document.getElementById('modal-track').textContent = z.track_name||'—';
+
+  showToast(`Head to "${z.name}" — ${(z.radius_m * 0.000621371).toFixed(2)}mi radius`);
+
+  // Subscribe to zone updates so we know when DJ loads a track
+  db.channel('zone_preview_'+z.id)
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
+      // If we're now inside the zone, play immediately
+      if (insideZoneIds.has(z.id)) activateZone(zn);
+    }).subscribe();
+}
+
+// Called when geofence is physically crossed — this plays the music
+async function activateZone(z) {
+  activeZone = z;
   unlockUI(z);
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
 
   if (z.current_track_url === 'webrtc-live') {
-    // DJ is live — connect via WebRTC
     document.getElementById('track-name').textContent = z.track_name || '🔴 LIVE';
     document.getElementById('music-artist').textContent = z.track_name || 'Live Stream';
     await joinWebRTCStream(z.id);
     showToast('Connecting to live stream… 🎛️');
   } else if (z.current_track_url) {
-    // Pre-recorded file
     loadTrack(z.current_track_url, z.track_name);
-    if (z.playback_position) audio.currentTime = z.playback_position;
   }
 
   // Subscribe to zone updates
   db.channel('zone_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
       if (zn.current_track_url === 'webrtc-live' && !rtcPeer) {
-        // DJ went live after we joined — connect now
-        document.getElementById('track-name').textContent = zn.track_name || '🔴 LIVE';
         joinWebRTCStream(z.id);
-        showToast('DJ is now LIVE — connecting 🎛️');
+        showToast('DJ is now LIVE 🎛️');
       } else if (zn.current_track_url && zn.current_track_url !== 'webrtc-live' && zn.current_track_url !== audio.src) {
         loadTrack(zn.current_track_url, zn.track_name);
         showToast('New track 🔊');
@@ -858,6 +881,11 @@ async function joinZone(z) {
       }
     }).subscribe();
   loadZones();
+}
+
+// Keep joinZone as alias for geofence auto-trigger
+async function joinZone(z) {
+  return activateZone(z);
 }
 
 // ── UNLOCK ───────────────────────────────────────────────
