@@ -464,20 +464,11 @@ function toggleDJSignUp(){
 
 // ── DEMO MODE ─────────────────────────────────────────────
 function loadDemoMode(){
-  renderGuestList(DEMO_GUESTS);
-  document.getElementById('stat-present').textContent=DEMO_GUESTS.filter(g=>g.status==='present').length;
-  document.getElementById('stat-approaching').textContent=DEMO_GUESTS.filter(g=>g.status==='approaching').length;
-  document.getElementById('stat-speakers').textContent=1;
-  document.getElementById('track-name').textContent='Demo Track — Live Zone';
-  document.getElementById('upload-status').textContent='● live';
-  document.getElementById('upload-status').style.color='var(--teal)';
-  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
-  document.getElementById('btn-play').textContent='⏸';
-  document.getElementById('btn-play').classList.add('playing');
-  isPlaying=true;
-  let fakeTime=0,fakeDur=214;
-  document.getElementById('time-dur').textContent=fmt(fakeDur);
-  setInterval(()=>{ if(!isPlaying)return; fakeTime=(fakeTime+1)%fakeDur; document.getElementById('progress-fill').style.width=(fakeTime/fakeDur*100)+'%'; document.getElementById('time-cur').textContent=fmt(fakeTime); },1000);
+  document.getElementById('stat-present').textContent='0';
+  document.getElementById('stat-approaching').textContent='0';
+  document.getElementById('stat-speakers').textContent='0';
+  document.getElementById('guest-list').innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
+  document.getElementById('track-name').textContent='No track loaded';
 }
 
 // ── MAP ───────────────────────────────────────────────────
@@ -600,6 +591,7 @@ async function confirmZone(){
     zoneCircles[data.id]=L.circle([data.lat,data.lng],{radius:data.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.07,weight:1.5}).addTo(leafletMap);
     document.getElementById('btn-create-zone').textContent='✓ '+name;
     document.getElementById('btn-create-zone').classList.add('has-zone');
+    startListenerTracking(data.id);
     showToast(`Zone "${name}" created 📡`);
   }catch(err){showToast('Error: '+err.message,true);console.error(err);}
 }
@@ -618,7 +610,7 @@ async function loadZones(){
   data.forEach(z=>{
     if(zoneCircles[z.id])return;
     zoneCircles[z.id]=L.circle([z.lat,z.lng],{radius:z.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.06,weight:1.5}).addTo(leafletMap);
-    if(!activeZone){activeZone=z;document.getElementById('btn-create-zone').textContent='✓ '+z.name;document.getElementById('btn-create-zone').classList.add('has-zone');}
+    if(!activeZone){activeZone=z;document.getElementById('btn-create-zone').textContent='✓ '+z.name;document.getElementById('btn-create-zone').classList.add('has-zone');startListenerTracking(z.id);}
   });
 }
 
@@ -835,11 +827,75 @@ async function sendMessage(){
   showToast(`✓ Sent to ${targets.length} guest${targets.length!==1?'s':''}`);
 }
 
-function renderGuestList(guests){
-  const el=document.getElementById('guest-list');el.innerHTML='';
-  guests.forEach(g=>{
-    const row=document.createElement('div');row.className='guest-row';
-    row.innerHTML=`<span class="guest-name">${g.name}</span><span class="guest-dot">•</span><span>${g.email}</span><span class="guest-dot">•</span><span>${g.phone}</span><span class="guest-status ${g.status}">${g.status}</span>`;
+// ── REAL LISTENER TRACKING ───────────────────────────────
+let liveListeners = {};  // { id: { name, emoji, dist, bearing, status } }
+let presenceChannel = null;
+
+function startListenerTracking(zoneId) {
+  if (presenceChannel) presenceChannel.unsubscribe();
+  liveListeners = {};
+
+  presenceChannel = db.channel(`presence_${zoneId}`)
+    .on('broadcast', { event: 'proximity' }, ({ payload }) => {
+      const status = payload.dist <= (activeZone?.radius_m * 0.000621371 || 0.12)
+        ? 'present' : 'approaching';
+      liveListeners[payload.id] = {
+        name:    payload.name  || 'Anonymous',
+        emoji:   payload.emoji || '🎧',
+        dist:    payload.dist,
+        bearing: payload.bearing,
+        status,
+        updated: Date.now()
+      };
+      renderLiveGuestList();
+    })
+    .subscribe();
+
+  // Prune listeners who haven't updated in 30s
+  setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    Object.keys(liveListeners).forEach(id => {
+      if (now - liveListeners[id].updated > 30000) {
+        delete liveListeners[id]; changed = true;
+      }
+    });
+    if (changed) renderLiveGuestList();
+  }, 10000);
+}
+
+function renderLiveGuestList() {
+  const el = document.getElementById('guest-list');
+  const listeners = Object.values(liveListeners);
+
+  if (!listeners.length) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet</div>';
+    document.getElementById('stat-present').textContent = '0';
+    document.getElementById('stat-approaching').textContent = '0';
+    return;
+  }
+
+  const present    = listeners.filter(l => l.status === 'present').length;
+  const approaching = listeners.filter(l => l.status === 'approaching').length;
+  document.getElementById('stat-present').textContent = present;
+  document.getElementById('stat-approaching').textContent = approaching;
+  document.getElementById('stat-speakers').textContent = 1;
+
+  el.innerHTML = '';
+  // Sort — present first
+  listeners.sort((a,b) => a.status === 'present' ? -1 : 1);
+  listeners.forEach(l => {
+    const distStr = l.dist < 0.1
+      ? Math.round(l.dist * 5280) + ' ft'
+      : l.dist.toFixed(2) + ' mi';
+    const row = document.createElement('div');
+    row.className = 'guest-row';
+    row.innerHTML = `
+      <span style="font-size:16px;margin-right:4px">${l.emoji}</span>
+      <span class="guest-name">${l.name}</span>
+      <span class="guest-dot">•</span>
+      <span style="font-size:10px;color:var(--muted)">${distStr} away</span>
+      <span class="guest-status ${l.status}">${l.status}</span>`;
     el.appendChild(row);
   });
 }
