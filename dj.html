@@ -631,6 +631,11 @@ function togglePlay(){
   document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
   isPlaying?audio.play().catch(()=>{}):audio.pause();
 }
+audio.addEventListener('ended', () => {
+  audio.currentTime = 0;
+  audio.play().catch(()=>{});
+  document.getElementById('progress-fill').style.width = '0%';
+});
 audio.addEventListener('timeupdate',()=>{
   if(!audio.duration)return;
   document.getElementById('progress-fill').style.width=(audio.currentTime/audio.duration*100)+'%';
@@ -647,7 +652,9 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
   const file=e.target.files[0]; if(!file)return;
   const statusEl=document.getElementById('upload-status');
   // Play locally immediately
-  audio.src=URL.createObjectURL(file); audio.play().catch(()=>{});
+  audio.src=URL.createObjectURL(file); 
+  audio.loop=true;
+  audio.play().catch(()=>{});
   isPlaying=true; document.getElementById('btn-play').textContent='⏸'; document.getElementById('btn-play').classList.add('playing');
   document.getElementById('track-name').textContent=file.name.replace(/\.[^/.]+$/,'');
   document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
