@@ -253,7 +253,28 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .eye-icon{height:90px;width:auto;mix-blend-mode:screen;}
 
 /* ── DOT GRID ── */
-/* ── PROXIMITY RADAR ── */
+/* ── PROFILE SETUP SCREEN ── */
+#profile-screen{
+  position:fixed;inset:0;z-index:750;
+  background:var(--bg);
+  display:none;align-items:center;justify-content:center;padding:32px 24px;
+}
+#profile-screen.active{display:flex;}
+.profile-wrap{width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;align-items:center;}
+.profile-title{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--white);text-align:center;}
+.profile-sub{font-size:11px;color:var(--muted);letter-spacing:.08em;text-align:center;line-height:1.7;}
+.profile-avatar{
+  width:80px;height:80px;border-radius:50%;
+  background:var(--red);border:3px solid var(--red);
+  display:flex;align-items:center;justify-content:center;
+  font-size:32px;cursor:pointer;
+  transition:transform .15s;
+}
+.profile-avatar:hover{transform:scale(1.05);}
+.profile-inp{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:14px 16px;color:var(--white);font-family:'Roboto',sans-serif;font-size:16px;outline:none;transition:border-color .15s;text-align:center;}
+.profile-inp:focus{border-color:var(--red);}
+.profile-inp::placeholder{color:var(--muted);}
+.btn-profile-save{width:100%;padding:16px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Roboto',sans-serif;font-size:16px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;box-shadow:4px 4px 0 rgba(0,0,0,.5);}
 .radar-wrap{
   position:relative;
   margin:0 auto 10px;
@@ -336,7 +357,17 @@ audio{display:none;}
 </div>
 
 <!-- ═══════════════════════════════════════════════
-     PARTY INFO MODAL
+     PROFILE SETUP (first login only)
+═══════════════════════════════════════════════ -->
+<div id="profile-screen">
+  <div class="profile-wrap">
+    <div class="profile-avatar" id="profile-emoji">🎧</div>
+    <div class="profile-title">What's your name?</div>
+    <div class="profile-sub">This is how you'll appear on the guest list and the DJ's screen.</div>
+    <input class="profile-inp" id="profile-name" type="text" placeholder="Your name" maxlength="30" autocomplete="name"/>
+    <button class="btn-profile-save" onclick="saveProfile()">Let's Go →</button>
+  </div>
+</div>
 ═══════════════════════════════════════════════ -->
 <div id="party-modal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="pmc">
@@ -552,32 +583,67 @@ async function handleLogin() {
 
 // ── ENTER APP ────────────────────────────────────────────
 function enterApp() {
-  // Animate login screen out
   document.getElementById('login-screen').classList.add('exit');
   setTimeout(() => {
     document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').classList.add('visible');
 
-    // Header
-    document.getElementById('hdr-user').textContent = currentUser.email.split('@')[0];
-    const roleEl = document.getElementById('hdr-role');
-    roleEl.textContent = userRole.toUpperCase();
-    roleEl.className = `hdr-role ${userRole}`;
-
-    // Boombox — only unlocked for DJs
-    const boom = document.getElementById('hdr-boom');
-    if (userRole === 'dj') {
-      boom.classList.remove('locked');
-      boom.title = 'Open DJ Mode';
-    } else {
-      boom.classList.add('locked');
-      boom.title = 'DJ access required';
+    // Check if profile is set
+    const displayName = currentUser.user_metadata?.display_name;
+    if (!displayName) {
+      // First login — show profile setup
+      document.getElementById('profile-screen').classList.add('active');
+      // Fun emoji picker on tap
+      const emojis = ['🎧','🎵','🎶','🎤','🎸','🥁','🎺','🎻','🔊','🎛️','🕺','💃','🦊','🐙','🌀'];
+      document.getElementById('profile-emoji').addEventListener('click', () => {
+        document.getElementById('profile-emoji').textContent = emojis[Math.floor(Math.random()*emojis.length)];
+      });
+      return;
     }
 
-    // Init map & load zones
-    initMap();
-    loadZones(true);
+    launchApp();
   }, 300);
+}
+
+async function saveProfile() {
+  const name = document.getElementById('profile-name').value.trim();
+  if (!name) { document.getElementById('profile-name').style.borderColor='var(--red)'; return; }
+  const emoji = document.getElementById('profile-emoji').textContent;
+
+  // Save to Supabase user metadata
+  await db.auth.updateUser({
+    data: { display_name: name, emoji, role: userRole }
+  });
+
+  // Re-fetch
+  const { data: freshUser } = await db.auth.getUser();
+  if (freshUser?.user) currentUser = freshUser.user;
+
+  document.getElementById('profile-screen').classList.remove('active');
+  launchApp();
+}
+
+function launchApp() {
+  document.getElementById('app').classList.add('visible');
+
+  const displayName = currentUser.user_metadata?.display_name || currentUser.email.split('@')[0];
+  const emoji = currentUser.user_metadata?.emoji || '🎧';
+
+  document.getElementById('hdr-user').textContent = emoji + ' ' + displayName;
+  const roleEl = document.getElementById('hdr-role');
+  roleEl.textContent = userRole.toUpperCase();
+  roleEl.className = `hdr-role ${userRole}`;
+
+  const boom = document.getElementById('hdr-boom');
+  if (userRole === 'dj') {
+    boom.classList.remove('locked');
+    boom.title = 'Open DJ Mode';
+  } else {
+    boom.classList.add('locked');
+    boom.title = 'DJ access required';
+  }
+
+  initMap();
+  loadZones(true);
 }
 
 // boombox click
@@ -1028,10 +1094,12 @@ class ProximityGrid {
       if (!activeZone || !userLat) return;
       const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
       const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
+      const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
+      const emoji   = currentUser?.user_metadata?.emoji || '🎧';
       if (this.presenceChannel) {
         this.presenceChannel.send({
           type: 'broadcast', event: 'proximity',
-          payload: { id: listenerId, dist, bearing }
+          payload: { id: listenerId, dist, bearing, name, emoji }
         });
       }
     }, 8000);
