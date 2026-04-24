@@ -253,10 +253,24 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .eye-icon{height:90px;width:auto;mix-blend-mode:screen;}
 
 /* ── DOT GRID ── */
-.dot-grid{display:grid;grid-template-columns:repeat(22,1fr);gap:4px;padding:8px 0;}
-.dot{width:100%;aspect-ratio:1;border-radius:1px;background:#1a1a1a;transition:background .4s;}
-.dot.active{background:var(--orange);}
-.dot.approaching{background:var(--teal);animation:blink 1.6s ease-in-out infinite;}
+/* ── PROXIMITY RADAR ── */
+.radar-wrap{
+  position:relative;
+  margin:0 auto 10px;
+  max-width:340px;
+}
+#proximity-canvas{
+  width:100%;display:block;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+  border-radius:4px;
+}
+.radar-legend{
+  display:flex;align-items:center;justify-content:center;
+  gap:16px;margin-top:8px;flex-wrap:wrap;
+}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.legend-swatch{width:8px;height:8px;border-radius:1px;flex-shrink:0;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
 .stats-row{display:flex;flex-direction:column;gap:4px;margin-top:2px;}
 .stat-line{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;letter-spacing:.06em;}
@@ -391,11 +405,18 @@ audio{display:none;}
       </div>
     </div>
 
-    <!-- OTHERS -->
+    <!-- PROXIMITY RADAR -->
     <div style="margin-top:14px">
-      <div class="section-label" style="font-size:13px;margin-bottom:6px">Others</div>
-      <div class="dot-grid" id="dot-grid"></div>
-      <div class="stats-row">
+      <div class="section-label" style="font-size:13px;margin-bottom:8px">Nearby</div>
+      <div class="radar-wrap">
+        <canvas id="proximity-canvas"></canvas>
+        <div class="radar-legend">
+          <div class="legend-item"><div class="legend-swatch" style="background:#ef3c23"></div>Zone</div>
+          <div class="legend-item"><div class="legend-swatch" style="background:#fff"></div>People</div>
+          <div class="legend-item" style="color:#333;font-size:8px;">1 mile radius</div>
+        </div>
+      </div>
+      <div class="stats-row" style="margin-top:8px;">
         <div class="stat-line"><div class="stat-dot" style="background:var(--orange)"></div><span class="stat-key">Guests Present:</span><span class="stat-val" id="stat-present">—</span></div>
         <div class="stat-line"><div class="stat-dot" style="background:var(--teal)"></div><span class="stat-key">Approaching:</span><span class="stat-val" id="stat-approaching">—</span></div>
         <div class="stat-line"><div class="stat-dot" style="background:#333"></div><span class="stat-key">Speakers:</span><span class="stat-val" id="stat-speakers">—</span></div>
@@ -411,7 +432,7 @@ audio{display:none;}
 </div>
 
 <div id="toast"></div>
-<audio id="audio-player"></audio>
+<audio id="audio-player" loop></audio>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -443,7 +464,7 @@ const audio = document.getElementById('audio-player');
 // ── BOOT ─────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   buildVisualizer();
-  buildDotGrid();
+  initProximityGrid();
 
   try {
     const { data:{ session } } = await db.auth.getSession();
@@ -595,7 +616,7 @@ function initMap() {
     loadZones();
   }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
 
-  // Continuously update position once marker exists
+  // Continuously update position — also checks geofences automatically
   navigator.geolocation.watchPosition(pos => {
     userLat = pos.coords.latitude;
     userLng = pos.coords.longitude;
@@ -608,6 +629,8 @@ function initMap() {
     if (window._navLine && activeZone) {
       window._navLine.setLatLngs([[userLat,userLng],[activeZone.lat,activeZone.lng]]);
     }
+    // Auto-detect zone entry/exit
+    checkGeofences();
   }, null, { enableHighAccuracy: true, maximumAge: 3000 });
 }
 
@@ -651,11 +674,68 @@ function addZoneToMap(z) {
   L.marker([z.lat,z.lng],{icon:L.divIcon({html:'<div style="width:8px;height:8px;border-radius:50%;background:#f57e20;box-shadow:0 0 8px #f57e20;"></div>',iconSize:[8,8],iconAnchor:[4,4],className:''})}).addTo(leafletMap);
 }
 
-// ── ZONES ────────────────────────────────────────────────
+// ── GEOFENCE AUTO-DETECTION ──────────────────────────────
+let knownZones     = [];   // cached from last loadZones
+let insideZoneIds  = new Set();
+
+// Called every GPS tick — checks all known zones
+async function checkGeofences() {
+  if (!userLat || !knownZones.length) return;
+  knownZones.forEach(z => {
+    if (!z.lat) return;
+    const dist = distM(userLat, userLng, z.lat, z.lng);
+    const inside = dist <= (z.radius_m || 200);
+    const wasInside = insideZoneIds.has(z.id);
+
+    if (inside && !wasInside) {
+      insideZoneIds.add(z.id);
+      onEnterZone(z);
+    } else if (!inside && wasInside) {
+      insideZoneIds.delete(z.id);
+      onLeaveZone(z);
+    }
+  });
+}
+
+function onEnterZone(z) {
+  // Already in this zone — skip
+  if (activeZone?.id === z.id) return;
+  showToast(`📡 Entering "${z.name}" — activating!`);
+
+  // Flash map border
+  const frame = document.querySelector('.map-frame');
+  if (frame) {
+    frame.style.borderColor = '#ef3c23';
+    frame.style.boxShadow   = '0 0 0 3px rgba(239,60,35,.4)';
+    setTimeout(() => {
+      frame.style.borderColor = '';
+      frame.style.boxShadow   = '';
+    }, 2000);
+  }
+
+  // Switch to Zone tab if not already there
+  document.querySelectorAll('.section-label').forEach(()=>{});
+
+  // Auto-join the zone — plays track / starts WebRTC
+  joinZone(z);
+}
+
+function onLeaveZone(z) {
+  if (activeZone?.id !== z.id) return;
+  showToast(`Left "${z.name}"`);
+  // Pause but don't reset — they might come back
+  audio.pause();
+  document.getElementById('btn-play').textContent = '▶';
+  document.getElementById('btn-play').classList.remove('playing');
+  document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='paused');
+}
 async function loadZones(autoJoin=false) {
   const { data } = await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(10);
   const list = document.getElementById('zone-list');
   if (!data?.length) { list.innerHTML='<div style="font-size:11px;color:var(--muted)">No active zones nearby.</div>'; return; }
+
+  // Cache for geofence checking
+  knownZones = data;
   list.innerHTML = '';
   data.forEach(z => {
     addZoneToMap(z);
@@ -726,7 +806,8 @@ function unlockUI(z) {
   document.getElementById('stat-present').textContent = p;
   document.getElementById('stat-approaching').textContent = a;
   document.getElementById('stat-speakers').textContent = 1;
-  animateDots(p, a);
+  // Start real proximity tracking
+  startProximityTracking(z);
   document.getElementById('modal-zone-name').textContent = z.name;
   document.getElementById('modal-coords').textContent = z.lat?.toFixed(5)+', '+z.lng?.toFixed(5);
   document.getElementById('modal-radius').textContent = z.radius_m+'m';
@@ -854,13 +935,249 @@ function buildVisualizer(){
 }
 
 // ── DOT GRID ─────────────────────────────────────────────
-function buildDotGrid(){const g=document.getElementById('dot-grid');for(let i=0;i<198;i++){const d=document.createElement('div');d.className='dot';g.appendChild(d);}}
-function animateDots(p,a){
-  const dots=document.querySelectorAll('.dot');
-  dots.forEach(d=>{d.className='dot';});
-  const idx=[...Array(198).keys()].sort(()=>Math.random()-.5);
-  idx.slice(0,p).forEach(i=>dots[i].classList.add('active'));
-  idx.slice(p,p+a).forEach(i=>{dots[i].classList.remove('active');dots[i].classList.add('approaching');});
+// ── PROXIMITY RADAR ──────────────────────────────────────
+class ProximityGrid {
+  constructor(canvasId) {
+    this.canvas = document.getElementById(canvasId);
+    if (!this.canvas) return;
+    this.ctx = this.canvas.getContext('2d');
+
+    this.COLS   = 30;
+    this.ROWS   = 30;
+    this.CX     = 14;          // center col (0-indexed, slightly left of mid for even grid)
+    this.CY     = 14;          // center row
+    this.CELL   = 10;          // px per cell
+    this.GAP    = 4;           // px gap between cells — more breathing room
+    this.STEP   = this.CELL + this.GAP;
+    this.MAX_MI = 1.0;
+
+    const total = this.COLS * this.STEP + this.GAP;
+    this.canvas.width  = total;
+    this.canvas.height = total;
+
+    // Zone cluster = 2x2 red squares at center
+    this.ZONE_CELLS = new Set([
+      `${this.CX},${this.CY}`,     `${this.CX+1},${this.CY}`,
+      `${this.CX},${this.CY+1}`,   `${this.CX+1},${this.CY+1}`,
+    ]);
+
+    this.people = [];
+    this.frame  = 0;
+    this.raf    = null;
+    this.presenceChannel = null;
+
+    this._addDemoPeople(18);
+    this._animate();
+  }
+
+  distBearingToCell(distMiles, bearingDeg) {
+    const r   = Math.min((distMiles / this.MAX_MI) * (this.CX - 0.5), this.CX - 0.5);
+    const rad = bearingDeg * Math.PI / 180;
+    const dc  = Math.round(Math.sin(rad) * r);
+    const dr  = Math.round(-Math.cos(rad) * r);
+    // Zone center offset — use midpoint of 2x2 cluster
+    const zx = this.CX + 0.5, zy = this.CY + 0.5;
+    return {
+      col: Math.max(0, Math.min(this.COLS-1, Math.round(zx + dc))),
+      row: Math.max(0, Math.min(this.ROWS-1, Math.round(zy + dr))),
+    };
+  }
+
+  upsertPerson(id, distMiles, bearingDeg) {
+    const { col, row } = this.distBearingToCell(distMiles, bearingDeg);
+    const existing = this.people.find(p => p.id === id);
+    if (existing) {
+      existing.targetCol = col;
+      existing.targetRow = row;
+    } else {
+      this.people.push({
+        id, col, row, targetCol: col, targetRow: row,
+        opacity: 0.7 + Math.random()*0.3,
+        drift: Math.random() < 0.4,
+      });
+    }
+    this._updateStats();
+  }
+
+  removePerson(id) {
+    this.people = this.people.filter(p => p.id !== id);
+    this._updateStats();
+  }
+
+  subscribePresence(zoneId) {
+    if (this.presenceChannel) this.presenceChannel.unsubscribe();
+    this.presenceChannel = db.channel(`presence_${zoneId}`)
+      .on('broadcast', { event: 'proximity' }, ({ payload }) => {
+        if (payload.id === listenerId) return;
+        this.upsertPerson(payload.id, payload.dist, payload.bearing);
+      })
+      .subscribe();
+    this._startSelfBroadcast(zoneId);
+  }
+
+  _startSelfBroadcast(zoneId) {
+    if (this._broadcastInterval) clearInterval(this._broadcastInterval);
+    this._broadcastInterval = setInterval(() => {
+      if (!activeZone || !userLat) return;
+      const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
+      const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
+      if (this.presenceChannel) {
+        this.presenceChannel.send({
+          type: 'broadcast', event: 'proximity',
+          payload: { id: listenerId, dist, bearing }
+        });
+      }
+    }, 8000);
+  }
+
+  _addDemoPeople(n) {
+    for (let i = 0; i < n; i++) {
+      const dist    = 0.04 + Math.random() * 0.9;
+      const bearing = Math.random() * 360;
+      const { col, row } = this.distBearingToCell(dist, bearing);
+      this.people.push({
+        id: 'demo_' + i, col, row,
+        targetCol: col, targetRow: row,
+        opacity: 0.65 + Math.random()*0.35,
+        drift: Math.random() < 0.45,
+      });
+    }
+    this._updateStats();
+  }
+
+  _updateStats() {
+    const real = this.people.filter(p => !p.id.startsWith('demo_'));
+    let present = 0, approaching = 0;
+    real.forEach(p => {
+      const d = Math.hypot(p.col - (this.CX+0.5), p.row - (this.CY+0.5));
+      if (d <= 2.5) present++; else approaching++;
+    });
+    if (!real.length) {
+      const t = this.people.length;
+      present = Math.round(t * 0.35);
+      approaching = t - present;
+    }
+    const pEl = document.getElementById('stat-present');
+    const aEl = document.getElementById('stat-approaching');
+    if (pEl) pEl.textContent = present;
+    if (aEl) aEl.textContent = approaching;
+  }
+
+  _draw() {
+    const { ctx, COLS, ROWS, CELL, GAP, STEP } = this;
+    const W = this.canvas.width, H = this.canvas.height;
+
+    // Background
+    ctx.fillStyle = '#050505';
+    ctx.fillRect(0, 0, W, H);
+
+    // Build occupied map
+    const occupied = new Map();
+    this.people.forEach(p => occupied.set(`${p.col},${p.row}`, p));
+
+    // Draw cells
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const x   = GAP + c * STEP;
+        const y   = GAP + r * STEP;
+        const key = `${c},${r}`;
+
+        if (this.ZONE_CELLS.has(key)) {
+          // Zone — solid red
+          ctx.fillStyle = '#ef3c23';
+          ctx.fillRect(x, y, CELL, CELL);
+          // Bright center highlight
+          ctx.fillStyle = 'rgba(255,120,80,.4)';
+          ctx.fillRect(x+2, y+2, CELL-4, CELL-4);
+
+        } else if (occupied.has(key)) {
+          // Person — white only, varying opacity
+          const p = occupied.get(key);
+          ctx.fillStyle = `rgba(255,255,255,${p.opacity})`;
+          ctx.fillRect(x, y, CELL, CELL);
+
+        } else {
+          // Empty — very dark
+          ctx.fillStyle = '#0e0e0e';
+          ctx.fillRect(x, y, CELL, CELL);
+        }
+      }
+    }
+
+    // Scanlines
+    ctx.fillStyle = 'rgba(0,0,0,.14)';
+    for (let sy = 0; sy < H; sy += 2) ctx.fillRect(0, sy, W, 1);
+
+    // Slow pulse ring around zone cluster
+    const pulse  = 0.12 + 0.12 * Math.sin(this.frame * 0.035);
+    const ringX  = GAP + this.CX * STEP - 3;
+    const ringY  = GAP + this.CY * STEP - 3;
+    const ringW  = STEP * 2 + CELL + 6;
+    const ringH  = STEP * 2 + CELL + 6;
+    ctx.strokeStyle = `rgba(239,60,35,${pulse})`;
+    ctx.lineWidth   = 1.5;
+    ctx.strokeRect(ringX, ringY, ringW, ringH);
+  }
+
+  _animate() {
+    this.frame++;
+
+    // Drift toward zone every ~55 frames
+    if (this.frame % 55 === 0) {
+      this.people.forEach(p => {
+        const zx = this.CX + 0.5, zy = this.CY + 0.5;
+        const dc = zx - p.targetCol, dr = zy - p.targetRow;
+        if (Math.abs(dc) + Math.abs(dr) > 3) {
+          if (Math.random() < 0.65) {
+            if (Math.abs(dc) > Math.abs(dr)) p.targetCol += Math.sign(dc);
+            else                              p.targetRow += Math.sign(dr);
+          }
+        }
+      });
+    }
+
+    // Step each person one cell toward target
+    this.people.forEach(p => {
+      if (p.col !== p.targetCol) p.col += Math.sign(p.targetCol - p.col);
+      if (p.row !== p.targetRow) p.row += Math.sign(p.targetRow - p.row);
+    });
+
+    // Occasional wander
+    if (this.frame % 40 === 0) {
+      this.people.forEach(p => {
+        if (!p.drift || Math.random() > 0.25) return;
+        if (Math.random() < 0.5) p.targetCol = Math.max(0, Math.min(this.COLS-1, p.targetCol + (Math.random()<.5?1:-1)));
+        else                      p.targetRow = Math.max(0, Math.min(this.ROWS-1, p.targetRow + (Math.random()<.5?1:-1)));
+      });
+    }
+
+    this._draw();
+    this.raf = requestAnimationFrame(() => this._animate());
+  }
+
+  destroy() {
+    if (this.raf) cancelAnimationFrame(this.raf);
+    if (this.presenceChannel) this.presenceChannel.unsubscribe();
+    if (this._broadcastInterval) clearInterval(this._broadcastInterval);
+  }
+}
+
+let proximityGrid = null;
+
+function initProximityGrid() {
+  if (proximityGrid) proximityGrid.destroy();
+  proximityGrid = new ProximityGrid('proximity-canvas');
+}
+
+function startProximityTracking(zone) {
+  if (!proximityGrid) initProximityGrid();
+  proximityGrid.subscribePresence(zone.id);
+  // Place self on grid immediately
+  if (userLat && zone.lat) {
+    const dist    = distM(userLat, userLng, zone.lat, zone.lng) * 0.000621371;
+    const bearing = getBearing(zone.lat, zone.lng, userLat, userLng);
+    proximityGrid.upsertPerson('__self__', dist, bearing);
+  }
 }
 
 // ── ZONE NAVIGATION ──────────────────────────────────────
