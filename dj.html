@@ -660,7 +660,11 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
     if(activeZone){await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_position:0,playback_started_at:new Date().toISOString()}).eq('id',activeZone.id);}
     statusEl.textContent='● live'; statusEl.style.color='var(--teal)'; showToast('Broadcasting 📡');
-  }catch(err){statusEl.textContent='⚠ saved locally';statusEl.style.color='var(--muted)';}
+  }catch(err){
+    console.error('Upload error:', err);
+    statusEl.textContent='⚠ '+err.message;
+    statusEl.style.color='var(--red)';
+  }
   e.target.value='';
 });
 
