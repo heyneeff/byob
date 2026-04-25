@@ -683,6 +683,8 @@ document.getElementById('volume').addEventListener('input',e=>audio.volume=e.tar
 document.getElementById('file-input').addEventListener('change',async(e)=>{
   const file=e.target.files[0]; if(!file)return;
   const statusEl=document.getElementById('upload-status');
+  // Capture timestamp NOW — before upload — so listeners sync correctly
+  const trackStartedAt = new Date().toISOString();
   // Play locally immediately
   audio.src=URL.createObjectURL(file); 
   audio.loop=true;
@@ -697,7 +699,7 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     if(upErr)throw upErr;
     const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
     await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
-    if(activeZone){await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_position:0,playback_started_at:new Date().toISOString()}).eq('id',activeZone.id);}
+    if(activeZone){await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_position:0,playback_started_at:trackStartedAt}).eq('id',activeZone.id);}
     statusEl.textContent='● live'; statusEl.style.color='var(--teal)'; showToast('Broadcasting 📡');
   }catch(err){
     console.error('Upload error:', err);
@@ -708,16 +710,11 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
 });
 
 // ── WEBRTC BROADCAST ─────────────────────────────────────
-let _rtcConfigCache = null;
-async function getRTCConfig() {
-  if (_rtcConfigCache) return _rtcConfigCache;
-  try {
-    const r = await fetch("https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7");
-    const iceServers = await r.json();
-    _rtcConfigCache = { iceServers };
-  } catch(e) {
-    _rtcConfigCache = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-  }
+let _rtcConfigCache=null;
+async function getRTCConfig(){
+  if(_rtcConfigCache)return _rtcConfigCache;
+  try{const r=await fetch("https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7");const iceServers=await r.json();_rtcConfigCache={iceServers};}
+  catch(e){_rtcConfigCache={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};}
   return _rtcConfigCache;
 }
 let peerConnections = {};   // { listenerId: RTCPeerConnection }
