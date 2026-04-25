@@ -169,7 +169,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 }
 /* find me button overlaid on map */
 .btn-find-me{
-  position:absolute;bottom:10px;right:10px;z-index:50;
+  position:absolute;bottom:10px;right:10px;z-index:1000;
   width:36px;height:36px;
   background:rgba(10,10,10,.9);
   border:1px solid var(--teal);
@@ -335,6 +335,13 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 @keyframes tapPulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}
 #tap-banner.visible{display:block;}
 audio{display:none;}
+/* ── BOOM MENU ── */
+#boom-menu{position:fixed;top:60px;right:12px;z-index:9999;background:var(--surface2);border:1px solid var(--border);border-top:2px solid var(--red);border-radius:10px;min-width:160px;overflow:hidden;box-shadow:4px 4px 0 rgba(0,0,0,.6);display:none;}
+#boom-menu.open{display:block;}
+.boom-menu-item{display:flex;align-items:center;gap:10px;padding:13px 16px;font-size:13px;font-weight:700;letter-spacing:.06em;color:var(--white);cursor:pointer;border-bottom:1px solid var(--border);transition:background .15s;}
+.boom-menu-item:last-child{border-bottom:none;}
+.boom-menu-item:hover{background:rgba(255,255,255,.05);}
+.boom-menu-item.danger{color:var(--red);}
 </style>
 </head>
 <body>
@@ -401,7 +408,7 @@ audio{display:none;}
       <span class="hdr-user" id="hdr-user"></span>
       <span class="hdr-role" id="hdr-role"></span>
       <!-- boombox: clickable for DJ, locked for listeners -->
-      <img class="hdr-boom locked" id="hdr-boom" alt="DJ" onclick="onBoomClick()"/>
+      <img class="hdr-boom" id="hdr-boom" alt="Menu" onclick="onBoomClick()"/>
     </div>
   </div>
 
@@ -474,6 +481,7 @@ audio{display:none;}
 </div>
 
 <div id="tap-banner" onclick="onTapBanner()">🎧 Tap to Listen</div>
+<div id="boom-menu"><div class="boom-menu-item" id="ls-dj-link" style="display:none" onclick="openDJMode()">🎛️ Open DJ Mode</div><div class="boom-menu-item danger" onclick="lsLogout()">⏏ Log Out</div></div>
 <div id="toast"></div>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
@@ -663,12 +671,13 @@ function launchApp() {
   roleEl.className = `hdr-role ${userRole}`;
 
   const boom = document.getElementById('hdr-boom');
+  boom.classList.remove('locked');
+  boom.style.opacity = '0.85';
+  boom.style.cursor = 'pointer';
+  boom.title = 'Menu';
   if (userRole === 'dj') {
-    boom.classList.remove('locked');
-    boom.title = 'Open DJ Mode';
-  } else {
-    boom.classList.add('locked');
-    boom.title = 'DJ access required';
+    const djLink = document.getElementById('ls-dj-link');
+    if (djLink) djLink.style.display = 'flex';
   }
 
   initMap();
@@ -677,9 +686,20 @@ function launchApp() {
 
 // boombox click
 function onBoomClick() {
-  if (userRole !== 'dj') { showToast('DJ access required'); return; }
+  document.getElementById('boom-menu').classList.toggle('open');
+}
+function openDJMode() {
+  document.getElementById('boom-menu').classList.remove('open');
   window.open('dj.html', '_blank');
 }
+async function lsLogout() {
+  document.getElementById('boom-menu').classList.remove('open');
+  await db.auth.signOut(); location.reload();
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#boom-menu') && !e.target.closest('#hdr-boom'))
+    document.getElementById('boom-menu')?.classList.remove('open');
+});
 
 // party button
 function onPartyBtn() {
@@ -883,6 +903,7 @@ async function activateZone(z) {
   activeZone = z;
   unlockUI(z);
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
+  startSyncEngine();
 
   if (z.current_track_url === 'webrtc-live') {
     // Stop file track completely before going live
@@ -899,6 +920,12 @@ async function activateZone(z) {
   // Subscribe to zone updates
   db.channel('zone_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
+      // Zone killed by DJ
+      if (!zn.active) {
+        stopEverything();
+        showToast('The zone has ended 🎤');
+        return;
+      }
       if (zn.current_track_url === 'webrtc-live') {
         // DJ went live — stop file track completely
         audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
@@ -1432,6 +1459,64 @@ function getBearing(lat1, lng1, lat2, lng2) {
 }
 
 // ── UTILS ────────────────────────────────────────────────
+// ── SYNC ENGINE ─────────────────────────────────────────────────
+// Only checks zone alive + corrects drift. NEVER restarts tracks.
+// Track loading is handled by activateZone + realtime handler only.
+let _syncInterval = null;
+
+async function syncZoneAudio() {
+  if (!activeZone) return;
+  try {
+    const { data: z } = await db.from('zones').select('id,active,current_track_url,playback_started_at').eq('id', activeZone.id).single();
+    if (!z) return;
+
+    // Zone killed by DJ — stop everything
+    if (!z.active) {
+      stopEverything();
+      showToast('The zone has ended 🎤');
+      return;
+    }
+
+    // Drift correction only — if same track is playing and we're off by > 3s
+    if (z.playback_started_at && z.current_track_url &&
+        z.current_track_url !== 'webrtc-live' &&
+        audio.duration && !audio.paused && !audio.srcObject) {
+      const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
+      const expected = elapsed % audio.duration;
+      const drift = Math.abs(audio.currentTime - expected);
+      if (drift > 3) {
+        console.log('Drift corrected:', drift.toFixed(1)+'s');
+        audio.currentTime = expected;
+      }
+    }
+  } catch(e) { console.warn('Sync poll error:', e.message); }
+}
+
+function stopEverything() {
+  audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
+  if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
+  if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
+  clearInterval(_syncInterval);
+  activeZone = null;
+  isPlaying = false;
+  document.getElementById('btn-play').textContent = '▶';
+  document.getElementById('btn-play').classList.remove('playing');
+  document.getElementById('track-name').textContent = '—';
+  document.getElementById('music-artist').textContent = '—';
+  document.getElementById('zone-headline').classList.remove('visible');
+  document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='paused');
+  ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
+}
+
+function startSyncEngine() {
+  clearInterval(_syncInterval);
+  // Delay first poll by 5s to let activateZone finish its own load
+  _syncInterval = setInterval(syncZoneAudio, 10000);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && activeZone) syncZoneAudio();
+});
 function distM(la1,ln1,la2,ln2){const R=6371000,dL=(la2-la1)*Math.PI/180,dN=(ln2-ln1)*Math.PI/180;const a=Math.sin(dL/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dN/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
 function fmt(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return `${m}:${sec.toString().padStart(2,'0')}`;}
 let toastTimer;
