@@ -667,11 +667,14 @@ function togglePlay(){
     // startedAt = now - currentPosition, so elapsed calc always gives currentTime
     if(activeZone && audio.src && !audio.srcObject){
       const resumedAt = new Date(Date.now() - audio.currentTime * 1000).toISOString();
-      const resumePlayAt = Date.now() + 1500; // 1.5s resume window
+      const resumeBufMs = 1500;
+      const resumePlayAt = Date.now() + resumeBufMs;
+      // DJ will be at currentTime + buffer window when listeners fire
+      const resumeFromS = audio.currentTime + (resumeBufMs / 1000);
       db.from('zones').update({
         playback_started_at: resumedAt,
         play_at: resumePlayAt,
-        play_from_s: audio.currentTime
+        play_from_s: resumeFromS
       }).eq('id', activeZone.id)
         .then(()=>{}).catch(()=>{});
     }
@@ -720,14 +723,17 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
     await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
     if(activeZone){
-      const playAt = Date.now() + 2500; // 2.5s — time for listeners to fetch+decode
+      const bufferMs = 2000;
+      const playAt = Date.now() + bufferMs;
+      // play_from_s = where DJ will be AT play_at (current pos + buffer window)
+      const playFromS = audio.currentTime + (bufferMs / 1000);
       await db.from('zones').update({
         current_track_url: urlData.publicUrl,
         track_name: file.name.replace(/\.[^/.]+$/,''),
         playback_position: 0,
         playback_started_at: trackStartedAt||new Date().toISOString(),
         play_at: playAt,
-        play_from_s: 0
+        play_from_s: playFromS
       }).eq('id',activeZone.id);
     }
     statusEl.textContent='● live'; statusEl.style.color='var(--teal)'; showToast('Broadcasting 📡');
