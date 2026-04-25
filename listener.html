@@ -615,18 +615,45 @@ function showTapBanner(){document.getElementById('tap-banner')?.classList.add('v
 function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
 function onTapBanner(){
   hideTapBanner(); unlockAudio();
+  // Force AudioContext running and gain loud — green toast means MediaElementSource exists
+  if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
+  if (_gainNode) { _gainNode.gain.cancelScheduledValues(0); _gainNode.gain.value = 1; }
+  _isMuted = false; setMuteBtn(false);
+
   // If WebRTC stream arrived while waiting for gesture — play it now
   if (typeof _pendingStream !== 'undefined' && _pendingStream) {
-    audio.srcObject = _pendingStream;
+    const stream = _pendingStream;
     _pendingStream = null;
-    audio.volume = 1; audio.muted = false;
-    audio.play().then(() => {
-      _webAudioPlaying = true; setMuteBtn(false);
-      showToast('🔴 LIVE playing!');
-    }).catch(e => showToast('Audio blocked: ' + e.message));
+
+    if (_mediaSource && _audioCtx && _gainNode) {
+      // MediaElementSource already captured audio element — iOS won't route
+      // srcObject through it. Use createMediaStreamSource directly instead.
+      try {
+        const src = _audioCtx.createMediaStreamSource(stream);
+        src.connect(_gainNode);
+        _webAudioPlaying = true; setMuteBtn(false);
+        showToast('🔴 LIVE via WebAudio!');
+      } catch(e) {
+        // Fallback: just set srcObject and play
+        audio.srcObject = stream;
+        audio.volume = 1; audio.muted = false;
+        audio.play().catch(er => showToast('Play err: ' + er.message));
+        _webAudioPlaying = true; setMuteBtn(false);
+        showToast('🔴 LIVE playing!');
+      }
+    } else {
+      // No Web Audio graph — direct srcObject play (should work here, user gesture)
+      audio.srcObject = stream;
+      audio.volume = 1; audio.muted = false;
+      audio.play().then(() => {
+        _webAudioPlaying = true; setMuteBtn(false);
+        showToast('🔴 LIVE playing!');
+      }).catch(e => showToast('Play failed: ' + e.message));
+    }
     return;
   }
   if (audio.src || audio.srcObject) {
+    audio.volume = 1; audio.muted = false;
     audio.play().catch(()=>{});
     _webAudioPlaying = true;
     setMuteBtn(false);
