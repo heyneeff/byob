@@ -615,6 +615,11 @@ function showTapBanner(){document.getElementById('tap-banner')?.classList.add('v
 function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
 function onTapBanner(){
   hideTapBanner(); unlockAudio();
+  // If WebRTC stream was waiting for user gesture, connect it now
+  if (_pendingStream) {
+    _connectRTCStream(_pendingStream);
+    return;
+  }
   if (audio.src || audio.srcObject) {
     audio.play().catch(()=>{});
     _webAudioPlaying = true;
@@ -717,6 +722,8 @@ function stopEverything() {
   audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
+  if (typeof _rtcStreamSource !== 'undefined' && _rtcStreamSource) { try { _rtcStreamSource.disconnect(); } catch(e){} _rtcStreamSource = null; }
+  _pendingStream = null;
   clearInterval(_syncInterval);
   _webAudioPlaying = false;
   _isMuted = false;
@@ -775,6 +782,8 @@ async function getRTCConfig() {
 }
 const listenerId = Math.random().toString(36).substr(2,9);
 let rtcPeer = null, rtcChannel = null;
+let _rtcStreamSource = null;   // Web Audio source node for WebRTC stream
+let _pendingStream   = null;   // stream waiting for user tap
 
 async function joinWebRTCStream(zoneId) {
   if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -800,11 +809,21 @@ async function handleOffer(sdp) {
     if (candidate && rtcChannel) rtcChannel.send({ type:'broadcast', event:'ice-dj', payload:{ to:'dj', from:listenerId, candidate } });
   };
   rtcPeer.ontrack = ({ streams }) => {
-    audio.pause(); audio.src = ''; audio.srcObject = streams[0];
-    audio.play().catch(()=>{ showTapBanner(); });
-    _webAudioPlaying = true;
-    setMuteBtn(false);
-    showToast('🔴 LIVE connected!');
+    showToast('🔴 LIVE stream received — connecting audio...');
+    const stream = streams[0];
+
+    // Stop any file playback
+    audio.pause(); audio.src = ''; audio.srcObject = null;
+
+    // Try Web Audio API path (works on iOS without separate user gesture)
+    const ctx = getAudioCtx();
+    if (ctx.state === 'suspended') {
+      // AudioContext not yet unlocked — store stream and show tap banner
+      _pendingStream = stream;
+      showTapBanner();
+      return;
+    }
+    _connectRTCStream(stream);
   };
   rtcPeer.onconnectionstatechange = () => {
     if (rtcPeer.connectionState === 'failed') { rtcPeer.close(); rtcPeer = null; showToast('Live stream disconnected'); }
@@ -813,6 +832,23 @@ async function handleOffer(sdp) {
   const answer = await rtcPeer.createAnswer();
   await rtcPeer.setLocalDescription(answer);
   rtcChannel.send({ type:'broadcast', event:'answer', payload:{ to:'dj', from:listenerId, sdp:answer.sdp } });
+}
+
+function _connectRTCStream(stream) {
+  // Disconnect any previous RTC source
+  if (_rtcStreamSource) { try { _rtcStreamSource.disconnect(); } catch(e){} _rtcStreamSource = null; }
+
+  const ctx = getAudioCtx();
+  if (!_gainNode) { _gainNode = ctx.createGain(); _gainNode.gain.value = _isMuted ? 0 : 1; _gainNode.connect(ctx.destination); }
+
+  _rtcStreamSource = ctx.createMediaStreamSource(stream);
+  _rtcStreamSource.connect(_gainNode);
+
+  _pendingStream = null;
+  _webAudioPlaying = true;
+  setMuteBtn(false);
+  document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
+  showToast('🔴 LIVE audio connected!');
 }
 
 // ════════════════════════════════════════════════════════════
