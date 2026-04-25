@@ -885,8 +885,8 @@ async function activateZone(z) {
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
 
   if (z.current_track_url === 'webrtc-live') {
-    // Stop file track before going live
-    audio.pause(); audio.src = ''; audio.srcObject = null;
+    // Stop file track completely before going live
+    audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
     document.getElementById('track-name').textContent = z.track_name || '🔴 LIVE';
     document.getElementById('music-artist').textContent = z.track_name || 'Live Stream';
     await joinWebRTCStream(z.id);
@@ -900,16 +900,17 @@ async function activateZone(z) {
   db.channel('zone_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
       if (zn.current_track_url === 'webrtc-live') {
-        // DJ went live — stop file track, start WebRTC
-        audio.pause(); audio.src = ''; audio.srcObject = null;
-        if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is now LIVE 🎛️'); }
+        // DJ went live — stop file track completely
+        audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
+        if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }  // reset any stale peer
+        joinWebRTCStream(z.id); showToast('DJ is now LIVE 🎛️');
       } else if (zn.current_track_url) {
         // New file track — loadTrack handles WebRTC cleanup
         loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at);
         showToast('New track 🔊');
       } else {
         // Nothing playing — stop everything
-        audio.pause(); audio.src = ''; audio.srcObject = null;
+        audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
         if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
         if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
         document.getElementById('track-name').textContent = '—';
