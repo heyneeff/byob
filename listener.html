@@ -615,21 +615,17 @@ function showTapBanner(){document.getElementById('tap-banner')?.classList.add('v
 function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
 function onTapBanner(){
   hideTapBanner(); unlockAudio();
-
-  if (_pendingStream) {
-    // WebRTC stream waiting — set srcObject and play() HERE (user gesture = works on iOS)
+  // If WebRTC stream arrived while waiting for gesture — play it now
+  if (typeof _pendingStream !== 'undefined' && _pendingStream) {
     audio.srcObject = _pendingStream;
     _pendingStream = null;
+    audio.volume = 1; audio.muted = false;
     audio.play().then(() => {
-      _webAudioPlaying = true;
-      setMuteBtn(false);
-      showToast('🔴 LIVE audio playing!');
-    }).catch(e => {
-      showToast('Play failed: ' + e.message);
-    });
+      _webAudioPlaying = true; setMuteBtn(false);
+      showToast('🔴 LIVE playing!');
+    }).catch(e => showToast('Audio blocked: ' + e.message));
     return;
   }
-
   if (audio.src || audio.srcObject) {
     audio.play().catch(()=>{});
     _webAudioPlaying = true;
@@ -733,6 +729,8 @@ function stopEverything() {
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
   _pendingStream = null;
+  hideTapBanner();
+  clearInterval(_syncInterval);
   _webAudioPlaying = false;
   _isMuted = false;
   activeZone = null;
@@ -790,7 +788,7 @@ async function getRTCConfig() {
 }
 const listenerId = Math.random().toString(36).substr(2,9);
 let rtcPeer = null, rtcChannel = null;
-let _pendingStream = null;   // stream waiting for user tap
+let _pendingStream = null;  // WebRTC stream waiting for user tap gesture
 
 async function joinWebRTCStream(zoneId) {
   if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -816,17 +814,13 @@ async function handleOffer(sdp) {
     if (candidate && rtcChannel) rtcChannel.send({ type:'broadcast', event:'ice-dj', payload:{ to:'dj', from:listenerId, candidate } });
   };
   rtcPeer.ontrack = ({ streams }) => {
-    // NEVER call audio.play() here — iOS blocks it outside a user gesture.
-    // Store stream and require the user to tap the banner.
+    // NEVER call play() here — iOS blocks it outside a direct user gesture.
+    // Store stream, reset audio element, show tap banner.
     _pendingStream = streams[0];
-
-    // Stop any file playback
-    audio.pause(); audio.src = ''; audio.load();
-
+    audio.pause(); audio.src = ''; audio.srcObject = null; audio.load();
     _webAudioPlaying = false;
-    setMuteBtn(false);
-    document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
-    showToast('🔴 LIVE ready — tap banner to hear!');
+    document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='running');
+    showToast('🔴 LIVE ready');
     showTapBanner();
   };
   rtcPeer.onconnectionstatechange = () => {
@@ -1216,8 +1210,7 @@ async function previewZone(z) {
 async function activateZone(z) {
   activeZone = z;
   unlockUI(z);
-  // Show tap banner immediately — iOS blocks autoplay from GPS callbacks
-  showTapBanner();
+  // DON'T show tap banner here — show it only when we actually have audio ready
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
   startSyncEngine();
 
