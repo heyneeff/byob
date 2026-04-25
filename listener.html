@@ -341,17 +341,17 @@ audio{display:none;}
 <div id="login-screen">
   <img class="login-boombox" id="login-boom" alt="BYOB"/>
   <img class="login-logo" id="login-logo" alt="BYOB"/>
-  <div class="login-title"><span>BYOB</span><br/>Bring Your Own Boombox</div>
-  <div class="login-sub">Choose your role</div>
+  <div class="login-title">Bring Your Own Boombox</div>
 
-  <div class="role-tabs">
+
+  <div class="role-tabs" style="display:none">
     <div class="role-tab active" id="tab-listener" onclick="setRole('listener')">🎧 Listener</div>
     <div class="role-tab" id="tab-dj" onclick="setRole('dj')">🎛 DJ</div>
   </div>
 
   <div class="login-form">
     <input class="login-inp" type="email" id="login-email" placeholder="Email" autocomplete="email"/>
-    <input class="login-inp" type="tel" id="login-phone" placeholder="Phone number" autocomplete="tel"/>
+    <input class="login-inp" type="tel" id="login-phone" placeholder="Phone number" autocomplete="tel" style="display:none"/>
     <input class="login-inp" type="password" id="login-password" placeholder="Password" autocomplete="current-password"/>
     <button class="btn-login" id="login-btn" onclick="handleLogin()">Sign In</button>
     <div class="login-toggle" id="login-toggle">No account? <span onclick="toggleSignUp()">Sign up</span></div>
@@ -408,6 +408,12 @@ audio{display:none;}
     </div>
     <div class="map-label">Nearby Activity</div>
 
+    <!-- ACTIVE ZONES - right under map -->
+    <div class="zones-section" style="margin-top:0;margin-bottom:12px;">
+      <div class="zones-title">Active Zones</div>
+      <div id="zone-list"><div style="font-size:11px;color:var(--muted)">Scanning...</div></div>
+    </div>
+
     <button class="btn-party" id="btn-party" onclick="onPartyBtn()">Party Info</button>
 
     <div class="zone-headline" id="zone-headline">You Have Entered<br/>The Zone</div>
@@ -460,11 +466,6 @@ audio{display:none;}
       </div>
     </div>
 
-    <!-- ZONES -->
-    <div class="zones-section">
-      <div class="zones-title">Active Zones</div>
-      <div id="zone-list"><div style="font-size:11px;color:var(--muted)">Scanning...</div></div>
-    </div>
   </div>
 </div>
 
@@ -530,9 +531,12 @@ function setRole(role) {
 function toggleSignUp() {
   isSignUp = !isSignUp;
   document.getElementById('login-btn').textContent = isSignUp ? 'Sign Up' : 'Sign In';
+  document.getElementById('login-phone').style.display = isSignUp ? 'block' : 'none';
   document.getElementById('login-toggle').innerHTML = isSignUp
     ? 'Have an account? <span onclick="toggleSignUp()">Sign in</span>'
     : 'No account? <span onclick="toggleSignUp()">Sign up</span>';
+  // Role tabs only relevant for sign-up
+  document.querySelector('.role-tabs').style.display = isSignUp ? 'grid' : 'none';
 }
 
 async function handleLogin() {
@@ -650,6 +654,8 @@ function launchApp() {
 
   initMap();
   loadZones(false);
+  // Keep Supabase alive during party
+  setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}), 4*60*1000);
 }
 
 // boombox click
@@ -867,7 +873,7 @@ async function activateZone(z) {
     await joinWebRTCStream(z.id);
     showToast('Connecting to live stream… 🎛️');
   } else if (z.current_track_url) {
-    loadTrack(z.current_track_url, z.track_name);
+    loadTrack(z.current_track_url, z.track_name, z.playback_started_at);
   }
 
   // Subscribe to zone updates
@@ -918,13 +924,21 @@ function unlockUI(z) {
 }
 
 // ── WEBRTC RECEIVER ──────────────────────────────────────
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-  ]
-};
+// ── TURN SERVER — Metered.ca (real-world NAT traversal) ─────────
+let _rtcConfigCache = null;
+async function getRTCConfig() {
+  if (_rtcConfigCache) return _rtcConfigCache;
+  try {
+    const r = await fetch("https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7");
+    const iceServers = await r.json();
+    _rtcConfigCache = { iceServers };
+    console.log('TURN servers loaded:', iceServers.length, 'servers');
+  } catch(e) {
+    console.warn('TURN fetch failed, falling back to STUN only:', e.message);
+    _rtcConfigCache = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+  }
+  return _rtcConfigCache;
+}
 const listenerId = Math.random().toString(36).substr(2,9);
 let rtcPeer = null;
 let rtcChannel = null;
@@ -958,7 +972,8 @@ async function joinWebRTCStream(zoneId) {
 }
 
 async function handleOffer(sdp, zoneId) {
-  rtcPeer = new RTCPeerConnection(RTC_CONFIG);
+  const rtcCfg = await getRTCConfig();
+  rtcPeer = new RTCPeerConnection(rtcCfg);
 
   rtcPeer.onicecandidate = ({ candidate }) => {
     if (candidate && rtcChannel) {
@@ -1000,15 +1015,24 @@ async function handleOffer(sdp, zoneId) {
 }
 
 // ── PLAYER ───────────────────────────────────────────────
-function loadTrack(url,title) {
-  audio.src=url; 
-  audio.loop=true;
-  isPlaying=true;
-  document.getElementById('btn-play').textContent='⏸';
-  document.getElementById('btn-play').classList.add('playing');
-  document.getElementById('track-name').textContent=title||'Live';
-  document.getElementById('music-artist').textContent=title||'Live';
-  audio.play().catch(()=>{});
+function loadTrack(url, title, startedAt) {
+  audio.src = url;
+  audio.loop = true;
+  document.getElementById('track-name').textContent = title || 'Live';
+  document.getElementById('music-artist').textContent = title || 'Live';
+  // Seek to correct position once metadata loads
+  audio.addEventListener('loadedmetadata', function onMeta() {
+    audio.removeEventListener('loadedmetadata', onMeta);
+    if (startedAt && audio.duration) {
+      const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+      audio.currentTime = elapsed % audio.duration;
+    }
+    audio.play().catch(() => {});
+    isPlaying = true;
+    document.getElementById('btn-play').textContent = '⏸';
+    document.getElementById('btn-play').classList.add('playing');
+    document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='running');
+  });
 }
 function togglePlay() {
   if (!activeZone) return;
