@@ -499,6 +499,18 @@ let activeZone  = null, userLat = null, userLng = null;
 let isPlaying   = false;
 const audio = document.getElementById('audio-player');
 
+// Unlock audio on first user tap (mobile autoplay policy)
+let _audioUnlocked = false;
+function unlockAudio() {
+  if (_audioUnlocked) return;
+  _audioUnlocked = true;
+  audio.muted = true;
+  audio.play().then(() => { audio.pause(); audio.muted = false; }).catch(() => { audio.muted = false; });
+}
+['touchstart','touchend','mousedown','click'].forEach(ev =>
+  document.addEventListener(ev, unlockAudio, { passive: true })
+);
+
 // ── BOOT ─────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   buildVisualizer();
@@ -654,8 +666,6 @@ function launchApp() {
 
   initMap();
   loadZones(false);
-  // Keep Supabase alive during party
-  setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}), 4*60*1000);
 }
 
 // boombox click
@@ -868,27 +878,38 @@ async function activateZone(z) {
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
 
   if (z.current_track_url === 'webrtc-live') {
+    // Stop file track before going live
+    audio.pause(); audio.src = ''; audio.srcObject = null;
     document.getElementById('track-name').textContent = z.track_name || '🔴 LIVE';
     document.getElementById('music-artist').textContent = z.track_name || 'Live Stream';
     await joinWebRTCStream(z.id);
     showToast('Connecting to live stream… 🎛️');
   } else if (z.current_track_url) {
+    // loadTrack handles cleanup of any live stream
     loadTrack(z.current_track_url, z.track_name, z.playback_started_at);
   }
 
   // Subscribe to zone updates
   db.channel('zone_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
-      if (zn.current_track_url === 'webrtc-live' && !rtcPeer) {
-        joinWebRTCStream(z.id);
-        showToast('DJ is now LIVE 🎛️');
-      } else if (zn.current_track_url && zn.current_track_url !== 'webrtc-live' && zn.current_track_url !== audio.src) {
-        loadTrack(zn.current_track_url, zn.track_name);
+      if (zn.current_track_url === 'webrtc-live') {
+        // DJ went live — stop file track, start WebRTC
+        audio.pause(); audio.src = ''; audio.srcObject = null;
+        if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is now LIVE 🎛️'); }
+      } else if (zn.current_track_url) {
+        // New file track — loadTrack handles WebRTC cleanup
+        loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at);
         showToast('New track 🔊');
-      } else if (!zn.current_track_url) {
-        audio.pause();
+      } else {
+        // Nothing playing — stop everything
+        audio.pause(); audio.src = ''; audio.srcObject = null;
         if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
+        if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
         document.getElementById('track-name').textContent = '—';
+        document.getElementById('music-artist').textContent = '—';
+        isPlaying = false;
+        document.getElementById('btn-play').textContent = '▶';
+        document.getElementById('btn-play').classList.remove('playing');
         showToast('Stream ended');
       }
     }).subscribe();
@@ -924,21 +945,13 @@ function unlockUI(z) {
 }
 
 // ── WEBRTC RECEIVER ──────────────────────────────────────
-// ── TURN SERVER — Metered.ca (real-world NAT traversal) ─────────
-let _rtcConfigCache = null;
-async function getRTCConfig() {
-  if (_rtcConfigCache) return _rtcConfigCache;
-  try {
-    const r = await fetch("https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7");
-    const iceServers = await r.json();
-    _rtcConfigCache = { iceServers };
-    console.log('TURN servers loaded:', iceServers.length, 'servers');
-  } catch(e) {
-    console.warn('TURN fetch failed, falling back to STUN only:', e.message);
-    _rtcConfigCache = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-  }
-  return _rtcConfigCache;
-}
+const RTC_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+  ]
+};
 const listenerId = Math.random().toString(36).substr(2,9);
 let rtcPeer = null;
 let rtcChannel = null;
@@ -972,8 +985,7 @@ async function joinWebRTCStream(zoneId) {
 }
 
 async function handleOffer(sdp, zoneId) {
-  const rtcCfg = await getRTCConfig();
-  rtcPeer = new RTCPeerConnection(rtcCfg);
+  rtcPeer = new RTCPeerConnection(RTC_CONFIG);
 
   rtcPeer.onicecandidate = ({ candidate }) => {
     if (candidate && rtcChannel) {
@@ -987,8 +999,12 @@ async function handleOffer(sdp, zoneId) {
   rtcPeer.ontrack = ({ streams }) => {
     console.log('Got remote audio stream!');
     const audioEl = document.getElementById('audio-player');
+    audioEl.pause();
+    audioEl.src = '';        // clear any file track
     audioEl.srcObject = streams[0];
-    audioEl.play().catch(()=>{});
+    audioEl.play().catch(() => {
+      showToast('🔴 Tap ▶ to hear live audio');
+    });
     isPlaying = true;
     document.getElementById('btn-play').textContent = '⏸';
     document.getElementById('btn-play').classList.add('playing');
@@ -1016,6 +1032,10 @@ async function handleOffer(sdp, zoneId) {
 
 // ── PLAYER ───────────────────────────────────────────────
 function loadTrack(url, title, startedAt) {
+  // Stop any live WebRTC stream before loading a file track
+  if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
+  if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
+  audio.srcObject = null;  // clear WebRTC stream
   audio.src = url;
   audio.loop = true;
   document.getElementById('track-name').textContent = title || 'Live';
@@ -1027,7 +1047,10 @@ function loadTrack(url, title, startedAt) {
       const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
       audio.currentTime = elapsed % audio.duration;
     }
-    audio.play().catch(() => {});
+    audio.play().catch(() => {
+      // Autoplay blocked — prompt user to tap play
+      showToast('🎵 Tap ▶ to hear the music');
+    });
     isPlaying = true;
     document.getElementById('btn-play').textContent = '⏸';
     document.getElementById('btn-play').classList.add('playing');
