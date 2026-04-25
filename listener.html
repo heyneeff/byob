@@ -111,6 +111,19 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .leaflet-tile-pane{opacity:.82;}
 .map-label{text-align:center;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding:5px 0 10px;}
 
+/* ── PARTY INFO BUTTON ── */
+.btn-party{
+  display:block;width:100%;padding:22px;
+  background:var(--red);color:#fff;
+  border:none;border-radius:12px;
+  font-family:'Roboto Condensed',sans-serif;
+  font-size:22px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
+  text-align:center;cursor:pointer;
+  box-shadow:4px 4px 0 rgba(0,0,0,.5);
+  transition:all .1s;margin-bottom:18px;
+}
+.btn-party:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 rgba(0,0,0,.6);}
+.btn-party:active{transform:translate(2px,2px);box-shadow:2px 2px 0;}
 
 /* ── ZONE HEADLINE ── */
 .zone-headline{
@@ -156,7 +169,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 }
 /* find me button overlaid on map */
 .btn-find-me{
-  position:absolute;bottom:10px;right:10px;z-index:1000;
+  position:absolute;bottom:10px;right:10px;z-index:50;
   width:36px;height:36px;
   background:rgba(10,10,10,.9);
   border:1px solid var(--teal);
@@ -317,11 +330,13 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--surface2);border:1px solid var(--teal);color:var(--white);font-size:12px;padding:10px 18px;border-radius:6px;z-index:1000;transition:transform .25s;white-space:nowrap;box-shadow:3px 3px 0 rgba(0,0,0,.5);}
 #toast.show{transform:translateX(-50%) translateY(0);}
-/* ── TAP TO LISTEN BANNER ── */
-#tap-banner{display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:900;background:var(--orange);color:#000;font-family:'Roboto Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:16px 28px;border-radius:40px;box-shadow:0 4px 24px rgba(245,126,32,.6);cursor:pointer;white-space:nowrap;animation:tapPulse 1.4s ease-in-out infinite;}
-@keyframes tapPulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}
-#tap-banner.visible{display:block;}
-audio{display:none;}
+/* ── MUTE BUTTON ── */
+.btn-mute{display:flex;align-items:center;justify-content:center;width:100%;padding:18px;background:var(--surface2);border:2px solid var(--border);border-radius:12px;cursor:pointer;transition:all .1s;margin-bottom:18px;box-shadow:4px 4px 0 rgba(0,0,0,.5);}
+.btn-mute:active{transform:translate(2px,2px);box-shadow:2px 2px 0;}
+.btn-mute.muted{border-color:var(--red);background:rgba(239,60,35,.08);}
+/* ── ZONE INFO BUTTON ── */
+.zc-info-btn{background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 6px;cursor:pointer;transition:all .15s;}
+.zc-info-btn:hover{border-color:var(--teal);color:var(--teal);}
 /* ── BOOM MENU ── */
 #boom-menu{position:fixed;top:60px;right:12px;z-index:9999;background:var(--surface2);border:1px solid var(--border);border-top:2px solid var(--red);border-radius:10px;min-width:160px;overflow:hidden;box-shadow:4px 4px 0 rgba(0,0,0,.6);display:none;}
 #boom-menu.open{display:block;}
@@ -331,12 +346,14 @@ audio{display:none;}
 .boom-menu-item.danger{color:var(--red);}
 /* ── CALIBRATION NUDGE ── */
 .cal-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;}
-.cal-btn{width:36px;height:28px;border:1px solid var(--border);border-radius:4px;
-  background:var(--surface);color:var(--muted);font-size:14px;font-weight:700;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.cal-btn{width:36px;height:28px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
 .cal-btn:active{background:var(--orange);color:#000;border-color:var(--orange);}
-.cal-label{font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;
-  min-width:60px;text-align:center;}
+.cal-label{font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;min-width:60px;text-align:center;}
+/* ── TAP BANNER ── */
+#tap-banner{display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:900;background:var(--orange);color:#000;font-family:'Roboto Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:16px 28px;border-radius:40px;box-shadow:0 4px 24px rgba(245,126,32,.6);cursor:pointer;white-space:nowrap;animation:tapPulse 1.4s ease-in-out infinite;}
+@keyframes tapPulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}
+#tap-banner.visible{display:block;}
+audio{display:none;}
 </style>
 </head>
 <body>
@@ -420,6 +437,9 @@ audio{display:none;}
       <div id="zone-list"><div style="font-size:11px;color:var(--muted)">Scanning...</div></div>
     </div>
 
+    <button class="btn-mute" id="btn-mute" onclick="togglePlay()">
+      <img id="mute-btn-img" style="height:48px;width:auto;mix-blend-mode:screen;" alt="Mute"/>
+    </button>
 
     <div class="zone-headline" id="zone-headline">You Have Entered<br/>The Zone</div>
 
@@ -438,16 +458,15 @@ audio{display:none;}
     <div class="lockable locked" id="music-lockable">
       <div class="player-card">
         <div class="viz-wrap" id="visualizer"></div>
-        <div class="play-btn" id="btn-play" onclick="togglePlay()">▶</div>
         <div class="progress-wrap" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
         <div class="time-row"><span id="time-cur">0:00</span><span id="time-dur">0:00</span></div>
         <div class="track-name-row" id="track-name">—</div>
         <div class="cal-row">
-          <button class="cal-btn" onclick="nudge(-0.5)" title="Back 500ms">«</button>
-          <button class="cal-btn" onclick="nudge(-0.1)" title="Back 100ms">‹</button>
+          <button class="cal-btn" onclick="nudge(-0.5)">«</button>
+          <button class="cal-btn" onclick="nudge(-0.1)">‹</button>
           <span class="cal-label" id="cal-label">0 ms</span>
-          <button class="cal-btn" onclick="nudge(0.1)" title="Fwd 100ms">›</button>
-          <button class="cal-btn" onclick="nudge(0.5)" title="Fwd 500ms">»</button>
+          <button class="cal-btn" onclick="nudge(0.1)">›</button>
+          <button class="cal-btn" onclick="nudge(0.5)">»</button>
         </div>
       </div>
     </div>
@@ -481,8 +500,8 @@ audio{display:none;}
   </div>
 </div>
 
-<div id="tap-banner" onclick="onTapBanner()">🎧 Tap to Listen</div>
 <div id="boom-menu"><div class="boom-menu-item" id="ls-dj-link" style="display:none" onclick="openDJMode()">🎛️ Open DJ Mode</div><div class="boom-menu-item danger" onclick="lsLogout()">⏏ Log Out</div></div>
+<div id="tap-banner" onclick="onTapBanner()">🎧 Tap to Listen</div>
 <div id="toast"></div>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
@@ -497,7 +516,10 @@ document.getElementById('login-boom').src  = BOOM_B64;
 document.getElementById('hdr-logo').src    = LOGO_B64;
 document.getElementById('hdr-boom').src    = BOOM_B64;
 document.getElementById('eye-img').src     = EYE_B64;
+document.getElementById('mute-btn-img').src = PAUSE_B64;
 
+const PAUSE_B64 = 'data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAUDBAQEAwUEBAQFBQUGBwwIBwcHBw8LCwkMEQ8SEhEPERETFhwXExQaFRERGCEYGh0dHx8fExciJCIeJBweHx7/2wBDAQUFBQcGBw4ICA4eFBEUHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh4eHh7/wAARCACaAJMDASIAAhEBAxEB/8QAGQABAQEBAQEAAAAAAAAAAAAAAAMEAgEI/8QAHhABAAICAwEBAQAAAAAAAAAAAAEDAjIRQlESIUH/xAAWAQEBAQAAAAAAAAAAAAAAAAAAAQL/xAAVEQEBAAAAAAAAAAAAAAAAAAAAAf/aAAwDAQACEQMRAD8A+O+I8g4jyHoMvOI8g4jyHoDziPIOI8h6A4siPifyEGizSWcWAAorRETzzCStHYKpxHkHEeQ9Bl5xHkHEeQ9AecR5BxHkPQEc4j6n8ge57yAqAAAAADmzSWdos0lnFgAKK0dklaOwVUAZAAAASz3kM95AVAAAAABzZpLO0WaSziwAFFaOyStHYKqAMgAAAJZ7yGe8gKgAAAAA5s0lnaLNJZxYACitHZJWjsFVAGQAAAEs95DPeQFQAAAAAc2aSztFmks4sABRWjskrR2CqgDIAAACWe8hnvICoAAAAAObNJZ2izSWcWAAorR2SVo7BVQBkAAABLPeQz3kBUAAAAAHNmks7RZpLOLAAUVo7JK0dgqoAyAAAAlnvIZ7yAqAAAAADmzSWdos0lnFgAKK0dklaOwVUAZAAAASz3kM95AVAAAAABzZpLO0WaSziwAFFaOyStHYKqAMgAAAJZ7yGe8gKjkB0OQHQ5ALNJZ17NJQFgAKK0dklKf6FWHIMuhyA6HIDjPeR5nvIK//2Q==';
+const PLAY_B64  = 'data:image/png;base64,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';
 const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
 const { createClient } = supabase;
@@ -513,42 +535,42 @@ let activeZone  = null, userLat = null, userLng = null;
 let isPlaying   = false;
 const audio = document.getElementById('audio-player');
 
-// Unlock audio on first user tap (mobile autoplay policy)
-// ── WEB AUDIO API — for file track sync ─────────────────────────
+// ── BOOT ─────────────────────────────────────────────────
+
+// ════════════════════════════════════════════════════════════
+// WEB AUDIO — via MediaElementSource (no CORS / no fetch)
+// ════════════════════════════════════════════════════════════
 let _audioCtx = null;
-let _audioBuffer = null;   // decoded audio data
-let _sourceNode = null;    // currently playing node
-let _pausePosition = 0;    // where we paused (seconds)
-let _scheduleAt = null;    // audioCtx.currentTime when play was scheduled
-let _playFromS = 0;        // track offset when scheduling began
-let _webAudioPlaying = false;
 let _gainNode = null;
+let _mediaSource = null;  // created ONCE, reused forever
 let _isMuted = false;
+let _webAudioPlaying = false;
 
 function getAudioCtx() {
   if (!_audioCtx) {
     _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     _gainNode = _audioCtx.createGain();
+    _gainNode.gain.value = 1;
     _gainNode.connect(_audioCtx.destination);
   }
   if (_audioCtx.state === 'suspended') _audioCtx.resume();
   return _audioCtx;
 }
 
-// Unlock AudioContext on first gesture (iOS requirement)
+function connectMediaSource() {
+  if (_mediaSource) return; // only create once
+  const ctx = getAudioCtx();
+  _mediaSource = ctx.createMediaElementSource(audio);
+  _mediaSource.connect(_gainNode);
+}
+
+// Unlock audio on first user gesture (iOS)
 const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 let _audioUnlocked = false;
 function unlockAudio() {
   if (_audioUnlocked) return;
   _audioUnlocked = true;
-  const ctx = getAudioCtx();
-  // Play silent buffer to unlock
-  const buf = ctx.createBuffer(1, 1, 22050);
-  const src = ctx.createBufferSource();
-  src.buffer = buf;
-  src.connect(ctx.destination);
-  src.start(0);
-  // Also unlock <audio> for WebRTC
+  getAudioCtx();  // creates context + gainNode
   const s = new Audio(SILENT_WAV);
   s.play().catch(() => {});
 }
@@ -556,70 +578,254 @@ function unlockAudio() {
   document.addEventListener(ev, unlockAudio, { passive: true })
 );
 
-// Get current playback position (replaces audio.currentTime for file tracks)
-function getPlayPosition() {
-  if (!_audioCtx || !_webAudioPlaying || _scheduleAt === null) return _pausePosition;
-  const elapsed = _audioCtx.currentTime - _scheduleAt;
-  if (!_audioBuffer) return _pausePosition;
-  return (_playFromS + Math.max(0, elapsed)) % _audioBuffer.duration;
-}
-
-// Progress bar RAF loop (replaces timeupdate event)
+// Progress bar loop
 function rafLoop() {
-  if (_audioBuffer && _webAudioPlaying) {
-    const pos = getPlayPosition();
-    const pct = (pos / _audioBuffer.duration) * 100;
+  if (_webAudioPlaying && audio.duration) {
+    const pct = (audio.currentTime / audio.duration) * 100;
     document.getElementById('progress-fill').style.width = pct + '%';
-    document.getElementById('time-cur').textContent = fmt(pos);
-    document.getElementById('time-dur').textContent = fmt(_audioBuffer.duration);
+    document.getElementById('time-cur').textContent = fmt(audio.currentTime);
+    document.getElementById('time-dur').textContent = fmt(audio.duration);
   }
   requestAnimationFrame(rafLoop);
 }
 requestAnimationFrame(rafLoop);
 
-// Stop Web Audio playback
-function stopWebAudio() {
-  if (_sourceNode) {
-    try { _sourceNode.stop(0); } catch(e) {}
-    _sourceNode.disconnect();
-    _sourceNode = null;
-  }
-  _webAudioPlaying = false;
-  _pausePosition = 0;
-  _audioBuffer = null;
+// ════════════════════════════════════════════════════════════
+// CALIBRATION NUDGE
+// ════════════════════════════════════════════════════════════
+let _calOffset = parseFloat(localStorage.getItem('byob_cal_offset') || '0');
+function nudge(deltaSeconds) {
+  _calOffset += deltaSeconds;
+  _calOffset = Math.max(-3, Math.min(3, _calOffset));
+  localStorage.setItem('byob_cal_offset', _calOffset.toString());
+  updateCalLabel();
+  if (audio.duration && !audio.paused) audio.currentTime = Math.max(0, audio.currentTime + deltaSeconds);
+}
+function updateCalLabel() {
+  const ms = Math.round(_calOffset * 1000);
+  const el = document.getElementById('cal-label');
+  if (el) { el.textContent = (ms >= 0 ? '+' : '') + ms + ' ms'; el.style.color = ms === 0 ? 'var(--muted)' : 'var(--orange)'; }
 }
 
-// Schedule Web Audio playback at an exact future moment
-function scheduleWebAudio(buffer, fromSeconds, delayMs) {
-  const ctx = getAudioCtx();
-  // Stop existing
-  if (_sourceNode) {
-    try { _sourceNode.stop(0); } catch(e) {}
-    _sourceNode.disconnect();
-    _sourceNode = null;
+// ════════════════════════════════════════════════════════════
+// TAP BANNER
+// ════════════════════════════════════════════════════════════
+function showTapBanner(){document.getElementById('tap-banner')?.classList.add('visible');}
+function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
+function onTapBanner(){
+  hideTapBanner(); unlockAudio();
+  if (audio.src || audio.srcObject) {
+    audio.play().catch(()=>{});
+    _webAudioPlaying = true;
+    setMuteBtn(false);
   }
+}
+audio.addEventListener('playing', () => hideTapBanner());
 
-  _audioBuffer = buffer;
-  const clampedFrom = Math.max(0, fromSeconds % buffer.duration);
-  const delaySeconds = Math.max(0, delayMs / 1000);
+// ════════════════════════════════════════════════════════════
+// LOAD TRACK — uses <audio> element, no fetch needed
+// ════════════════════════════════════════════════════════════
+function loadTrack(url, title, startedAt, playAt, playFromS) {
+  // Clean up any WebRTC
+  if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
+  if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
+  audio.srcObject = null;
 
-  _sourceNode = ctx.createBufferSource();
-  _sourceNode.buffer = buffer;
-  _sourceNode.loop = true;
-  if (!_gainNode) { _gainNode = ctx.createGain(); _gainNode.connect(ctx.destination); }
-  const targetGain = _isMuted ? 0 : 1;
-  _gainNode.gain.setValueAtTime(targetGain, ctx.currentTime);
-  _sourceNode.connect(_gainNode);
+  document.getElementById('track-name').textContent = title || 'Live';
+  document.getElementById('music-artist').textContent = title || 'Live';
 
-  _scheduleAt = ctx.currentTime + delaySeconds;
-  _playFromS = clampedFrom;
-  _sourceNode.start(_scheduleAt, clampedFrom);
+  // Unmute and show playing state
+  _isMuted = false;
+  if (_gainNode) _gainNode.gain.setValueAtTime(1, _audioCtx?.currentTime || 0);
+  setMuteBtn(false);
+  document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
+  isPlaying = true;
   _webAudioPlaying = true;
 
-  console.log('Scheduled play in', delayMs + 'ms from', clampedFrom.toFixed(2) + 's');
+  // Connect audio element to GainNode (first time only)
+  getAudioCtx();
+  connectMediaSource();
+
+  // Set source and seek on load
+  audio.src = url;
+  audio.loop = true;
+
+  audio.addEventListener('loadedmetadata', function onMeta() {
+    audio.removeEventListener('loadedmetadata', onMeta);
+    if (!audio.duration) return;
+    seekToSync(startedAt, playAt, playFromS);
+
+    audio.addEventListener('playing', function onPlaying() {
+      audio.removeEventListener('playing', onPlaying);
+      seekToSync(startedAt, playAt, playFromS); // fine-tune
+      hideTapBanner();
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: title||'BYOB', artist: 'Live from the Zone 🎧', album: activeZone?.name||'BYOB' });
+        navigator.mediaSession.setActionHandler('play',  () => { audio.play(); setMuteBtn(false); });
+        navigator.mediaSession.setActionHandler('pause', () => { if(_gainNode) _gainNode.gain.setTargetAtTime(0, _audioCtx.currentTime, 0.05); setMuteBtn(true); });
+      }
+    }, { once: true });
+
+    audio.play().catch(() => {
+      showToast('🎧 Tap anywhere to start');
+      showTapBanner();
+    });
+  }, { once: true });
+
+  audio.load();
 }
 
-// ── BOOT ─────────────────────────────────────────────────
+function seekToSync(startedAt, playAt, playFromS) {
+  if (!audio.duration) return;
+  let seekTo = 0;
+  if (playAt && playFromS !== undefined) {
+    const delayMs = playAt - Date.now();
+    seekTo = (playFromS || 0) + _calOffset;
+    if (delayMs < 0) seekTo += (-delayMs / 1000);
+  } else if (startedAt) {
+    const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+    seekTo = elapsed + _calOffset;
+  }
+  audio.currentTime = Math.max(0, seekTo % audio.duration);
+}
+
+// ════════════════════════════════════════════════════════════
+// MUTE TOGGLE
+// ════════════════════════════════════════════════════════════
+function setMuteBtn(muted) {
+  _isMuted = muted;
+  const img = document.getElementById('mute-btn-img');
+  const btn = document.getElementById('btn-mute');
+  if (img) img.src = muted ? PLAY_B64 : PAUSE_B64;
+  if (btn) btn.classList.toggle('muted', muted);
+  document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = muted ? '0.2' : '1');
+}
+
+function togglePlay() {
+  if (!activeZone) return;
+  setMuteBtn(!_isMuted);
+  if (_gainNode && _audioCtx) {
+    _gainNode.gain.setTargetAtTime(_isMuted ? 0 : 1, _audioCtx.currentTime, 0.05);
+  }
+  if (audio.srcObject) audio.muted = _isMuted;
+}
+
+// ════════════════════════════════════════════════════════════
+// STOP EVERYTHING
+// ════════════════════════════════════════════════════════════
+function stopEverything() {
+  audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
+  if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
+  if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
+  clearInterval(_syncInterval);
+  _webAudioPlaying = false;
+  _isMuted = false;
+  activeZone = null;
+  isPlaying = false;
+  setMuteBtn(false);
+  document.getElementById('track-name').textContent = '—';
+  document.getElementById('music-artist').textContent = '—';
+  document.getElementById('zone-headline').classList.remove('visible');
+  document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='paused'; b.style.opacity='1'; });
+  ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
+}
+
+// ════════════════════════════════════════════════════════════
+// SYNC ENGINE — drift correction only
+// ════════════════════════════════════════════════════════════
+let _syncInterval = null;
+async function syncZoneAudio() {
+  if (!activeZone) return;
+  try {
+    const { data: z } = await db.from('zones').select('id,active,current_track_url,playback_started_at,play_at,play_from_s').eq('id', activeZone.id).single();
+    if (!z) return;
+    activeZone = z;
+    if (!z.active) { stopEverything(); showToast('The zone has ended 🎤'); return; }
+    if (z.current_track_url === 'webrtc-live' || !z.current_track_url) return;
+    // Drift correction
+    if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
+      const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
+      const expected = (elapsed + _calOffset) % audio.duration;
+      const drift = Math.abs(audio.currentTime - expected);
+      if (drift > 0.5) { console.log('Drift fix:', drift.toFixed(2)+'s'); audio.currentTime = expected; }
+    }
+  } catch(e) { console.warn('Sync error:', e.message); }
+}
+function startSyncEngine() {
+  clearInterval(_syncInterval);
+  _syncInterval = setInterval(syncZoneAudio, 10000);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && activeZone) syncZoneAudio();
+});
+
+// ════════════════════════════════════════════════════════════
+// WEBRTC RECEIVER
+// ════════════════════════════════════════════════════════════
+const RTC_CONFIG_STATIC = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+let _rtcConfigCache = null;
+async function getRTCConfig() {
+  if (_rtcConfigCache) return _rtcConfigCache;
+  try {
+    const r = await fetch("https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7");
+    const iceServers = await r.json();
+    _rtcConfigCache = { iceServers };
+  } catch(e) { _rtcConfigCache = RTC_CONFIG_STATIC; }
+  return _rtcConfigCache;
+}
+const listenerId = Math.random().toString(36).substr(2,9);
+let rtcPeer = null, rtcChannel = null;
+
+async function joinWebRTCStream(zoneId) {
+  if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
+  if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
+  rtcChannel = db.channel(`webrtc_${zoneId}`)
+    .on('broadcast', { event: 'offer' }, async ({ payload }) => {
+      if (payload.to !== listenerId) return;
+      await handleOffer(payload.sdp);
+    })
+    .on('broadcast', { event: 'ice-listener' }, async ({ payload }) => {
+      if (payload.to !== listenerId) return;
+      if (rtcPeer && payload.candidate) await rtcPeer.addIceCandidate(payload.candidate).catch(()=>{});
+    })
+    .subscribe(status => {
+      if (status === 'SUBSCRIBED') rtcChannel.send({ type:'broadcast', event:'listener-joined', payload:{ listenerId } });
+    });
+}
+
+async function handleOffer(sdp) {
+  const cfg = await getRTCConfig();
+  rtcPeer = new RTCPeerConnection(cfg);
+  rtcPeer.onicecandidate = ({ candidate }) => {
+    if (candidate && rtcChannel) rtcChannel.send({ type:'broadcast', event:'ice-dj', payload:{ to:'dj', from:listenerId, candidate } });
+  };
+  rtcPeer.ontrack = ({ streams }) => {
+    audio.pause(); audio.src = ''; audio.srcObject = streams[0];
+    audio.play().catch(()=>{ showTapBanner(); });
+    _webAudioPlaying = true;
+    setMuteBtn(false);
+    showToast('🔴 LIVE connected!');
+  };
+  rtcPeer.onconnectionstatechange = () => {
+    if (rtcPeer.connectionState === 'failed') { rtcPeer.close(); rtcPeer = null; showToast('Live stream disconnected'); }
+  };
+  await rtcPeer.setRemoteDescription({ type:'offer', sdp });
+  const answer = await rtcPeer.createAnswer();
+  await rtcPeer.setLocalDescription(answer);
+  rtcChannel.send({ type:'broadcast', event:'answer', payload:{ to:'dj', from:listenerId, sdp:answer.sdp } });
+}
+
+// ════════════════════════════════════════════════════════════
+// BOOM MENU — logout, DJ link
+// ════════════════════════════════════════════════════════════
+function onBoomClick() { document.getElementById('boom-menu').classList.toggle('open'); }
+function openDJMode() { document.getElementById('boom-menu').classList.remove('open'); window.open('dj.html','_blank'); }
+async function lsLogout() { document.getElementById('boom-menu').classList.remove('open'); await db.auth.signOut(); location.reload(); }
+document.addEventListener('click', e => {
+  if (!e.target.closest('#boom-menu') && !e.target.closest('#hdr-boom'))
+    document.getElementById('boom-menu')?.classList.remove('open');
+});
+
 window.addEventListener('DOMContentLoaded', async () => {
   buildVisualizer();
   initProximityGrid();
@@ -764,36 +970,24 @@ function launchApp() {
   roleEl.className = `hdr-role ${userRole}`;
 
   const boom = document.getElementById('hdr-boom');
-  boom.classList.remove('locked');
-  boom.style.opacity = '0.85';
-  boom.style.cursor = 'pointer';
-  boom.title = 'Menu';
   if (userRole === 'dj') {
-    const djLink = document.getElementById('ls-dj-link');
-    if (djLink) djLink.style.display = 'flex';
+    boom.classList.remove('locked');
+    boom.title = 'Open DJ Mode';
+  } else {
+    boom.classList.add('locked');
+    boom.title = 'DJ access required';
   }
 
   initMap();
   loadZones(false);
-  updateCalLabel();
+  setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
 }
 
 // boombox click
 function onBoomClick() {
-  document.getElementById('boom-menu').classList.toggle('open');
-}
-function openDJMode() {
-  document.getElementById('boom-menu').classList.remove('open');
+  if (userRole !== 'dj') { showToast('DJ access required'); return; }
   window.open('dj.html', '_blank');
 }
-async function lsLogout() {
-  document.getElementById('boom-menu').classList.remove('open');
-  await db.auth.signOut(); location.reload();
-}
-document.addEventListener('click', e => {
-  if (!e.target.closest('#boom-menu') && !e.target.closest('#hdr-boom'))
-    document.getElementById('boom-menu')?.classList.remove('open');
-});
 
 // party button
 function onPartyBtn() {
@@ -908,14 +1102,11 @@ async function checkGeofences() {
 
 function onEnterZone(z) {
   if (activeZone?.id === z.id) {
+    // Already synced — just unmute
     if (_webAudioPlaying || audio.srcObject) {
-      _isMuted = false;
       if (_gainNode) _gainNode.gain.setTargetAtTime(1, _audioCtx.currentTime, 0.05);
-      if (audio.srcObject) audio.muted = false;
-      document.getElementById('btn-play').textContent = '🔊';
-      document.getElementById('btn-play').classList.add('playing');
-      document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = '1');
-      showToast(`📡 Back in the zone`);
+      setMuteBtn(false);
+      showToast('📡 Back in the zone');
     }
     return;
   }
@@ -942,12 +1133,9 @@ function onEnterZone(z) {
 function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
   showToast(`Left "${z.name}" — muted`);
-  _isMuted = true;
-  if (_gainNode) _gainNode.gain.setTargetAtTime(0, _audioCtx.currentTime, 0.1);
+  if (_gainNode && _audioCtx) _gainNode.gain.setTargetAtTime(0, _audioCtx.currentTime, 0.1);
   if (audio.srcObject) audio.muted = true;
-  document.getElementById('btn-play').textContent = '🔇';
-  document.getElementById('btn-play').classList.remove('playing');
-  document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = '0.2');
+  setMuteBtn(true);
 }
 async function loadZones(autoJoin=false) {
   const { data } = await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(10);
@@ -958,6 +1146,7 @@ async function loadZones(autoJoin=false) {
   knownZones = data;
   list.innerHTML = '';
   data.forEach(z => {
+    zones_cache[z.id] = z;
     addZoneToMap(z);
     const dist = (userLat&&z.lat) ? distM(userLat,userLng,z.lat,z.lng) : null;
     const ds = dist ? (dist<1000?Math.round(dist)+'m':(dist/1000).toFixed(1)+'km')+' away' : '';
@@ -997,7 +1186,7 @@ async function previewZone(z) {
 
   // Subscribe to zone updates so we know when DJ loads a track
   db.channel('zone_preview_'+z.id)
-    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{ zones_cache[zn.id]=zn;
       // If we're now inside the zone, play immediately
       if (insideZoneIds.has(z.id)) activateZone(zn);
     }).subscribe();
@@ -1011,44 +1200,29 @@ async function activateZone(z) {
   startSyncEngine();
 
   if (z.current_track_url === 'webrtc-live') {
-    // Stop file track completely before going live
-    audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
     document.getElementById('track-name').textContent = z.track_name || '🔴 LIVE';
     document.getElementById('music-artist').textContent = z.track_name || 'Live Stream';
     await joinWebRTCStream(z.id);
     showToast('Connecting to live stream… 🎛️');
   } else if (z.current_track_url) {
-    loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
+    loadTrack(z.current_track_url, z.track_name, z.playback_started_at);
   }
 
   // Subscribe to zone updates
   db.channel('zone_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
-      // Zone killed by DJ
-      if (!zn.active) {
-        stopEverything();
-        showToast('The zone has ended 🎤');
-        return;
-      }
+      zones_cache[zn.id] = zn;
+      if (!zn.active) { stopEverything(); showToast('Zone ended 🎤'); return; }
       if (zn.current_track_url === 'webrtc-live') {
-        // DJ went live — stop file track completely
-        audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
-        if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }  // reset any stale peer
-        joinWebRTCStream(z.id); showToast('DJ is now LIVE 🎛️');
+        audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
+        if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is LIVE 🎛️'); }
       } else if (zn.current_track_url) {
-        // New file track — loadTrack handles WebRTC cleanup
         loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-        showToast('New track 🔊');
+        showToast('Now playing 🔊');
       } else {
-        // Nothing playing — stop everything
-        audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
-        if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
-        if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
-        document.getElementById('track-name').textContent = '—';
-        document.getElementById('music-artist').textContent = '—';
-        isPlaying = false;
-        document.getElementById('btn-play').textContent = '▶';
-        document.getElementById('btn-play').classList.remove('playing');
+        audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
+        if (rtcPeer) { rtcPeer.close(); rtcPeer=null; }
+        document.getElementById('track-name').textContent='—';
         showToast('Stream ended');
       }
     }).subscribe();
@@ -1067,7 +1241,7 @@ function unlockUI(z) {
     document.getElementById(k+'-lockable').classList.remove('locked');
   });
   document.getElementById('music-artist').textContent = z.track_name || z.name;
-  document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='running');
+  document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
   const p=Math.floor(Math.random()*40)+8, a=Math.floor(Math.random()*12)+2;
   document.getElementById('stat-present').textContent = p;
   document.getElementById('stat-approaching').textContent = a;
@@ -1138,13 +1312,8 @@ async function handleOffer(sdp, zoneId) {
   rtcPeer.ontrack = ({ streams }) => {
     console.log('Got remote audio stream!');
     const audioEl = document.getElementById('audio-player');
-    audioEl.pause();
-    audioEl.src = '';        // clear any file track
     audioEl.srcObject = streams[0];
-    audioEl.play().then(() => setMediaSession('🔴 LIVE')).catch(() => {
-      showToast('🔴 Tap ▶ to hear live audio');
-      showTapBanner();
-    });
+    audioEl.play().catch(()=>{});
     isPlaying = true;
     document.getElementById('btn-play').textContent = '⏸';
     document.getElementById('btn-play').classList.add('playing');
@@ -1171,98 +1340,33 @@ async function handleOffer(sdp, zoneId) {
 }
 
 // ── PLAYER ───────────────────────────────────────────────
-
-// Media Session — keeps audio going on lock screen
-function setMediaSession(title) {
-  if (!('mediaSession' in navigator)) return;
-  navigator.mediaSession.metadata = new MediaMetadata({
-    title: title || 'BYOB',
-    artist: 'Live from the Zone 🎧',
-    album: activeZone?.name || 'BYOB'
-  });
-  navigator.mediaSession.setActionHandler('play',  () => { audio.play(); isPlaying=true; document.getElementById('btn-play').textContent='⏸'; document.getElementById('btn-play').classList.add('playing'); });
-  navigator.mediaSession.setActionHandler('pause', () => { audio.pause(); isPlaying=false; document.getElementById('btn-play').textContent='▶'; document.getElementById('btn-play').classList.remove('playing'); });
-}
-async function loadTrack(url, title, startedAt, playAt, playFromS) {
-  // Stop any live WebRTC
-  if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
-  if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
-  audio.pause(); audio.srcObject = null; audio.src = '';
-
+function loadTrack(url, title, startedAt) {
+  audio.src = url;
+  audio.loop = true;
   document.getElementById('track-name').textContent = title || 'Live';
   document.getElementById('music-artist').textContent = title || 'Live';
-
-  // Always unmute when a new track loads
-  _isMuted = false;
-  if (_gainNode) _gainNode.gain.value = 1;
-  document.getElementById('btn-play').textContent = '🔊';
-  document.getElementById('btn-play').classList.add('playing');
-  document.querySelectorAll('.viz-bar').forEach(b => {
-    b.style.animationPlayState = 'running';
-    b.style.opacity = '1';
-  });
-  isPlaying = true;
-
-  try {
-    const ctx = getAudioCtx();
-    showToast('⏳ Loading track…');
-
-    // Fetch + decode the full audio file
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = await ctx.decodeAudioData(arrayBuffer);
-
-    // Calculate position and schedule
-    const nowMs = Date.now();
-
-    let fromSeconds = 0;
-    let delayMs = 0;
-
-    if (playAt && playFromS !== undefined) {
-      // New scheduled-play path — most accurate
-      delayMs = playAt - nowMs;
-      fromSeconds = (playFromS || 0) + _calOffset;
-      if (delayMs < 0) {
-        // We're late — advance position by how late we are
-        fromSeconds += (-delayMs / 1000);
-        delayMs = 0;
-      }
-    } else if (startedAt) {
-      // Fallback: calculate from startedAt timestamp
-      const elapsed = (nowMs - new Date(startedAt).getTime()) / 1000;
-      fromSeconds = elapsed + _calOffset;
-      delayMs = 0;
+  // Seek to correct position once metadata loads
+  audio.addEventListener('loadedmetadata', function onMeta() {
+    audio.removeEventListener('loadedmetadata', onMeta);
+    if (startedAt && audio.duration) {
+      const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+      audio.currentTime = elapsed % audio.duration;
     }
-
-    scheduleWebAudio(buffer, fromSeconds, delayMs);
-    setMediaSession(title);
-    hideTapBanner();
-    showToast(delayMs > 100
-      ? '🎵 Starting in ' + (delayMs/1000).toFixed(1) + 's…'
-      : '🎵 Playing');
-
-  } catch(e) {
-    console.error('loadTrack error:', e);
-    showToast('⚠️ Could not load track');
-    showTapBanner();
-  }
+    audio.play().catch(() => {});
+    isPlaying = true;
+    document.getElementById('btn-play').textContent = '⏸';
+    document.getElementById('btn-play').classList.add('playing');
+    document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
+  });
 }
-
-
 function togglePlay() {
   if (!activeZone) return;
-  _isMuted = !_isMuted;
-  const btn = document.getElementById('btn-play');
-  btn.textContent = _isMuted ? '🔇' : '🔊';
-  btn.classList.toggle('playing', !_isMuted);
-  if (audio.srcObject) {
-    audio.muted = _isMuted;
-  } else if (_gainNode) {
-    _gainNode.gain.setTargetAtTime(_isMuted ? 0 : 1, _audioCtx.currentTime, 0.05);
-  }
-  document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = _isMuted ? '0.2' : '1');
+  isPlaying=!isPlaying;
+  document.getElementById('btn-play').textContent=isPlaying?'⏸':'▶';
+  document.getElementById('btn-play').classList.toggle('playing',isPlaying);
+  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
+  isPlaying?audio.play().catch(()=>{}):audio.pause();
 }
-audio.addEventListener('playing', () => hideTapBanner());
 audio.addEventListener('ended', () => {
   audio.currentTime = 0;
   audio.play().catch(()=>{});
@@ -1278,6 +1382,17 @@ document.getElementById('progress-bar').addEventListener('click',e=>{
   const r=e.currentTarget.getBoundingClientRect();
   if(audio.duration) audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration;
 });
+let zones_cache = {};
+function showPartyInfo(z) {
+  if (!z) z = activeZone;
+  if (!z) return;
+  document.getElementById('modal-zone-name').textContent = z.name;
+  document.getElementById('modal-coords').textContent    = z.lat?.toFixed(5)+', '+z.lng?.toFixed(5);
+  document.getElementById('modal-radius').textContent    = z.radius_m+'m';
+  document.getElementById('modal-listeners').textContent = z.listeners||0;
+  document.getElementById('modal-track').textContent     = z.track_name||'—';
+  document.getElementById('party-modal').classList.add('open');
+}
 function openVisuals(){window.open('mandalforge_sync.html?zone='+(activeZone?.id||'demo')+'&role=viewer','_blank');}
 
 // ── VISUALIZER ───────────────────────────────────────────
@@ -1608,101 +1723,6 @@ function getBearing(lat1, lng1, lat2, lng2) {
 }
 
 // ── UTILS ────────────────────────────────────────────────
-
-// ── CALIBRATION NUDGE ────────────────────────────────────────────
-// Lets each listener manually offset their audio to match their BT speaker latency
-let _calOffset = parseFloat(localStorage.getItem('byob_cal_offset') || '0');
-
-function nudge(deltaSeconds) {
-  _calOffset += deltaSeconds;
-  // Clamp to ±3 seconds
-  _calOffset = Math.max(-3, Math.min(3, _calOffset));
-  localStorage.setItem('byob_cal_offset', _calOffset.toString());
-  updateCalLabel();
-  // Apply offset immediately to Web Audio
-  if (_webAudioPlaying && _audioBuffer) {
-    const newPos = Math.max(0, getPlayPosition() + deltaSeconds);
-    scheduleWebAudio(_audioBuffer, newPos, 0);
-  } else if (audio.srcObject && audio.duration) {
-    audio.currentTime = Math.max(0, audio.currentTime + deltaSeconds);
-  }
-}
-
-function updateCalLabel() {
-  const ms = Math.round(_calOffset * 1000);
-  const el = document.getElementById('cal-label');
-  if (el) {
-    el.textContent = (ms >= 0 ? '+' : '') + ms + ' ms';
-    el.style.color = ms === 0 ? 'var(--muted)' : 'var(--orange)';
-  }
-}
-
-function applyCalOffset() {
-  if (_calOffset !== 0 && audio.duration && !audio.paused) {
-    audio.currentTime = Math.max(0, audio.currentTime + _calOffset);
-  }
-}
-// ── SYNC ENGINE ─────────────────────────────────────────────────
-// Only checks zone alive + corrects drift. NEVER restarts tracks.
-// Track loading is handled by activateZone + realtime handler only.
-let _syncInterval = null;
-
-async function syncZoneAudio() {
-  if (!activeZone) return;
-  try {
-    const { data: z } = await db.from('zones').select('id,active,current_track_url,playback_started_at').eq('id', activeZone.id).single();
-    if (!z) return;
-
-    // Zone killed by DJ — stop everything
-    if (!z.active) {
-      stopEverything();
-      showToast('The zone has ended 🎤');
-      return;
-    }
-
-    // Drift correction only — if same track is playing and we're off by > 3s
-    if (z.playback_started_at && z.current_track_url &&
-        z.current_track_url !== 'webrtc-live' &&
-        audio.duration && !audio.paused && !audio.srcObject) {
-      const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
-      const expected = elapsed % audio.duration;
-      const drift = Math.abs(audio.currentTime - expected);
-      if (drift > 0.5) {
-        console.log('Drift corrected:', drift.toFixed(2)+'s');
-        audio.currentTime = expected;
-      }
-    }
-  } catch(e) { console.warn('Sync poll error:', e.message); }
-}
-
-function stopEverything() {
-  stopWebAudio();
-  audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
-  if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
-  if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
-  clearInterval(_syncInterval);
-  activeZone = null;
-  _isMuted = false;
-  isPlaying = false;
-  document.getElementById('btn-play').textContent = '▶';
-  document.getElementById('btn-play').classList.remove('playing');
-  document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = '1');
-  document.getElementById('track-name').textContent = '—';
-  document.getElementById('music-artist').textContent = '—';
-  document.getElementById('zone-headline').classList.remove('visible');
-  document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='paused');
-  ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
-}
-
-function startSyncEngine() {
-  clearInterval(_syncInterval);
-  // Delay first poll by 5s to let activateZone finish its own load
-  _syncInterval = setInterval(syncZoneAudio, 10000);
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && activeZone) syncZoneAudio();
-});
 function distM(la1,ln1,la2,ln2){const R=6371000,dL=(la2-la1)*Math.PI/180,dN=(ln2-ln1)*Math.PI/180;const a=Math.sin(dL/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dN/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
 function fmt(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return `${m}:${sec.toString().padStart(2,'0')}`;}
 let toastTimer;
