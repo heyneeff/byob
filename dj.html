@@ -663,21 +663,7 @@ function togglePlay(){
   document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
   if(isPlaying){
     audio.play().catch(()=>{});
-    // Write fresh playback_started_at so listeners sync to resume point
-    // startedAt = now - currentPosition, so elapsed calc always gives currentTime
-    if(activeZone && audio.src && !audio.srcObject){
-      const resumedAt = new Date(Date.now() - audio.currentTime * 1000).toISOString();
-      const resumeBufMs = 1500;
-      const resumePlayAt = Date.now() + resumeBufMs;
-      // DJ will be at currentTime + buffer window when listeners fire
-      const resumeFromS = audio.currentTime + (resumeBufMs / 1000);
-      db.from('zones').update({
-        playback_started_at: resumedAt,
-        play_at: resumePlayAt,
-        play_from_s: resumeFromS
-      }).eq('id', activeZone.id)
-        .then(()=>{}).catch(()=>{});
-    }
+    // Listeners use mute not pause — no resync needed
   } else {
     audio.pause();
   }
