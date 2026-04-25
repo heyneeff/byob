@@ -30,10 +30,15 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
   transition:opacity .3s,transform .3s;
 }
 #login-screen.exit{opacity:0;transform:scale(.97);pointer-events:none;}
-.login-logo{height:48px;width:auto;margin-bottom:8px;}
-.login-boombox{height:54px;width:auto;mix-blend-mode:screen;margin-bottom:24px;}
-.login-title{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--white);margin-bottom:4px;text-align:center;}
-.login-sub{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:28px;text-align:center;}
+.login-boombox{height:90px;width:auto;mix-blend-mode:screen;margin-bottom:4px;animation:boombounce 0.8s ease-in-out infinite alternate;}
+@keyframes boombounce{
+  from{transform:translateY(0) rotate(-1deg);}
+  to{transform:translateY(-8px) rotate(1deg);}
+}
+.login-logo{height:40px;width:auto;margin-bottom:16px;}
+.login-title{font-family:'Barlow Condensed',sans-serif;font-size:32px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--white);text-align:center;line-height:1.05;margin-bottom:4px;}
+.login-title span{color:var(--red);}
+.login-sub{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:20px;text-align:center;}
 
 /* role toggle */
 .role-tabs{display:grid;grid-template-columns:1fr 1fr;gap:0;border:2px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:24px;width:100%;max-width:340px;}
@@ -334,9 +339,9 @@ audio{display:none;}
      FULL SCREEN LOGIN
 ═══════════════════════════════════════════════ -->
 <div id="login-screen">
-  <img class="login-logo" id="login-logo" alt="BYOB"/>
   <img class="login-boombox" id="login-boom" alt="BYOB"/>
-  <div class="login-title">Bring Your Own Boombox</div>
+  <img class="login-logo" id="login-logo" alt="BYOB"/>
+  <div class="login-title"><span>BYOB</span><br/>Bring Your Own Boombox</div>
   <div class="login-sub">Choose your role</div>
 
   <div class="role-tabs">
@@ -345,13 +350,14 @@ audio{display:none;}
   </div>
 
   <div class="login-form">
-    <input class="login-inp" type="email" id="login-email" placeholder="email" autocomplete="email"/>
-    <input class="login-inp" type="password" id="login-password" placeholder="password" autocomplete="current-password"/>
+    <input class="login-inp" type="email" id="login-email" placeholder="Email" autocomplete="email"/>
+    <input class="login-inp" type="tel" id="login-phone" placeholder="Phone number" autocomplete="tel"/>
+    <input class="login-inp" type="password" id="login-password" placeholder="Password" autocomplete="current-password"/>
     <button class="btn-login" id="login-btn" onclick="handleLogin()">Sign In</button>
     <div class="login-toggle" id="login-toggle">No account? <span onclick="toggleSignUp()">Sign up</span></div>
     <div class="login-err" id="login-err"></div>
     <div class="login-dj-note" id="dj-note">
-      DJ accounts require approval. You can sign up — a moderator will grant DJ access. Until then you'll sign in as a listener.
+      DJ accounts require approval. Sign up and a moderator will grant DJ access.
     </div>
   </div>
 </div>
@@ -541,10 +547,10 @@ async function handleLogin() {
   try {
     let data, error;
     if (isSignUp) {
-      // Store role in metadata on sign-up
+      const phone = document.getElementById('login-phone').value.trim();
       ({ data, error } = await db.auth.signUp({
         email, password,
-        options: { data: { role: loginRole } }
+        options: { data: { role: loginRole, phone } }
       }));
     } else {
       ({ data, error } = await db.auth.signInWithPassword({ email, password }));
@@ -1124,10 +1130,11 @@ class ProximityGrid {
       const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
       const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
       const emoji   = currentUser?.user_metadata?.emoji || '🎧';
+      const phone   = currentUser?.user_metadata?.phone || '';
       if (this.presenceChannel) {
         this.presenceChannel.send({
           type: 'broadcast', event: 'proximity',
-          payload: { id: listenerId, dist, bearing, name, emoji }
+          payload: { id: listenerId, dist, bearing, name, emoji, phone }
         });
       }
     }, 8000);
