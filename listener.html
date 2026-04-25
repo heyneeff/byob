@@ -331,9 +331,9 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--surface2);border:1px solid var(--teal);color:var(--white);font-size:12px;padding:10px 18px;border-radius:6px;z-index:1000;transition:transform .25s;white-space:nowrap;box-shadow:3px 3px 0 rgba(0,0,0,.5);}
 #toast.show{transform:translateX(-50%) translateY(0);}
 /* ── MUTE BUTTON ── */
-.btn-mute{display:flex;align-items:center;justify-content:center;width:100%;padding:18px;background:var(--surface2);border:2px solid var(--border);border-radius:12px;cursor:pointer;transition:all .1s;margin-bottom:18px;box-shadow:4px 4px 0 rgba(0,0,0,.5);}
-.btn-mute:active{transform:translate(2px,2px);box-shadow:2px 2px 0;}
-.btn-mute.muted{border-color:var(--red);background:rgba(239,60,35,.08);}
+.btn-mute{display:flex;align-items:center;justify-content:center;width:100%;padding:14px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all .1s;margin-bottom:14px;}
+.btn-mute:active{transform:translate(1px,1px);}
+.btn-mute.muted{border-color:var(--red);background:rgba(239,60,35,.06);}
 /* ── ZONE INFO BUTTON ── */
 .zc-info-btn{background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);font-size:11px;padding:2px 6px;cursor:pointer;transition:all .15s;}
 .zc-info-btn:hover{border-color:var(--teal);color:var(--teal);}
@@ -350,8 +350,8 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .cal-btn:active{background:var(--orange);color:#000;border-color:var(--orange);}
 .cal-label{font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;min-width:60px;text-align:center;}
 /* ── TAP BANNER ── */
-#tap-banner{display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:900;background:var(--orange);color:#000;font-family:'Roboto Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:16px 28px;border-radius:40px;box-shadow:0 4px 24px rgba(245,126,32,.6);cursor:pointer;white-space:nowrap;animation:tapPulse 1.4s ease-in-out infinite;}
-@keyframes tapPulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}
+#tap-banner{display:none;position:fixed;bottom:0;left:0;right:0;z-index:900;background:var(--orange);color:#000;font-family:'Roboto Condensed',sans-serif;font-size:24px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:28px 20px 36px;text-align:center;box-shadow:0 -4px 40px rgba(245,126,32,.7);cursor:pointer;animation:tapPulse 1.4s ease-in-out infinite;}
+@keyframes tapPulse{0%,100%{opacity:1}50%{opacity:.85}}
 #tap-banner.visible{display:block;}
 audio{display:none;}
 </style>
@@ -501,7 +501,7 @@ audio{display:none;}
 </div>
 
 <div id="boom-menu"><div class="boom-menu-item" id="ls-dj-link" style="display:none" onclick="openDJMode()">🎛️ Open DJ Mode</div><div class="boom-menu-item danger" onclick="lsLogout()">⏏ Log Out</div></div>
-<div id="tap-banner" onclick="onTapBanner()">🎧 Tap to Listen</div>
+<div id="tap-banner" onclick="onTapBanner()">🎧 TAP TO START THE MUSIC</div>
 <div id="toast"></div>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
@@ -621,13 +621,12 @@ function onTapBanner(){
     setMuteBtn(false);
   }
 }
-audio.addEventListener('playing', () => hideTapBanner());
+audio.addEventListener('playing', () => { hideTapBanner(); setMuteBtn(false); });
 
 // ════════════════════════════════════════════════════════════
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
-  showToast('🟡 Loading track: ' + (title||'?'));
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -654,7 +653,6 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
   audio.addEventListener('loadedmetadata', function onMeta() {
     audio.removeEventListener('loadedmetadata', onMeta);
-    showToast('🟢 Metadata loaded, duration: ' + (audio.duration?.toFixed(1)||'?') + 's');
     if (!audio.duration) return;
     seekToSync(startedAt, playAt, playFromS);
 
@@ -669,9 +667,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       }
     }, { once: true });
 
-    showToast('🟠 Calling audio.play()...');
-    audio.play().catch((e) => {
-      showToast('🔴 play() failed: ' + e.message);
+    audio.play().catch(() => {
       showTapBanner();
     });
   }, { once: true });
@@ -1196,8 +1192,9 @@ async function previewZone(z) {
 // Called when geofence is physically crossed — this plays the music
 async function activateZone(z) {
   activeZone = z;
-  showToast('🔵 Zone activated: ' + z.name);
   unlockUI(z);
+  // Show tap banner immediately — iOS blocks autoplay from GPS callbacks
+  showTapBanner();
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
   startSyncEngine();
 
