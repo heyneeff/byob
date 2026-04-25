@@ -661,7 +661,23 @@ function togglePlay(){
   btn.textContent=isPlaying?'⏸':'▶';
   btn.classList.toggle('playing',isPlaying);
   document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
-  isPlaying?audio.play().catch(()=>{}):audio.pause();
+  if(isPlaying){
+    audio.play().catch(()=>{});
+    // Write fresh playback_started_at so listeners sync to resume point
+    // startedAt = now - currentPosition, so elapsed calc always gives currentTime
+    if(activeZone && audio.src && !audio.srcObject){
+      const resumedAt = new Date(Date.now() - audio.currentTime * 1000).toISOString();
+      const resumePlayAt = Date.now() + 1500; // 1.5s resume window
+      db.from('zones').update({
+        playback_started_at: resumedAt,
+        play_at: resumePlayAt,
+        play_from_s: audio.currentTime
+      }).eq('id', activeZone.id)
+        .then(()=>{}).catch(()=>{});
+    }
+  } else {
+    audio.pause();
+  }
 }
 audio.addEventListener('ended', () => {
   audio.currentTime = 0;
@@ -703,7 +719,17 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     if(upErr)throw upErr;
     const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
     await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
-    if(activeZone){await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_position:0,playback_started_at:trackStartedAt||new Date().toISOString()}).eq('id',activeZone.id);}
+    if(activeZone){
+      const playAt = Date.now() + 2500; // 2.5s — time for listeners to fetch+decode
+      await db.from('zones').update({
+        current_track_url: urlData.publicUrl,
+        track_name: file.name.replace(/\.[^/.]+$/,''),
+        playback_position: 0,
+        playback_started_at: trackStartedAt||new Date().toISOString(),
+        play_at: playAt,
+        play_from_s: 0
+      }).eq('id',activeZone.id);
+    }
     statusEl.textContent='● live'; statusEl.style.color='var(--teal)'; showToast('Broadcasting 📡');
   }catch(err){
     console.error('Upload error:', err);
