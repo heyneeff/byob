@@ -536,10 +536,14 @@ let _pausePosition = 0;    // where we paused (seconds)
 let _scheduleAt = null;    // audioCtx.currentTime when play was scheduled
 let _playFromS = 0;        // track offset when scheduling began
 let _webAudioPlaying = false;
+let _gainNode = null;
+let _isMuted = false;
 
 function getAudioCtx() {
   if (!_audioCtx) {
     _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    _gainNode = _audioCtx.createGain();
+    _gainNode.connect(_audioCtx.destination);
   }
   if (_audioCtx.state === 'suspended') _audioCtx.resume();
   return _audioCtx;
@@ -616,7 +620,9 @@ function scheduleWebAudio(buffer, fromSeconds, delayMs) {
   _sourceNode = ctx.createBufferSource();
   _sourceNode.buffer = buffer;
   _sourceNode.loop = true;
-  _sourceNode.connect(ctx.destination);
+  if (!_gainNode) { _gainNode = ctx.createGain(); _gainNode.connect(ctx.destination); }
+  _gainNode.gain.value = _isMuted ? 0 : 1;
+  _sourceNode.connect(_gainNode);
 
   _scheduleAt = ctx.currentTime + delaySeconds;
   _playFromS = clampedFrom;
@@ -914,8 +920,18 @@ async function checkGeofences() {
 }
 
 function onEnterZone(z) {
-  // Already in this zone — skip
-  if (activeZone?.id === z.id) return;
+  if (activeZone?.id === z.id) {
+    if (_webAudioPlaying || audio.srcObject) {
+      _isMuted = false;
+      if (_gainNode) _gainNode.gain.setTargetAtTime(1, _audioCtx.currentTime, 0.05);
+      if (audio.srcObject) audio.muted = false;
+      document.getElementById('btn-play').textContent = '🔊';
+      document.getElementById('btn-play').classList.add('playing');
+      document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = '1');
+      showToast(`📡 Back in the zone`);
+    }
+    return;
+  }
   showToast(`📡 Entering "${z.name}" — activating!`);
 
   // Flash map border
@@ -938,12 +954,13 @@ function onEnterZone(z) {
 
 function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
-  showToast(`Left "${z.name}"`);
-  // Pause but don't reset — they might come back
-  audio.pause();
-  document.getElementById('btn-play').textContent = '▶';
+  showToast(`Left "${z.name}" — muted`);
+  _isMuted = true;
+  if (_gainNode) _gainNode.gain.setTargetAtTime(0, _audioCtx.currentTime, 0.1);
+  if (audio.srcObject) audio.muted = true;
+  document.getElementById('btn-play').textContent = '🔇';
   document.getElementById('btn-play').classList.remove('playing');
-  document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='paused');
+  document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = '0.2');
 }
 async function loadZones(autoJoin=false) {
   const { data } = await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(10);
@@ -1240,32 +1257,16 @@ async function loadTrack(url, title, startedAt, playAt, playFromS) {
 
 function togglePlay() {
   if (!activeZone) return;
-  isPlaying = !isPlaying;
-  document.getElementById('btn-play').textContent = isPlaying ? '⏸' : '▶';
-  document.getElementById('btn-play').classList.toggle('playing', isPlaying);
-  document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState = isPlaying ? 'running' : 'paused');
-
+  _isMuted = !_isMuted;
+  const btn = document.getElementById('btn-play');
+  btn.textContent = _isMuted ? '🔇' : '🔊';
+  btn.classList.toggle('playing', !_isMuted);
   if (audio.srcObject) {
-    // WebRTC live stream — use <audio> element
-    isPlaying ? audio.play().catch(()=>{}) : audio.pause();
-  } else {
-    // File track — use Web Audio API
-    if (isPlaying) {
-      // Resume from pause position
-      if (_audioBuffer) {
-        scheduleWebAudio(_audioBuffer, _pausePosition + _calOffset, 0);
-      }
-    } else {
-      // Pause — save position
-      _pausePosition = getPlayPosition();
-      if (_sourceNode) {
-        try { _sourceNode.stop(0); } catch(e) {}
-        _sourceNode.disconnect();
-        _sourceNode = null;
-      }
-      _webAudioPlaying = false;
-    }
+    audio.muted = _isMuted;
+  } else if (_gainNode) {
+    _gainNode.gain.setTargetAtTime(_isMuted ? 0 : 1, _audioCtx.currentTime, 0.05);
   }
+  document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = _isMuted ? '0.2' : '1');
 }
 audio.addEventListener('playing', () => hideTapBanner());
 audio.addEventListener('ended', () => {
@@ -1687,9 +1688,11 @@ function stopEverything() {
   if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
   clearInterval(_syncInterval);
   activeZone = null;
+  _isMuted = false;
   isPlaying = false;
   document.getElementById('btn-play').textContent = '▶';
   document.getElementById('btn-play').classList.remove('playing');
+  document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = '1');
   document.getElementById('track-name').textContent = '—';
   document.getElementById('music-artist').textContent = '—';
   document.getElementById('zone-headline').classList.remove('visible');
