@@ -111,19 +111,6 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .leaflet-tile-pane{opacity:.82;}
 .map-label{text-align:center;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding:5px 0 10px;}
 
-/* ── PARTY INFO BUTTON ── */
-.btn-party{
-  display:block;width:100%;padding:22px;
-  background:var(--red);color:#fff;
-  border:none;border-radius:12px;
-  font-family:'Roboto Condensed',sans-serif;
-  font-size:22px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
-  text-align:center;cursor:pointer;
-  box-shadow:4px 4px 0 rgba(0,0,0,.5);
-  transition:all .1s;margin-bottom:18px;
-}
-.btn-party:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 rgba(0,0,0,.6);}
-.btn-party:active{transform:translate(2px,2px);box-shadow:2px 2px 0;}
 
 /* ── ZONE HEADLINE ── */
 .zone-headline{
@@ -433,7 +420,6 @@ audio{display:none;}
       <div id="zone-list"><div style="font-size:11px;color:var(--muted)">Scanning...</div></div>
     </div>
 
-    <button class="btn-party" id="btn-party" onclick="onPartyBtn()">Party Info</button>
 
     <div class="zone-headline" id="zone-headline">You Have Entered<br/>The Zone</div>
 
@@ -621,7 +607,8 @@ function scheduleWebAudio(buffer, fromSeconds, delayMs) {
   _sourceNode.buffer = buffer;
   _sourceNode.loop = true;
   if (!_gainNode) { _gainNode = ctx.createGain(); _gainNode.connect(ctx.destination); }
-  _gainNode.gain.value = _isMuted ? 0 : 1;
+  const targetGain = _isMuted ? 0 : 1;
+  _gainNode.gain.setValueAtTime(targetGain, ctx.currentTime);
   _sourceNode.connect(_gainNode);
 
   _scheduleAt = ctx.currentTime + delaySeconds;
@@ -1204,9 +1191,16 @@ async function loadTrack(url, title, startedAt, playAt, playFromS) {
 
   document.getElementById('track-name').textContent = title || 'Live';
   document.getElementById('music-artist').textContent = title || 'Live';
-  document.getElementById('btn-play').textContent = '⏸';
+
+  // Always unmute when a new track loads
+  _isMuted = false;
+  if (_gainNode) _gainNode.gain.value = 1;
+  document.getElementById('btn-play').textContent = '🔊';
   document.getElementById('btn-play').classList.add('playing');
-  document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='running');
+  document.querySelectorAll('.viz-bar').forEach(b => {
+    b.style.animationPlayState = 'running';
+    b.style.opacity = '1';
+  });
   isPlaying = true;
 
   try {
