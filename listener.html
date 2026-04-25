@@ -984,10 +984,6 @@ function launchApp() {
 }
 
 // boombox click
-function onBoomClick() {
-  if (userRole !== 'dj') { showToast('DJ access required'); return; }
-  window.open('dj.html', '_blank');
-}
 
 // party button
 function onPartyBtn() {
@@ -1269,104 +1265,7 @@ const listenerId = Math.random().toString(36).substr(2,9);
 let rtcPeer = null;
 let rtcChannel = null;
 
-async function joinWebRTCStream(zoneId) {
-  if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
-  if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
-
-  rtcChannel = db.channel(`webrtc_${zoneId}`)
-    .on('broadcast', { event: 'offer' }, async ({ payload }) => {
-      if (payload.to !== listenerId) return;
-      console.log('Received WebRTC offer');
-      await handleOffer(payload.sdp, zoneId);
-    })
-    .on('broadcast', { event: 'ice-listener' }, async ({ payload }) => {
-      if (payload.to !== listenerId) return;
-      if (rtcPeer && payload.candidate) {
-        await rtcPeer.addIceCandidate(payload.candidate).catch(()=>{});
-      }
-    })
-    .subscribe(status => {
-      if (status === 'SUBSCRIBED') {
-        // Announce to DJ
-        rtcChannel.send({
-          type: 'broadcast', event: 'listener-joined',
-          payload: { listenerId }
-        });
-        console.log('Announced to DJ, listenerId:', listenerId);
-      }
-    });
-}
-
-async function handleOffer(sdp, zoneId) {
-  rtcPeer = new RTCPeerConnection(RTC_CONFIG);
-
-  rtcPeer.onicecandidate = ({ candidate }) => {
-    if (candidate && rtcChannel) {
-      rtcChannel.send({
-        type: 'broadcast', event: 'ice-dj',
-        payload: { to: 'dj', from: listenerId, candidate }
-      });
-    }
-  };
-
-  rtcPeer.ontrack = ({ streams }) => {
-    console.log('Got remote audio stream!');
-    const audioEl = document.getElementById('audio-player');
-    audioEl.srcObject = streams[0];
-    audioEl.play().catch(()=>{});
-    isPlaying = true;
-    document.getElementById('btn-play').textContent = '⏸';
-    document.getElementById('btn-play').classList.add('playing');
-    document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
-    showToast('🔴 LIVE audio connected!');
-  };
-
-  rtcPeer.onconnectionstatechange = () => {
-    console.log('RTC state:', rtcPeer.connectionState);
-    if (rtcPeer.connectionState === 'failed') {
-      showToast('Live stream disconnected');
-      rtcPeer.close(); rtcPeer = null;
-    }
-  };
-
-  await rtcPeer.setRemoteDescription({ type: 'offer', sdp });
-  const answer = await rtcPeer.createAnswer();
-  await rtcPeer.setLocalDescription(answer);
-
-  rtcChannel.send({
-    type: 'broadcast', event: 'answer',
-    payload: { to: 'dj', from: listenerId, sdp: answer.sdp }
-  });
-}
-
 // ── PLAYER ───────────────────────────────────────────────
-function loadTrack(url, title, startedAt) {
-  audio.src = url;
-  audio.loop = true;
-  document.getElementById('track-name').textContent = title || 'Live';
-  document.getElementById('music-artist').textContent = title || 'Live';
-  // Seek to correct position once metadata loads
-  audio.addEventListener('loadedmetadata', function onMeta() {
-    audio.removeEventListener('loadedmetadata', onMeta);
-    if (startedAt && audio.duration) {
-      const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
-      audio.currentTime = elapsed % audio.duration;
-    }
-    audio.play().catch(() => {});
-    isPlaying = true;
-    document.getElementById('btn-play').textContent = '⏸';
-    document.getElementById('btn-play').classList.add('playing');
-    document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
-  });
-}
-function togglePlay() {
-  if (!activeZone) return;
-  isPlaying=!isPlaying;
-  document.getElementById('btn-play').textContent=isPlaying?'⏸':'▶';
-  document.getElementById('btn-play').classList.toggle('playing',isPlaying);
-  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
-  isPlaying?audio.play().catch(()=>{}):audio.pause();
-}
 audio.addEventListener('ended', () => {
   audio.currentTime = 0;
   audio.play().catch(()=>{});
