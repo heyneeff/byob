@@ -330,6 +330,10 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--surface2);border:1px solid var(--teal);color:var(--white);font-size:12px;padding:10px 18px;border-radius:6px;z-index:1000;transition:transform .25s;white-space:nowrap;box-shadow:3px 3px 0 rgba(0,0,0,.5);}
 #toast.show{transform:translateX(-50%) translateY(0);}
+/* ── TAP TO LISTEN BANNER ── */
+#tap-banner{display:none;position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:900;background:var(--orange);color:#000;font-family:'Roboto Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:16px 28px;border-radius:40px;box-shadow:0 4px 24px rgba(245,126,32,.6);cursor:pointer;white-space:nowrap;animation:tapPulse 1.4s ease-in-out infinite;}
+@keyframes tapPulse{0%,100%{transform:translateX(-50%) scale(1)}50%{transform:translateX(-50%) scale(1.05)}}
+#tap-banner.visible{display:block;}
 audio{display:none;}
 </style>
 </head>
@@ -469,8 +473,9 @@ audio{display:none;}
   </div>
 </div>
 
+<div id="tap-banner" onclick="onTapBanner()">🎧 Tap to Listen</div>
 <div id="toast"></div>
-<audio id="audio-player" loop></audio>
+<audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -500,12 +505,14 @@ let isPlaying   = false;
 const audio = document.getElementById('audio-player');
 
 // Unlock audio on first user tap (mobile autoplay policy)
+const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 let _audioUnlocked = false;
 function unlockAudio() {
   if (_audioUnlocked) return;
   _audioUnlocked = true;
-  audio.muted = true;
-  audio.play().then(() => { audio.pause(); audio.muted = false; }).catch(() => { audio.muted = false; });
+  const s = new Audio(SILENT_WAV);
+  s.play().catch(() => {});
+  audio.load();
 }
 ['touchstart','touchend','mousedown','click'].forEach(ev =>
   document.addEventListener(ev, unlockAudio, { passive: true })
@@ -1002,8 +1009,9 @@ async function handleOffer(sdp, zoneId) {
     audioEl.pause();
     audioEl.src = '';        // clear any file track
     audioEl.srcObject = streams[0];
-    audioEl.play().catch(() => {
+    audioEl.play().then(() => setMediaSession('🔴 LIVE')).catch(() => {
       showToast('🔴 Tap ▶ to hear live audio');
+      showTapBanner();
     });
     isPlaying = true;
     document.getElementById('btn-play').textContent = '⏸';
@@ -1031,6 +1039,18 @@ async function handleOffer(sdp, zoneId) {
 }
 
 // ── PLAYER ───────────────────────────────────────────────
+
+// Media Session — keeps audio going on lock screen
+function setMediaSession(title) {
+  if (!('mediaSession' in navigator)) return;
+  navigator.mediaSession.metadata = new MediaMetadata({
+    title: title || 'BYOB',
+    artist: 'Live from the Zone 🎧',
+    album: activeZone?.name || 'BYOB'
+  });
+  navigator.mediaSession.setActionHandler('play',  () => { audio.play(); isPlaying=true; document.getElementById('btn-play').textContent='⏸'; document.getElementById('btn-play').classList.add('playing'); });
+  navigator.mediaSession.setActionHandler('pause', () => { audio.pause(); isPlaying=false; document.getElementById('btn-play').textContent='▶'; document.getElementById('btn-play').classList.remove('playing'); });
+}
 function loadTrack(url, title, startedAt) {
   // Stop any live WebRTC stream before loading a file track
   if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
@@ -1047,9 +1067,9 @@ function loadTrack(url, title, startedAt) {
       const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
       audio.currentTime = elapsed % audio.duration;
     }
-    audio.play().catch(() => {
-      // Autoplay blocked — prompt user to tap play
+    audio.play().then(() => setMediaSession(title)).catch(() => {
       showToast('🎵 Tap ▶ to hear the music');
+      showTapBanner();
     });
     isPlaying = true;
     document.getElementById('btn-play').textContent = '⏸';
@@ -1065,6 +1085,7 @@ function togglePlay() {
   document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
   isPlaying?audio.play().catch(()=>{}):audio.pause();
 }
+audio.addEventListener('playing', () => hideTapBanner());
 audio.addEventListener('ended', () => {
   audio.currentTime = 0;
   audio.play().catch(()=>{});
