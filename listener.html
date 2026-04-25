@@ -1091,9 +1091,20 @@ function loadTrack(url, title, startedAt) {
   // Seek to correct position once metadata loads
   audio.addEventListener('loadedmetadata', function onMeta() {
     audio.removeEventListener('loadedmetadata', onMeta);
+    // Initial rough seek so we're in the right ballpark before play()
     if (startedAt && audio.duration) {
       const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
       audio.currentTime = elapsed % audio.duration;
+    }
+    // Fine-tune sync at the exact moment audio hits the speakers
+    if (startedAt) {
+      audio.addEventListener('playing', function onPlaying() {
+        audio.removeEventListener('playing', onPlaying);
+        if (audio.duration) {
+          const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+          audio.currentTime = elapsed % audio.duration;
+        }
+      }, { once: true });
     }
     audio.play().then(() => setMediaSession(title)).catch(() => {
       showToast('🎵 Tap ▶ to hear the music');
