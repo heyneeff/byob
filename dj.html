@@ -27,7 +27,28 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Roboto',sans-seri
 /* ── HEADER ── */
 .app-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;background:var(--bg);position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border);}
 .logo-img{height:36px;width:auto;}
-.boom-img{height:40px;width:auto;mix-blend-mode:screen;}
+.boom-img{height:40px;width:auto;mix-blend-mode:screen;cursor:pointer;transition:opacity .15s;}
+.boom-img:hover{opacity:1;}
+/* ── BOOM MENU ── */
+#boom-menu{
+  position:fixed;top:60px;right:12px;z-index:500;
+  background:var(--surface2);border:1px solid var(--border);
+  border-top:2px solid var(--red);border-radius:10px;
+  min-width:160px;overflow:hidden;
+  box-shadow:4px 4px 0 rgba(0,0,0,.6);
+  display:none;
+}
+#boom-menu.open{display:block;}
+.boom-menu-item{
+  display:flex;align-items:center;gap:10px;
+  padding:13px 16px;font-size:13px;font-weight:700;
+  letter-spacing:.06em;color:var(--cream);
+  cursor:pointer;border-bottom:1px solid var(--border);
+  transition:background .15s;
+}
+.boom-menu-item:last-child{border-bottom:none;}
+.boom-menu-item:hover{background:rgba(255,255,255,.05);}
+.boom-menu-item.danger{color:var(--red);}
 
 .screen{padding:14px 14px 80px;}
 
@@ -303,12 +324,16 @@ audio{display:none;}
   </div>
 </div>
 
+<div id="boom-menu">
+  <div class="boom-menu-item danger" onclick="djLogout()">⏏ Log Out</div>
+</div>
+
 <div id="toast"></div>
 
 <!-- HEADER -->
 <div class="app-header">
   <img class="logo-img" id="logo-img" alt="BYOB"/>
-  <img class="boom-img" id="boom-img" alt="BYOB DJ" style="opacity:.85;"/>
+  <img class="boom-img" id="boom-img" alt="BYOB DJ" style="opacity:.85;" onclick="toggleDJMenu()"/>
 </div>
 
 <div class="screen">
@@ -456,7 +481,19 @@ async function handleDJAuth(){
     document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';
   }
 }
-function toggleDJSignUp(){
+function toggleDJMenu() {
+  document.getElementById('boom-menu').classList.toggle('open');
+}
+async function djLogout() {
+  document.getElementById('boom-menu').classList.remove('open');
+  await db.auth.signOut();
+  location.reload();
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('#boom-menu') && !e.target.closest('#boom-img')) {
+    document.getElementById('boom-menu')?.classList.remove('open');
+  }
+});
   djIsSignUp=!djIsSignUp;
   document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';
   document.getElementById('dj-auth-toggle').innerHTML=djIsSignUp?'Have an account? <span>Sign in</span>':'No account? <span>Sign up</span>';
