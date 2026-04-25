@@ -558,7 +558,8 @@ function getAudioCtx() {
 }
 
 function connectMediaSource() {
-  if (_mediaSource) return; // only create once
+  if (_mediaSource) { showToast('🟢 MediaSource exists'); return; }
+  showToast('🟢 Creating MediaSource...'); // only create once
   const ctx = getAudioCtx();
   _mediaSource = ctx.createMediaElementSource(audio);
   _mediaSource.connect(_gainNode);
@@ -626,6 +627,7 @@ audio.addEventListener('playing', () => hideTapBanner());
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
+  showToast('🟡 Loading track: ' + (title||'?'));
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -652,6 +654,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
   audio.addEventListener('loadedmetadata', function onMeta() {
     audio.removeEventListener('loadedmetadata', onMeta);
+    showToast('🟢 Metadata loaded, duration: ' + (audio.duration?.toFixed(1)||'?') + 's');
     if (!audio.duration) return;
     seekToSync(startedAt, playAt, playFromS);
 
@@ -666,8 +669,9 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       }
     }, { once: true });
 
-    audio.play().catch(() => {
-      showToast('🎧 Tap anywhere to start');
+    showToast('🟠 Calling audio.play()...');
+    audio.play().catch((e) => {
+      showToast('🔴 play() failed: ' + e.message);
       showTapBanner();
     });
   }, { once: true });
@@ -1097,6 +1101,7 @@ async function checkGeofences() {
 }
 
 function onEnterZone(z) {
+  showToast('📍 Entered zone: ' + z.name);
   if (activeZone?.id === z.id) {
     // Already synced — just unmute
     if (_webAudioPlaying || audio.srcObject) {
@@ -1191,6 +1196,7 @@ async function previewZone(z) {
 // Called when geofence is physically crossed — this plays the music
 async function activateZone(z) {
   activeZone = z;
+  showToast('🔵 Zone activated: ' + z.name);
   unlockUI(z);
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
   startSyncEngine();
