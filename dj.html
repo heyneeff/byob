@@ -27,7 +27,7 @@ html,body{background:var(--bg);color:var(--cream);font-family:'Roboto',sans-seri
 /* ── HEADER ── */
 .app-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px 10px;background:var(--bg);position:sticky;top:0;z-index:100;border-bottom:1px solid var(--border);}
 .logo-img{height:36px;width:auto;}
-.boom-img{height:40px;width:auto;mix-blend-mode:screen;cursor:pointer;transition:opacity .15s;}
+.boom-img{height:40px;width:auto;cursor:pointer;transition:opacity .15s;mix-blend-mode:screen;}
 .boom-img:hover{opacity:1;}
 /* ── BOOM MENU ── */
 #boom-menu{
@@ -141,8 +141,8 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;h
 }
 .visuals-card:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 rgba(0,0,0,.6);}
 .visuals-card:active{transform:translate(2px,2px);}
-/* mix-blend-mode:screen makes black bg transparent on any colored button */
-.eye-icon{height:100px;width:auto;mix-blend-mode:screen;display:block;}
+/* eye icon: gray on black PNG → invert makes it white on transparent */
+.eye-icon{height:100px;width:auto;display:block;mix-blend-mode:screen;}
 
 /* ── GO LIVE ── */
 .btn-go-live{
@@ -186,8 +186,8 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;h
 }
 .btn-message:hover{background:rgba(255,51,51,.08);transform:translate(-1px,-1px);box-shadow:4px 4px 0 rgba(0,0,0,.4);}
 .btn-message:active{transform:translate(2px,2px);}
-/* lips PNG: mix-blend-mode:screen removes black bg */
-.lips-icon{height:60px;width:auto;mix-blend-mode:screen;}
+/* lips PNG: already red/colored — just show it */
+.lips-icon{height:60px;width:auto;}
 
 /* ── GUEST LIST ── */
 .guest-list-section{margin-bottom:20px;}
@@ -211,7 +211,7 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;h
 }
 .btn-kill:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 rgba(0,0,0,.7);}
 .btn-kill:active{transform:translate(2px,2px);box-shadow:2px 2px 0;}
-/* skull: mix-blend-mode:screen removes black bg, shows gray/white icon on red */
+/* skull: gray on black → brightness filter makes it white/visible on red bg */
 .kill-icon{height:80px;width:auto;mix-blend-mode:screen;}
 
 /* ── ZONE DRAW PANEL ── */
@@ -474,6 +474,7 @@ async function handleDJAuth(){
     if(error){errEl.textContent=error.message;errEl.style.display='block';document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';return;}
     currentUser=data.user||data.session?.user;
     document.getElementById('dj-auth').style.display='none';
+    setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
     showToast('Welcome DJ '+currentUser.email.split('@')[0]+' 🎛️');
   } catch(e) {
     errEl.textContent='Connection failed — check if Supabase project is paused.';
@@ -494,6 +495,7 @@ document.addEventListener('click', e => {
     document.getElementById('boom-menu')?.classList.remove('open');
   }
 });
+function toggleDJSignUp(){
   djIsSignUp=!djIsSignUp;
   document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';
   document.getElementById('dj-auth-toggle').innerHTML=djIsSignUp?'Have an account? <span>Sign in</span>':'No account? <span>Sign up</span>';
@@ -706,13 +708,18 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
 });
 
 // ── WEBRTC BROADCAST ─────────────────────────────────────
-const RTC_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-  ]
-};
+let _rtcConfigCache = null;
+async function getRTCConfig() {
+  if (_rtcConfigCache) return _rtcConfigCache;
+  try {
+    const r = await fetch("https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7");
+    const iceServers = await r.json();
+    _rtcConfigCache = { iceServers };
+  } catch(e) {
+    _rtcConfigCache = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+  }
+  return _rtcConfigCache;
+}
 let peerConnections = {};   // { listenerId: RTCPeerConnection }
 let signalingChannel = null;
 let localStream = null;
@@ -749,7 +756,8 @@ async function startWebRTCBroadcast(stream) {
 
 async function createOfferFor(listenerId) {
   if (!localStream) return;
-  const pc = new RTCPeerConnection(RTC_CONFIG);
+  const rtcCfg = await getRTCConfig();
+  const pc = new RTCPeerConnection(rtcCfg);
   peerConnections[listenerId] = pc;
 
   // Add all audio tracks to this connection
