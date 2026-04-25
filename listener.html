@@ -538,50 +538,14 @@ const audio = document.getElementById('audio-player');
 // ── BOOT ─────────────────────────────────────────────────
 
 // ════════════════════════════════════════════════════════════
-// WEB AUDIO — via MediaElementSource (no CORS / no fetch)
+// SIMPLE AUDIO STATE — no Web Audio API, just <audio> element
 // ════════════════════════════════════════════════════════════
-let _audioCtx = null;
-let _gainNode = null;
-let _mediaSource = null;  // created ONCE, reused forever
 let _isMuted = false;
 let _webAudioPlaying = false;
 
-function getAudioCtx() {
-  if (!_audioCtx) {
-    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    _gainNode = _audioCtx.createGain();
-    _gainNode.gain.value = 1;
-    _gainNode.connect(_audioCtx.destination);
-  }
-  if (_audioCtx.state === 'suspended') _audioCtx.resume();
-  return _audioCtx;
-}
-
-function connectMediaSource() {
-  if (_mediaSource) { showToast('🟢 MediaSource exists'); return; }
-  showToast('🟢 Creating MediaSource...'); // only create once
-  const ctx = getAudioCtx();
-  _mediaSource = ctx.createMediaElementSource(audio);
-  _mediaSource.connect(_gainNode);
-}
-
-// Unlock audio on first user gesture (iOS)
-const SILENT_WAV = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
-let _audioUnlocked = false;
-function unlockAudio() {
-  if (_audioUnlocked) return;
-  _audioUnlocked = true;
-  getAudioCtx();  // creates context + gainNode
-  const s = new Audio(SILENT_WAV);
-  s.play().catch(() => {});
-}
-['touchstart','touchend','mousedown','click'].forEach(ev =>
-  document.addEventListener(ev, unlockAudio, { passive: true })
-);
-
 // Progress bar loop
 function rafLoop() {
-  if (_webAudioPlaying && audio.duration) {
+  if (_webAudioPlaying && audio.duration && !audio.srcObject) {
     const pct = (audio.currentTime / audio.duration) * 100;
     document.getElementById('progress-fill').style.width = pct + '%';
     document.getElementById('time-cur').textContent = fmt(audio.currentTime);
@@ -614,80 +578,49 @@ function updateCalLabel() {
 function showTapBanner(){document.getElementById('tap-banner')?.classList.add('visible');}
 function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
 function onTapBanner(){
-  hideTapBanner(); unlockAudio();
-  // Force AudioContext running and gain loud — green toast means MediaElementSource exists
-  if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
-  if (_gainNode) { _gainNode.gain.cancelScheduledValues(0); _gainNode.gain.value = 1; }
+  hideTapBanner();
   _isMuted = false; setMuteBtn(false);
 
-  // If WebRTC stream arrived while waiting for gesture — play it now
+  // WebRTC stream waiting — set srcObject and play() HERE (direct user gesture = iOS allows it)
   if (typeof _pendingStream !== 'undefined' && _pendingStream) {
-    const stream = _pendingStream;
+    audio.srcObject = _pendingStream;
     _pendingStream = null;
-
-    if (_mediaSource && _audioCtx && _gainNode) {
-      // MediaElementSource already captured audio element — iOS won't route
-      // srcObject through it. Use createMediaStreamSource directly instead.
-      try {
-        const src = _audioCtx.createMediaStreamSource(stream);
-        src.connect(_gainNode);
-        _webAudioPlaying = true; setMuteBtn(false);
-        showToast('🔴 LIVE via WebAudio!');
-      } catch(e) {
-        // Fallback: just set srcObject and play
-        audio.srcObject = stream;
-        audio.volume = 1; audio.muted = false;
-        audio.play().catch(er => showToast('Play err: ' + er.message));
-        _webAudioPlaying = true; setMuteBtn(false);
-        showToast('🔴 LIVE playing!');
-      }
-    } else {
-      // No Web Audio graph — direct srcObject play (should work here, user gesture)
-      audio.srcObject = stream;
-      audio.volume = 1; audio.muted = false;
-      audio.play().then(() => {
-        _webAudioPlaying = true; setMuteBtn(false);
-        showToast('🔴 LIVE playing!');
-      }).catch(e => showToast('Play failed: ' + e.message));
-    }
+    audio.volume = 1; audio.muted = false;
+    audio.play().then(() => {
+      _webAudioPlaying = true; setMuteBtn(false);
+      showToast('🔴 LIVE — tap speaker icon to mute');
+    }).catch(e => showToast('Play failed: ' + e.message));
     return;
   }
-  if (audio.src || audio.srcObject) {
+  // File playback waiting
+  if (audio.src) {
     audio.volume = 1; audio.muted = false;
     audio.play().catch(()=>{});
-    _webAudioPlaying = true;
-    setMuteBtn(false);
+    _webAudioPlaying = true; setMuteBtn(false);
   }
 }
 audio.addEventListener('playing', () => { hideTapBanner(); setMuteBtn(false); });
 
 // ════════════════════════════════════════════════════════════
-// LOAD TRACK — uses <audio> element, no fetch needed
+// LOAD TRACK — pure <audio> element, no Web Audio
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
   audio.srcObject = null;
+  _pendingStream = null;
 
   document.getElementById('track-name').textContent = title || 'Live';
   document.getElementById('music-artist').textContent = title || 'Live';
 
-  // Unmute and show playing state
-  _isMuted = false;
-  if (_gainNode) _gainNode.gain.setValueAtTime(1, _audioCtx?.currentTime || 0);
-  setMuteBtn(false);
+  _isMuted = false; setMuteBtn(false);
   document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
-  isPlaying = true;
-  _webAudioPlaying = true;
+  isPlaying = true; _webAudioPlaying = true;
 
-  // Connect audio element to GainNode (first time only)
-  getAudioCtx();
-  connectMediaSource();
-
-  // Set source and seek on load
   audio.src = url;
   audio.loop = true;
+  audio.volume = 1; audio.muted = false;
 
   audio.addEventListener('loadedmetadata', function onMeta() {
     audio.removeEventListener('loadedmetadata', onMeta);
@@ -696,18 +629,16 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
     audio.addEventListener('playing', function onPlaying() {
       audio.removeEventListener('playing', onPlaying);
-      seekToSync(startedAt, playAt, playFromS); // fine-tune
+      seekToSync(startedAt, playAt, playFromS);
       hideTapBanner();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title: title||'BYOB', artist: 'Live from the Zone 🎧', album: activeZone?.name||'BYOB' });
         navigator.mediaSession.setActionHandler('play',  () => { audio.play(); setMuteBtn(false); });
-        navigator.mediaSession.setActionHandler('pause', () => { if(_gainNode) _gainNode.gain.setTargetAtTime(0, _audioCtx.currentTime, 0.05); setMuteBtn(true); });
+        navigator.mediaSession.setActionHandler('pause', () => { audio.muted = true; setMuteBtn(true); });
       }
     }, { once: true });
 
-    audio.play().catch(() => {
-      showTapBanner();
-    });
+    audio.play().catch(() => { showTapBanner(); });
   }, { once: true });
 
   audio.load();
@@ -732,6 +663,7 @@ function seekToSync(startedAt, playAt, playFromS) {
 // ════════════════════════════════════════════════════════════
 function setMuteBtn(muted) {
   _isMuted = muted;
+  audio.muted = muted;
   const img = document.getElementById('mute-btn-img');
   const btn = document.getElementById('btn-mute');
   if (img) img.src = muted ? PLAY_B64 : PAUSE_B64;
@@ -742,10 +674,6 @@ function setMuteBtn(muted) {
 function togglePlay() {
   if (!activeZone) return;
   setMuteBtn(!_isMuted);
-  if (_gainNode && _audioCtx) {
-    _gainNode.gain.setTargetAtTime(_isMuted ? 0 : 1, _audioCtx.currentTime, 0.05);
-  }
-  if (audio.srcObject) audio.muted = _isMuted;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -1145,7 +1073,7 @@ function onEnterZone(z) {
   if (activeZone?.id === z.id) {
     // Already synced — just unmute
     if (_webAudioPlaying || audio.srcObject) {
-      if (_gainNode) _gainNode.gain.setTargetAtTime(1, _audioCtx.currentTime, 0.05);
+      audio.muted = false;
       setMuteBtn(false);
       showToast('📡 Back in the zone');
     }
@@ -1174,8 +1102,7 @@ function onEnterZone(z) {
 function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
   showToast(`Left "${z.name}" — muted`);
-  if (_gainNode && _audioCtx) _gainNode.gain.setTargetAtTime(0, _audioCtx.currentTime, 0.1);
-  if (audio.srcObject) audio.muted = true;
+  audio.muted = true;
   setMuteBtn(true);
 }
 async function loadZones(autoJoin=false) {
