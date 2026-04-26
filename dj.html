@@ -259,7 +259,7 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;h
 @keyframes sonar{0%{transform:scale(.6);opacity:.9}100%{transform:scale(2.2);opacity:0}}
 .btn-find-me{position:absolute;bottom:10px;right:10px;z-index:1000;width:36px;height:36px;background:rgba(0,0,0,.88);border:1px solid var(--teal);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background .15s;}
 .btn-find-me:hover{background:var(--teal);}
-#dj-auth{position:fixed;inset:0;z-index:700;background:var(--bg);display:none;align-items:center;justify-content:center;padding:24px;}
+#dj-auth{position:fixed;inset:0;z-index:700;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px;}
 .auth-gate-inner{width:100%;max-width:340px;display:flex;flex-direction:column;gap:14px;align-items:center;}
 .auth-gate-sub{font-size:11px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;text-align:center;}
 .auth-inp{width:100%;background:var(--surface2);border:1px solid #222;border-radius:6px;padding:13px 16px;color:var(--cream);font-family:'Roboto',sans-serif;font-size:14px;outline:none;transition:border-color .15s;}
@@ -447,16 +447,21 @@ const DEMO_GUESTS=[
 
 window.addEventListener('DOMContentLoaded', async()=>{
   buildVisualizer();
-  initMap(DENVER[0],DENVER[1]);
 
   try {
     const {data:{session}}=await db.auth.getSession();
-    if(session){ currentUser=session.user; }
-    else { document.getElementById('dj-auth').style.display='flex'; }
-  } catch(e) { document.getElementById('dj-auth').style.display='flex'; }
-
-  loadZones();
-  loadDemoMode();
+    if(session){
+      currentUser=session.user;
+      window._mapInited=true;
+      document.getElementById('dj-auth').style.display='none';
+      initMap(DENVER[0],DENVER[1]);
+      loadZones();
+      loadDemoMode();
+    }
+    // else: dj-auth is already visible (display:flex by default)
+  } catch(e) {
+    // dj-auth already visible, nothing to do
+  }
 });
 
 // ── DJ AUTH ───────────────────────────────────────────────
@@ -474,6 +479,8 @@ async function handleDJAuth(){
     if(error){errEl.textContent=error.message;errEl.style.display='block';document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';return;}
     currentUser=data.user||data.session?.user;
     document.getElementById('dj-auth').style.display='none';
+    // Init map only once
+    if(!window._mapInited){ window._mapInited=true; initMap(DENVER[0],DENVER[1]); loadZones(); loadDemoMode(); }
     setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
     showToast('Welcome DJ '+currentUser.email.split('@')[0]+' 🎛️');
   } catch(e) {
@@ -488,7 +495,15 @@ function toggleDJMenu() {
 async function djLogout() {
   document.getElementById('boom-menu').classList.remove('open');
   await db.auth.signOut();
-  location.reload();
+  currentUser = null;
+  // Clear active zone state
+  if (typeof activeZone !== 'undefined') activeZone = null;
+  // Just show the login overlay — no reload, no redundant screen
+  document.getElementById('dj-auth').style.display='flex';
+  document.getElementById('dj-email').value='';
+  document.getElementById('dj-password').value='';
+  document.getElementById('dj-auth-err').style.display='none';
+  document.getElementById('dj-auth-btn').textContent='Sign In';
 }
 document.addEventListener('click', e => {
   if (!e.target.closest('#boom-menu') && !e.target.closest('#boom-img')) {
