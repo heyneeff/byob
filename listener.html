@@ -165,6 +165,11 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 #boom-popup.open{display:flex;}
 @keyframes popupSlide{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
 .boom-popup-img{height:64px;width:auto;mix-blend-mode:screen;flex-shrink:0;}
+.boom-popup-img.talking{animation:boomTalk 0.18s ease-in-out infinite alternate;}
+@keyframes boomTalk{
+  from{transform:translateY(0) rotate(-2deg) scale(1);}
+  to  {transform:translateY(-8px) rotate(3deg) scale(1.08);}
+}
 .boom-popup-bubble{
   background:var(--surface2);border:2px solid var(--orange);
   border-radius:16px 16px 16px 4px;
@@ -970,15 +975,18 @@ function boomSay(text, autoDismissMs = 4000) {
   bubble.textContent = '';
   popup.classList.add('open');
 
-  // Typewriter unfurl
+  // Typewriter unfurl + bounce
+  const boomImg = document.getElementById('boom-popup-img');
   let i = 0;
+  if (boomImg) boomImg.classList.add('talking');
   _boomBabbleInterval = setInterval(() => {
     if (i < text.length) {
       bubble.textContent += text[i];
-      if (text[i] !== ' ') playBabble();
+      if (text[i] !== ' ' && text[i] !== '\n') playBabble();
       i++;
     } else {
       clearInterval(_boomBabbleInterval);
+      if (boomImg) boomImg.classList.remove('talking');
     }
   }, 42);
 
@@ -989,25 +997,54 @@ function boomSay(text, autoDismissMs = 4000) {
 function closeBoomPopup() {
   clearTimeout(_boomPopupTimer);
   clearInterval(_boomBabbleInterval);
-  const popup = document.getElementById('boom-popup');
-  if (popup) popup.classList.remove('open');
+  const popup  = document.getElementById('boom-popup');
+  const boomImg = document.getElementById('boom-popup-img');
+  if (popup)   popup.classList.remove('open');
+  if (boomImg) boomImg.classList.remove('talking');
 }
 
-// ── BABBLE SOUND ─────────────────────────────────────────
+// ── BABBLE SOUND — boombox vocal character ────────────────
 let _babbleCtx = null;
+let _babbleChar = 0; // cycles through a pattern for speech cadence
 function playBabble() {
   try {
     if (!_babbleCtx) _babbleCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc  = _babbleCtx.createOscillator();
-    const gain = _babbleCtx.createGain();
-    osc.connect(gain); gain.connect(_babbleCtx.destination);
-    // Random pitch in a musical range — Animal Crossing style
-    osc.frequency.value = 220 + Math.random() * 330;
-    osc.type = 'sine';
-    gain.gain.setValueAtTime(0.08, _babbleCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, _babbleCtx.currentTime + 0.07);
-    osc.start(_babbleCtx.currentTime);
-    osc.stop(_babbleCtx.currentTime + 0.07);
+    const ctx = _babbleCtx;
+    const now = ctx.currentTime;
+    const dur = 0.1;
+
+    // Sawtooth gives the harmonic richness of a voice
+    const osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    // Cycle through speech-like pitches — not fully random, has cadence
+    const pitches = [110, 130, 98, 120, 146, 110, 87, 130];
+    osc.frequency.value = pitches[_babbleChar % pitches.length] * (1 + Math.random() * 0.04);
+    _babbleChar++;
+
+    // Bandpass filter = "mouth shape" / formant
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    // Formant frequency shifts slightly each syllable — gives it a talking feel
+    filter.frequency.value = 600 + Math.random() * 900;
+    filter.Q.value = 4 + Math.random() * 5;
+
+    // Second formant layer for richness
+    const filter2 = ctx.createBiquadFilter();
+    filter2.type = 'bandpass';
+    filter2.frequency.value = 1200 + Math.random() * 800;
+    filter2.Q.value = 6;
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.14, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    osc.connect(filter);
+    filter.connect(filter2);
+    filter2.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.start(now);
+    osc.stop(now + dur);
   } catch(e) {}
 }
 
