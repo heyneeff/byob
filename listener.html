@@ -275,16 +275,8 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 
 /* ── PLAYER CARD ── */
 .player-card{border:2px solid var(--teal);border-radius:12px;padding:16px 14px 14px;background:var(--surface2);margin-bottom:10px;position:relative;overflow:hidden;}
-.viz-wrap{display:flex;align-items:flex-end;gap:3px;height:64px;}
-.viz-bar{flex:1;border-radius:2px 2px 0 0;animation:vb var(--spd) ease-in-out infinite alternate;transform-origin:bottom;}
-@keyframes vb{from{transform:scaleY(.05)}to{transform:scaleY(1)}}
-.viz-bar:nth-child(7n+1){background:var(--red);}
-.viz-bar:nth-child(7n+2){background:var(--orange);}
-.viz-bar:nth-child(7n+3){background:var(--teal);}
-.viz-bar:nth-child(7n+4){background:#fff;opacity:.35;}
-.viz-bar:nth-child(7n+5){background:var(--dark-teal);}
-.viz-bar:nth-child(7n+6){background:var(--red);opacity:.6;}
-.viz-bar:nth-child(7n){background:var(--teal);opacity:.7;}
+.viz-wrap{width:100%;height:120px;border-radius:8px;overflow:hidden;position:relative;background:#000;}
+#viz-canvas{display:block;width:100%;height:100%;}
 
 .play-btn{
   position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
@@ -1679,8 +1671,102 @@ function openVisuals(){window.open('mandalforge_sync.html?zone='+(activeZone?.id
 
 // ── VISUALIZER ───────────────────────────────────────────
 function buildVisualizer(){
-  const v=document.getElementById('visualizer');
-  for(let i=0;i<26;i++){const b=document.createElement('div');b.className='viz-bar';b.style.cssText=`--spd:${(.22+Math.random()*.5).toFixed(2)}s;height:${(10+Math.random()*90).toFixed(0)}%;animation-play-state:paused`;v.appendChild(b);}
+  const wrap = document.getElementById('visualizer');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+
+  const cv = document.createElement('canvas');
+  cv.id = 'viz-canvas';
+  wrap.appendChild(cv);
+  const ctx = cv.getContext('2d');
+
+  let W, H;
+  function sizeCanvas(){
+    W = cv.width  = wrap.offsetWidth  || 300;
+    H = cv.height = wrap.offsetHeight || 120;
+  }
+  sizeCanvas();
+  window.addEventListener('resize', sizeCanvas);
+
+  // ── Hex to RGB helper ──────────────────────────────────
+  function hRGB(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+
+  // ── Particles ─────────────────────────────────────────
+  const COLS = ['#ef3c23','#f57e20','#00cc99','#ffffff','#ef3c23','#00cc99'];
+  const N = 65;
+  const pts = Array.from({length:N}, (_,i) => ({
+    x: Math.random()*300,
+    y: Math.random()*120,
+    vx: (Math.random()-.5)*.3,
+    vy: (Math.random()-.5)*.3,
+    r: 1.5 + Math.random()*2.5,
+    col: COLS[Math.floor(Math.random()*COLS.length)],
+    phase: Math.random()*Math.PI*2,
+    band: i % 3,   // 0=bass  1=mid  2=treble
+  }));
+
+  // ── Energy ────────────────────────────────────────────
+  let energy = 0;  // 0=calm → 1=full
+
+  function draw(){
+    requestAnimationFrame(draw);
+    if (!W || !H) sizeCanvas();
+
+    // Smooth energy transition — reads global _webAudioPlaying
+    const target = (_webAudioPlaying && !_isMuted) ? 1 : 0;
+    energy += (target - energy) * 0.025;
+
+    const t = Date.now() / 1000;
+
+    // Simulated frequency bands — overlapping sines mimic music dynamics
+    const e  = energy;
+    const bass   = e * (0.5 + 0.5*Math.sin(t*1.9  + Math.sin(t*.7)*2));
+    const mid    = e * (0.5 + 0.5*Math.sin(t*4.3  + Math.sin(t*1.4)*1.5));
+    const treble = e * (0.5 + 0.5*Math.sin(t*9.2  + Math.sin(t*2.2)*1));
+
+    // Clear with motion-blur trail (heavier trail = calmer feel)
+    ctx.fillStyle = `rgba(0,0,0,${0.18 + (1-e)*.6})`;
+    ctx.fillRect(0,0,W,H);
+
+    // Subtle center glow when active
+    if (e > 0.05){
+      const g = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W*.55);
+      g.addColorStop(0,`rgba(0,204,153,${e*.06})`);
+      g.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    }
+
+    for(const p of pts){
+      const bv = p.band===0 ? bass : p.band===1 ? mid : treble;
+
+      // Velocity jitter — quiet when calm, reactive when active
+      const jitter = 0.04 + e * bv * 0.22;
+      p.vx += (Math.random()-.5)*jitter;
+      p.vy += (Math.random()-.5)*jitter;
+
+      // Speed cap — scales with energy + band
+      const maxSpd = 0.35 + e * (p.band===0 ? 1.4 : p.band===1 ? 2.2 : 3.5) * bv;
+      const spd = Math.sqrt(p.vx*p.vx+p.vy*p.vy);
+      if(spd > maxSpd){ p.vx=p.vx/spd*maxSpd; p.vy=p.vy/spd*maxSpd; }
+
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
+      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
+
+      // Size pulses on band energy
+      const drawR = p.r * (1 + bv * (p.band===0?2.2:p.band===1?1.4:.7) * e);
+
+      // Alpha: dim when calm, bright when active + on beat
+      const alpha = 0.12 + bv*e*.85 + (1-e)*.08;
+
+      const [pr,pg,pb] = hRGB(p.col);
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,drawR,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${pr},${pg},${pb},${alpha})`;
+      ctx.fill();
+    }
+  }
+  draw();
 }
 
 // ── DOT GRID ─────────────────────────────────────────────
