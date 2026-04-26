@@ -133,8 +133,47 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .map-label{text-align:center;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding:5px 0 10px;}
 
 /* ── PARTY INFO BUTTON ── */
-.btn-party{
-  display:block;width:100%;padding:22px;
+/* ── ZONE BUTTON ─────────────────────────────── */
+.btn-zone{
+  width:100%;padding:18px 16px;
+  background:var(--surface2);border:2px solid var(--teal);
+  border-radius:12px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:22px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--teal);text-align:center;
+  box-shadow:3px 3px 0 rgba(0,204,153,.25);
+  transition:all .2s;margin-bottom:14px;
+}
+.btn-zone:active{transform:translate(2px,2px);box-shadow:1px 1px 0 rgba(0,204,153,.2);}
+.btn-zone.in-zone{
+  background:var(--teal);color:#000;
+  border-color:var(--teal);
+  box-shadow:3px 3px 0 rgba(0,0,0,.4),0 0 28px rgba(0,204,153,.4);
+  animation:zonePulse 1.8s ease-in-out infinite;
+}
+@keyframes zonePulse{
+  0%,100%{box-shadow:3px 3px 0 rgba(0,0,0,.4),0 0 18px rgba(0,204,153,.35);}
+  50%    {box-shadow:3px 3px 0 rgba(0,0,0,.4),0 0 40px rgba(0,204,153,.7);}
+}
+
+/* ── BOOMBOX POPUP ───────────────────────────── */
+#boom-popup{
+  position:fixed;bottom:90px;left:12px;right:12px;z-index:850;
+  display:none;align-items:flex-end;gap:12px;
+  animation:popupSlide .3s ease-out;
+}
+#boom-popup.open{display:flex;}
+@keyframes popupSlide{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+.boom-popup-img{height:64px;width:auto;mix-blend-mode:screen;flex-shrink:0;}
+.boom-popup-bubble{
+  background:var(--surface2);border:2px solid var(--orange);
+  border-radius:16px 16px 16px 4px;
+  padding:14px 16px;flex:1;
+  font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;
+  letter-spacing:.04em;color:var(--white);line-height:1.3;
+  box-shadow:3px 3px 0 rgba(0,0,0,.5);
+  min-height:52px;cursor:pointer;
+}  display:block;width:100%;padding:22px;
   background:var(--red);color:#fff;
   border:none;border-radius:12px;
   font-family:'Roboto Condensed',sans-serif;
@@ -143,8 +182,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
   box-shadow:4px 4px 0 rgba(0,0,0,.5);
   transition:all .1s;margin-bottom:18px;
 }
-.btn-party:hover{transform:translate(-1px,-1px);box-shadow:5px 5px 0 rgba(0,0,0,.6);}
-.btn-party:active{transform:translate(2px,2px);box-shadow:2px 2px 0;}
+
 
 /* ── ZONE HEADLINE ── */
 .zone-headline{
@@ -460,7 +498,8 @@ audio{display:none;}
       <div id="zone-list"><div style="font-size:11px;color:var(--muted)">Scanning...</div></div>
     </div>
 
-    <div class="zone-headline" id="zone-headline">You Have Entered<br/>The Zone</div>
+    <!-- ZONE BUTTON — transforms from FIND to IN THE ZONE -->
+    <button class="btn-zone" id="btn-zone" onclick="onZoneBtn()">⚡ FIND NEAREST ZONE</button>
 
     <!-- ZONE NAVIGATION GUIDANCE -->
     <div class="zone-nav" id="zone-nav">
@@ -521,6 +560,12 @@ audio{display:none;}
 
 <div id="boom-menu"><div class="boom-menu-item" id="ls-dj-link" style="display:none" onclick="openDJMode()">🎛️ Open DJ Mode</div><div class="boom-menu-item danger" onclick="lsLogout()">⏏ Log Out</div></div>
 <div id="tap-banner" onclick="onTapBanner()">🎧 TAP TO START THE MUSIC</div>
+<!-- BOOMBOX POPUP -->
+<div id="boom-popup" onclick="closeBoomPopup()">
+  <img class="boom-popup-img" id="boom-popup-img" alt=""/>
+  <div class="boom-popup-bubble" id="boom-popup-bubble"></div>
+</div>
+
 <div id="toast"></div>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
@@ -532,6 +577,7 @@ const EYE_B64  = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BS
 // Set images
 document.getElementById('login-logo').src = LOGO_B64;
 document.getElementById('login-boom').src  = BOOM_B64;
+document.getElementById('boom-popup-img').src = BOOM_B64;
 document.getElementById('hdr-logo').src    = LOGO_B64;
 document.getElementById('hdr-boom').src    = BOOM_B64;
 document.getElementById('eye-img').src     = EYE_B64;
@@ -905,6 +951,101 @@ function togglePlay() {
 // ════════════════════════════════════════════════════════════
 // STOP EVERYTHING
 // ════════════════════════════════════════════════════════════
+// ── BOOMBOX POPUP ────────────────────────────────────────
+let _boomPopupTimer = null;
+let _boomBabbleInterval = null;
+
+function boomSay(text, autoDismissMs = 4000) {
+  const popup  = document.getElementById('boom-popup');
+  const bubble = document.getElementById('boom-popup-bubble');
+  const img    = document.getElementById('boom-popup-img');
+  if (!popup) return;
+
+  // Set boombox image
+  if (typeof BOOM_B64 !== 'undefined') img.src = BOOM_B64;
+
+  // Clear any existing timers
+  clearTimeout(_boomPopupTimer);
+  clearInterval(_boomBabbleInterval);
+  bubble.textContent = '';
+  popup.classList.add('open');
+
+  // Typewriter unfurl
+  let i = 0;
+  _boomBabbleInterval = setInterval(() => {
+    if (i < text.length) {
+      bubble.textContent += text[i];
+      if (text[i] !== ' ') playBabble();
+      i++;
+    } else {
+      clearInterval(_boomBabbleInterval);
+    }
+  }, 42);
+
+  // Auto-dismiss
+  _boomPopupTimer = setTimeout(closeBoomPopup, autoDismissMs + text.length * 42);
+}
+
+function closeBoomPopup() {
+  clearTimeout(_boomPopupTimer);
+  clearInterval(_boomBabbleInterval);
+  const popup = document.getElementById('boom-popup');
+  if (popup) popup.classList.remove('open');
+}
+
+// ── BABBLE SOUND ─────────────────────────────────────────
+let _babbleCtx = null;
+function playBabble() {
+  try {
+    if (!_babbleCtx) _babbleCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc  = _babbleCtx.createOscillator();
+    const gain = _babbleCtx.createGain();
+    osc.connect(gain); gain.connect(_babbleCtx.destination);
+    // Random pitch in a musical range — Animal Crossing style
+    osc.frequency.value = 220 + Math.random() * 330;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.08, _babbleCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, _babbleCtx.currentTime + 0.07);
+    osc.start(_babbleCtx.currentTime);
+    osc.stop(_babbleCtx.currentTime + 0.07);
+  } catch(e) {}
+}
+
+// ── WARP ENTRY SOUND ────────────────────────────────────
+function playWarpSound() {
+  try {
+    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
+    const now  = ctx.currentTime;
+    const dur  = 1.1;
+
+    // Low "womp" sweep — pitch drops fast then reverbs
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gain = ctx.createGain();
+    const gain2= ctx.createGain();
+
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(320, now);
+    osc1.frequency.exponentialRampToValueAtTime(55, now + 0.35);
+    gain.gain.setValueAtTime(0.0, now);
+    gain.gain.linearRampToValueAtTime(0.45, now + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(180, now);
+    osc2.frequency.exponentialRampToValueAtTime(40, now + 0.5);
+    gain2.gain.setValueAtTime(0.3, now);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+    osc1.connect(gain);   gain.connect(ctx.destination);
+    osc2.connect(gain2); gain2.connect(ctx.destination);
+    osc1.start(now); osc1.stop(now + dur);
+    osc2.start(now); osc2.stop(now + dur);
+
+    setTimeout(() => ctx.close(), (dur + 0.2) * 1000);
+  } catch(e) {}
+}
+
 function stopEverything() {
   audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
@@ -919,7 +1060,7 @@ function stopEverything() {
   setMuteBtn(false);
   document.getElementById('track-name').textContent = '—';
   document.getElementById('music-artist').textContent = '—';
-  document.getElementById('zone-headline').classList.remove('visible');
+  document.getElementById('btn-zone').classList.remove('in-zone'); document.getElementById('btn-zone').textContent='⚡ FIND NEAREST ZONE';
   document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='paused'; b.style.opacity='1'; });
   ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
 }
@@ -1182,9 +1323,33 @@ function launchApp() {
 // boombox click
 
 // party button
-function onPartyBtn() {
-  if (!activeZone) { showToast('Tap a zone to join first'); return; }
-  document.getElementById('party-modal').classList.add('open');
+function onZoneBtn() {
+  // If already in zone, just scroll to music
+  if (activeZone) {
+    document.getElementById('music-lockable')?.scrollIntoView({behavior:'smooth', block:'center'});
+    return;
+  }
+  // Find nearest active zone
+  if (!knownZones || !knownZones.length) {
+    boomSay("No zones are active right now. Check back soon! 🎧");
+    return;
+  }
+  if (!userLat || !userLng) {
+    boomSay("Getting your location... try again in a moment.");
+    return;
+  }
+  // Sort by distance
+  const nearest = knownZones.slice().sort((a,b) => {
+    const da = Math.hypot(a.lat - userLat, a.lng - userLng);
+    const db = Math.hypot(b.lat - userLat, b.lng - userLng);
+    return da - db;
+  })[0];
+  if (!nearest) { boomSay("No zones active right now. 🎧"); return; }
+  // Fly map to nearest zone
+  if (window._map) {
+    window._map.flyTo([nearest.lat, nearest.lng], 16, {animate:true, duration:1.2});
+  }
+  showToast(`📍 Nearest zone: ${nearest.name}`);
 }
 
 // ── MAP — starts at exact GPS location ───────────────────
@@ -1293,7 +1458,6 @@ async function checkGeofences() {
 }
 
 function onEnterZone(z) {
-  showToast('📍 Entered zone: ' + z.name);
   if (activeZone?.id === z.id) {
     // Already synced — just unmute
     if (_webAudioPlaying || audio.srcObject) {
@@ -1302,21 +1466,20 @@ function onEnterZone(z) {
     }
     return;
   }
-  showToast(`📡 Entering "${z.name}" — activating!`);
 
-  // Flash map border
+  // 🔊 Warp sound — you crossed the wall
+  playWarpSound();
+
+  // 💬 Boombox announces the zone
+  boomSay(`YOU ARE IN THE ZONE\n${z.name}`, 3500);
+
+  // Flash map border teal
   const frame = document.querySelector('.map-frame');
   if (frame) {
-    frame.style.borderColor = '#ef3c23';
-    frame.style.boxShadow   = '0 0 0 3px rgba(239,60,35,.4)';
-    setTimeout(() => {
-      frame.style.borderColor = '';
-      frame.style.boxShadow   = '';
-    }, 2000);
+    frame.style.borderColor = 'var(--teal)';
+    frame.style.boxShadow   = '0 0 0 3px rgba(0,204,153,.4)';
+    setTimeout(() => { frame.style.borderColor=''; frame.style.boxShadow=''; }, 2000);
   }
-
-  // Switch to Zone tab if not already there
-  document.querySelectorAll('.section-label').forEach(()=>{});
 
   // Auto-activate the zone — plays track / starts WebRTC
   activateZone(z);
@@ -1427,7 +1590,7 @@ async function joinZone(z) {
 
 // ── UNLOCK ───────────────────────────────────────────────
 function unlockUI(z) {
-  document.getElementById('zone-headline').classList.add('visible');
+  document.getElementById('btn-zone').classList.add('in-zone'); document.getElementById('btn-zone').textContent='✦ YOU ARE IN THE ZONE';
   ['music','visuals'].forEach(k => {
     document.getElementById(k+'-lockable').classList.remove('locked');
   });
@@ -1790,7 +1953,7 @@ function updateNav(z) {
     statusEl.className = 'nav-status inside';
     document.getElementById('nav-arrow').textContent = '✓';
     document.getElementById('nav-arrow').style.transform = 'none';
-    document.getElementById('zone-headline').classList.add('visible');
+    document.getElementById('btn-zone').classList.add('in-zone'); document.getElementById('btn-zone').textContent='✦ YOU ARE IN THE ZONE';
   } else {
     statusEl.textContent = 'Head this way to join';
     statusEl.className = 'nav-status outside';
