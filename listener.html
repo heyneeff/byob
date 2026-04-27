@@ -1134,14 +1134,14 @@ const ZONE_ANGRY_LINES = [
   "You know what? I'm turning it up louder for the people who stayed.",
   "It's fine. GO. The sub frequencies will follow you home.",
 ];
+let _babbleChar = 0;
 function playBabble() {
   try {
-    const ctx = getSfxCtx();
-    if (!ctx) return;
-    // If suspended, resume and skip this character — next one will catch
-    if (ctx.state === 'suspended') { ctx.resume(); return; }
-    if (ctx.state !== 'running') return;
-    const now = ctx.currentTime;
+    if (!_sfxCtx) return;
+    _sfxCtx.resume();
+    const ctx = _sfxCtx;
+    // Schedule 50ms ahead — suspended context flips to running within that window
+    const now = ctx.currentTime + 0.05;
     const dur = 0.1;
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
