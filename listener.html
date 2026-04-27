@@ -904,12 +904,13 @@ function onTapBanner(){
   if (typeof _pendingStream !== 'undefined' && _pendingStream) {
     audio.srcObject = _pendingStream;
     _pendingStream = null;
-    audio.volume = 1; audio.muted = false;
-    audio.play().then(() => { _webAudioPlaying = true; }).catch(e => showToast('Play failed: ' + e.message));
+    audio.volume = 0; audio.muted = false;
+    audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(); }).catch(e => showToast('Play failed: ' + e.message));
   } else if (audio.src || audio.srcObject) {
-    audio.volume = 1; audio.muted = false;
+    audio.volume = 0; audio.muted = false;
     audio.play().catch(()=>{});
     _webAudioPlaying = true;
+    fadeAudioIn();
   }
 
   // 2. After 1 second beat — womp then boombox
@@ -995,6 +996,17 @@ function seekToSync(startedAt, playAt, playFromS) {
 // ════════════════════════════════════════════════════════════
 // MUTE TOGGLE
 // ════════════════════════════════════════════════════════════
+function fadeAudioIn(durationMs = 5000) {
+  const steps = 60;
+  const interval = durationMs / steps;
+  let step = 0;
+  const fade = setInterval(() => {
+    step++;
+    audio.volume = Math.min(1, step / steps);
+    if (step >= steps) clearInterval(fade);
+  }, interval);
+}
+
 function setMuteBtn(muted) {
   _isMuted = muted;
   audio.muted = muted;
