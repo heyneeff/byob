@@ -1424,8 +1424,9 @@ function initMap() {
       userMarker.setLatLng([userLat, userLng]);
     }
     if (accuracyCircle) accuracyCircle.setLatLng([userLat, userLng]);
-    if (window._navLine && activeZone) {
-      window._navLine.setLatLngs([[userLat,userLng],[activeZone.lat,activeZone.lng]]);
+    if (window._navLine && (activeZone || window._previewedZone)) {
+      const navTarget = activeZone || window._previewedZone;
+      window._navLine.setLatLngs([[userLat,userLng],[navTarget.lat,navTarget.lng]]);
     }
     // Auto-detect zone entry/exit
     checkGeofences();
@@ -1574,7 +1575,9 @@ async function loadZones(autoJoin=false) {
 // Tapping a zone just previews it on map + starts navigation
 // Music only starts when physically entering via geofence
 async function previewZone(z) {
-  activeZone = z;
+  // Don't set activeZone here — only geofence crossing activates a zone.
+  // Store as previewed so navigation works without blocking geofence entry.
+  window._previewedZone = z;
   leafletMap.flyTo([z.lat,z.lng], 16, { animate:true, duration:.7 });
 
   // Show navigation arrow toward zone
@@ -1594,7 +1597,7 @@ async function previewZone(z) {
   // Subscribe to zone updates so we know when DJ loads a track
   db.channel('zone_preview_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{ zones_cache[zn.id]=zn;
-      // If we're now inside the zone, play immediately
+      // If we're now physically inside the zone, play immediately
       if (insideZoneIds.has(z.id)) activateZone(zn);
     }).subscribe();
 }
