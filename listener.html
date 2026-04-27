@@ -884,7 +884,6 @@ function onTapBanner(){
   startAudioHeartbeat();
 
   // Play a tiny audible click RIGHT NOW (sync in gesture) to claim iOS audio session
-  // Without this, iOS revokes the gesture context before our setTimeout fires
   try {
     const ctx = _sfxCtx;
     const now = ctx.currentTime;
@@ -892,7 +891,7 @@ function onTapBanner(){
     const g = ctx.createGain();
     o.frequency.value = 1200;
     o.type = 'sine';
-    g.gain.setValueAtTime(0.001, now); // barely audible - just claims the session
+    g.gain.setValueAtTime(0.001, now);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
     o.connect(g); g.connect(ctx.destination);
     o.start(now); o.stop(now + 0.02);
@@ -900,31 +899,53 @@ function onTapBanner(){
 
   _isMuted = false; setMuteBtn(false);
 
-  // 1. Start music immediately (inside user gesture window)
+  // 1. Start music faded in — set volume AFTER play() starts (iOS ignores pre-play volume)
+  const startFadedPlay = () => {
+    audio.volume = 0.001; // start near-silent
+    audio.muted = false;
+    audio.play().then(() => {
+      _webAudioPlaying = true;
+      fadeAudioIn();
+    }).catch(e => showToast('Play failed: ' + e.message));
+  };
+
   if (typeof _pendingStream !== 'undefined' && _pendingStream) {
     audio.srcObject = _pendingStream;
     _pendingStream = null;
-    audio.volume = 0; audio.muted = false;
-    audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(); }).catch(e => showToast('Play failed: ' + e.message));
+    startFadedPlay();
   } else if (audio.src || audio.srcObject) {
-    audio.volume = 0; audio.muted = false;
-    audio.play().catch(()=>{});
-    _webAudioPlaying = true;
-    fadeAudioIn();
+    startFadedPlay();
   }
 
-  // 2. After 1 second beat — womp then boombox
+  // 2. After 1 second — womp + first Boomy line
   const zoneName = window._enteringZoneName || activeZone?.name || '';
   window._enteringZoneName = null;
   if (zoneName) {
     setTimeout(() => {
       playWarpSound();
       setTimeout(() => {
-        // 60% regular Boomy, 40% Devious Boomy
+        // First line — welcome
         const useDevious = Math.random() < 0.4;
         const lines = useDevious ? ZONE_DEVIOUS_LINES : ZONE_ENTRY_LINES;
         const line  = lines[Math.floor(Math.random() * lines.length)];
-        boomSay(line, 3500, true, useDevious ? 'devious' : 'regular');
+        const firstMsgMs = line.length * 55 + 500;
+        boomSay(line, firstMsgMs, true, useDevious ? 'devious' : 'regular');
+
+        // Second line — after first finishes
+        setTimeout(() => {
+          const followUps = [
+            "Connect your bluetooth speaker and commence the jigglin'.",
+            "Turn it up. Your neighbors will understand eventually.",
+            "Pro tip: the bass hits harder if you close your eyes.",
+            "We recommend moving your body in a suspicious manner.",
+            "Bluetooth speaker. Maximum volume. No further questions.",
+            "If someone asks what you're doing, just say 'vibe research'.",
+            "This music is now legally your personality.",
+            "Your body knows what to do. Let it.",
+          ];
+          const follow = followUps[Math.floor(Math.random() * followUps.length)];
+          boomSay(follow, 4000, false, 'devious');
+        }, firstMsgMs + 400);
       }, 300);
     }, 1000);
   }
