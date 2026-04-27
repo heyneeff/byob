@@ -858,6 +858,7 @@ function onTapBanner(){
   // Keep AudioContext warm — iOS suspends it after ~30s of silence
   if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   _sfxCtx.resume();
+  startAudioHeartbeat();
   // Silent blip locks the context open for geofence sounds later
   try {
     const g = _sfxCtx.createGain(); g.gain.value = 0; g.connect(_sfxCtx.destination);
@@ -1014,14 +1015,36 @@ function closeBoomPopup() {
 
 // ── SHARED AUDIO CONTEXT — created once, unlocked on first tap ───────────────
 let _sfxCtx = null;
+let _heartbeat = null;
+
 function getSfxCtx() {
   if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (_sfxCtx.state === 'suspended') _sfxCtx.resume();
   return _sfxCtx;
 }
-// Pre-unlock on ANY user interaction so geofence sounds work later
+
+function startAudioHeartbeat() {
+  if (_heartbeat) return; // already running
+  _heartbeat = setInterval(() => {
+    if (!_sfxCtx || _sfxCtx.state === 'closed') return;
+    if (_sfxCtx.state === 'suspended') _sfxCtx.resume();
+    // Silent blip — keeps iOS from suspending the context
+    try {
+      const g = _sfxCtx.createGain(); g.gain.value = 0.00001;
+      g.connect(_sfxCtx.destination);
+      const o = _sfxCtx.createOscillator();
+      o.connect(g); o.start(); o.stop(_sfxCtx.currentTime + 0.001);
+    } catch(e) {}
+  }, 20000); // every 20s — iOS suspends after ~30s of silence
+}
+
+// Pre-unlock on ANY user interaction, then start the heartbeat
 ['touchstart','touchend','click','keydown'].forEach(ev =>
-  document.addEventListener(ev, () => { if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)(); if (_sfxCtx.state === 'suspended') _sfxCtx.resume(); }, { once: false, passive: true })
+  document.addEventListener(ev, () => {
+    if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (_sfxCtx.state === 'suspended') _sfxCtx.resume();
+    startAudioHeartbeat();
+  }, { passive: true })
 );
 let _babbleChar = 0;
 function playBabble() {
