@@ -184,7 +184,8 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 }
 #boom-popup.open{display:flex;animation:popupSlide .3s ease-out;}
 @keyframes popupSlide{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
-.boom-popup-img{height:64px;width:auto;mix-blend-mode:screen;flex-shrink:0;}
+.boom-img-wrap{background:#000;border-radius:8px;flex-shrink:0;mix-blend-mode:screen;}
+.boom-popup-img{height:64px;width:auto;display:block;}
 .boom-popup-img.talking{animation:boomTalk 0.18s ease-in-out infinite alternate;}
 @keyframes boomTalk{
   from{transform:translateY(0) rotate(-2deg) scale(1);}
@@ -570,7 +571,9 @@ audio{display:none;}
 
 <!-- BOOMBOX POPUP -->
 <div id="boom-popup">
-  <img class="boom-popup-img" id="boom-popup-img" alt=""/>
+  <div class="boom-img-wrap">
+    <img class="boom-popup-img" id="boom-popup-img" alt=""/>
+  </div>
   <div class="boom-popup-bubble" id="boom-popup-bubble"></div>
 </div>
 
@@ -933,18 +936,34 @@ function onTapBanner(){
 
         // Second line — after first finishes
         setTimeout(() => {
-          const followUps = [
-            "Connect your bluetooth speaker and commence the jigglin'.",
-            "Turn it up. Your neighbors will understand eventually.",
-            "Pro tip: the bass hits harder if you close your eyes.",
-            "We recommend moving your body in a suspicious manner.",
-            "Bluetooth speaker. Maximum volume. No further questions.",
-            "If someone asks what you're doing, just say 'vibe research'.",
-            "This music is now legally your personality.",
+          // Second line — always bluetooth + find friends
+        const bluetoothLines = [
+          "Connect your bluetooth speaker and commence the jigglin'.",
+          "Hook up your bluetooth speaker. Your phone speakers are not ready for this.",
+          "Bluetooth speaker out. This is not a headphones situation.",
+          "Pro move: bluetooth speaker. Then find your people.",
+          "Get that bluetooth speaker connected. We'll wait.",
+          "Speaker up. Friends found. Chaos commenced.",
+        ];
+        const bluetooth = bluetoothLines[Math.floor(Math.random() * bluetoothLines.length)];
+        const btMsgMs = bluetooth.length * 55 + 600;
+        boomSay(bluetooth, btMsgMs, false, 'devious');
+
+        // Third line — random chaos after bluetooth message
+        setTimeout(() => {
+          const thirdLines = [
             "Your body knows what to do. Let it.",
+            "This music is now legally your personality.",
+            "If someone asks what you're doing, say 'vibe research'.",
+            "We recommend moving your body in a suspicious manner.",
+            "Pro tip: the bass hits harder if you close your eyes.",
+            "Turn it up. Your neighbors will understand eventually.",
+            "No wrong answers. Only wrong volumes — and too low is wrong.",
+            "We have been expecting you since the beginning of sound.",
           ];
-          const follow = followUps[Math.floor(Math.random() * followUps.length)];
-          boomSay(follow, 4000, false, 'devious');
+          const third = thirdLines[Math.floor(Math.random() * thirdLines.length)];
+          boomSay(third, 4000, false, Math.random() < 0.5 ? 'regular' : 'devious');
+        }, btMsgMs + 400);
         }, firstMsgMs + 400);
       }, 300);
     }, 1000);
