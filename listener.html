@@ -853,10 +853,36 @@ function updateCalLabel() {
 function showTapBanner(){document.getElementById('tap-banner')?.classList.add('visible');}
 function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
 function onTapBanner(){
-  hideTapBanner();  if (audio.src || audio.srcObject) {
+  hideTapBanner();
+
+  // Keep AudioContext warm — iOS suspends it after ~30s of silence
+  if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+  _sfxCtx.resume();
+  // Silent blip locks the context open for geofence sounds later
+  try {
+    const g = _sfxCtx.createGain(); g.gain.value = 0; g.connect(_sfxCtx.destination);
+    const o = _sfxCtx.createOscillator(); o.connect(g);
+    o.start(); o.stop(_sfxCtx.currentTime + 0.001);
+  } catch(e) {}
+
+  _isMuted = false; setMuteBtn(false);
+
+  // WebRTC stream waiting — play from direct user gesture
+  if (typeof _pendingStream !== 'undefined' && _pendingStream) {
+    audio.srcObject = _pendingStream;
+    _pendingStream = null;
+    audio.volume = 1; audio.muted = false;
+    audio.play().then(() => {
+      _webAudioPlaying = true;
+      showToast('🔴 LIVE — audio on!');
+    }).catch(e => showToast('Play failed: ' + e.message));
+    return;
+  }
+
+  if (audio.src || audio.srcObject) {
+    audio.volume = 1; audio.muted = false;
     audio.play().catch(()=>{});
     _webAudioPlaying = true;
-    setMuteBtn(false);
   }
 }
 audio.addEventListener('playing', () => { hideTapBanner(); setMuteBtn(false); });
@@ -1483,7 +1509,8 @@ function onEnterZone(z) {
     return;
   }
 
-  // 🔊 Warp sound — you crossed the wall
+  // 🔊 Warp sound — resume context first in case iOS suspended it
+  if (_sfxCtx) _sfxCtx.resume();
   playWarpSound();
 
   // 💬 Boombox announces the zone
@@ -1503,9 +1530,19 @@ function onEnterZone(z) {
 
 function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
-  showToast(`Left "${z.name}" — muted`);
-  if (audio.srcObject) audio.muted = true;
+  // Boombox says bye
+  boomSay(`You left "${z.name}"`, 2500);
+  // Mute audio — works for both file and WebRTC
+  audio.muted = true;
+  audio.volume = 0;
   setMuteBtn(true);
+  // Reset zone button
+  const btnZone = document.getElementById('btn-zone');
+  if (btnZone){ btnZone.classList.remove('in-zone'); btnZone.textContent='⚡ FIND NEAREST ZONE'; }
+  // Lock the cards back
+  ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
+  // Clear active zone so re-entry works cleanly
+  activeZone = null;
 }
 async function loadZones(autoJoin=false) {
   const { data } = await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(10);
