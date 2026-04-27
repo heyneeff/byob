@@ -855,35 +855,35 @@ function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove
 function onTapBanner(){
   hideTapBanner();
 
-  // Keep AudioContext warm — iOS suspends it after ~30s of silence
+  // Unlock AudioContext on this gesture — must happen first
   if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   _sfxCtx.resume();
   startAudioHeartbeat();
-  // Silent blip locks the context open for geofence sounds later
-  try {
-    const g = _sfxCtx.createGain(); g.gain.value = 0; g.connect(_sfxCtx.destination);
-    const o = _sfxCtx.createOscillator(); o.connect(g);
-    o.start(); o.stop(_sfxCtx.currentTime + 0.001);
-  } catch(e) {}
 
   _isMuted = false; setMuteBtn(false);
 
-  // WebRTC stream waiting — play from direct user gesture
+  // 1. Start music immediately (inside user gesture window)
   if (typeof _pendingStream !== 'undefined' && _pendingStream) {
     audio.srcObject = _pendingStream;
     _pendingStream = null;
     audio.volume = 1; audio.muted = false;
-    audio.play().then(() => {
-      _webAudioPlaying = true;
-      showToast('🔴 LIVE — audio on!');
-    }).catch(e => showToast('Play failed: ' + e.message));
-    return;
-  }
-
-  if (audio.src || audio.srcObject) {
+    audio.play().then(() => { _webAudioPlaying = true; }).catch(e => showToast('Play failed: ' + e.message));
+  } else if (audio.src || audio.srcObject) {
     audio.volume = 1; audio.muted = false;
     audio.play().catch(()=>{});
     _webAudioPlaying = true;
+  }
+
+  // 2. After 1 second beat — womp then boombox
+  const zoneName = window._enteringZoneName || activeZone?.name || '';
+  window._enteringZoneName = null;
+  if (zoneName) {
+    setTimeout(() => {
+      playWarpSound();
+      setTimeout(() => {
+        boomSay(`YOU ARE IN THE ZONE\n${zoneName}`, 3500);
+      }, 300);
+    }, 1000);
   }
 }
 audio.addEventListener('playing', () => { hideTapBanner(); setMuteBtn(false); });
@@ -1050,7 +1050,7 @@ let _babbleChar = 0;
 function playBabble() {
   try {
     const ctx = getSfxCtx();
-    if (!ctx) { showToast('babble: no ctx'); return; }
+    if (!ctx) return;
     ctx.resume().then(() => {
       const now = ctx.currentTime;
       const dur = 0.1;
@@ -1077,39 +1077,65 @@ function playBabble() {
       osc.start(now);
       osc.stop(now + dur);
     });
-  } catch(e) { showToast('babble err: ' + e.message); }
+  } catch(e) {}
 }
 
+// ── WARP ENTRY SOUND — wet womp ─────────────────────────
 function playWarpSound() {
   try {
     const ctx = getSfxCtx();
-    showToast(`🔊 warp: ctx=${ctx?.state}`);
     if (!ctx) return;
     ctx.resume().then(() => {
       const now = ctx.currentTime;
-      const dur = 1.1;
+      const dur = 1.8;
+
+      // Main sweep — sawtooth into lowpass for wet/muddy body
       const osc1 = ctx.createOscillator();
-      const osc2 = ctx.createOscillator();
-      const gain  = ctx.createGain();
-      const gain2 = ctx.createGain();
       osc1.type = 'sawtooth';
-      osc1.frequency.setValueAtTime(320, now);
-      osc1.frequency.exponentialRampToValueAtTime(55, now + 0.35);
-      gain.gain.setValueAtTime(0.0, now);
-      gain.gain.linearRampToValueAtTime(0.45, now + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      osc1.frequency.setValueAtTime(280, now);
+      osc1.frequency.exponentialRampToValueAtTime(38, now + 0.6);  // slower drop
+
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(900, now);
+      lp.frequency.exponentialRampToValueAtTime(80, now + 0.7);    // filter closes = gets muddier
+      lp.Q.value = 6;
+
+      const gain1 = ctx.createGain();
+      gain1.gain.setValueAtTime(0, now);
+      gain1.gain.linearRampToValueAtTime(0.55, now + 0.05);
+      gain1.gain.exponentialRampToValueAtTime(0.001, now + dur);
+
+      // Sub sine — deep wet thud underneath
+      const osc2 = ctx.createOscillator();
       osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(180, now);
-      osc2.frequency.exponentialRampToValueAtTime(40, now + 0.5);
-      gain2.gain.setValueAtTime(0.3, now);
+      osc2.frequency.setValueAtTime(120, now);
+      osc2.frequency.exponentialRampToValueAtTime(28, now + 0.8);
+
+      const gain2 = ctx.createGain();
+      gain2.gain.setValueAtTime(0.5, now);
       gain2.gain.exponentialRampToValueAtTime(0.001, now + dur);
-      osc1.connect(gain);   gain.connect(ctx.destination);
-      osc2.connect(gain2); gain2.connect(ctx.destination);
+
+      // Delay node — short slapback gives wetness
+      const delay = ctx.createDelay(0.5);
+      delay.delayTime.value = 0.18;
+      const delayGain = ctx.createGain();
+      delayGain.gain.value = 0.35;
+      // feedback loop
+      delayGain.connect(delay);
+      delay.connect(delayGain);
+
+      osc1.connect(lp); lp.connect(gain1);
+      gain1.connect(ctx.destination);
+      gain1.connect(delay); delay.connect(ctx.destination);
+
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+
       osc1.start(now); osc1.stop(now + dur);
       osc2.start(now); osc2.stop(now + dur);
-      showToast('🔊 warp playing!');
     });
-  } catch(e) { showToast('🔊 warp err: ' + e.message); }
+  } catch(e) {}
 }
 
 function stopEverything() {
@@ -1541,21 +1567,14 @@ setInterval(checkGeofences, 8000);
 
 function onEnterZone(z) {
   if (activeZone?.id === z.id) {
-    // Already synced — just unmute
     if (_webAudioPlaying || audio.srcObject) {
       setMuteBtn(false);
       showToast('📡 Back in the zone');
     }
     return;
   }
-
-  // 🔊 Warp sound — resume context first in case iOS suspended it
-  showToast(`🎯 onEnterZone: sfxCtx=${_sfxCtx?.state||'null'}`);
-  if (_sfxCtx) _sfxCtx.resume();
-  playWarpSound();
-
-  // 💬 Boombox announces the zone
-  boomSay(`YOU ARE IN THE ZONE\n${z.name}`, 3500);
+  // Stash zone name — womp + boombox fire after tap banner is pressed
+  window._enteringZoneName = z.name;
 
   // Flash map border teal
   const frame = document.querySelector('.map-frame');
@@ -1564,8 +1583,6 @@ function onEnterZone(z) {
     frame.style.boxShadow   = '0 0 0 3px rgba(0,204,153,.4)';
     setTimeout(() => { frame.style.borderColor=''; frame.style.boxShadow=''; }, 2000);
   }
-
-  // Auto-activate the zone — plays track / starts WebRTC
   activateZone(z);
 }
 
