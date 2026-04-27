@@ -1136,36 +1136,30 @@ const ZONE_ANGRY_LINES = [
 ];
 let _babbleChar = 0;
 function playBabble() {
-  try {
-    if (!_sfxCtx) return;
-    _sfxCtx.resume();
-    const ctx = _sfxCtx;
-    // Schedule 50ms ahead — suspended context flips to running within that window
-    const now = ctx.currentTime + 0.05;
-    const dur = 0.1;
-    const osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    const pitches = [110, 130, 98, 120, 146, 110, 87, 130];
-    osc.frequency.value = pitches[_babbleChar % pitches.length] * (1 + Math.random() * 0.04);
-    _babbleChar++;
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = 600 + Math.random() * 900;
-    filter.Q.value = 4 + Math.random() * 5;
-    const filter2 = ctx.createBiquadFilter();
-    filter2.type = 'bandpass';
-    filter2.frequency.value = 1200 + Math.random() * 800;
-    filter2.Q.value = 6;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-    osc.connect(filter);
-    filter.connect(filter2);
-    filter2.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + dur);
-  } catch(e) {}
+  if (!_sfxCtx) return;
+  const pitch = [110,130,98,120,146,110,87,130][_babbleChar % 8] * (1 + Math.random()*0.04);
+  _babbleChar++;
+  _sfxCtx.resume().then(() => {
+    try {
+      const ctx = _sfxCtx;
+      // Use a generous offset — iOS needs time after resume
+      const now = ctx.currentTime + 0.08;
+      const dur = 0.11;
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.value = pitch;
+      const f1 = ctx.createBiquadFilter();
+      f1.type = 'bandpass'; f1.frequency.value = 600 + Math.random()*900; f1.Q.value = 4 + Math.random()*5;
+      const f2 = ctx.createBiquadFilter();
+      f2.type = 'bandpass'; f2.frequency.value = 1200 + Math.random()*800; f2.Q.value = 6;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.18, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+      osc.connect(f1); f1.connect(f2); f2.connect(g); g.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + dur + 0.01);
+    } catch(e) {}
+  });
 }
 
 // ── WARP ENTRY SOUND — wet womp ─────────────────────────
