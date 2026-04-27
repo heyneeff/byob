@@ -1043,17 +1043,32 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   const boomImg = document.getElementById('boom-popup-img');
   const safeText = String(text);
   if (boomImg) boomImg.classList.add('talking');
+  bubble.textContent = '';
 
-  // Show full text immediately
-  bubble.textContent = safeText;
-  // Diagnostic: check if content survives 100ms
-  setTimeout(() => {
-    const b = document.getElementById('boom-popup-bubble');
-    showToast('bubble: [' + (b ? b.textContent.slice(0,12) : 'NULL') + ']');
-  }, 100);
-  setTimeout(() => { if (boomImg) boomImg.classList.remove('talking'); }, 1000);
+  // rAF typewriter — reliable on iOS, time-based
+  const MS_PER_CHAR = 55;
+  const startTime = performance.now();
+  let lastCharIdx = 0;
+  function animFrame(now) {
+    const p = document.getElementById('boom-popup');
+    if (!p || !p.classList.contains('open')) return;
+    const targetIdx = Math.min(Math.floor((now - startTime) / MS_PER_CHAR), safeText.length);
+    if (targetIdx > lastCharIdx) {
+      const b = document.getElementById('boom-popup-bubble');
+      if (b) {
+        b.textContent = safeText.slice(0, targetIdx);
+        for (let i = lastCharIdx; i < targetIdx; i++) {
+          if (safeText[i] !== ' ' && safeText[i] !== '\n') playBabble();
+        }
+      }
+      lastCharIdx = targetIdx;
+    }
+    if (lastCharIdx < safeText.length) requestAnimationFrame(animFrame);
+    else if (boomImg) boomImg.classList.remove('talking');
+  }
+  requestAnimationFrame(animFrame);
 
-  _boomPopupTimer = setTimeout(closeBoomPopup, autoDismissMs + 1000);
+  _boomPopupTimer = setTimeout(closeBoomPopup, autoDismissMs + safeText.length * MS_PER_CHAR + 500);
 }
 
 function closeBoomPopup() {
@@ -1177,33 +1192,37 @@ const ZONE_ANGRY_LINES = [
 ];
 
 
+// ── BABBLE SOUND — WAV blobs via Audio element (reliable on iOS) ─────────────
+let _babbleChar = 0;
+
+function makeBabbleWav(freq) {
+  const sr = 22050, n = Math.floor(sr * 0.1);
+  const buf = new ArrayBuffer(44 + n*2), v = new DataView(buf);
+  const w = (o,s) => { for(let i=0;i<s.length;i++) v.setUint8(o+i,s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4,36+n*2,true); w(8,'WAVE'); w(12,'fmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*2,true);
+  v.setUint16(32,2,true); v.setUint16(34,16,true);
+  w(36,'data'); v.setUint32(40,n*2,true);
+  for(let i=0;i<n;i++){
+    const t=i/sr, env=Math.exp(-t*18);
+    let s=0; for(let h=1;h<=5;h++) s+=Math.sin(2*Math.PI*freq*h*t)/h;
+    v.setInt16(44+i*2, Math.max(-32767,Math.min(32767, s*env*9000)), true);
+  }
+  return URL.createObjectURL(new Blob([buf],{type:'audio/wav'}));
+}
+
+const _BABBLE_PITCHES = [110,130,98,120,146,110,87,130];
+let _babbleUrls = null;
+
 function playBabble() {
-  if (!_sfxCtx) return;
-  const pitch = [110,130,98,120,146,110,87,130][_babbleChar % 8] * (1 + Math.random()*0.04);
-  _babbleChar++;
-  _sfxCtx.resume().then(() => {
-    try {
-      const ctx = _sfxCtx;
-      // Use a generous offset — iOS needs time after resume
-      const now = ctx.currentTime + 0.08;
-      const dur = 0.11;
-      const osc = ctx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.value = pitch;
-      const f1 = ctx.createBiquadFilter();
-      f1.type = 'bandpass'; f1.frequency.value = 600 + Math.random()*900; f1.Q.value = 4 + Math.random()*5;
-      const f2 = ctx.createBiquadFilter();
-      f2.type = 'bandpass'; f2.frequency.value = 1200 + Math.random()*800; f2.Q.value = 6;
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.18, now);
-      g.gain.exponentialRampToValueAtTime(0.001, now + dur);
-      osc.connect(f1); f1.connect(f2); f2.connect(g);
-      g.connect(ctx.destination);
-      if (ctx._iOSDest) g.connect(ctx._iOSDest);
-      osc.start(now);
-      osc.stop(now + dur + 0.01);
-    } catch(e) {}
-  });
+  try {
+    if (!_babbleUrls) _babbleUrls = _BABBLE_PITCHES.map(f => makeBabbleWav(f));
+    const a = new Audio(_babbleUrls[_babbleChar % _babbleUrls.length]);
+    _babbleChar++;
+    a.volume = 0.25;
+    a.play().catch(()=>{});
+  } catch(e) {}
 }
 
 // ── WARP ENTRY SOUND — wet womp ─────────────────────────
