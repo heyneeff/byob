@@ -184,6 +184,19 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 }
 #boom-popup.open{display:flex;animation:popupSlide .3s ease-out;}
 @keyframes popupSlide{from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}}
+/* ── EXIT ACTION CARDS ── */
+#exit-cards{position:fixed;inset:0;z-index:860;background:rgba(0,0,0,.88);display:none;flex-direction:column;align-items:center;justify-content:center;padding:28px;gap:14px;}
+#exit-cards.open{display:flex;animation:popupSlide .3s ease-out;}
+.exit-card-title{font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--white);text-align:center;margin-bottom:2px;}
+.exit-card-sub{font-size:12px;color:var(--muted);text-align:center;margin-bottom:10px;letter-spacing:.06em;text-transform:uppercase;}
+.btn-exit-action{width:100%;max-width:360px;padding:18px 20px;border:none;border-radius:12px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;gap:14px;box-shadow:3px 3px 0 rgba(0,0,0,.5);transition:all .1s;}
+.btn-exit-action:active{transform:translate(2px,2px);box-shadow:1px 1px 0;}
+.btn-exit-tip{background:var(--orange);color:#000;}
+.btn-exit-invite{background:var(--teal);color:#000;}
+.btn-exit-notify{background:var(--surface2);color:var(--white);border:2px solid #444;}
+.btn-exit-skip{background:transparent;color:var(--muted);font-size:13px;letter-spacing:.06em;border:none;padding:10px;cursor:pointer;}
+.exit-icon{font-size:26px;}
+
 .boom-img-wrap{background:#000;border-radius:8px;flex-shrink:0;mix-blend-mode:screen;}
 .boom-popup-img{height:64px;width:auto;display:block;}
 .boom-popup-img.talking{animation:boomTalk 0.18s ease-in-out infinite alternate;}
@@ -569,6 +582,22 @@ audio{display:none;}
   <button class="btn-card-close" onclick="closeGuestCard()">Close</button>
 </div>
 
+<!-- EXIT ACTION CARDS -->
+<div id="exit-cards">
+  <div class="exit-card-title">Thanks for being here</div>
+  <div class="exit-card-sub">Before you go —</div>
+  <button class="btn-exit-action btn-exit-tip" id="btn-exit-tip" onclick="exitTip()">
+    <span class="exit-icon">💸</span> Tip the DJ
+  </button>
+  <button class="btn-exit-action btn-exit-invite" onclick="exitInvite()">
+    <span class="exit-icon">📲</span> Invite a Friend
+  </button>
+  <button class="btn-exit-action btn-exit-notify" onclick="exitNotify()">
+    <span class="exit-icon">🔔</span> Notify Me Next Time
+  </button>
+  <button class="btn-exit-skip" onclick="closeExitCards()">Maybe later</button>
+</div>
+
 <!-- BOOMBOX POPUP -->
 <div id="boom-popup">
   <div class="boom-img-wrap">
@@ -949,20 +978,10 @@ function onTapBanner(){
         const btMsgMs = bluetooth.length * 55 + 600;
         boomSay(bluetooth, btMsgMs, false, 'devious');
 
-        // Third line — random chaos after bluetooth message
+        // Third line — chaos/reminders with mood
         setTimeout(() => {
-          const thirdLines = [
-            "Your body knows what to do. Let it.",
-            "This music is now legally your personality.",
-            "If someone asks what you're doing, say 'vibe research'.",
-            "We recommend moving your body in a suspicious manner.",
-            "Pro tip: the bass hits harder if you close your eyes.",
-            "Turn it up. Your neighbors will understand eventually.",
-            "No wrong answers. Only wrong volumes — and too low is wrong.",
-            "We have been expecting you since the beginning of sound.",
-          ];
-          const third = thirdLines[Math.floor(Math.random() * thirdLines.length)];
-          boomSay(third, 4000, false, Math.random() < 0.5 ? 'regular' : 'devious');
+          const t = ZONE_THIRD_LINES[Math.floor(Math.random() * ZONE_THIRD_LINES.length)];
+          boomSay(t.text, 4000, false, t.mood);
         }, btMsgMs + 400);
         }, firstMsgMs + 400);
       }, 300);
@@ -1192,8 +1211,8 @@ function startAudioHeartbeat() {
 // Regular Boomy — warm, welcoming, a little stoned
 const ZONE_ENTRY_LINES = [
   "Right on time.",
-  "Are you ready for this Guerilla concerto?",
-  "You found it. Most people never do.",
+  "Are you ready for this Guerilla Concerto?",
+  "Hooray. You found it.",
   "Welcome to the only club with no address.",
   "You just walked through the wall.",
   "This is not on any map.",
@@ -1202,24 +1221,24 @@ const ZONE_ENTRY_LINES = [
   "Pop-up rave. No VIP list. Everyone's in.",
   "You're in the radius. Stay a while.",
   "Welcome to the invisible venue.",
-  "You crossed the line. Literally.",
+  "You just crossed the line. Literally.",
   "Some people walked right past this. Not you.",
   "Your body already knows what's about to happen.",
   "Shh. The music is already inside you.",
   "You found the frequency. Most people spend their whole lives looking.",
   "The city has no idea we're doing this right now.",
-  "I've been warming up for you specifically.",
+  "Did you remember to bring a gift for the DJ?",
 ];
 
 // Devious Boomy — chaotic, a little unhinged, one eye open
 const ZONE_DEVIOUS_LINES = [
-  "Hide the drugs.",
+  "Hide your drugs… Unless you are in Colorado!",
   "Fashionably late I see.",
-  "Oh good. You made it. I was starting to feel unwanted.",
+  "Oh good. You made it. And you look red hot like a spicy marinara sauce.",
   "I can feel you in my woofers.",
   "You smell like someone who needed this.",
   "GPS said you'd be here 10 minutes ago. I'm not mad.",
-  "Oh this? This is nothing. This is everything.",
+  "Oh this? This is nothing. Just a lil' hullabaloo forming.",
   "I would hug you but I only have buttons.",
   "Technically this isn't happening.",
   "I've been playing to nobody for 20 minutes. You owe me.",
@@ -1229,18 +1248,38 @@ const ZONE_DEVIOUS_LINES = [
   "Don't tell anyone about this place.",
 ];
 
-// Angry Boomy — wounded, dramatic, deeply invested
+// Angry Boomy — NOT at people. At injustice, litter, narcs, the universe.
 const ZONE_ANGRY_LINES = [
-  "HEY. Where are you going. I JUST got warmed up.",
-  "Oh so you're just LEAVING. Fine. Fine!",
-  "You walked out of my radius and took my heart with you.",
-  "I didn't spend 45 minutes on this playlist for THIS.",
-  "The bass drops in 30 seconds. THIRTY. SECONDS.",
-  "Come back. I'll play your favorite song. I know what it is.",
-  "This is exactly what happened at Coachella 2019 and I'm still not over it.",
-  "I'm not angry. I'm disappointed. Actually I'm both.",
-  "You know what? I'm turning it up louder for the people who stayed.",
-  "It's fine. GO. The sub frequencies will follow you home.",
+  "Litter makes me so mad I could puke.",
+  "And remember: litter is for quitters.",
+  "Pick up your trash or you ARE trash. Love you!",
+  "If you see a cop, plead the fifth!",
+  "No narcs! Narc? Release a fart in their direction.",
+];
+
+// Third message — chaos, reminders, Boomy wisdom
+const ZONE_THIRD_LINES = [
+  { text: "Your booty knows what to do. Let it.", mood: 'regular' },
+  { text: "And remember kids — narc? Release a fart in their direction.", mood: 'devious' },
+  { text: "If someone asks what you're doing, say 'vibe research'.", mood: 'devious' },
+  { text: "And remember: safety is always a priority. No narcs!", mood: 'devious' },
+  { text: "Pro tip: the bass hits harder if you sit on the speaker!", mood: 'devious' },
+  { text: "BOOTS AND CATS AND BOOTS AND CATS.", mood: 'regular' },
+  { text: "Bring gifts and tip the DJ.", mood: 'regular' },
+  { text: "And remember: stay away from drugs.", mood: 'devious' },
+  { text: "Litter makes me want to puke.", mood: 'angry' },
+  { text: "Litter is for quitters.", mood: 'angry' },
+  { text: "Pick up your trash or you ARE trash. Love you!", mood: 'angry' },
+  { text: "If you see a cop, plead the fifth!", mood: 'angry' },
+];
+
+// Exit lines — bittersweet, empowering, community-focused
+const ZONE_EXIT_LINES = [
+  { text: "Remember to tip your DJ!", mood: 'regular' },
+  { text: "Before you go — tip the DJ. They made this happen.", mood: 'regular' },
+  { text: "You're leaving but the music stays in you. Tip the DJ on your way out.", mood: 'regular' },
+  { text: "The DJ gave you this. Give something back.", mood: 'devious' },
+  { text: "Go tell a friend. The next zone could be bigger.", mood: 'devious' },
 ];
 
 
@@ -1739,7 +1778,50 @@ function addZoneToMap(z) {
   L.marker([z.lat,z.lng],{icon:L.divIcon({html:'<div style="width:8px;height:8px;border-radius:50%;background:#f57e20;box-shadow:0 0 8px #f57e20;"></div>',iconSize:[8,8],iconAnchor:[4,4],className:''})}).addTo(leafletMap);
 }
 
-// ── GUEST LIST ────────────────────────────────────────────
+// ── EXIT ACTION CARDS ─────────────────────────────────────
+function showExitCards(z) {
+  // Set tip button link from zone's tip_url if DJ configured one
+  const tipBtn = document.getElementById('btn-exit-tip');
+  if (tipBtn) {
+    if (z?.tip_url) {
+      tipBtn.style.display = 'flex';
+      tipBtn.onclick = () => { window.open(z.tip_url, '_blank'); closeExitCards(); };
+    } else {
+      tipBtn.style.display = 'none'; // hide if DJ hasn't set tip link
+    }
+  }
+  document.getElementById('exit-cards')?.classList.add('open');
+}
+
+function closeExitCards() {
+  document.getElementById('exit-cards')?.classList.remove('open');
+}
+
+function exitTip() {
+  closeExitCards();
+  // Fallback if no tip URL — show toast
+  showToast('Ask the DJ for their tip link! 💸');
+}
+
+function exitInvite() {
+  closeExitCards();
+  const msg = `I just found a secret pop-up rave. Get here: ${window.location.href}`;
+  if (navigator.share) {
+    navigator.share({ title: 'BYOB — Secret Zone', text: msg }).catch(()=>{});
+  } else {
+    // Fallback: SMS link
+    window.open(`sms:?body=${encodeURIComponent(msg)}`);
+  }
+}
+
+function exitNotify() {
+  closeExitCards();
+  // Store preference locally — full push notification impl comes later
+  localStorage.setItem('byob_notify', '1');
+  boomSay("We'll find you next time. Yes.", 3000, false, 'regular');
+}
+
+
 let liveGuests = {};           // { id: { name, emoji, dist, status, lastSeen } }
 let _friends   = JSON.parse(localStorage.getItem('byob_friends') || '{}');
 let _lastGuestCount = 0;
@@ -1920,12 +2002,15 @@ function onEnterZone(z) {
 function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
 
-  // Angry boombox — picks a random grievance
-  const line = ZONE_ANGRY_LINES[Math.floor(Math.random() * ZONE_ANGRY_LINES.length)];
-  boomSay(line, 3000, false, 'angry');
+  // Boomy exit — empowering, community-focused
+  const exitLine = ZONE_EXIT_LINES[Math.floor(Math.random() * ZONE_EXIT_LINES.length)];
+  const exitMsgMs = exitLine.text.length * 55 + 800;
+  boomSay(exitLine.text, exitMsgMs, false, exitLine.mood);
 
-  audio.muted = true;
-  audio.volume = 0;
+  // Show action cards after Boomy finishes
+  setTimeout(() => showExitCards(z), exitMsgMs + 300);
+
+  audio.muted = true; audio.volume = 0;
   setMuteBtn(true);
   const btnZone = document.getElementById('btn-zone');
   if (btnZone){ btnZone.classList.remove('in-zone'); btnZone.textContent='⚡ FIND NEAREST ZONE'; }
