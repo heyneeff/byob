@@ -986,46 +986,44 @@ function closeBoomPopup() {
   if (boomImg) boomImg.classList.remove('talking');
 }
 
-// ── BABBLE SOUND — boombox vocal character ────────────────
-let _babbleCtx = null;
-let _babbleChar = 0; // cycles through a pattern for speech cadence
+// ── SHARED AUDIO CONTEXT — created once, unlocked on first tap ───────────────
+let _sfxCtx = null;
+function getSfxCtx() {
+  if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (_sfxCtx.state === 'suspended') _sfxCtx.resume();
+  return _sfxCtx;
+}
+// Pre-unlock on ANY user interaction so geofence sounds work later
+['touchstart','touchend','click','keydown'].forEach(ev =>
+  document.addEventListener(ev, () => { if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)(); if (_sfxCtx.state === 'suspended') _sfxCtx.resume(); }, { once: false, passive: true })
+);
+let _babbleChar = 0;
 function playBabble() {
   try {
-    if (!_babbleCtx) _babbleCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = _babbleCtx;
+    const ctx = getSfxCtx();
+    if (!ctx || ctx.state !== 'running') return;
     const now = ctx.currentTime;
     const dur = 0.1;
-
-    // Sawtooth gives the harmonic richness of a voice
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
-    // Cycle through speech-like pitches — not fully random, has cadence
     const pitches = [110, 130, 98, 120, 146, 110, 87, 130];
     osc.frequency.value = pitches[_babbleChar % pitches.length] * (1 + Math.random() * 0.04);
     _babbleChar++;
-
-    // Bandpass filter = "mouth shape" / formant
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    // Formant frequency shifts slightly each syllable — gives it a talking feel
     filter.frequency.value = 600 + Math.random() * 900;
     filter.Q.value = 4 + Math.random() * 5;
-
-    // Second formant layer for richness
     const filter2 = ctx.createBiquadFilter();
     filter2.type = 'bandpass';
     filter2.frequency.value = 1200 + Math.random() * 800;
     filter2.Q.value = 6;
-
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.14, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
     osc.connect(filter);
     filter.connect(filter2);
     filter2.connect(gain);
     gain.connect(ctx.destination);
-
     osc.start(now);
     osc.stop(now + dur);
   } catch(e) {}
@@ -1034,35 +1032,29 @@ function playBabble() {
 // ── WARP ENTRY SOUND ────────────────────────────────────
 function playWarpSound() {
   try {
-    const ctx  = new (window.AudioContext || window.webkitAudioContext)();
-    const now  = ctx.currentTime;
-    const dur  = 1.1;
-
-    // Low "womp" sweep — pitch drops fast then reverbs
+    const ctx = getSfxCtx();
+    if (!ctx || ctx.state !== 'running') return;
+    const now = ctx.currentTime;
+    const dur = 1.1;
     const osc1 = ctx.createOscillator();
     const osc2 = ctx.createOscillator();
-    const gain = ctx.createGain();
-    const gain2= ctx.createGain();
-
+    const gain  = ctx.createGain();
+    const gain2 = ctx.createGain();
     osc1.type = 'sawtooth';
     osc1.frequency.setValueAtTime(320, now);
     osc1.frequency.exponentialRampToValueAtTime(55, now + 0.35);
     gain.gain.setValueAtTime(0.0, now);
     gain.gain.linearRampToValueAtTime(0.45, now + 0.04);
     gain.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
     osc2.type = 'sine';
     osc2.frequency.setValueAtTime(180, now);
     osc2.frequency.exponentialRampToValueAtTime(40, now + 0.5);
     gain2.gain.setValueAtTime(0.3, now);
     gain2.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
     osc1.connect(gain);   gain.connect(ctx.destination);
     osc2.connect(gain2); gain2.connect(ctx.destination);
     osc1.start(now); osc1.stop(now + dur);
     osc2.start(now); osc2.stop(now + dur);
-
-    setTimeout(() => ctx.close(), (dur + 0.2) * 1000);
   } catch(e) {}
 }
 
@@ -1411,7 +1403,11 @@ function initMap() {
     }
     // Auto-detect zone entry/exit
     checkGeofences();
-  }, null, { enableHighAccuracy: true, maximumAge: 3000 });
+  }, err => {
+    // Don't let watch die silently — log and show toast on permission errors
+    if (err.code === 1) showToast('📍 Location permission denied — enable in Settings');
+    console.warn('GPS watch error:', err.message);
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
 }
 
 function placeUserMarker(lat, lng) {
@@ -1610,25 +1606,30 @@ async function joinZone(z) {
 
 // ── UNLOCK ───────────────────────────────────────────────
 function unlockUI(z) {
-  document.getElementById('btn-zone').classList.add('in-zone'); document.getElementById('btn-zone').textContent='✦ YOU ARE IN THE ZONE';
+  // Zone button transforms first
+  const btnZone = document.getElementById('btn-zone');
+  if (btnZone){ btnZone.classList.add('in-zone'); btnZone.textContent='✦ YOU ARE IN THE ZONE'; }
+
+  // Unlock the cards — this is the critical step
   ['music','visuals'].forEach(k => {
-    document.getElementById(k+'-lockable').classList.remove('locked');
+    document.getElementById(k+'-lockable')?.classList.remove('locked');
   });
-  document.getElementById('music-artist').textContent = z.track_name || z.name;
-  document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
-  const p=Math.floor(Math.random()*40)+8, a=Math.floor(Math.random()*12)+2;
-  document.getElementById('stat-present').textContent = p;
-  document.getElementById('stat-approaching').textContent = a;
-  document.getElementById('stat-speakers').textContent = 1;
-  // Start real proximity tracking
-  startProximityTracking(z);
-  document.getElementById('modal-zone-name').textContent = z.name;
-  document.getElementById('modal-coords').textContent = z.lat?.toFixed(5)+', '+z.lng?.toFixed(5);
-  document.getElementById('modal-radius').textContent = z.radius_m+'m';
-  document.getElementById('modal-listeners').textContent = (z.listeners||0)+1;
-  document.getElementById('modal-track').textContent = z.track_name||'—';
-  // Show navigation widget
-  startNavigation(z);
+
+  // Update UI labels
+  const setTxt = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+  setTxt('music-artist',  z.track_name || z.name);
+  setTxt('stat-present',  Math.floor(Math.random()*40)+8);
+  setTxt('stat-approaching', Math.floor(Math.random()*12)+2);
+  setTxt('stat-speakers', 1);
+  setTxt('modal-zone-name', z.name);
+  setTxt('modal-coords',  (z.lat?.toFixed(5)||'?')+', '+(z.lng?.toFixed(5)||'?'));
+  setTxt('modal-radius',  (z.radius_m||'?')+'m');
+  setTxt('modal-listeners', (z.listeners||0)+1);
+  setTxt('modal-track',   z.track_name||'—');
+
+  // Start tracking and navigation
+  try { startProximityTracking(z); } catch(e) {}
+  try { startNavigation(z); } catch(e) {}
 }
 
 // ── WEBRTC RECEIVER ──────────────────────────────────────
@@ -1710,7 +1711,8 @@ function buildVisualizer(){
 
   function draw(){
     requestAnimationFrame(draw);
-    if (!W || !H) sizeCanvas();
+    if (!W || !H) { sizeCanvas(); return; }
+    if (W < 4 || H < 4) return;
 
     // Smooth energy transition — reads global _webAudioPlaying
     const target = (_webAudioPlaying && !_isMuted) ? 1 : 0;
