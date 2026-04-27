@@ -1362,12 +1362,23 @@ function launchApp() {
 
 // party button
 function onZoneBtn() {
-  // If already in zone, just scroll to music
+  // Already in an active zone — scroll to music
   if (activeZone) {
     document.getElementById('music-lockable')?.scrollIntoView({behavior:'smooth', block:'center'});
     return;
   }
-  // Find nearest active zone
+
+  // Check if physically inside any zone right now — activate it directly
+  if (userLat && knownZones.length) {
+    const alreadyInside = knownZones.find(z => z.lat && distM(userLat, userLng, z.lat, z.lng) <= (z.radius_m || 200));
+    if (alreadyInside) {
+      insideZoneIds.add(alreadyInside.id);
+      onEnterZone(alreadyInside);
+      return;
+    }
+  }
+
+  // No active zones at all
   if (!knownZones || !knownZones.length) {
     boomSay("No zones are active right now. Check back soon! 🎧");
     return;
@@ -1376,17 +1387,14 @@ function onZoneBtn() {
     boomSay("Getting your location... try again in a moment.");
     return;
   }
-  // Sort by distance
-  const nearest = knownZones.slice().sort((a,b) => {
-    const da = Math.hypot(a.lat - userLat, a.lng - userLng);
-    const db = Math.hypot(b.lat - userLat, b.lng - userLng);
-    return da - db;
-  })[0];
+
+  // Fly to nearest zone
+  const nearest = knownZones.slice().sort((a,b) =>
+    Math.hypot(a.lat-userLat, a.lng-userLng) - Math.hypot(b.lat-userLat, b.lng-userLng)
+  )[0];
   if (!nearest) { boomSay("No zones active right now. 🎧"); return; }
-  // Fly map to nearest zone
-  if (window._map) {
-    window._map.flyTo([nearest.lat, nearest.lng], 16, {animate:true, duration:1.2});
-  }
+  if (window._map) window._map.flyTo([nearest.lat, nearest.lng], 16, {animate:true, duration:1.2});
+  previewZone(nearest);
   showToast(`📍 Nearest zone: ${nearest.name}`);
 }
 
@@ -1499,6 +1507,9 @@ async function checkGeofences() {
     }
   });
 }
+
+// Backup interval — fires even when GPS watch throttles (screen locked, not moving)
+setInterval(checkGeofences, 8000);
 
 function onEnterZone(z) {
   if (activeZone?.id === z.id) {
