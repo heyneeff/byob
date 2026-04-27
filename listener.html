@@ -1016,7 +1016,11 @@ let _boomPopupTimer = null;
 let _boomBabbleInterval = null;
 let _boomGeneration = 0; // increments each boomSay call, kills stale typeNexts
 
+let _boomCallCount = 0;
 function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') {
+  _boomCallCount++;
+  const callNum = _boomCallCount;
+  showToast(`boomSay #${callNum}: "${String(text).slice(0,15)}"`);
   const popup  = document.getElementById('boom-popup');
   const bubble = document.getElementById('boom-popup-bubble');
   const img    = document.getElementById('boom-popup-img');
