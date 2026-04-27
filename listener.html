@@ -1014,6 +1014,7 @@ function togglePlay() {
 // ── BOOMBOX POPUP ────────────────────────────────────────
 let _boomPopupTimer = null;
 let _boomBabbleInterval = null;
+let _boomGeneration = 0; // increments each boomSay call, kills stale typeNexts
 
 function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') {
   const popup  = document.getElementById('boom-popup');
@@ -1044,9 +1045,11 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   const safeText = String(text);
   if (boomImg) boomImg.classList.add('talking');
 
-  // Recursive typewriter — each char schedules the next, no shared mutable i
+  // Generation counter — if boomSay is called again, this gen becomes stale and stops
+  _boomGeneration++;
+  const myGen = _boomGeneration;
   function typeNext(idx) {
-    if (!document.getElementById('boom-popup')?.classList.contains('open')) return;
+    if (myGen !== _boomGeneration) return; // stale — newer boomSay took over
     if (idx >= safeText.length) {
       if (boomImg) boomImg.classList.remove('talking');
       return;
@@ -1056,7 +1059,7 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
       b.textContent += safeText[idx];
       if (safeText[idx] !== ' ' && safeText[idx] !== '\n') playBabble();
     }
-    _boomBabbleInterval = setTimeout(() => typeNext(idx + 1), 42);
+    setTimeout(() => typeNext(idx + 1), 42);
   }
   typeNext(0);
 
@@ -1581,6 +1584,10 @@ function launchApp() {
 
 // party button
 function onZoneBtn() {
+  // Init AudioContext on this direct gesture so babble works immediately
+  if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+  _sfxCtx.resume();
+  startAudioHeartbeat();
   // Already in an active zone — scroll to music
   if (activeZone) {
     document.getElementById('music-lockable')?.scrollIntoView({behavior:'smooth', block:'center'});
