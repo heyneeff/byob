@@ -1045,25 +1045,25 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   const safeText = String(text);
   if (boomImg) boomImg.classList.add('talking');
 
-  // Generation counter — if boomSay is called again, this gen becomes stale and stops
-  _boomGeneration++;
-  const myGen = _boomGeneration;
-  function typeNext(idx) {
-    if (myGen !== _boomGeneration) return; // stale — newer boomSay took over
-    if (idx >= safeText.length) {
-      if (boomImg) boomImg.classList.remove('talking');
-      return;
-    }
-    const b = document.getElementById('boom-popup-bubble');
-    if (b) {
-      b.textContent += safeText[idx];
-      if (safeText[idx] !== ' ' && safeText[idx] !== '\n') playBabble();
-    }
-    setTimeout(() => typeNext(idx + 1), 42);
-  }
-  typeNext(0);
+  // Debug — remove after confirming text arrives correctly
+  showToast('💬 ' + safeText.slice(0, 20) + '...');
 
-  _boomPopupTimer = setTimeout(closeBoomPopup, autoDismissMs + safeText.length * 42);
+  // setInterval + slice assignment: even if content gets reset, next tick recovers
+  let charIdx = 0;
+  _boomBabbleInterval = setInterval(function tick() {
+    const b = document.getElementById('boom-popup-bubble');
+    if (!b) return;
+    if (charIdx < safeText.length) {
+      b.textContent = safeText.slice(0, charIdx + 1); // assignment not append
+      if (safeText[charIdx] !== ' ' && safeText[charIdx] !== '\n') playBabble();
+      charIdx++;
+    } else {
+      clearInterval(_boomBabbleInterval);
+      if (boomImg) boomImg.classList.remove('talking');
+    }
+  }, 42);
+
+  _boomPopupTimer = setTimeout(closeBoomPopup, autoDismissMs + safeText.length * 42 + 500);
 }
 
 function closeBoomPopup() {
