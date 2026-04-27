@@ -574,9 +574,6 @@ audio{display:none;}
   <div class="boom-popup-bubble" id="boom-popup-bubble"></div>
 </div>
 
-<!-- BABBLE TEST BUTTON - remove after debugging -->
-<button id="babble-test-btn" onclick="testBabble()" style="position:fixed;top:12px;right:12px;z-index:9999;background:var(--orange);color:#000;border:none;border-radius:8px;padding:10px 14px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">🔊 TEST</button>
-
 <div id="toast"></div>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
@@ -1016,11 +1013,7 @@ let _boomPopupTimer = null;
 let _boomBabbleInterval = null;
 let _boomGeneration = 0; // increments each boomSay call, kills stale typeNexts
 
-let _boomCallCount = 0;
 function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') {
-  _boomCallCount++;
-  const callNum = _boomCallCount;
-  showToast(`boomSay #${callNum}: "${String(text).slice(0,15)}"`);
   const popup  = document.getElementById('boom-popup');
   const bubble = document.getElementById('boom-popup-bubble');
   const img    = document.getElementById('boom-popup-img');
@@ -1048,9 +1041,6 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   const boomImg = document.getElementById('boom-popup-img');
   const safeText = String(text);
   if (boomImg) boomImg.classList.add('talking');
-
-  // Debug — remove after confirming text arrives correctly
-  showToast('💬 ' + safeText.slice(0, 20) + '...');
 
   // setInterval + slice assignment: even if content gets reset, next tick recovers
   let charIdx = 0;
@@ -1189,39 +1179,6 @@ const ZONE_ANGRY_LINES = [
   "You know what? I'm turning it up louder for the people who stayed.",
   "It's fine. GO. The sub frequencies will follow you home.",
 ];
-function testBabble() {
-  // Step 1 — can we create a context at all?
-  if (!window.AudioContext && !window.webkitAudioContext) {
-    showToast('❌ AudioContext not supported'); return;
-  }
-  showToast('1️⃣ AudioContext exists');
-
-  // Step 2 — create/resume
-  if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
-  showToast(`2️⃣ ctx state: ${_sfxCtx.state}`);
-
-  _sfxCtx.resume().then(() => {
-    showToast(`3️⃣ after resume: ${_sfxCtx.state}`);
-
-    // Step 3 — try to make a simple beep
-    try {
-      const ctx = _sfxCtx;
-      const now = ctx.currentTime + 0.05;
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = 440;
-      osc.type = 'sine';
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-      osc.connect(gain); gain.connect(ctx.destination);
-      if (ctx._iOSDest) gain.connect(ctx._iOSDest);
-      osc.start(now); osc.stop(now + 0.4);
-      showToast('4️⃣ beep scheduled — do you hear it?');
-    } catch(e) {
-      showToast('❌ beep error: ' + e.message);
-    }
-  }).catch(e => showToast('❌ resume failed: ' + e.message));
-}
 
 
 function playBabble() {
