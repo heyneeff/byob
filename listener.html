@@ -931,14 +931,19 @@ function onTapBanner(){
 
   _isMuted = false; setMuteBtn(false);
 
-  // 1. Start music faded in — set volume AFTER play() starts (iOS ignores pre-play volume)
+  // 1. Start music faded in
   const startFadedPlay = () => {
-    audio.volume = 0.001; // start near-silent
     audio.muted = false;
-    audio.play().then(() => {
-      _webAudioPlaying = true;
-      fadeAudioIn();
-    }).catch(e => showToast('Play failed: ' + e.message));
+    audio.volume = 0;
+    const playPromise = audio.play();
+    audio.volume = 0; // set again synchronously after play() call
+    if (playPromise) {
+      playPromise.then(() => {
+        audio.volume = 0; // and once more inside the promise
+        _webAudioPlaying = true;
+        fadeAudioIn();
+      }).catch(e => showToast('Play failed: ' + e.message));
+    }
   };
 
   if (typeof _pendingStream !== 'undefined' && _pendingStream) {
@@ -1055,15 +1060,19 @@ function seekToSync(startedAt, playAt, playFromS) {
 // ════════════════════════════════════════════════════════════
 // MUTE TOGGLE
 // ════════════════════════════════════════════════════════════
-function fadeAudioIn(durationMs = 5000) {
-  const steps = 60;
-  const interval = durationMs / steps;
-  let step = 0;
-  const fade = setInterval(() => {
-    step++;
-    audio.volume = Math.min(1, step / steps);
-    if (step >= steps) clearInterval(fade);
-  }, interval);
+function fadeAudioIn(durationMs = 6000) {
+  audio.volume = 0;
+  audio.muted = false;
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min((now - start) / durationMs, 1);
+    // Ease in — cubic curve so it feels gradual not linear
+    const eased = t * t * (3 - 2 * t);
+    audio.volume = eased;
+    if (t < 1) requestAnimationFrame(tick);
+    else audio.volume = 1;
+  }
+  requestAnimationFrame(tick);
 }
 
 function setMuteBtn(muted) {
