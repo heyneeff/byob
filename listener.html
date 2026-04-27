@@ -1055,7 +1055,24 @@ let _sfxCtx = null;
 let _heartbeat = null;
 
 function getSfxCtx() {
-  if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!_sfxCtx) {
+    _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // iOS fix: create a silent oscillator routed to a MediaStreamDestination,
+    // then pipe that into the <audio> element. This forces Web Audio onto the
+    // same audio session as media playback (speaker, not earpiece).
+    try {
+      const dest = _sfxCtx.createMediaStreamDestination();
+      const sfxAudio = document.createElement('audio');
+      sfxAudio.srcObject = dest.stream;
+      sfxAudio.volume = 0.001;
+      sfxAudio.autoplay = true;
+      sfxAudio.setAttribute('playsinline', '');
+      sfxAudio.play().catch(()=>{});
+      document.body.appendChild(sfxAudio);
+      // Store dest so babble/warp can connect to it
+      _sfxCtx._iOSDest = dest;
+    } catch(e) {}
+  }
   if (_sfxCtx.state === 'suspended') _sfxCtx.resume();
   return _sfxCtx;
 }
@@ -1162,6 +1179,7 @@ function testBabble() {
       gain.gain.setValueAtTime(0.3, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
       osc.connect(gain); gain.connect(ctx.destination);
+      if (ctx._iOSDest) gain.connect(ctx._iOSDest);
       osc.start(now); osc.stop(now + 0.4);
       showToast('4️⃣ beep scheduled — do you hear it?');
     } catch(e) {
@@ -1191,7 +1209,9 @@ function playBabble() {
       const g = ctx.createGain();
       g.gain.setValueAtTime(0.18, now);
       g.gain.exponentialRampToValueAtTime(0.001, now + dur);
-      osc.connect(f1); f1.connect(f2); f2.connect(g); g.connect(ctx.destination);
+      osc.connect(f1); f1.connect(f2); f2.connect(g);
+      g.connect(ctx.destination);
+      if (ctx._iOSDest) g.connect(ctx._iOSDest);
       osc.start(now);
       osc.stop(now + dur + 0.01);
     } catch(e) {}
