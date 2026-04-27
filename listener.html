@@ -2335,14 +2335,7 @@ function initProximityGrid() {
 }
 
 function startProximityTracking(zone) {
-  if (!proximityGrid) initProximityGrid();
-  proximityGrid.subscribePresence(zone.id);
-  // Place self on grid immediately
-  if (userLat && zone.lat) {
-    const dist    = distM(userLat, userLng, zone.lat, zone.lng) * 0.000621371;
-    const bearing = getBearing(zone.lat, zone.lng, userLat, userLng);
-    proximityGrid.upsertPerson('__self__', dist, bearing);
-  }
+  // Guest list now handles presence — proximity grid removed
 }
 
 // ── ZONE NAVIGATION ──────────────────────────────────────
