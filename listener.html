@@ -886,6 +886,21 @@ function onTapBanner(){
   unlockSfxForIOS();
   startAudioHeartbeat();
 
+  // Play a tiny audible click RIGHT NOW (sync in gesture) to claim iOS audio session
+  // Without this, iOS revokes the gesture context before our setTimeout fires
+  try {
+    const ctx = _sfxCtx;
+    const now = ctx.currentTime;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.frequency.value = 1200;
+    o.type = 'sine';
+    g.gain.setValueAtTime(0.001, now); // barely audible - just claims the session
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(now); o.stop(now + 0.02);
+  } catch(e) {}
+
   _isMuted = false; setMuteBtn(false);
 
   // 1. Start music immediately (inside user gesture window)
@@ -1026,28 +1041,31 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   if (vibrate && navigator.vibrate) navigator.vibrate([80, 40, 80, 40, 120]);
 
   const boomImg = document.getElementById('boom-popup-img');
-  const safeText = String(text); // guarantee string
-  let i = 0;
+  const safeText = String(text);
   if (boomImg) boomImg.classList.add('talking');
-  _boomBabbleInterval = setInterval(() => {
-    const b = document.getElementById('boom-popup-bubble');
-    if (!b) return;
-    if (i < safeText.length) {
-      b.textContent += safeText[i];
-      if (safeText[i] !== ' ' && safeText[i] !== '\n') playBabble();
-      i++;
-    } else {
-      clearInterval(_boomBabbleInterval);
-      if (boomImg) boomImg.classList.remove('talking');
-    }
-  }, 42);
 
-  _boomPopupTimer = setTimeout(closeBoomPopup, autoDismissMs + text.length * 42);
+  // Recursive typewriter — each char schedules the next, no shared mutable i
+  function typeNext(idx) {
+    if (!document.getElementById('boom-popup')?.classList.contains('open')) return;
+    if (idx >= safeText.length) {
+      if (boomImg) boomImg.classList.remove('talking');
+      return;
+    }
+    const b = document.getElementById('boom-popup-bubble');
+    if (b) {
+      b.textContent += safeText[idx];
+      if (safeText[idx] !== ' ' && safeText[idx] !== '\n') playBabble();
+    }
+    _boomBabbleInterval = setTimeout(() => typeNext(idx + 1), 42);
+  }
+  typeNext(0);
+
+  _boomPopupTimer = setTimeout(closeBoomPopup, autoDismissMs + safeText.length * 42);
 }
 
 function closeBoomPopup() {
   clearTimeout(_boomPopupTimer);
-  clearInterval(_boomBabbleInterval);
+  clearTimeout(_boomBabbleInterval); // now a timeout not interval
   const popup  = document.getElementById('boom-popup');
   const boomImg = document.getElementById('boom-popup-img');
   if (popup)   popup.classList.remove('open');
