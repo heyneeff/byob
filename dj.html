@@ -300,6 +300,7 @@ audio{display:none;}
     <span class="zdp-val" id="zdp-radius-val">200m</span>
   </div>
   <input class="zdp-name" id="zdp-name" type="text" placeholder="Zone name (e.g. Civic Park Rave)"/>
+  <input class="zdp-name" id="zdp-tip-url" type="url" placeholder="Tip link (Venmo, CashApp, PayPal…)" style="margin-top:6px;opacity:.8;"/>
   <div class="zdp-actions">
     <button class="zdp-confirm" onclick="confirmZone()">✓ Create Zone</button>
     <button class="zdp-cancel" onclick="cancelZoneDraw()">✕ Cancel</button>
@@ -639,9 +640,10 @@ function onMainRadius(val){
 async function confirmZone(){
   if(!draftCenter){showToast('Tap map to place center');return;}
   if(!currentUser){showToast('Sign in first');document.getElementById('dj-auth').style.display='flex';return;}
-  const name=document.getElementById('zdp-name').value.trim()||'Unnamed Zone';
+  const name = document.getElementById('zdp-name').value.trim() || 'Unnamed Zone';
+  const tipUrl = document.getElementById('zdp-tip-url').value.trim() || null;
   try{
-    const {data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0}).select().single();
+    const {data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0,tip_url:tipUrl}).select().single();
     if(error)throw error;
     activeZone=data; cancelZoneDraw();
     zoneCircles[data.id]=L.circle([data.lat,data.lng],{radius:data.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.07,weight:1.5}).addTo(leafletMap);
