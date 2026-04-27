@@ -569,7 +569,7 @@ audio{display:none;}
 </div>
 
 <!-- BOOMBOX POPUP -->
-<div id="boom-popup" onclick="closeBoomPopup()">
+<div id="boom-popup">
   <img class="boom-popup-img" id="boom-popup-img" alt=""/>
   <div class="boom-popup-bubble" id="boom-popup-bubble"></div>
 </div>
@@ -1035,6 +1035,9 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   clearInterval(_boomBabbleInterval);
   bubble.textContent = '';
   popup.classList.add('open');
+  // Prevent iOS click-through — disable pointer events briefly after open
+  popup.style.pointerEvents = 'none';
+  setTimeout(() => { popup.style.pointerEvents = ''; }, 600);
 
   if (vibrate && navigator.vibrate) navigator.vibrate([80, 40, 80, 40, 120]);
 
