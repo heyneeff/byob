@@ -883,6 +883,7 @@ function onTapBanner(){
   // Unlock AudioContext on this gesture — must happen first
   if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   _sfxCtx.resume();
+  unlockSfxForIOS();
   startAudioHeartbeat();
 
   _isMuted = false; setMuteBtn(false);
@@ -1025,12 +1026,15 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   if (vibrate && navigator.vibrate) navigator.vibrate([80, 40, 80, 40, 120]);
 
   const boomImg = document.getElementById('boom-popup-img');
+  const safeText = String(text); // guarantee string
   let i = 0;
   if (boomImg) boomImg.classList.add('talking');
   _boomBabbleInterval = setInterval(() => {
-    if (i < text.length) {
-      bubble.textContent += text[i];
-      if (text[i] !== ' ' && text[i] !== '\n') playBabble();
+    const b = document.getElementById('boom-popup-bubble');
+    if (!b) return;
+    if (i < safeText.length) {
+      b.textContent += safeText[i];
+      if (safeText[i] !== ' ' && safeText[i] !== '\n') playBabble();
       i++;
     } else {
       clearInterval(_boomBabbleInterval);
@@ -1055,26 +1059,32 @@ let _sfxCtx = null;
 let _heartbeat = null;
 
 function getSfxCtx() {
-  if (!_sfxCtx) {
-    _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
-    // iOS fix: create a silent oscillator routed to a MediaStreamDestination,
-    // then pipe that into the <audio> element. This forces Web Audio onto the
-    // same audio session as media playback (speaker, not earpiece).
-    try {
-      const dest = _sfxCtx.createMediaStreamDestination();
-      const sfxAudio = document.createElement('audio');
-      sfxAudio.srcObject = dest.stream;
-      sfxAudio.volume = 0.001;
-      sfxAudio.autoplay = true;
-      sfxAudio.setAttribute('playsinline', '');
-      sfxAudio.play().catch(()=>{});
-      document.body.appendChild(sfxAudio);
-      // Store dest so babble/warp can connect to it
-      _sfxCtx._iOSDest = dest;
-    } catch(e) {}
-  }
+  if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   if (_sfxCtx.state === 'suspended') _sfxCtx.resume();
   return _sfxCtx;
+}
+
+// Called once from a real user gesture — sets up iOS audio session bridge
+function unlockSfxForIOS() {
+  if (window._sfxIOSUnlocked) return;
+  window._sfxIOSUnlocked = true;
+  try {
+    const ctx = getSfxCtx();
+    ctx.resume().then(() => {
+      // Create MediaStreamDestination and pipe into a real <audio> element
+      // This forces Web Audio onto the media playback session (speaker not earpiece)
+      const dest = ctx.createMediaStreamDestination();
+      const sfxEl = document.createElement('audio');
+      sfxEl.srcObject = dest.stream;
+      sfxEl.volume = 0.001;
+      sfxEl.setAttribute('playsinline','');
+      sfxEl.setAttribute('webkit-playsinline','');
+      sfxEl.play().then(() => {
+        ctx._iOSDest = dest;
+      }).catch(() => {});
+      document.body.appendChild(sfxEl);
+    });
+  } catch(e) {}
 }
 
 function startAudioHeartbeat() {
