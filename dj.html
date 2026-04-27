@@ -336,7 +336,7 @@ audio{display:none;}
   <img class="boom-img" id="boom-img" alt="BYOB DJ" style="opacity:.85;" onclick="toggleDJMenu()"/>
 </div>
 
-<div class="screen">
+<div class="screen" id="dj-app" style="display:none">
 
   <div class="map-search-wrap">
     <div class="map-frame" style="position:relative;">
@@ -362,7 +362,7 @@ audio{display:none;}
     <div class="track-name-row" id="track-name">No track loaded</div>
     <div class="upload-area">
       <button class="btn-upload-track" onclick="document.getElementById('file-input').click()">+ Upload Track</button>
-      <input type="file" id="file-input" accept=".mp3,.m4a,.aac,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/flac" multiple/>
+      <input type="file" id="file-input" multiple/>
       <span class="upload-status" id="upload-status">—</span>
     </div>
     <div class="volume-row">
@@ -453,7 +453,7 @@ window.addEventListener('DOMContentLoaded', async()=>{
     if(session){
       currentUser=session.user;
       window._mapInited=true;
-      document.getElementById('dj-auth').style.display='none';
+      document.getElementById('dj-auth').style.display='none'; document.getElementById('dj-app').style.display='block';
       initMap(DENVER[0],DENVER[1]);
       loadZones();
       loadDemoMode();
@@ -478,7 +478,7 @@ async function handleDJAuth(){
       : await db.auth.signInWithPassword({email,password});
     if(error){errEl.textContent=error.message;errEl.style.display='block';document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';return;}
     currentUser=data.user||data.session?.user;
-    document.getElementById('dj-auth').style.display='none';
+    document.getElementById('dj-auth').style.display='none'; document.getElementById('dj-app').style.display='block';
     // Init map only once
     if(!window._mapInited){ window._mapInited=true; initMap(DENVER[0],DENVER[1]); loadZones(); loadDemoMode(); }
     setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
@@ -500,6 +500,7 @@ async function djLogout() {
   if (typeof activeZone !== 'undefined') activeZone = null;
   // Just show the login overlay — no reload, no redundant screen
   document.getElementById('dj-auth').style.display='flex';
+  document.getElementById('dj-app').style.display='none';
   document.getElementById('dj-email').value='';
   document.getElementById('dj-password').value='';
   document.getElementById('dj-auth-err').style.display='none';
