@@ -861,32 +861,45 @@ function stopWebRTCBroadcast() {
 }
 
 async function scanDevices(){
-  try{await navigator.mediaDevices.getUserMedia({audio:true});const devices=await navigator.mediaDevices.enumerateDevices();const inputs=devices.filter(d=>d.kind==='audioinput');document.getElementById('device-select').innerHTML=inputs.map(d=>`<option value="${d.deviceId}">${d.label||'Input '+d.deviceId.slice(0,8)}</option>`).join('');showToast(`${inputs.length} input(s) found`);}catch(e){showToast('Mic permission needed');}
+  try {
+    // First try enumerating without requesting permission
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs = devices.filter(d => d.kind === 'audioinput');
+    if (inputs.length && inputs[0].label) {
+      // Permission already granted — show labeled devices
+      document.getElementById('device-select').innerHTML =
+        inputs.map(d => `<option value="${d.deviceId}">${d.label || 'Input '+d.deviceId.slice(0,8)}</option>`).join('');
+      showToast(`${inputs.length} input(s) found`);
+    } else {
+      // No labels = no permission yet — show generic option, permission requested on stream start
+      document.getElementById('device-select').innerHTML = '<option value="">Default microphone</option>';
+      showToast('Mic permission will be requested when you start streaming');
+    }
+  } catch(e) { showToast('Could not list devices'); }
 }
 
 function toggleLiveMenu() {
   const menu = document.getElementById('live-menu');
   if (!menu) return;
-  if (menu.classList.contains('open')) {
-    menu.classList.remove('open');
-  } else {
-    menu.classList.add('open');
-    scanDevices();
+  menu.classList.toggle('open');
+  // Reset stream button state when menu opens
+  const streamBtn = document.querySelector('.btn-live-stream');
+  if (streamBtn) {
+    streamBtn.textContent = '🎙 Live Audio Stream';
+    streamBtn.onclick = startLiveStream;
   }
 }
 
 function startLiveStream() {
-  // If already live, toggleLive stops it
-  // If upload is playing, clear it first
-  if (liveStream) { toggleLive(); return; }
-  // Show device row
+  if (liveStream) { toggleLive(); return; } // already live — stop it
+  // Show device row, scan devices, wait for user to pick then confirm
   document.getElementById('device-row').style.display = 'flex';
-  // Scroll device row into view
-  document.getElementById('device-row').scrollIntoView({behavior:'smooth', block:'nearest'});
-  showToast('Select input device then tap again to go live');
-  // Change button to confirm
-  document.querySelector('.btn-live-stream').textContent = '🔴 Start Streaming';
-  document.querySelector('.btn-live-stream').onclick = () => { toggleLive(); };
+  scanDevices();
+  const streamBtn = document.querySelector('.btn-live-stream');
+  if (streamBtn) {
+    streamBtn.textContent = '🔴 Confirm Stream';
+    streamBtn.onclick = () => { toggleLive(); };
+  }
 }
 
 async function toggleLive(){
