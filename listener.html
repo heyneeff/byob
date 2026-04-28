@@ -1409,23 +1409,37 @@ let _syncInterval = null;
 async function syncZoneAudio() {
   if (!activeZone) return;
   try {
-    const { data: z } = await db.from('zones').select('id,active,current_track_url,playback_started_at,play_at,play_from_s').eq('id', activeZone.id).single();
+    const { data: z } = await db.from('zones').select('id,active,current_track_url,track_name,playback_started_at,play_at,play_from_s,last_message').eq('id', activeZone.id).single();
     if (!z) return;
     activeZone = z;
     if (!z.active) { stopEverything(); showToast('The zone has ended 🎤'); return; }
-    if (z.current_track_url === 'webrtc-live' || !z.current_track_url) return;
-    // Drift correction
-    if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
-      const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
-      const expected = (elapsed + _calOffset) % audio.duration;
-      const drift = Math.abs(audio.currentTime - expected);
-      if (drift > 0.5) { console.log('Drift fix:', drift.toFixed(2)+'s'); audio.currentTime = expected; }
+
+    // If a track is set but we're not playing it yet — start it
+    if (z.current_track_url && z.current_track_url !== 'webrtc-live') {
+      if (!audio.src || audio.paused) {
+        loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
+        showTapBanner();
+        return;
+      }
+      // Drift correction
+      if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
+        const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
+        const expected = (elapsed + _calOffset) % audio.duration;
+        const drift = Math.abs(audio.currentTime - expected);
+        if (drift > 0.5) audio.currentTime = expected;
+      }
+    }
+
+    // If WebRTC live and not connected yet
+    if (z.current_track_url === 'webrtc-live' && !rtcPeer && !_pendingStream) {
+      joinWebRTCStream(z.id);
     }
   } catch(e) { console.warn('Sync error:', e.message); }
 }
 function startSyncEngine() {
   clearInterval(_syncInterval);
-  _syncInterval = setInterval(syncZoneAudio, 10000);
+  syncZoneAudio(); // run immediately on entry
+  _syncInterval = setInterval(syncZoneAudio, 5000); // poll every 5s as backup
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && activeZone) syncZoneAudio();
