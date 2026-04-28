@@ -871,14 +871,22 @@ function toggleLiveMenu() {
     menu.classList.remove('open');
   } else {
     menu.classList.add('open');
-    scanDevices(); // auto-scan when menu opens
+    scanDevices();
   }
 }
 
 function startLiveStream() {
-  // Show device selector, hide upload status
+  // If already live, toggleLive stops it
+  // If upload is playing, clear it first
+  if (liveStream) { toggleLive(); return; }
+  // Show device row
   document.getElementById('device-row').style.display = 'flex';
-  toggleLive(); // existing go-live logic
+  // Scroll device row into view
+  document.getElementById('device-row').scrollIntoView({behavior:'smooth', block:'nearest'});
+  showToast('Select input device then tap again to go live');
+  // Change button to confirm
+  document.querySelector('.btn-live-stream').textContent = '🔴 Start Streaming';
+  document.querySelector('.btn-live-stream').onclick = () => { toggleLive(); };
 }
 
 async function toggleLive(){
