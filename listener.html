@@ -2103,8 +2103,9 @@ async function activateZone(z) {
     loadTrack(z.current_track_url, z.track_name, z.playback_started_at);
   }
 
-  // Subscribe to zone updates
-  db.channel('zone_'+z.id)
+  // Subscribe to zone updates — unsubscribe first to avoid duplicates
+  if (window._zoneChannel) { window._zoneChannel.unsubscribe(); }
+  window._zoneChannel = db.channel('zone_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
       zones_cache[zn.id] = zn;
       if (!zn.active) { stopEverything(); showToast('Zone ended 🎤'); return; }
@@ -2120,7 +2121,8 @@ async function activateZone(z) {
         if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is LIVE 🎛️'); }
       } else if (zn.current_track_url) {
         loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-        showToast('Now playing 🔊');
+        showTapBanner();
+        showToast('Track loaded — tap to play 🔊');
       } else {
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
         if (rtcPeer) { rtcPeer.close(); rtcPeer=null; }
@@ -2128,7 +2130,6 @@ async function activateZone(z) {
         showToast('Stream ended');
       }
     }).subscribe();
-  loadZones();
 }
 
 // Keep joinZone as alias for geofence auto-trigger
