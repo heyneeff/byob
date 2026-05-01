@@ -2045,14 +2045,25 @@ setInterval(() => {
 let knownZones     = [];   // cached from last loadZones
 let insideZoneIds  = new Set();
 
+// ── Boomy hysteresis + cooldown (Change 2) ──────────────
+const BOOM_COOLDOWN_MS = 5 * 60 * 1000;   // 5 minutes
+const EXIT_BUFFER_M    = 20;              // hysteresis buffer past radius
+const _zoneBoomedAt    = {};              // { zoneId: timestamp of last Boomy speech }
+
 // Called every GPS tick — checks all known zones
 async function checkGeofences() {
   if (!userLat || !knownZones.length) return;
   knownZones.forEach(z => {
     if (!z.lat) return;
     const dist = distM(userLat, userLng, z.lat, z.lng);
-    const inside = dist <= (z.radius_m || 200);
+    const radius = z.radius_m || 200;
     const wasInside = insideZoneIds.has(z.id);
+
+    // Hysteresis: enter at radius, but don't exit until past radius + buffer
+    // This prevents flapping when GPS jitters across the boundary
+    const inside = wasInside
+      ? dist < (radius + EXIT_BUFFER_M)   // already inside — exit only past buffer
+      : dist <= radius;                    // not inside yet — enter exactly at radius
 
     if (inside && !wasInside) {
       insideZoneIds.add(z.id);
@@ -2075,10 +2086,23 @@ function onEnterZone(z) {
     }
     return;
   }
-  // Stash zone name — womp + boombox fire after tap banner is pressed
-  window._enteringZoneName = z.name;
 
-  // Flash map border teal
+  // Cooldown gate: only let Boomy speak if we haven't spoken for this zone recently
+  // Music still starts either way — this only quiets the talking
+  const lastBoom = _zoneBoomedAt[z.id] || 0;
+  const shouldBoom = Date.now() - lastBoom > BOOM_COOLDOWN_MS;
+
+  if (shouldBoom) {
+    _zoneBoomedAt[z.id] = Date.now();
+    // Stash zone name — womp + boombox fire after tap banner is pressed
+    window._enteringZoneName = z.name;
+  } else {
+    // Cooldown active — quiet entry, no Boomy talk on tap banner
+    window._enteringZoneName = null;
+    showToast('📡 Back in the zone');
+  }
+
+  // Flash map border teal regardless
   const frame = document.querySelector('.map-frame');
   if (frame) {
     frame.style.borderColor = 'var(--teal)';
@@ -2091,13 +2115,21 @@ function onEnterZone(z) {
 function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
 
-  // Boomy exit — empowering, community-focused
-  const exitLine = ZONE_EXIT_LINES[Math.floor(Math.random() * ZONE_EXIT_LINES.length)];
-  const exitMsgMs = exitLine.text.length * 55 + 800;
-  boomSay(exitLine.text, exitMsgMs, false, exitLine.mood);
+  // Cooldown gate: only let Boomy speak the exit line if we haven't recently
+  const lastBoom = _zoneBoomedAt[z.id] || 0;
+  const shouldBoom = Date.now() - lastBoom > BOOM_COOLDOWN_MS;
 
-  // Show action cards after Boomy finishes
-  setTimeout(() => showExitCards(z), exitMsgMs + 300);
+  if (shouldBoom) {
+    _zoneBoomedAt[z.id] = Date.now();
+    // Boomy exit — empowering, community-focused
+    const exitLine = ZONE_EXIT_LINES[Math.floor(Math.random() * ZONE_EXIT_LINES.length)];
+    const exitMsgMs = exitLine.text.length * 55 + 800;
+    boomSay(exitLine.text, exitMsgMs, false, exitLine.mood);
+
+    // Show action cards after Boomy finishes
+    setTimeout(() => showExitCards(z), exitMsgMs + 300);
+  }
+  // If on cooldown: silent exit, no Boomy, no exit cards (already saw them recently)
 
   audio.muted = true; audio.volume = 0;
   setMuteBtn(true);
