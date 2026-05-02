@@ -423,28 +423,11 @@ gap:16px;margin-top:8px;flex-wrap:wrap;
 .boom-menu-item:last-child{border-bottom:none;}
 .boom-menu-item:hover{background:rgba(255,255,255,.05);}
 .boom-menu-item.danger{color:var(–red);}
-/* ── TAP-SYNC ROW ── */
-.sync-row{display:flex;align-items:center;gap:14px;margin-top:10px;padding-top:10px;border-top:1px solid var(–border);}
-.tap-pad{
-flex-shrink:0;width:64px;height:64px;border-radius:50%;
-background:var(–surface);border:2px solid var(–orange);
-color:var(–orange);cursor:pointer;
-display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
-font-family:‘Roboto Condensed’,sans-serif;
-transition:all .08s;
--webkit-tap-highlight-color:transparent;
-}
-.tap-pad:active{background:var(–orange);color:#000;transform:scale(.92);}
-.tap-pad.flash{background:var(–orange);color:#000;}
-.tap-pad.locked{border-color:var(–teal);color:var(–teal);}
-.tap-pad.locked:active{background:var(–teal);}
-.tap-pad-icon{font-size:18px;line-height:1;}
-.tap-pad-label{font-size:9px;font-weight:900;letter-spacing:.12em;}
-.sync-info{flex:1;display:flex;flex-direction:column;gap:4px;min-width:0;}
-.sync-status{font-size:11px;color:var(–muted);letter-spacing:.06em;line-height:1.3;}
-.sync-status.locked{color:var(–teal);}
-.sync-bpm{font-size:14px;font-weight:900;color:var(–orange);font-family:‘Roboto Condensed’,sans-serif;letter-spacing:.06em;}
-.sync-bpm.locked{color:var(–teal);}
+/* ── CALIBRATION NUDGE ── */
+.cal-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;}
+.cal-btn{width:36px;height:28px;border:1px solid var(–border);border-radius:4px;background:var(–surface);color:var(–muted);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
+.cal-btn:active{background:var(–orange);color:#000;border-color:var(–orange);}
+.cal-label{font-size:9px;color:var(–muted);letter-spacing:.12em;text-transform:uppercase;min-width:60px;text-align:center;}
 /* ── TAP BANNER ── */
 #tap-banner{display:none;position:fixed;bottom:0;left:0;right:0;z-index:900;background:var(–orange);color:#000;font-family:‘Roboto Condensed’,sans-serif;font-size:24px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:28px 20px 36px;text-align:center;box-shadow:0 -4px 40px rgba(245,126,32,.7);cursor:pointer;animation:tapPulse 1.4s ease-in-out infinite;}
 @keyframes tapPulse{0%,100%{opacity:1}50%{opacity:.85}}
@@ -500,11 +483,7 @@ audio{display:none;}
     <button class="btn-profile-save" onclick="saveProfile()">Let's Go →</button>
   </div>
 </div>
-
-<!-- ═══════════════════════════════════════════════
-     PARTY INFO MODAL
 ═══════════════════════════════════════════════ -->
-
 <div id="party-modal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="pmc">
     <div class="pmc-title" id="modal-zone-name">Zone Name</div>
@@ -567,15 +546,12 @@ audio{display:none;}
     <div class="progress-wrap" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
     <div class="time-row"><span id="time-cur">0:00</span><span id="time-dur">0:00</span></div>
     <div class="track-name-row" id="track-name">—</div>
-    <div class="sync-row">
-      <button class="tap-pad" id="tap-pad" onclick="onTapBeat()">
-        <span class="tap-pad-icon">◉</span>
-        <span class="tap-pad-label">TAP</span>
-      </button>
-      <div class="sync-info">
-        <div class="sync-status" id="sync-status">Tap with the beat to confirm sync</div>
-        <div class="sync-bpm" id="sync-bpm"></div>
-      </div>
+    <div class="cal-row">
+      <button class="cal-btn" onclick="nudge(-0.5)">«</button>
+      <button class="cal-btn" onclick="nudge(-0.1)">‹</button>
+      <span class="cal-label" id="cal-label">0 ms</span>
+      <button class="cal-btn" onclick="nudge(0.1)">›</button>
+      <button class="cal-btn" onclick="nudge(0.5)">»</button>
     </div>
   </div>
 </div>
@@ -638,11 +614,6 @@ audio{display:none;}
 </div>
 
 <div id="toast"></div>
-<div style="position:fixed;top:6px;left:6px;background:lime;color:#000;font-size:9px;padding:2px 5px;z-index:99999;font-family:monospace;">v.MAY1-DEBUG</div>
-<div id="debug-panel" style="position:fixed;top:24px;left:6px;right:6px;background:rgba(0,0,0,.92);border:1px solid lime;color:lime;font-size:10px;padding:6px 8px;z-index:99998;font-family:monospace;line-height:1.4;max-height:40vh;overflow-y:auto;display:none;">
-  <div id="debug-log"></div>
-</div>
-<button onclick="toggleDebug()" style="position:fixed;top:6px;right:6px;background:lime;color:#000;font-size:9px;padding:2px 5px;z-index:99999;font-family:monospace;border:none;cursor:pointer;">DEBUG</button>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -890,29 +861,6 @@ document.getElementById('eye-img').src     = EYE_B64;
 
 const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
-
-// ── DIAGNOSTIC LOGGING ────────────────────────────────────
-// All critical events get logged to a visible on-screen panel.
-// Toggle via DEBUG button top-right. Survives page refresh in localStorage.
-const _debugLog = [];
-function dbg(label, data) {
-  const t = new Date().toISOString().slice(11,19);
-  const msg = data !== undefined ? `[${t}] ${label}: ${JSON.stringify(data).slice(0,80)}` : `[${t}] ${label}`;
-  _debugLog.push(msg);
-  if (_debugLog.length > 60) _debugLog.shift();
-  const el = document.getElementById('debug-log');
-  if (el) el.innerHTML = _debugLog.map(m => m.replace(/</g,'&lt;')).join('<br>');
-  // Also persist to localStorage so we can recover after page reload
-  try { localStorage.setItem('byob_debug', _debugLog.slice(-20).join('\n')); } catch(e){}
-  console.log(msg);
-}
-function toggleDebug() {
-  const p = document.getElementById('debug-panel');
-  if (p) p.style.display = p.style.display === 'none' ? 'block' : 'none';
-}
-window.addEventListener('error', (e) => dbg('JS_ERROR', { msg: e.message, src: e.filename?.slice(-30), line: e.lineno }));
-window.addEventListener('unhandledrejection', (e) => dbg('PROMISE_REJECT', String(e.reason).slice(0,80)));
-dbg('PAGE_LOAD', { ua: navigator.userAgent.slice(0,40) });
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -945,97 +893,28 @@ function rafLoop() {
 requestAnimationFrame(rafLoop);
 
 // ════════════════════════════════════════════════════════════
-// TAP-TO-BEAT — BPM detection (visual confirmation of rhythm)
+// CALIBRATION NUDGE
 // ════════════════════════════════════════════════════════════
 let _calOffset = parseFloat(localStorage.getItem('byob_cal_offset') || '0');
-const _tapTimes = [];
-let _lastTapAt = 0;
-let _detectedBPM = 0;
-
-// nudge() kept for internal use by audio fingerprinting (Change 4)
 function nudge(deltaSeconds) {
   _calOffset += deltaSeconds;
   _calOffset = Math.max(-3, Math.min(3, _calOffset));
   localStorage.setItem('byob_cal_offset', _calOffset.toString());
+  updateCalLabel();
   if (audio.duration && !audio.paused) audio.currentTime = Math.max(0, audio.currentTime + deltaSeconds);
 }
-
-function onTapBeat() {
-  const now = Date.now();
-  const pad = document.getElementById('tap-pad');
-  const status = document.getElementById('sync-status');
-  const bpmEl = document.getElementById('sync-bpm');
-
-  // Reset if gap too long (new attempt)
-  if (now - _lastTapAt > 3000) {
-    _tapTimes.length = 0;
-    pad?.classList.remove('locked');
-    status?.classList.remove('locked');
-    bpmEl?.classList.remove('locked');
-    if (bpmEl) bpmEl.textContent = '';
-  }
-  _lastTapAt = now;
-  _tapTimes.push(now);
-
-  // Visual flash + haptic on each tap
-  if (pad) {
-    pad.classList.add('flash');
-    setTimeout(() => pad.classList.remove('flash'), 80);
-  }
-  if (navigator.vibrate) navigator.vibrate(10);
-
-  // Need at least 4 taps to detect tempo
-  if (_tapTimes.length < 4) {
-    const remaining = 4 - _tapTimes.length;
-    if (status) status.textContent = `Keep tapping — ${remaining} more`;
-    return;
-  }
-
-  // Compute intervals between consecutive taps
-  const intervals = [];
-  for (let i = 1; i < _tapTimes.length; i++) {
-    intervals.push(_tapTimes[i] - _tapTimes[i-1]);
-  }
-  const sorted = [...intervals].sort((a,b) => a - b);
-  const medianMs = sorted[Math.floor(sorted.length / 2)];
-  const periodSec = medianMs / 1000;
-
-  // Sanity check
-  if (periodSec < 0.3 || periodSec > 1.5) {
-    if (status) status.textContent = 'Tap steadier — try matching the beat';
-    _tapTimes.length = 0;
-    return;
-  }
-
-  _detectedBPM = Math.round(60 / periodSec);
-  const avgDeviation = intervals.reduce((sum, iv) => sum + Math.abs(iv - medianMs), 0) / intervals.length;
-  const tightLock = avgDeviation < 60;
-
-  if (bpmEl) bpmEl.textContent = `● ${_detectedBPM} BPM`;
-  if (status) {
-    if (tightLock) {
-      status.textContent = 'Locked — your phone is tracking the beat';
-      status.classList.add('locked');
-      pad?.classList.add('locked');
-      bpmEl?.classList.add('locked');
-    } else {
-      status.textContent = 'Keep tapping for tighter lock';
-      status.classList.remove('locked');
-      pad?.classList.remove('locked');
-      bpmEl?.classList.remove('locked');
-    }
-  }
-
-  if (_tapTimes.length > 8) _tapTimes.shift();
+function updateCalLabel() {
+  const ms = Math.round(_calOffset * 1000);
+  const el = document.getElementById('cal-label');
+  if (el) { el.textContent = (ms >= 0 ? '+' : '') + ms + ' ms'; el.style.color = ms === 0 ? 'var(--muted)' : 'var(--orange)'; }
 }
 
 // ════════════════════════════════════════════════════════════
 // TAP BANNER
 // ════════════════════════════════════════════════════════════
-function showTapBanner(){dbg('showTapBanner'); document.getElementById('tap-banner')?.classList.add('visible');}
+function showTapBanner(){document.getElementById('tap-banner')?.classList.add('visible');}
 function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
 function onTapBanner(){
-  dbg('onTapBanner_pressed');
   hideTapBanner();
 
   // Unlock AudioContext on this gesture — must happen first
@@ -1128,14 +1007,6 @@ audio.addEventListener('playing', () => { hideTapBanner(); setMuteBtn(false); })
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
-  dbg('loadTrack_called', { url: url?.slice(-30), hasAudioCtx: !!_audioCtx, hasGain: !!_mainGain });
-
-  // Skip if same track already loaded and playing — prevents re-load loop from sync engine polling
-  if (audio.src && audio.src.endsWith(url.split('/').pop()) && !audio.paused && audio.duration) {
-    dbg('loadTrack_SKIP_already_playing');
-    return;
-  }
-
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -1166,7 +1037,6 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
     audio.addEventListener('playing', function onPlaying() {
       audio.removeEventListener('playing', onPlaying);
-      dbg('audio_PLAYING', { ct: audio.currentTime.toFixed(1), dur: audio.duration?.toFixed(1) });
       seekToSync(startedAt, playAt, playFromS); // fine-tune
       hideTapBanner();
       if ('mediaSession' in navigator) {
@@ -1176,8 +1046,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       }
     }, { once: true });
 
-    audio.play().catch((err) => {
-      dbg('audio.play_REJECTED', err.name + ': ' + err.message.slice(0,40));
+    audio.play().catch(() => {
       showTapBanner();
     });
   }, { once: true });
@@ -1203,39 +1072,23 @@ function seekToSync(startedAt, playAt, playFromS) {
 // MUTE TOGGLE
 // ════════════════════════════════════════════════════════════
 function fadeAudioIn(durationMs = 6000) {
+  audio.volume = 0;
   audio.muted = false;
-  audio.volume = 1;
-  if (_mainGain && _audioCtx) {
-    _mainGain.gain.cancelScheduledValues(_audioCtx.currentTime);
-    _mainGain.gain.setValueAtTime(0, _audioCtx.currentTime);
-    _mainGain.gain.linearRampToValueAtTime(1, _audioCtx.currentTime + durationMs/1000);
-  } else {
-    // Fallback to volume-based fade if no audio graph
-    audio.volume = 0;
-    const start = performance.now();
-    function tick(now) {
-      const t = Math.min((now - start) / durationMs, 1);
-      const eased = t * t * (3 - 2 * t);
-      audio.volume = eased;
-      if (t < 1) requestAnimationFrame(tick);
-      else audio.volume = 1;
-    }
-    requestAnimationFrame(tick);
+  const start = performance.now();
+  function tick(now) {
+    const t = Math.min((now - start) / durationMs, 1);
+    // Ease in — cubic curve so it feels gradual not linear
+    const eased = t * t * (3 - 2 * t);
+    audio.volume = eased;
+    if (t < 1) requestAnimationFrame(tick);
+    else audio.volume = 1;
   }
+  requestAnimationFrame(tick);
 }
 
 function setMuteBtn(muted) {
   _isMuted = muted;
-  if (_mainGain && _audioCtx) {
-    const target = muted ? 0 : 1;
-    _mainGain.gain.cancelScheduledValues(_audioCtx.currentTime);
-    _mainGain.gain.linearRampToValueAtTime(target, _audioCtx.currentTime + 0.05);
-    // Keep audio.muted false so decoder/network keep running
-    audio.muted = false;
-  } else {
-    // Fallback if audio graph not ready yet
-    audio.muted = muted;
-  }
+  audio.muted = muted;
   document.querySelectorAll('.viz-bar').forEach(b => b.style.opacity = muted ? '0.2' : '1');
 }
 
@@ -1330,7 +1183,6 @@ function getSfxCtx() {
 
 // Called once from a real user gesture — sets up iOS audio session bridge
 function unlockSfxForIOS() {
-  initAudioGraph();
   if (window._sfxIOSUnlocked) return;
   window._sfxIOSUnlocked = true;
   try {
@@ -1577,7 +1429,7 @@ async function syncZoneAudio() {
     if (z.current_track_url && z.current_track_url !== 'webrtc-live') {
       if (!audio.src || audio.paused) {
         loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
-        // Banner only shown if audio.play() actually rejects inside loadTrack
+        showTapBanner();
         return;
       }
       // Drift correction
@@ -1622,30 +1474,6 @@ const listenerId = Math.random().toString(36).substr(2,9);
 let rtcPeer = null, rtcChannel = null;
 let _pendingStream = null;
 
-// ── Web Audio graph for mute-via-gain (Change 1) ─────────
-let _audioCtx = null;
-let _mainGain = null;
-let _mediaSource = null;   // <audio> element source — created ONCE
-let _streamSource = null;  // current WebRTC stream source
-
-function initAudioGraph() {
-  if (_audioCtx) { dbg('initAudioGraph_skip', 'already exists'); return; }
-  try {
-    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    _mainGain = _audioCtx.createGain();
-    _mainGain.gain.value = 1;
-    _mainGain.connect(_audioCtx.destination);
-    // createMediaElementSource can only be called ONCE per element ever
-    _mediaSource = _audioCtx.createMediaElementSource(audio);
-    _mediaSource.connect(_mainGain);
-    dbg('initAudioGraph_OK', { state: _audioCtx.state });
-  } catch(e) {
-    dbg('initAudioGraph_FAIL', e.message.slice(0,60));
-    console.warn('Audio graph init failed:', e);
-    _audioCtx = null;
-  }
-}
-
 async function joinWebRTCStream(zoneId) {
   if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
   if (rtcPeer) { rtcPeer.close(); rtcPeer = null; }
@@ -1671,27 +1499,8 @@ async function handleOffer(sdp) {
   };
   rtcPeer.ontrack = ({ streams }) => {
     _pendingStream = streams[0];
-    audio.pause(); audio.src = ''; audio.load();
+    audio.pause(); audio.src = ''; audio.srcObject = null; audio.load();
     _webAudioPlaying = false;
-
-    // Route WebRTC stream through Web Audio gain (Change 1)
-    initAudioGraph();
-    if (_audioCtx && _mainGain) {
-      if (_streamSource) { try { _streamSource.disconnect(); } catch(e){} _streamSource = null; }
-      try {
-        _streamSource = _audioCtx.createMediaStreamSource(streams[0]);
-        _streamSource.connect(_mainGain);
-        // iOS Safari workaround: also assign to audio element so the stream actually plays
-        audio.srcObject = streams[0];
-        audio.muted = false;
-      } catch(e) {
-        console.warn('WebRTC gain routing failed, falling back:', e);
-        audio.srcObject = streams[0];
-      }
-    } else {
-      audio.srcObject = streams[0];
-    }
-
     document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='running');
     showToast('🔴 LIVE ready');
     showTapBanner();
@@ -2181,25 +1990,14 @@ setInterval(() => {
 let knownZones     = [];   // cached from last loadZones
 let insideZoneIds  = new Set();
 
-// ── Boomy hysteresis + cooldown (Change 2) ──────────────
-const BOOM_COOLDOWN_MS = 5 * 60 * 1000;   // 5 minutes
-const EXIT_BUFFER_M    = 20;              // hysteresis buffer past radius
-const _zoneBoomedAt    = {};              // { zoneId: timestamp of last Boomy speech }
-
 // Called every GPS tick — checks all known zones
 async function checkGeofences() {
   if (!userLat || !knownZones.length) return;
   knownZones.forEach(z => {
     if (!z.lat) return;
     const dist = distM(userLat, userLng, z.lat, z.lng);
-    const radius = z.radius_m || 200;
+    const inside = dist <= (z.radius_m || 200);
     const wasInside = insideZoneIds.has(z.id);
-
-    // Hysteresis: enter at radius, but don't exit until past radius + buffer
-    // This prevents flapping when GPS jitters across the boundary
-    const inside = wasInside
-      ? dist < (radius + EXIT_BUFFER_M)   // already inside — exit only past buffer
-      : dist <= radius;                    // not inside yet — enter exactly at radius
 
     if (inside && !wasInside) {
       insideZoneIds.add(z.id);
@@ -2215,7 +2013,6 @@ async function checkGeofences() {
 setInterval(checkGeofences, 8000);
 
 function onEnterZone(z) {
-  dbg('onEnterZone', { id: z.id?.slice(0,8), name: z.name?.slice(0,20), wasActive: !!activeZone });
   if (activeZone?.id === z.id) {
     if (_webAudioPlaying || audio.srcObject) {
       setMuteBtn(false);
@@ -2223,23 +2020,10 @@ function onEnterZone(z) {
     }
     return;
   }
+  // Stash zone name — womp + boombox fire after tap banner is pressed
+  window._enteringZoneName = z.name;
 
-  // Cooldown gate: only let Boomy speak if we haven't spoken for this zone recently
-  // Music still starts either way — this only quiets the talking
-  const lastBoom = _zoneBoomedAt[z.id] || 0;
-  const shouldBoom = Date.now() - lastBoom > BOOM_COOLDOWN_MS;
-
-  if (shouldBoom) {
-    _zoneBoomedAt[z.id] = Date.now();
-    // Stash zone name — womp + boombox fire after tap banner is pressed
-    window._enteringZoneName = z.name;
-  } else {
-    // Cooldown active — quiet entry, no Boomy talk on tap banner
-    window._enteringZoneName = null;
-    showToast('📡 Back in the zone');
-  }
-
-  // Flash map border teal regardless
+  // Flash map border teal
   const frame = document.querySelector('.map-frame');
   if (frame) {
     frame.style.borderColor = 'var(--teal)';
@@ -2252,25 +2036,20 @@ function onEnterZone(z) {
 function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
 
-  // Cooldown gate: only let Boomy speak the exit line if we haven't recently
-  const lastBoom = _zoneBoomedAt[z.id] || 0;
-  const shouldBoom = Date.now() - lastBoom > BOOM_COOLDOWN_MS;
+  // Boomy exit — empowering, community-focused
+  const exitLine = ZONE_EXIT_LINES[Math.floor(Math.random() * ZONE_EXIT_LINES.length)];
+  const exitMsgMs = exitLine.text.length * 55 + 800;
+  boomSay(exitLine.text, exitMsgMs, false, exitLine.mood);
 
-  if (shouldBoom) {
-    _zoneBoomedAt[z.id] = Date.now();
-    // Boomy exit — empowering, community-focused
-    const exitLine = ZONE_EXIT_LINES[Math.floor(Math.random() * ZONE_EXIT_LINES.length)];
-    const exitMsgMs = exitLine.text.length * 55 + 800;
-    boomSay(exitLine.text, exitMsgMs, false, exitLine.mood);
+  // Show action cards after Boomy finishes
+  setTimeout(() => showExitCards(z), exitMsgMs + 300);
 
-    // Show action cards after Boomy finishes
-    setTimeout(() => showExitCards(z), exitMsgMs + 300);
-  }
-  // If on cooldown: silent exit, no Boomy, no exit cards (already saw them recently)
-
-  // Properly stop audio — Change 1 routes through gain node, so audio.muted alone won't silence it.
-  // stopEverything() handles full teardown: pauses audio, kills WebRTC, closes channels, locks UI.
-  stopEverything();
+  audio.muted = true; audio.volume = 0;
+  setMuteBtn(true);
+  const btnZone = document.getElementById('btn-zone');
+  if (btnZone){ btnZone.classList.remove('in-zone'); btnZone.textContent='⚡ FIND NEAREST ZONE'; }
+  ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
+  activeZone = null;
 }
 async function loadZones(autoJoin=false) {
   const { data } = await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(10);
@@ -2329,28 +2108,28 @@ async function previewZone(z) {
     }).subscribe();
 }
 
-// Called when geofence is physically crossed — this plays the music
 // ════════════════════════════════════════════════════════════
 // AUDIO FINGERPRINT SYNC (Change 4)
 // On zone entry, listen via mic to nearby phones playing the same track,
 // cross-correlate with local audio buffer to find offset, snap to align.
+// Self-contained — does not touch the main audio playback path.
 // ════════════════════════════════════════════════════════════
+let _fpAudioCtx = null;       // Dedicated AudioContext for decoding only
 let _localPcmCache = null;
 let _localPcmSampleRate = null;
 let _fingerprintAttempted = false;
 
 // Preload track PCM into memory so we can extract any window for correlation.
-// Called from loadTrack after URL is known.
 async function preloadTrackPcm(url) {
   if (!url || url === 'webrtc-live') return;
   try {
     const res = await fetch(url);
     const buf = await res.arrayBuffer();
-    // Use main audioCtx to decode
-    if (!_audioCtx) initAudioGraph();
-    if (!_audioCtx) return;
-    const decoded = await _audioCtx.decodeAudioData(buf);
-    // Cache only first 5 minutes to limit memory (~13MB at 22kHz mono)
+    if (!_fpAudioCtx) {
+      _fpAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const decoded = await _fpAudioCtx.decodeAudioData(buf);
+    // Cache only first 5 minutes (~13MB at 22kHz mono)
     const maxSamples = 5 * 60 * decoded.sampleRate;
     const ch0 = decoded.getChannelData(0);
     _localPcmCache = ch0.length > maxSamples ? ch0.slice(0, maxSamples) : ch0;
@@ -2370,7 +2149,7 @@ function extractLocalAudioWindow(startSec, endSec, targetSampleRate) {
   if (endSample <= startSample) return null;
   let win = _localPcmCache.slice(startSample, endSample);
 
-  // Resample to targetSampleRate via linear interpolation
+  // Resample via linear interpolation
   if (_localPcmSampleRate !== targetSampleRate) {
     const ratio = _localPcmSampleRate / targetSampleRate;
     const outLen = Math.floor(win.length / ratio);
@@ -2387,11 +2166,10 @@ function extractLocalAudioWindow(startSec, endSec, targetSampleRate) {
   return win;
 }
 
-// Capture mic audio for `seconds` and return Float32Array of mono samples at sampleRate
+// Capture mic audio for `seconds` and return Float32Array of mono samples
 async function captureMicSamples(stream, sampleRate, seconds) {
   return new Promise((resolve, reject) => {
     try {
-      // Use a fresh AudioContext at the target sample rate
       const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate });
       const source = ctx.createMediaStreamSource(stream);
       const totalSamples = Math.floor(sampleRate * seconds);
@@ -2429,20 +2207,15 @@ async function captureMicSamples(stream, sampleRate, seconds) {
   });
 }
 
-// Direct cross-correlation in time domain — slow but no FFT library needed.
-// For 3 sec @ 22kHz that's 66k * 88k ops per shift = unworkable.
-// Instead, compute correlation at sparse offset values around expected position.
-// We only need to find offset within ±1 second window — that's ~44k samples to test.
-// Use downsampling to speed it up.
+// Cross-correlate mic audio against local buffer, downsampled 8x for speed.
+// Returns the offset in original samples where mic matches best, plus confidence.
 function findBestOffset(mic, local) {
-  // Downsample both 8x for fast correlation (still 2.7kHz, plenty for music alignment)
   const DOWNSAMPLE = 8;
   const dsMic = new Float32Array(Math.floor(mic.length / DOWNSAMPLE));
   const dsLocal = new Float32Array(Math.floor(local.length / DOWNSAMPLE));
   for (let i = 0; i < dsMic.length; i++) dsMic[i] = mic[i * DOWNSAMPLE];
   for (let i = 0; i < dsLocal.length; i++) dsLocal[i] = local[i * DOWNSAMPLE];
 
-  // Search offset range: full length of local minus mic length
   const maxShift = dsLocal.length - dsMic.length;
   if (maxShift <= 0) return { offsetSamples: 0, confidence: 0 };
 
@@ -2466,7 +2239,6 @@ function findBestOffset(mic, local) {
 
   const meanCorr = sumCorr / count;
   const confidence = bestCorr / (meanCorr || 1);
-  // Convert downsampled shift back to original sample rate
   const offsetSamples = bestShift * DOWNSAMPLE;
   return { offsetSamples, confidence };
 }
@@ -2486,7 +2258,7 @@ async function attemptAudioFingerprintSync() {
 
   const SAMPLE_RATE = 22050;
   const CAPTURE_SECONDS = 3;
-  const SLACK_SECONDS = 2;  // search window in local audio
+  const SLACK_SECONDS = 2;
 
   let micStream;
   try {
@@ -2499,14 +2271,12 @@ async function attemptAudioFingerprintSync() {
     });
   } catch(e) {
     console.log('[fingerprint] mic denied — staying with network sync');
-    showToast('Sync via mic skipped — using network sync');
     return;
   }
 
   showToast('🎯 Listening for nearby phones…');
 
   try {
-    // Capture corresponds to "now" in local audio time
     const captureStartAudioTime = audio.currentTime;
     const micBuffer = await captureMicSamples(micStream, SAMPLE_RATE, CAPTURE_SECONDS);
     const captureEndAudioTime = audio.currentTime;
@@ -2517,7 +2287,6 @@ async function attemptAudioFingerprintSync() {
       return;
     }
 
-    // Extract local audio window: from (captureStart - slack) to (captureEnd + slack)
     const localStart = Math.max(0, captureStartAudioTime - SLACK_SECONDS);
     const localEnd = captureEndAudioTime + SLACK_SECONDS;
     const localBuffer = extractLocalAudioWindow(localStart, localEnd, SAMPLE_RATE);
@@ -2526,20 +2295,16 @@ async function attemptAudioFingerprintSync() {
       return;
     }
 
-    // Cross-correlate
     const { offsetSamples, confidence } = findBestOffset(micBuffer, localBuffer);
     const offsetSec = offsetSamples / SAMPLE_RATE;
 
-    // The offset tells us where in the local window the mic recording starts.
-    // If mic captured starting at audioTime captureStartAudioTime,
-    // and the correlation peak is at offsetSec into our window (which started at localStart),
-    // then the mic actually heard audio from time (localStart + offsetSec).
-    // The drift is: (localStart + offsetSec) - captureStartAudioTime
+    // The mic recording aligns with local audio at (localStart + offsetSec).
+    // Drift = (where mic actually heard it) - (where we thought mic captured)
     const drift = (localStart + offsetSec) - captureStartAudioTime;
 
     console.log('[fingerprint] offset:', offsetSec.toFixed(3), 's, drift:', drift.toFixed(3), 's, confidence:', confidence.toFixed(2));
 
-    // Only apply if confidence is high enough and drift is reasonable
+    // Apply correction if confidence is high and drift is in reasonable range
     if (confidence > 3.0 && Math.abs(drift) < 1.5 && Math.abs(drift) > 0.02) {
       _calOffset += drift;
       audio.currentTime = Math.max(0, audio.currentTime + drift) % audio.duration;
@@ -2551,7 +2316,6 @@ async function attemptAudioFingerprintSync() {
       showToast('✓ Already in sync with the room');
     } else {
       console.log('[fingerprint] low confidence — no nearby phones audible');
-      // Don't show toast — quiet failure
     }
   } catch(e) {
     console.error('[fingerprint] error:', e);
@@ -2559,8 +2323,8 @@ async function attemptAudioFingerprintSync() {
   }
 }
 
+// Called when geofence is physically crossed — this plays the music
 async function activateZone(z) {
-  dbg('activateZone', { id: z.id?.slice(0,8), trackUrl: z.current_track_url?.slice(-20) });
   activeZone = z;
   _fingerprintAttempted = false;  // reset for this zone entry
   unlockUI(z);
@@ -2578,10 +2342,8 @@ async function activateZone(z) {
     showToast('Connecting to live stream… 🎛️');
   } else if (z.current_track_url) {
     loadTrack(z.current_track_url, z.track_name, z.playback_started_at);
-    // NOTE: Audio fingerprinting auto-trigger disabled — mic permission prompt
-    // interrupts iOS audio session and causes playback to cycle on/off.
-    // Will re-enable as a manual button after frontend is stable.
-    // setTimeout(() => attemptAudioFingerprintSync(), 6000);
+    // Schedule fingerprint sync 8s after activation — gives audio + Boomy time to stabilize
+    setTimeout(() => attemptAudioFingerprintSync(), 8000);
   }
 
   // Subscribe to zone updates — unsubscribe first to avoid duplicates
@@ -2602,7 +2364,8 @@ async function activateZone(z) {
         if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is LIVE 🎛️'); }
       } else if (zn.current_track_url) {
         loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-        showToast('Track loaded 🔊');
+        showTapBanner();
+        showToast('Track loaded — tap to play 🔊');
       } else {
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
         if (rtcPeer) { rtcPeer.close(); rtcPeer=null; }
