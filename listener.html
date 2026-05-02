@@ -2222,12 +2222,9 @@ function onLeaveZone(z) {
   }
   // If on cooldown: silent exit, no Boomy, no exit cards (already saw them recently)
 
-  audio.muted = true; audio.volume = 0;
-  setMuteBtn(true);
-  const btnZone = document.getElementById('btn-zone');
-  if (btnZone){ btnZone.classList.remove('in-zone'); btnZone.textContent='⚡ FIND NEAREST ZONE'; }
-  ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
-  activeZone = null;
+  // Properly stop audio — Change 1 routes through gain node, so audio.muted alone won't silence it.
+  // stopEverything() handles full teardown: pauses audio, kills WebRTC, closes channels, locks UI.
+  stopEverything();
 }
 async function loadZones(autoJoin=false) {
   const { data } = await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(10);
