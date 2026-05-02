@@ -500,7 +500,11 @@ audio{display:none;}
     <button class="btn-profile-save" onclick="saveProfile()">Let's Go →</button>
   </div>
 </div>
+
+<!-- ═══════════════════════════════════════════════
+     PARTY INFO MODAL
 ═══════════════════════════════════════════════ -->
+
 <div id="party-modal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="pmc">
     <div class="pmc-title" id="modal-zone-name">Zone Name</div>
@@ -2531,8 +2535,10 @@ async function activateZone(z) {
     showToast('Connecting to live stream… 🎛️');
   } else if (z.current_track_url) {
     loadTrack(z.current_track_url, z.track_name, z.playback_started_at);
-    // Schedule fingerprint sync 6s after activation — gives audio time to stabilize
-    setTimeout(() => attemptAudioFingerprintSync(), 6000);
+    // NOTE: Audio fingerprinting auto-trigger disabled — mic permission prompt
+    // interrupts iOS audio session and causes playback to cycle on/off.
+    // Will re-enable as a manual button after frontend is stable.
+    // setTimeout(() => attemptAudioFingerprintSync(), 6000);
   }
 
   // Subscribe to zone updates — unsubscribe first to avoid duplicates
