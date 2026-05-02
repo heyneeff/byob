@@ -638,7 +638,11 @@ audio{display:none;}
 </div>
 
 <div id="toast"></div>
-<div style="position:fixed;top:6px;left:6px;background:lime;color:#000;font-size:9px;padding:2px 5px;z-index:99999;font-family:monospace;">v.MAY1-FIX</div>
+<div style="position:fixed;top:6px;left:6px;background:lime;color:#000;font-size:9px;padding:2px 5px;z-index:99999;font-family:monospace;">v.MAY1-DEBUG</div>
+<div id="debug-panel" style="position:fixed;top:24px;left:6px;right:6px;background:rgba(0,0,0,.92);border:1px solid lime;color:lime;font-size:10px;padding:6px 8px;z-index:99998;font-family:monospace;line-height:1.4;max-height:40vh;overflow-y:auto;display:none;">
+  <div id="debug-log"></div>
+</div>
+<button onclick="toggleDebug()" style="position:fixed;top:6px;right:6px;background:lime;color:#000;font-size:9px;padding:2px 5px;z-index:99999;font-family:monospace;border:none;cursor:pointer;">DEBUG</button>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -886,6 +890,29 @@ document.getElementById('eye-img').src     = EYE_B64;
 
 const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+
+// ── DIAGNOSTIC LOGGING ────────────────────────────────────
+// All critical events get logged to a visible on-screen panel.
+// Toggle via DEBUG button top-right. Survives page refresh in localStorage.
+const _debugLog = [];
+function dbg(label, data) {
+  const t = new Date().toISOString().slice(11,19);
+  const msg = data !== undefined ? `[${t}] ${label}: ${JSON.stringify(data).slice(0,80)}` : `[${t}] ${label}`;
+  _debugLog.push(msg);
+  if (_debugLog.length > 60) _debugLog.shift();
+  const el = document.getElementById('debug-log');
+  if (el) el.innerHTML = _debugLog.map(m => m.replace(/</g,'&lt;')).join('<br>');
+  // Also persist to localStorage so we can recover after page reload
+  try { localStorage.setItem('byob_debug', _debugLog.slice(-20).join('\n')); } catch(e){}
+  console.log(msg);
+}
+function toggleDebug() {
+  const p = document.getElementById('debug-panel');
+  if (p) p.style.display = p.style.display === 'none' ? 'block' : 'none';
+}
+window.addEventListener('error', (e) => dbg('JS_ERROR', { msg: e.message, src: e.filename?.slice(-30), line: e.lineno }));
+window.addEventListener('unhandledrejection', (e) => dbg('PROMISE_REJECT', String(e.reason).slice(0,80)));
+dbg('PAGE_LOAD', { ua: navigator.userAgent.slice(0,40) });
 const { createClient } = supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
@@ -1005,9 +1032,10 @@ function onTapBeat() {
 // ════════════════════════════════════════════════════════════
 // TAP BANNER
 // ════════════════════════════════════════════════════════════
-function showTapBanner(){document.getElementById('tap-banner')?.classList.add('visible');}
+function showTapBanner(){dbg('showTapBanner'); document.getElementById('tap-banner')?.classList.add('visible');}
 function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
 function onTapBanner(){
+  dbg('onTapBanner_pressed');
   hideTapBanner();
 
   // Unlock AudioContext on this gesture — must happen first
@@ -1100,6 +1128,7 @@ audio.addEventListener('playing', () => { hideTapBanner(); setMuteBtn(false); })
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
+  dbg('loadTrack_called', { url: url?.slice(-30), hasAudioCtx: !!_audioCtx, hasGain: !!_mainGain });
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -1130,6 +1159,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
     audio.addEventListener('playing', function onPlaying() {
       audio.removeEventListener('playing', onPlaying);
+      dbg('audio_PLAYING', { ct: audio.currentTime.toFixed(1), dur: audio.duration?.toFixed(1) });
       seekToSync(startedAt, playAt, playFromS); // fine-tune
       hideTapBanner();
       if ('mediaSession' in navigator) {
@@ -1139,7 +1169,8 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       }
     }, { once: true });
 
-    audio.play().catch(() => {
+    audio.play().catch((err) => {
+      dbg('audio.play_REJECTED', err.name + ': ' + err.message.slice(0,40));
       showTapBanner();
     });
   }, { once: true });
@@ -1591,7 +1622,7 @@ let _mediaSource = null;   // <audio> element source — created ONCE
 let _streamSource = null;  // current WebRTC stream source
 
 function initAudioGraph() {
-  if (_audioCtx) return;
+  if (_audioCtx) { dbg('initAudioGraph_skip', 'already exists'); return; }
   try {
     _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     _mainGain = _audioCtx.createGain();
@@ -1600,7 +1631,9 @@ function initAudioGraph() {
     // createMediaElementSource can only be called ONCE per element ever
     _mediaSource = _audioCtx.createMediaElementSource(audio);
     _mediaSource.connect(_mainGain);
+    dbg('initAudioGraph_OK', { state: _audioCtx.state });
   } catch(e) {
+    dbg('initAudioGraph_FAIL', e.message.slice(0,60));
     console.warn('Audio graph init failed:', e);
     _audioCtx = null;
   }
@@ -2175,6 +2208,7 @@ async function checkGeofences() {
 setInterval(checkGeofences, 8000);
 
 function onEnterZone(z) {
+  dbg('onEnterZone', { id: z.id?.slice(0,8), name: z.name?.slice(0,20), wasActive: !!activeZone });
   if (activeZone?.id === z.id) {
     if (_webAudioPlaying || audio.srcObject) {
       setMuteBtn(false);
@@ -2519,6 +2553,7 @@ async function attemptAudioFingerprintSync() {
 }
 
 async function activateZone(z) {
+  dbg('activateZone', { id: z.id?.slice(0,8), trackUrl: z.current_track_url?.slice(-20) });
   activeZone = z;
   _fingerprintAttempted = false;  // reset for this zone entry
   unlockUI(z);
