@@ -1129,6 +1129,13 @@ audio.addEventListener('playing', () => { hideTapBanner(); setMuteBtn(false); })
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
   dbg('loadTrack_called', { url: url?.slice(-30), hasAudioCtx: !!_audioCtx, hasGain: !!_mainGain });
+
+  // Skip if same track already loaded and playing — prevents re-load loop from sync engine polling
+  if (audio.src && audio.src.endsWith(url.split('/').pop()) && !audio.paused && audio.duration) {
+    dbg('loadTrack_SKIP_already_playing');
+    return;
+  }
+
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -1570,7 +1577,7 @@ async function syncZoneAudio() {
     if (z.current_track_url && z.current_track_url !== 'webrtc-live') {
       if (!audio.src || audio.paused) {
         loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
-        showTapBanner();
+        // Banner only shown if audio.play() actually rejects inside loadTrack
         return;
       }
       // Drift correction
@@ -2595,8 +2602,7 @@ async function activateZone(z) {
         if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is LIVE 🎛️'); }
       } else if (zn.current_track_url) {
         loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-        showTapBanner();
-        showToast('Track loaded — tap to play 🔊');
+        showToast('Track loaded 🔊');
       } else {
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
         if (rtcPeer) { rtcPeer.close(); rtcPeer=null; }
