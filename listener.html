@@ -1297,7 +1297,19 @@ const BOOMY_HYPE_DEVIOUS = [
   "Buckle up cutie.",
 ];
 
+function showTapBanner(){
+  const wrap = document.getElementById('boom-popup-wrap');
+  if(wrap && !wrap.classList.contains('tappable') && activeZone && !_webAudioPlaying){
+    boomSay("Tap me. I am ready.", 8000, true, 'regular');
+  }
+}
+
+function hideTapBanner(){
+  document.getElementById('tap-banner')?.classList.remove('visible');
+}
+
 function spawnBoomyBurst(){
+
   const wrap = document.getElementById('boom-popup-wrap');
   if(!wrap) return;
   const notes  = ['♩','♪','♫','♬','★','✦'];
@@ -2099,10 +2111,8 @@ function onEnterZone(z) {
     }
     return;
   }
-  // Stash zone name — womp + boombox fire after tap banner is pressed
   window._enteringZoneName = z.name;
 
-  // Flash map border teal
   const frame = document.querySelector('.map-frame');
   if (frame) {
     frame.style.borderColor = 'var(--teal)';
@@ -2110,7 +2120,21 @@ function onEnterZone(z) {
     setTimeout(() => { frame.style.borderColor=''; frame.style.boxShadow=''; }, 2000);
   }
   activateZone(z);
+
+  setTimeout(()=>{
+    const lines = [
+      "Hey. You. Yes you. Tap me.",
+      "Found you. Tap to start the party.",
+      "Tap me when you're ready. No pressure. Maximum pressure.",
+      "I am holding so much music for you. Tap to release.",
+      "Tap. Me.",
+      "Press the boombox. That's me. I'm the boombox.",
+    ];
+    const line = lines[Math.floor(Math.random() * lines.length)];
+    boomSay(line, 12000, true, Math.random() < 0.4 ? 'devious' : 'regular');
+  }, 1100);
 }
+
 
   function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
