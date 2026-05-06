@@ -923,7 +923,9 @@ function onTapBanner(){
   if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   _sfxCtx.resume();
   unlockSfxForIOS();
-  startAudioHeartbeat();
+    startAudioHeartbeat();
+  initAutoSync();
+
 
   // Play a tiny audible click RIGHT NOW (sync in gesture) to claim iOS audio session
   try {
@@ -2018,8 +2020,10 @@ function onEnterZone(z) {
   activateZone(z);
 }
 
-function onLeaveZone(z) {
+  function onLeaveZone(z) {
   if (activeZone?.id !== z.id) return;
+  stopAutoSync();
+
 
   // Boomy exit — empowering, community-focused
   const exitLine = ZONE_EXIT_LINES[Math.floor(Math.random() * ZONE_EXIT_LINES.length)];
@@ -2632,6 +2636,214 @@ function getBearing(lat1, lng1, lat2, lng2) {
 function distM(la1,ln1,la2,ln2){const R=6371000,dL=(la2-la1)*Math.PI/180,dN=(ln2-ln1)*Math.PI/180;const a=Math.sin(dL/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dN/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
 function fmt(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return `${m}:${sec.toString().padStart(2,'0')}`;}
 let toastTimer;
+
+  // ═══════════════════════════════════════════════════════════════════════
+// AUTO SPEAKER SYNC ENGINE
+// ═══════════════════════════════════════════════════════════════════════
+const SYNC_RATE = 8000, SYNC_CAPTURE_S = 2.0, SYNC_SEARCH_MS = 500;
+const SYNC_INTERVAL_MS = 45000, SYNC_FIRST_DELAY = 4500;
+const SYNC_MIN_RMS = 0.003, SYNC_MIN_LAG_MS = 15;
+let _autoMicStream=null, _autoSyncTimer=null, _autoSyncFirst=null;
+let _cachedAudioBuf=null, _decodeInFlight=false, _syncRunning=false;
+
+async function initAutoSync(){
+  if(_autoMicStream) return;
+  try{
+    _autoMicStream = await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}
+    });
+    if(!audio.captureStream && !audio.mozCaptureStream && audio.src) preDecodeTrack(audio.src);
+    _autoSyncFirst = setTimeout(()=>{
+      runAutoSync();
+      _autoSyncTimer = setInterval(runAutoSync, SYNC_INTERVAL_MS);
+    }, SYNC_FIRST_DELAY);
+    setSyncIndicator('ready');
+  }catch(e){ setSyncIndicator('off'); }
+}
+
+async function preDecodeTrack(url){
+  if(!url || _cachedAudioBuf || _decodeInFlight) return;
+  if(audio.captureStream || audio.mozCaptureStream) return;
+  _decodeInFlight = true;
+  try{
+    const res = await fetch(url);
+    const ab = await res.arrayBuffer();
+    const offCtx = new OfflineAudioContext(1,1,SYNC_RATE);
+    _cachedAudioBuf = await offCtx.decodeAudioData(ab);
+  }catch(e){}
+  _decodeInFlight = false;
+}
+
+function stopAutoSync(){
+  clearTimeout(_autoSyncFirst); clearInterval(_autoSyncTimer);
+  _autoSyncFirst = null; _autoSyncTimer = null;
+  if(_autoMicStream){ _autoMicStream.getTracks().forEach(t=>t.stop()); _autoMicStream = null; }
+  _cachedAudioBuf = null; _syncRunning = false;
+  setSyncIndicator('off');
+}
+
+async function runAutoSync(){
+  if(_syncRunning) return;
+  if(!_autoMicStream?.active) return;
+  if(!activeZone) return;
+  if(!audio.duration || audio.paused) return;
+  if(typeof _isMuted !== 'undefined' && _isMuted) return;
+  _syncRunning = true;
+  setSyncIndicator('syncing');
+  try{
+    const ctx = new AudioContext({sampleRate:SYNC_RATE});
+    const micSrc = ctx.createMediaStreamSource(_autoMicStream);
+    const micBuf = [], refBuf = [];
+    let refSrc = null;
+    try{
+      const ps = audio.captureStream?.() ?? audio.mozCaptureStream?.();
+      if(ps) refSrc = ctx.createMediaStreamSource(ps);
+    }catch(_){}
+    const snapPos = audio.currentTime;
+    await captureParallel(ctx, micSrc, refSrc, micBuf, refBuf, SYNC_CAPTURE_S);
+    await ctx.close();
+    const mic = toFloat32(micBuf, SYNC_RATE * SYNC_CAPTURE_S);
+    if(rmsSync(mic) < SYNC_MIN_RMS){ setSyncIndicator('quiet'); _syncRunning = false; return; }
+    let ref = null;
+    if(refBuf.length >= SYNC_RATE * SYNC_CAPTURE_S * 0.8) ref = toFloat32(refBuf, SYNC_RATE * SYNC_CAPTURE_S);
+    else if(_cachedAudioBuf) ref = sliceAudioBuffer(_cachedAudioBuf, snapPos, SYNC_CAPTURE_S);
+    if(!ref || rmsSync(ref) < SYNC_MIN_RMS){ setSyncIndicator('quiet'); _syncRunning = false; return; }
+    const lagSamples = crossCorrelateSync(mic, ref, Math.floor(SYNC_SEARCH_MS/1000*SYNC_RATE));
+    const lagMs = Math.round(lagSamples / SYNC_RATE * 1000);
+    if(Math.abs(lagMs) >= SYNC_MIN_LAG_MS && Math.abs(lagMs) < SYNC_SEARCH_MS){
+      const lagS = lagMs / 1000;
+      audio.currentTime = Math.max(0, audio.currentTime + lagS);
+      if(typeof _calOffset !== 'undefined'){
+        _calOffset = (_calOffset || 0) + lagS;
+        if(typeof updateCalLabel === 'function') updateCalLabel();
+      }
+      console.log(`[AutoSync] ${lagMs>0?'+':''}${lagMs}ms BT lag corrected`);
+    }
+    setSyncIndicator('synced', lagMs);
+  }catch(err){ setSyncIndicator('ready'); }
+  _syncRunning = false;
+}
+
+function captureParallel(ctx, micSrc, refSrc, micOut, refOut, durationS){
+  return new Promise(resolve=>{
+    const BUF = 2048;
+    const mp = ctx.createScriptProcessor(BUF,1,1);
+    mp.onaudioprocess = e => micOut.push(...e.inputBuffer.getChannelData(0));
+    micSrc.connect(mp); mp.connect(ctx.destination);
+    let rp = null;
+    if(refSrc){
+      rp = ctx.createScriptProcessor(BUF,1,1);
+      rp.onaudioprocess = e => refOut.push(...e.inputBuffer.getChannelData(0));
+      refSrc.connect(rp); rp.connect(ctx.destination);
+    }
+    setTimeout(()=>{
+      mp.disconnect(); mp.onaudioprocess = null;
+      if(rp){ rp.disconnect(); rp.onaudioprocess = null; }
+      resolve();
+    }, durationS * 1000 + 200);
+  });
+}
+
+function sliceAudioBuffer(buf, startS, durationS){
+  const sr = buf.sampleRate, sd = buf.getChannelData(0);
+  const ss = Math.floor(startS * sr);
+  const ol = Math.ceil(durationS * SYNC_RATE);
+  const r = sr / SYNC_RATE;
+  const out = new Float32Array(ol);
+  for(let i=0; i<ol; i++){
+    const s = ss + i * r;
+    const i0 = Math.floor(s), i1 = Math.min(i0+1, sd.length-1);
+    out[i] = sd[i0] * (1-(s-i0)) + sd[i1] * (s-i0);
+  }
+  return out;
+}
+
+function crossCorrelateSync(mic, ref, sw){
+  const COARSE = 8;
+  const n = Math.min(mic.length, ref.length);
+  const mn = normaliseSync(new Float32Array(mic.buffer, mic.byteOffset, n));
+  const rn = normaliseSync(new Float32Array(ref.buffer, ref.byteOffset, n));
+  const mc = downsampleSync(mn, COARSE), rc = downsampleSync(rn, COARSE);
+  const sc = Math.floor(sw / COARSE), nc = Math.min(mc.length, rc.length);
+  let mx = -Infinity, cp = 0;
+  for(let d = -sc; d <= sc; d++){
+    let s = 0, c = 0;
+    for(let i = 0; i < nc; i++){
+      const j = i - d;
+      if(j >= 0 && j < nc){ s += mc[i] * rc[j]; c++; }
+    }
+    const v = c > 0 ? s/c : -Infinity;
+    if(v > mx){ mx = v; cp = d * COARSE; }
+  }
+  const fr = COARSE * 2;
+  mx = -Infinity;
+  let fp = cp;
+  for(let d = cp - fr; d <= cp + fr; d++){
+    let s = 0, c = 0;
+    for(let i = 0; i < n; i++){
+      const j = i - d;
+      if(j >= 0 && j < n){ s += mn[i] * rn[j]; c++; }
+    }
+    const v = c > 0 ? s/c : -Infinity;
+    if(v > mx){ mx = v; fp = d; }
+  }
+  return fp;
+}
+
+function normaliseSync(arr){
+  const n = arr.length;
+  let m = 0;
+  for(let i = 0; i < n; i++) m += arr[i];
+  m /= n;
+  let s = 0;
+  for(let i = 0; i < n; i++) s += (arr[i] - m) ** 2;
+  s = Math.sqrt(s/n) || 1;
+  const out = new Float32Array(n);
+  for(let i = 0; i < n; i++) out[i] = (arr[i] - m) / s;
+  return out;
+}
+
+function downsampleSync(arr, f){
+  const out = new Float32Array(Math.floor(arr.length / f));
+  for(let i = 0; i < out.length; i++){
+    let s = 0;
+    for(let j = 0; j < f; j++) s += arr[i*f+j] || 0;
+    out[i] = s / f;
+  }
+  return out;
+}
+
+function rmsSync(arr){
+  let s = 0;
+  for(let i = 0; i < arr.length; i++) s += arr[i] * arr[i];
+  return Math.sqrt(s / arr.length);
+}
+
+function toFloat32(arr, ml){
+  const l = Math.min(arr.length, ml);
+  const out = new Float32Array(l);
+  for(let i = 0; i < l; i++) out[i] = arr[i];
+  return out;
+}
+
+function setSyncIndicator(state, lagMs = 0){
+  const el = document.getElementById('sync-status');
+  if(!el) return;
+  el.className = 'sync-status ' + state;
+  switch(state){
+    case 'ready':   el.innerHTML = '<span class="ss-dot">●</span> speaker sync active'; break;
+    case 'syncing': el.innerHTML = '<span class="ss-dot">●</span> syncing speakers…'; break;
+    case 'synced':  el.innerHTML = Math.abs(lagMs) < SYNC_MIN_LAG_MS
+      ? '<span class="ss-dot">●</span> speakers in sync'
+      : `<span class="ss-dot">●</span> synced · ${lagMs>0?'+':''}${lagMs}ms BT lag`; break;
+    case 'quiet':   el.innerHTML = '<span class="ss-dot">●</span> quiet · waiting for audio'; break;
+    default:        el.innerHTML = '';
+  }
+}
+
+audio.addEventListener('emptied', () => { _cachedAudioBuf = null; });
+
+
 function showToast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
