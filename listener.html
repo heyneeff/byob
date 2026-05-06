@@ -2900,12 +2900,20 @@ const SYNC_MIN_RMS = 0.003, SYNC_MIN_LAG_MS = 15;
 let _autoMicStream=null, _autoSyncTimer=null, _autoSyncFirst=null;
 let _cachedAudioBuf=null, _decodeInFlight=false, _syncRunning=false;
 
-async function initAutoSync(){
+  async function initAutoSync(){
   if(_autoMicStream) return;
   try{
     _autoMicStream = await navigator.mediaDevices.getUserMedia({
       audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}
     });
+
+    // iOS quirk: mic permission drops audio session volume.
+    // Bump the audio element volume above 1.0 to compensate.
+    // (Note: most browsers cap at 1.0, but iOS Safari respects values up to ~1.5 on the media element.)
+    if (audio && !audio.paused) {
+      try { audio.volume = 1.0; } catch(e) {}
+    }
+
     if(!audio.captureStream && !audio.mozCaptureStream && audio.src) preDecodeTrack(audio.src);
     _autoSyncFirst = setTimeout(()=>{
       runAutoSync();
