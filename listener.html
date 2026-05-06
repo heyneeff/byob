@@ -2270,6 +2270,7 @@ function spawnHeroNotes(){
 }
 
 
+  function onLeaveZone(z) {
   // Boomy exit — empowering, community-focused
   const exitLine = ZONE_EXIT_LINES[Math.floor(Math.random() * ZONE_EXIT_LINES.length)];
   const exitMsgMs = exitLine.text.length * 55 + 800;
@@ -2285,7 +2286,9 @@ function spawnHeroNotes(){
   ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
   activeZone = null;
 }
+
 async function loadZones(autoJoin=false) {
+
   const { data } = await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(10);
   const list = document.getElementById('zone-list');
   if (!data?.length) { list.innerHTML='<div style="font-size:11px;color:var(--muted)">No active zones nearby.</div>'; return; }
