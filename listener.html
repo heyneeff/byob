@@ -2198,8 +2198,9 @@ function triggerBoomyHeroEntry(){
     startMusicWithFade();
   }, 400);
 
-  // Initialize sync engine
-  setTimeout(() => initAutoSync(), 1000);
+    // Initialize sync engine — wait until music has fully faded in
+  // (mic permission causes iOS to lower volume, so do it after fade completes)
+  setTimeout(() => initAutoSync(), 10000);
 
   // Hide hero element after animation completes, then start Boomy chatting
   setTimeout(() => {
@@ -2223,19 +2224,21 @@ function triggerBoomyHeroEntry(){
 function startMusicWithFade(){
   if (!audio.src && !audio.srcObject) return;
   _isMuted = false;
-  setMuteBtn(false);
   audio.muted = false;
-  audio.volume = 0;
+  audio.volume = 0;  // set BEFORE setMuteBtn
+
   const playPromise = audio.play();
   if (playPromise) {
     playPromise.then(() => {
       _webAudioPlaying = true;
-      fadeAudioIn(8000); // 8-second fade
+      audio.volume = 0;  // belt and suspenders — set again right before fade
+      setMuteBtn(false);
+      fadeAudioIn(8000);
     }).catch(e => {
       console.warn('Auto-play blocked:', e.message);
-      // Fall back: show that audio needs another tap (rare on iOS after unlock)
       showToast('Tap anywhere to start music');
       document.body.addEventListener('click', () => {
+        audio.volume = 0;
         audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(8000); });
       }, { once: true });
     });
