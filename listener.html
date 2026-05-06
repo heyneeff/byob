@@ -241,8 +241,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 @keyframes tapMePulse{
   0%,100%{transform:scale(1);opacity:1;}
   50%{transform:scale(1.12);opacity:.85;}
-}
-.boom-burst-note{
+}.boom-burst-note{
   position:absolute;font-size:28px;pointer-events:none;
   z-index:851;animation:burstNote var(--dur) ease-out forwards;
   color:var(--col);left:var(--x);top:var(--y);
@@ -253,6 +252,49 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
   15% {opacity:1;}
   100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.4) rotate(var(--rot));}
 }
+
+/* ── BIG BOOMY HERO ANIMATION (zone entry) ── */
+#boomy-hero{
+  position:fixed;inset:0;z-index:870;
+  display:none;
+  align-items:center;justify-content:center;
+  background:radial-gradient(circle at center, rgba(245,126,32,.25) 0%, rgba(0,0,0,.7) 60%);
+  pointer-events:none;
+}
+#boomy-hero.show{display:flex;animation:heroFade 4.5s ease-out forwards;}
+#boomy-hero img{
+  height:55vh;width:auto;max-width:80vw;
+  mix-blend-mode:screen;
+  animation:heroBoomy 4.5s cubic-bezier(.1,.8,.2,1) forwards;
+  filter:drop-shadow(0 0 40px rgba(245,126,32,.7));
+}
+@keyframes heroBoomy{
+  0%   {transform:translateY(40vh) scale(.3) rotate(-15deg);opacity:0;}
+  15%  {transform:translateY(0) scale(1.15) rotate(8deg);opacity:1;}
+  25%  {transform:translateY(-8px) scale(1.1) rotate(-6deg);}
+  35%  {transform:translateY(0) scale(1.18) rotate(5deg);}
+  45%  {transform:translateY(-12px) scale(1.12) rotate(-4deg);}
+  55%  {transform:translateY(0) scale(1.16) rotate(3deg);}
+  65%  {transform:translateY(-6px) scale(1.1) rotate(-2deg);}
+  80%  {transform:translateY(0) scale(1.05) rotate(0deg);opacity:1;}
+  100% {transform:translateY(-30px) scale(.5) rotate(0deg);opacity:0;}
+}
+@keyframes heroFade{
+  0%,80%{opacity:1;}
+  100%{opacity:0;}
+}
+.hero-note{
+  position:absolute;font-size:48px;pointer-events:none;
+  animation:heroNote var(--dur) ease-out forwards;
+  color:var(--col);left:50%;top:50%;
+  text-shadow:0 0 20px var(--col);
+}
+@keyframes heroNote{
+  0%  {opacity:0;transform:translate(-50%,-50%) scale(.3) rotate(0deg);}
+  20% {opacity:1;}
+  100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1.6) rotate(var(--rot));}
+}
+
 
 .boom-popup-bubble{
   background:var(--surface2);border:2px solid var(--orange);
@@ -541,8 +583,9 @@ audio{display:none;}
     <button class="btn-profile-save" onclick="saveProfile()">Let's Go →</button>
   </div>
 </div>
-═══════════════════════════════════════════════ -->
-<div id="party-modal" onclick="if(event.target===this)this.classList.remove('open')">
+
+  <div id="party-modal" onclick="if(event.target===this)this.classList.remove('open')">
+
   <div class="pmc">
     <div class="pmc-title" id="modal-zone-name">Zone Name</div>
     <div class="pmc-row"><span class="pmc-key">Location</span><span class="pmc-val" id="modal-coords">—</span></div>
@@ -658,6 +701,11 @@ audio{display:none;}
   <button class="btn-exit-skip" onclick="closeExitCards()">Maybe later</button>
 </div>
 
+<!-- BIG BOOMY HERO (zone entry animation) -->
+<div id="boomy-hero">
+  <img id="boomy-hero-img" alt=""/>
+</div>
+
 <!-- BOOMBOX POPUP -->
 <div id="boom-popup">
   <div class="boom-img-wrap" id="boom-popup-wrap" onclick="onBoomyTap()">
@@ -665,7 +713,7 @@ audio{display:none;}
   </div>
   <div class="boom-popup-bubble" id="boom-popup-bubble"></div>
 </div>
-div>
+
 
 <div id="toast"></div>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
@@ -1776,10 +1824,12 @@ function launchApp() {
 
 // party button
 function onZoneBtn() {
-  // Init AudioContext on this direct gesture so babble works immediately
+  // This is the iOS audio unlock moment — any user tap here authorizes audio
   if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   _sfxCtx.resume();
+  unlockSfxForIOS();
   startAudioHeartbeat();
+
   // Already in an active zone — scroll to music
   if (activeZone) {
     document.getElementById('music-lockable')?.scrollIntoView({behavior:'smooth', block:'center'});
@@ -1796,7 +1846,6 @@ function onZoneBtn() {
     }
   }
 
-  // No active zones at all
   if (!knownZones || !knownZones.length) {
     boomSay("No zones are active right now. Check back soon! 🎧");
     return;
@@ -1816,7 +1865,7 @@ function onZoneBtn() {
   showToast(`📍 Nearest zone: ${nearest.name}`);
 }
 
-// ── MAP — starts at exact GPS location ───────────────────
+  // ── MAP — starts at exact GPS location ───────────────────
 function initMap() {
   // Start zoomed out to show zones, no user marker yet
   leafletMap = L.map('map', { zoomControl:true, attributionControl:false, preferCanvas:true })
@@ -2119,26 +2168,106 @@ function onEnterZone(z) {
     frame.style.boxShadow   = '0 0 0 3px rgba(0,204,153,.4)';
     setTimeout(() => { frame.style.borderColor=''; frame.style.boxShadow=''; }, 2000);
   }
-  activateZone(z);
 
-  setTimeout(()=>{
-    const lines = [
-      "Hey. You. Yes you. Tap me.",
-      "Found you. Tap to start the party.",
-      "Tap me when you're ready. No pressure. Maximum pressure.",
-      "I am holding so much music for you. Tap to release.",
-      "Tap. Me.",
-      "Press the boombox. That's me. I'm the boombox.",
-    ];
-    const line = lines[Math.floor(Math.random() * lines.length)];
-    boomSay(line, 12000, true, Math.random() < 0.4 ? 'devious' : 'regular');
-  }, 1100);
+  activateZone(z);
+  triggerBoomyHeroEntry();
 }
 
+function triggerBoomyHeroEntry(){
+  const hero = document.getElementById('boomy-hero');
+  const heroImg = document.getElementById('boomy-hero-img');
+  if (!hero || !heroImg) return;
 
-  function onLeaveZone(z) {
-  if (activeZone?.id !== z.id) return;
-  stopAutoSync();
+  // Show the big hero animation
+  if (typeof BOOM_B64 !== 'undefined') heroImg.src = BOOM_B64;
+  hero.classList.remove('show');
+  void hero.offsetWidth; // force reflow to restart animation
+  hero.classList.add('show');
+
+  // Spawn music notes flying out from center
+  spawnHeroNotes();
+
+  // Play the warp sound + start audio + fade in
+  playWarpSound();
+
+  // Start audio playing (faded to 0, then 8-second fade-in)
+  setTimeout(() => {
+    startMusicWithFade();
+  }, 400);
+
+  // Initialize sync engine
+  setTimeout(() => initAutoSync(), 1000);
+
+  // Hide hero element after animation completes, then start Boomy chatting
+  setTimeout(() => {
+    hero.classList.remove('show');
+
+    // Now Boomy comes in for normal popup chat
+    setTimeout(() => {
+      const useDevious = Math.random() < 0.45;
+      const lines = useDevious ? BOOMY_HYPE_DEVIOUS : BOOMY_HYPE_LINES;
+      const line  = lines[Math.floor(Math.random() * lines.length)];
+      boomSay(line, 4000, true, useDevious ? 'devious' : 'regular');
+
+      setTimeout(() => {
+        const t = ZONE_THIRD_LINES[Math.floor(Math.random() * ZONE_THIRD_LINES.length)];
+        boomSay(t.text, 4000, false, t.mood);
+      }, line.length * 55 + 1200);
+    }, 600);
+  }, 4500);
+}
+
+function startMusicWithFade(){
+  if (!audio.src && !audio.srcObject) return;
+  _isMuted = false;
+  setMuteBtn(false);
+  audio.muted = false;
+  audio.volume = 0;
+  const playPromise = audio.play();
+  if (playPromise) {
+    playPromise.then(() => {
+      _webAudioPlaying = true;
+      fadeAudioIn(8000); // 8-second fade
+    }).catch(e => {
+      console.warn('Auto-play blocked:', e.message);
+      // Fall back: show that audio needs another tap (rare on iOS after unlock)
+      showToast('Tap anywhere to start music');
+      document.body.addEventListener('click', () => {
+        audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(8000); });
+      }, { once: true });
+    });
+  }
+}
+
+function spawnHeroNotes(){
+  const hero = document.getElementById('boomy-hero');
+  if (!hero) return;
+  const notes  = ['♩','♪','♫','♬','★','✦'];
+  const colors = ['#ef3c23','#f57e20','#00cc99','#ffffff','#f57e20'];
+  const COUNT  = 24;
+
+  // Stagger note bursts over 3 seconds
+  for (let wave = 0; wave < 3; wave++) {
+    setTimeout(() => {
+      for (let i = 0; i < COUNT / 3; i++) {
+        const n = document.createElement('span');
+        n.className = 'hero-note';
+        n.textContent = notes[Math.floor(Math.random() * notes.length)];
+        const col = colors[Math.floor(Math.random() * colors.length)];
+        const angle = Math.random() * Math.PI * 2;
+        const dist  = 200 + Math.random() * 250;
+        const dx = Math.cos(angle) * dist;
+        const dy = Math.sin(angle) * dist;
+        const dur = 1.8 + Math.random() * 0.8;
+        const rot = (Math.random() - .5) * 720;
+        n.style.cssText =
+          `--col:${col};--dx:${dx}px;--dy:${dy}px;--dur:${dur}s;--rot:${rot}deg;`;
+        hero.appendChild(n);
+        setTimeout(() => n.remove(), dur * 1000 + 100);
+      }
+    }, wave * 500);
+  }
+}
 
 
   // Boomy exit — empowering, community-focused
