@@ -965,99 +965,78 @@ function updateCalLabel() {
 // ════════════════════════════════════════════════════════════
 // TAP BANNER
 // ════════════════════════════════════════════════════════════
-function showTapBanner(){document.getElementById('tap-banner')?.classList.add('visible');}
-function hideTapBanner(){document.getElementById('tap-banner')?.classList.remove('visible');}
 function onTapBanner(){
-  hideTapBanner();
+  // legacy entry point — alias to onBoomyTap for safety
+  onBoomyTap();
+}
 
-  // Unlock AudioContext on this gesture — must happen first
-  if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+function onBoomyTap(){
+  const wrap = document.getElementById('boom-popup-wrap');
+  if(!wrap || !wrap.classList.contains('tappable')) return;
+
+  hideTapBanner();
+  wrap.classList.remove('tappable');
+  wrap.classList.add('hyped');
+  setTimeout(()=>{ wrap.classList.remove('hyped'); }, 1400);
+
+  spawnBoomyBurst();
+
+  if(!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   _sfxCtx.resume();
   unlockSfxForIOS();
-    startAudioHeartbeat();
+  startAudioHeartbeat();
   initAutoSync();
 
-
-  // Play a tiny audible click RIGHT NOW (sync in gesture) to claim iOS audio session
-  try {
-    const ctx = _sfxCtx;
-    const now = ctx.currentTime;
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.frequency.value = 1200;
-    o.type = 'sine';
+  try{
+    const ctx = _sfxCtx, now = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.value = 1200; o.type = 'sine';
     g.gain.setValueAtTime(0.001, now);
     g.gain.exponentialRampToValueAtTime(0.0001, now + 0.02);
     o.connect(g); g.connect(ctx.destination);
     o.start(now); o.stop(now + 0.02);
-  } catch(e) {}
+  }catch(e){}
 
   _isMuted = false; setMuteBtn(false);
 
-  // 1. Start music faded in
   const startFadedPlay = () => {
     audio.muted = false;
     audio.volume = 0;
     const playPromise = audio.play();
-    audio.volume = 0; // set again synchronously after play() call
-    if (playPromise) {
-      playPromise.then(() => {
-        audio.volume = 0; // and once more inside the promise
+    audio.volume = 0;
+    if(playPromise){
+      playPromise.then(()=>{
+        audio.volume = 0;
         _webAudioPlaying = true;
         fadeAudioIn();
-      }).catch(e => showToast('Play failed: ' + e.message));
+      }).catch(e=>showToast('Play failed: ' + e.message));
     }
   };
 
-  if (typeof _pendingStream !== 'undefined' && _pendingStream) {
+  if(typeof _pendingStream !== 'undefined' && _pendingStream){
     audio.srcObject = _pendingStream;
     _pendingStream = null;
     startFadedPlay();
-  } else if (audio.src || audio.srcObject) {
+  } else if(audio.src || audio.srcObject){
     startFadedPlay();
   }
 
-  // 2. After 1 second — womp + first Boomy line
-  const zoneName = window._enteringZoneName || activeZone?.name || '';
-  window._enteringZoneName = null;
-  if (zoneName) {
-    setTimeout(() => {
-      playWarpSound();
-      setTimeout(() => {
-        // First line — welcome
-        const useDevious = Math.random() < 0.4;
-        const lines = useDevious ? ZONE_DEVIOUS_LINES : ZONE_ENTRY_LINES;
-        const line  = lines[Math.floor(Math.random() * lines.length)];
-        const firstMsgMs = line.length * 55 + 500;
-        boomSay(line, firstMsgMs, true, useDevious ? 'devious' : 'regular');
+  setTimeout(()=>{
+    playWarpSound();
+    setTimeout(()=>{
+      const useDevious = Math.random() < 0.45;
+      const lines = useDevious ? BOOMY_HYPE_DEVIOUS : BOOMY_HYPE_LINES;
+      const line  = lines[Math.floor(Math.random() * lines.length)];
+      const firstMsgMs = line.length * 55 + 600;
+      boomSay(line, firstMsgMs, true, useDevious ? 'devious' : 'regular');
 
-        // Second line — after first finishes
-        setTimeout(() => {
-          // Second line — always bluetooth + find friends
-        const bluetoothLines = [
-          "Connect your bluetooth speaker and commence the jigglin'.",
-          "Hook up your bluetooth speaker. Your phone speakers are not ready for this.",
-          "Bluetooth speaker out. This is not a headphones situation.",
-          "Pro move: bluetooth speaker. Then find your people.",
-          "Get that bluetooth speaker connected. We'll wait.",
-          "Speaker up. Friends found. Chaos commenced.",
-        ];
-        const bluetooth = bluetoothLines[Math.floor(Math.random() * bluetoothLines.length)];
-        const btMsgMs = bluetooth.length * 55 + 600;
-        boomSay(bluetooth, btMsgMs, false, 'devious');
-
-        // Third line — chaos/reminders with mood
-        setTimeout(() => {
-          const t = ZONE_THIRD_LINES[Math.floor(Math.random() * ZONE_THIRD_LINES.length)];
-          boomSay(t.text, 4000, false, t.mood);
-        }, btMsgMs + 400);
-        }, firstMsgMs + 400);
-      }, 300);
-    }, 1000);
-  }
+      setTimeout(()=>{
+        const t = ZONE_THIRD_LINES[Math.floor(Math.random() * ZONE_THIRD_LINES.length)];
+        boomSay(t.text, 4000, false, t.mood);
+      }, firstMsgMs + 400);
+    }, 250);
+  }, 200);
 }
-audio.addEventListener('playing', () => { hideTapBanner(); setMuteBtn(false); });
-
 // ════════════════════════════════════════════════════════════
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
@@ -1174,12 +1153,23 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   // Bubble border color matches mood
   bubble.style.borderColor = mood === 'angry' ? 'var(--red)' : mood === 'devious' ? 'var(--teal)' : 'var(--orange)';
 
-  clearTimeout(_boomPopupTimer);
+    clearTimeout(_boomPopupTimer);
   clearInterval(_boomBabbleInterval);
   bubble.textContent = '';
   popup.classList.add('open');
   popup.style.pointerEvents = 'none';
   setTimeout(() => { popup.style.pointerEvents = ''; }, 600);
+
+  const wrap = document.getElementById('boom-popup-wrap');
+  if(wrap){
+    const audioStarted = _webAudioPlaying || (audio.srcObject && !audio.paused);
+    if(!audioStarted && activeZone){
+      wrap.classList.add('tappable');
+    } else {
+      wrap.classList.remove('tappable');
+    }
+  }
+
 
   if (vibrate && navigator.vibrate) navigator.vibrate([80, 40, 80, 40, 120]);
 
@@ -1281,6 +1271,57 @@ function startAudioHeartbeat() {
 );
 // ── BOOMBOX PERSONALITY ──────────────────────────────────
 // Regular Boomy — warm, welcoming, a little stoned
+  const BOOMY_HYPE_LINES = [
+  "OH MY GOD HI YES.",
+  "YOU TOUCHED ME. I AM FLATTERED.",
+  "LET'S! GO!!",
+  "Yes. YES. YESSSS.",
+  "I have been WAITING for this.",
+  "OK we are doing this. We are SO doing this.",
+  "Welcome to the Carnival, gorgeous.",
+  "I am so glad you found me.",
+  "Music incoming in 3, 2, 1…",
+  "You picked the right boombox. Yes.",
+  "Hands UP. We are LIVE.",
+  "I love your tapping technique. Very refined.",
+];
+
+const BOOMY_HYPE_DEVIOUS = [
+  "Mmm yes. Press me again. Just kidding. Unless.",
+  "Oh you are TROUBLE. I love that.",
+  "Look at you. Activating the boombox. Iconic.",
+  "I felt that. In my woofers.",
+  "You unlocked the secret level.",
+  "Now we are cooking. Yes.",
+  "Welcome to the unauthorized fun zone.",
+  "Buckle up cutie.",
+];
+
+function spawnBoomyBurst(){
+  const wrap = document.getElementById('boom-popup-wrap');
+  if(!wrap) return;
+  const notes  = ['♩','♪','♫','♬','★','✦'];
+  const colors = ['#ef3c23','#f57e20','#00cc99','#ffffff','#f57e20'];
+  const COUNT  = 14;
+  for(let i = 0; i < COUNT; i++){
+    const n = document.createElement('span');
+    n.className = 'boom-burst-note';
+    n.textContent = notes[Math.floor(Math.random() * notes.length)];
+    const col = colors[Math.floor(Math.random() * colors.length)];
+    const angle = (Math.PI * 2) * (i / COUNT) + (Math.random() - .5) * .6;
+    const dist  = 80 + Math.random() * 80;
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist - 30;
+    const dur = 1.2 + Math.random() * 0.6;
+    const rot = (Math.random() - .5) * 720;
+    n.style.cssText =
+      `--col:${col};--dx:${dx}px;--dy:${dy}px;--dur:${dur}s;--rot:${rot}deg;`+
+      `left:30px;top:20px;`;
+    wrap.appendChild(n);
+    setTimeout(()=>n.remove(), dur * 1000 + 50);
+  }
+}
+
 const ZONE_ENTRY_LINES = [
   "Right on time.",
   "Are you ready for this Guerilla Concerto?",
