@@ -263,11 +263,14 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 }
 #boomy-hero.show{display:flex;animation:heroFade 4.5s ease-out forwards;}
 #boomy-hero img{
-  height:55vh;width:auto;max-width:80vw;
+  height:auto;width:auto;
+  max-height:55vh;max-width:80vw;
+  object-fit:contain;
   mix-blend-mode:screen;
   animation:heroBoomy 4.5s cubic-bezier(.1,.8,.2,1) forwards;
   filter:drop-shadow(0 0 40px rgba(245,126,32,.7));
 }
+
 @keyframes heroBoomy{
   0%   {transform:translateY(40vh) scale(.3) rotate(-15deg);opacity:0;}
   15%  {transform:translateY(0) scale(1.15) rotate(8deg);opacity:1;}
