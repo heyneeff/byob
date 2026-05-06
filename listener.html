@@ -536,7 +536,12 @@ audio{display:none;}
 .sync-status.synced .ss-dot{color:var(--teal);}
 .sync-status.synced{color:var(--teal);}
 .sync-status.quiet .ss-dot{color:var(--muted);opacity:.4;}
+.sync-status.locked .ss-dot{color:var(--teal);opacity:.5;}
+.sync-status.locked{color:var(--muted);}
+.sync-status.solo .ss-dot{color:var(--muted);opacity:.5;}
+.sync-status.solo{color:var(--muted);}
 @keyframes ssDot{0%,100%{opacity:1}50%{opacity:.15}}
+
 
 </style>
 </head>
@@ -2198,9 +2203,10 @@ function triggerBoomyHeroEntry(){
     startMusicWithFade();
   }, 400);
 
-    // Initialize sync engine — wait until music has fully faded in
-  // (mic permission causes iOS to lower volume, so do it after fade completes)
-  setTimeout(() => initAutoSync(), 10000);
+  // Initialize sync engine — wait until music fade completes
+  // Sync engine internally delays mic request another 5s
+  setTimeout(() => initAutoSync(), 8500);
+
 
   // Hide hero element after animation completes, then start Boomy chatting
   setTimeout(() => {
@@ -2892,36 +2898,176 @@ function fmt(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return `${m}:${sec
 let toastTimer;
 
   // ═══════════════════════════════════════════════════════════════════════
-// AUTO SPEAKER SYNC ENGINE
+// AUTO SPEAKER SYNC ENGINE — smart scheduling
 // ═══════════════════════════════════════════════════════════════════════
 const SYNC_RATE = 8000, SYNC_CAPTURE_S = 2.0, SYNC_SEARCH_MS = 500;
-const SYNC_INTERVAL_MS = 45000, SYNC_FIRST_DELAY = 4500;
 const SYNC_MIN_RMS = 0.003, SYNC_MIN_LAG_MS = 15;
-let _autoMicStream=null, _autoSyncTimer=null, _autoSyncFirst=null;
-let _cachedAudioBuf=null, _decodeInFlight=false, _syncRunning=false;
 
-  async function initAutoSync(){
-  if(_autoMicStream) return;
-  try{
+// Scheduling
+const SYNC_LOCK_ATTEMPTS = 3;        // run 3 times to lock in
+const SYNC_LOCK_INTERVAL = 9000;     // 9s between attempts during locking
+const SYNC_LOCK_FIRST_DELAY = 5000;  // wait 5s after music starts
+const SYNC_REVERIFY_MS = 5 * 60000;  // re-verify every 5 min
+const SYNC_GPS_THRESHOLD_M = 50;     // re-verify if user moves 50m
+
+// State
+let _syncState = 'idle';  // idle | locking | locked | verifying
+let _syncAttemptCount = 0;
+let _autoMicStream = null;
+let _autoSyncTimer = null;
+let _cachedAudioBuf = null;
+let _decodeInFlight = false;
+let _syncRunning = false;
+let _syncLastLat = null, _syncLastLng = null;
+let _syncLastTrackUrl = null;
+let _syncReverifyTimer = null;
+let _syncEnabled = localStorage.getItem('byob_sync_enabled') !== '0';
+
+async function initAutoSync(){
+  if (!_syncEnabled) { setSyncIndicator('off'); return; }
+  if (_syncState !== 'idle') return;
+
+  // Skip if solo — no other speakers in the zone
+  const guestCount = Object.keys(liveGuests || {}).length;
+  if (guestCount === 0) {
+    console.log('[AutoSync] Solo listener — skipping mic sync');
+    setSyncIndicator('solo');
+    // Watch for guests joining — re-trigger if a second person enters
+    _watchForGuests();
+    return;
+  }
+
+  await _enterLockingState();
+}
+
+async function _enterLockingState(){
+  if (_syncState === 'locking') return;
+  _syncState = 'locking';
+  _syncAttemptCount = 0;
+  _syncLastTrackUrl = audio.src || (audio.srcObject ? 'webrtc' : null);
+  _syncLastLat = userLat; _syncLastLng = userLng;
+
+  // Boomy announces sync
+  setTimeout(() => {
+    if (_syncState === 'locking') {
+      boomSay("Syncing boomboxes!", 2500, false, 'regular');
+    }
+  }, 100);
+
+  try {
+    if (!_autoMicStream) {
+      _autoMicStream = await navigator.mediaDevices.getUserMedia({
+        audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}
+      });
+      // iOS volume bump compensation
+      try { audio.volume = 1.0; } catch(e) {}
+    }
+    if (!audio.captureStream && !audio.mozCaptureStream && audio.src) preDecodeTrack(audio.src);
+
+    setSyncIndicator('syncing');
+    _autoSyncTimer = setTimeout(_runLockingPass, SYNC_LOCK_FIRST_DELAY);
+  } catch(e) {
+    console.warn('[AutoSync] Mic permission denied:', e.message);
+    setSyncIndicator('off');
+    _syncState = 'idle';
+  }
+}
+
+async function _runLockingPass(){
+  if (_syncState !== 'locking' && _syncState !== 'verifying') return;
+  await runAutoSync();
+  _syncAttemptCount++;
+
+  if (_syncState === 'verifying') {
+    // Verifying = single pass, then back to locked
+    _enterLockedState();
+    return;
+  }
+
+  if (_syncAttemptCount >= SYNC_LOCK_ATTEMPTS) {
+    _enterLockedState();
+  } else {
+    _autoSyncTimer = setTimeout(_runLockingPass, SYNC_LOCK_INTERVAL);
+  }
+}
+
+function _enterLockedState(){
+  _syncState = 'locked';
+  // Release mic — iOS volume returns to normal
+  if (_autoMicStream) {
+    _autoMicStream.getTracks().forEach(t => t.stop());
+    _autoMicStream = null;
+  }
+  setSyncIndicator('locked');
+  console.log('[AutoSync] Locked. Mic released.');
+
+  // Watchers
+  _watchForReverifyConditions();
+}
+
+function _watchForReverifyConditions(){
+  clearTimeout(_syncReverifyTimer);
+  // Periodic re-verify (BT clock drift)
+  _syncReverifyTimer = setTimeout(_triggerReverify, SYNC_REVERIFY_MS);
+}
+
+async function _triggerReverify(reason = 'periodic'){
+  if (_syncState !== 'locked') return;
+  if (!activeZone || audio.paused || _isMuted) {
+    _watchForReverifyConditions();
+    return;
+  }
+  console.log('[AutoSync] Re-verifying (' + reason + ')');
+  _syncState = 'verifying';
+  try {
     _autoMicStream = await navigator.mediaDevices.getUserMedia({
       audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}
     });
-
-    // iOS quirk: mic permission drops audio session volume.
-    // Bump the audio element volume above 1.0 to compensate.
-    // (Note: most browsers cap at 1.0, but iOS Safari respects values up to ~1.5 on the media element.)
-    if (audio && !audio.paused) {
-      try { audio.volume = 1.0; } catch(e) {}
-    }
-
-    if(!audio.captureStream && !audio.mozCaptureStream && audio.src) preDecodeTrack(audio.src);
-    _autoSyncFirst = setTimeout(()=>{
-      runAutoSync();
-      _autoSyncTimer = setInterval(runAutoSync, SYNC_INTERVAL_MS);
-    }, SYNC_FIRST_DELAY);
-    setSyncIndicator('ready');
-  }catch(e){ setSyncIndicator('off'); }
+    setSyncIndicator('syncing');
+    _autoSyncTimer = setTimeout(_runLockingPass, 1000);
+  } catch(e) {
+    _syncState = 'locked';
+  }
 }
+
+let _guestWatchInterval = null;
+function _watchForGuests(){
+  clearInterval(_guestWatchInterval);
+  _guestWatchInterval = setInterval(() => {
+    if (_syncState !== 'idle') { clearInterval(_guestWatchInterval); return; }
+    if (!activeZone) { clearInterval(_guestWatchInterval); return; }
+    if (Object.keys(liveGuests || {}).length > 0) {
+      clearInterval(_guestWatchInterval);
+      _enterLockingState();
+    }
+  }, 8000);
+}
+
+// Watch for big GPS movement → re-verify
+function checkSyncGpsMovement(){
+  if (_syncState !== 'locked') return;
+  if (!userLat || !_syncLastLat) return;
+  const movedM = distM(userLat, userLng, _syncLastLat, _syncLastLng);
+  if (movedM > SYNC_GPS_THRESHOLD_M) {
+    _syncLastLat = userLat; _syncLastLng = userLng;
+    _triggerReverify('moved ' + Math.round(movedM) + 'm');
+  }
+}
+setInterval(checkSyncGpsMovement, 10000);
+
+// Watch for track change → re-lock
+function checkSyncTrackChange(){
+  if (_syncState === 'idle') return;
+  const currentUrl = audio.src || (audio.srcObject ? 'webrtc' : null);
+  if (currentUrl && currentUrl !== _syncLastTrackUrl) {
+    _syncLastTrackUrl = currentUrl;
+    if (_syncState === 'locked') {
+      console.log('[AutoSync] Track changed — re-locking');
+      _enterLockingState();
+    }
+  }
+}
+setInterval(checkSyncTrackChange, 5000);
 
 async function preDecodeTrack(url){
   if(!url || _cachedAudioBuf || _decodeInFlight) return;
@@ -2937,10 +3083,14 @@ async function preDecodeTrack(url){
 }
 
 function stopAutoSync(){
-  clearTimeout(_autoSyncFirst); clearInterval(_autoSyncTimer);
-  _autoSyncFirst = null; _autoSyncTimer = null;
+  clearTimeout(_autoSyncTimer); _autoSyncTimer = null;
+  clearTimeout(_syncReverifyTimer); _syncReverifyTimer = null;
+  clearInterval(_guestWatchInterval); _guestWatchInterval = null;
   if(_autoMicStream){ _autoMicStream.getTracks().forEach(t=>t.stop()); _autoMicStream = null; }
-  _cachedAudioBuf = null; _syncRunning = false;
+  _cachedAudioBuf = null;
+  _syncRunning = false;
+  _syncState = 'idle';
+  _syncAttemptCount = 0;
   setSyncIndicator('off');
 }
 
@@ -3092,6 +3242,33 @@ function setSyncIndicator(state, lagMs = 0){
   const el = document.getElementById('sync-status');
   if(!el) return;
   el.className = 'sync-status ' + state;
+  switch(state){
+    case 'syncing': el.innerHTML = '<span class="ss-dot">●</span> syncing boomboxes…'; break;
+    case 'synced':  el.innerHTML = Math.abs(lagMs) < SYNC_MIN_LAG_MS
+      ? '<span class="ss-dot">●</span> speakers in sync'
+      : `<span class="ss-dot">●</span> synced · ${lagMs>0?'+':''}${lagMs}ms BT lag`; break;
+    case 'locked':  el.innerHTML = '<span class="ss-dot">●</span> locked & sleeping'; break;
+    case 'solo':    el.innerHTML = '<span class="ss-dot">●</span> solo · sync ready when crowd arrives'; break;
+    case 'quiet':   el.innerHTML = '<span class="ss-dot">●</span> quiet · waiting for audio'; break;
+    case 'off':     el.innerHTML = ''; break;
+    default:        el.innerHTML = '';
+  }
+}
+
+audio.addEventListener('emptied', () => { _cachedAudioBuf = null; });
+
+  switch(state){
+    case 'ready':   el.innerHTML = '<span class="ss-dot">●</span> speaker sync active'; break;
+    case 'syncing': el.innerHTML = '<span class="ss-dot">●</span> syncing speakers…'; break;
+    case 'synced':  el.innerHTML = Math.abs(lagMs) < SYNC_MIN_LAG_MS
+      ? '<span class="ss-dot">●</span> speakers in sync'
+      : `<span class="ss-dot">●</span> synced · ${lagMs>0?'+':''}${lagMs}ms BT lag`; break;
+    case 'quiet':   el.innerHTML = '<span class="ss-dot">●</span> quiet · waiting for audio'; break;
+    default:        el.innerHTML = '';
+  }
+}
+
+audio.addEventListener('emptied', () => { _cachedAudioBuf = null; });
   switch(state){
     case 'ready':   el.innerHTML = '<span class="ss-dot">●</span> speaker sync active'; break;
     case 'syncing': el.innerHTML = '<span class="ss-dot">●</span> syncing speakers…'; break;
