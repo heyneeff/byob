@@ -433,6 +433,16 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 @keyframes tapPulse{0%,100%{opacity:1}50%{opacity:.85}}
 #tap-banner.visible{display:block;}
 audio{display:none;}
+
+.sync-status{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:7px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);min-height:14px;transition:color .4s;}
+.ss-dot{font-size:7px;}
+.sync-status.ready .ss-dot{color:var(--muted);}
+.sync-status.syncing .ss-dot{color:var(--orange);animation:ssDot .55s ease-in-out infinite;}
+.sync-status.synced .ss-dot{color:var(--teal);}
+.sync-status.synced{color:var(--teal);}
+.sync-status.quiet .ss-dot{color:var(--muted);opacity:.4;}
+@keyframes ssDot{0%,100%{opacity:1}50%{opacity:.15}}
+
 </style>
 </head>
 <body>
