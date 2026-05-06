@@ -197,13 +197,63 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .btn-exit-skip{background:transparent;color:var(--muted);font-size:13px;letter-spacing:.06em;border:none;padding:10px;cursor:pointer;}
 .exit-icon{font-size:26px;}
 
-.boom-img-wrap{background:#000;border-radius:8px;flex-shrink:0;mix-blend-mode:screen;}
+.boom-img-wrap{
+  background:#000;border-radius:8px;flex-shrink:0;
+  mix-blend-mode:screen;position:relative;
+  cursor:pointer;transition:transform .15s;
+}
+.boom-img-wrap.tappable{
+  cursor:pointer;
+  animation:boomyIdle 1.62s cubic-bezier(.1,.8,.2,1) infinite;
+}
+.boom-img-wrap.tappable::after{
+  content:'TAP ME';
+  position:absolute;top:-10px;right:-8px;
+  background:var(--orange);color:#000;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:10px;font-weight:900;letter-spacing:.08em;
+  padding:3px 7px;border-radius:10px;
+  box-shadow:0 0 12px rgba(245,126,32,.6);
+  animation:tapMePulse .9s ease-in-out infinite;
+  pointer-events:none;
+}
+.boom-img-wrap.hyped{
+  animation:boomyHype .35s cubic-bezier(.1,.8,.2,1) infinite;
+}
 .boom-popup-img{height:64px;width:auto;display:block;}
 .boom-popup-img.talking{animation:boomTalk 0.18s ease-in-out infinite alternate;}
 @keyframes boomTalk{
   from{transform:translateY(0) rotate(-2deg) scale(1);}
   to  {transform:translateY(-8px) rotate(3deg) scale(1.08);}
 }
+@keyframes boomyIdle{
+  0%,100%{transform:translateY(0) rotate(0deg) scale(1);}
+  50%{transform:translateY(-3px) rotate(2deg) scale(1.04);}
+}
+@keyframes boomyHype{
+  0%  {transform:translateY(0)    rotate(0deg)   scale(1);}
+  20% {transform:translateY(-12px) rotate(-8deg) scale(1.18);}
+  40% {transform:translateY(2px)  rotate(6deg)  scale(0.94);}
+  60% {transform:translateY(-10px) rotate(-4deg) scale(1.14);}
+  80% {transform:translateY(3px)  rotate(3deg)  scale(0.97);}
+  100%{transform:translateY(0)    rotate(0deg)   scale(1);}
+}
+@keyframes tapMePulse{
+  0%,100%{transform:scale(1);opacity:1;}
+  50%{transform:scale(1.12);opacity:.85;}
+}
+.boom-burst-note{
+  position:absolute;font-size:28px;pointer-events:none;
+  z-index:851;animation:burstNote var(--dur) ease-out forwards;
+  color:var(--col);left:var(--x);top:var(--y);
+  text-shadow:0 0 8px var(--col);
+}
+@keyframes burstNote{
+  0%  {opacity:0;transform:translate(0,0) scale(.4) rotate(0deg);}
+  15% {opacity:1;}
+  100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(1.4) rotate(var(--rot));}
+}
+
 .boom-popup-bubble{
   background:var(--surface2);border:2px solid var(--orange);
   border-radius:16px 16px 16px 4px;
