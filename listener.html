@@ -1587,12 +1587,15 @@ async function syncZoneAudio() {
     if (!z.active) { stopEverything(); showToast('The zone has ended 🎤'); return; }
     if (z.current_track_url === 'webrtc-live' || !z.current_track_url) return;
     // Drift correction
-    if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
+    if    if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
+      // Only correct big drifts — don't fight the BT lag correction
+      // BT sync handles sub-second corrections; this only catches clock drift > 2s
       const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
       const expected = (elapsed + _calOffset) % audio.duration;
       const drift = Math.abs(audio.currentTime - expected);
-      if (drift > 0.5) { console.log('Drift fix:', drift.toFixed(2)+'s'); audio.currentTime = expected; }
+      if (drift > 2.0) { console.log('Drift fix:', drift.toFixed(2)+'s'); audio.currentTime = expected; }
     }
+    
   } catch(e) { console.warn('Sync error:', e.message); }
 }
 function startSyncEngine() {
@@ -2922,7 +2925,8 @@ let toastTimer;
 // AUTO SPEAKER SYNC ENGINE — smart scheduling
 // ═══════════════════════════════════════════════════════════════════════
 const SYNC_RATE = 8000, SYNC_CAPTURE_S = 2.0, SYNC_SEARCH_MS = 500;
-const SYNC_MIN_RMS = 0.003, SYNC_MIN_LAG_MS = 15;
+const SYNC_MIN_RMS = 0.003, SYNC_MIN_LAG_MS = 8;
+
 
 // Scheduling
 const SYNC_LOCK_ATTEMPTS = 3;        // run 3 times to lock in
@@ -3150,14 +3154,16 @@ async function runAutoSync(){
     if(!ref || rmsSync(ref) < SYNC_MIN_RMS){ setSyncIndicator('quiet'); _syncRunning = false; return; }
     const lagSamples = crossCorrelateSync(mic, ref, Math.floor(SYNC_SEARCH_MS/1000*SYNC_RATE));
     const lagMs = Math.round(lagSamples / SYNC_RATE * 1000);
-    if(Math.abs(lagMs) >= SYNC_MIN_LAG_MS && Math.abs(lagMs) < SYNC_SEARCH_MS){
+        if(Math.abs(lagMs) >= SYNC_MIN_LAG_MS && Math.abs(lagMs) < SYNC_SEARCH_MS){
       const lagS = lagMs / 1000;
       audio.currentTime = Math.max(0, audio.currentTime + lagS);
       if(typeof _calOffset !== 'undefined'){
         _calOffset = (_calOffset || 0) + lagS;
         if(typeof updateCalLabel === 'function') updateCalLabel();
       }
-      console.log(`[AutoSync] ${lagMs>0?'+':''}${lagMs}ms BT lag corrected`);
+      boomSay(`BT lag: ${lagMs>0?'+':''}${lagMs}ms corrected`, 3000, false, 'regular');
+    } else {
+      boomSay(`Sync check: ${lagMs}ms — no correction needed`, 3000, false, 'regular');
     }
     setSyncIndicator('synced', lagMs);
   }catch(err){ setSyncIndicator('ready'); }
