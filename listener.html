@@ -3257,31 +3257,6 @@ function setSyncIndicator(state, lagMs = 0){
 
 audio.addEventListener('emptied', () => { _cachedAudioBuf = null; });
 
-  switch(state){
-    case 'ready':   el.innerHTML = '<span class="ss-dot">●</span> speaker sync active'; break;
-    case 'syncing': el.innerHTML = '<span class="ss-dot">●</span> syncing speakers…'; break;
-    case 'synced':  el.innerHTML = Math.abs(lagMs) < SYNC_MIN_LAG_MS
-      ? '<span class="ss-dot">●</span> speakers in sync'
-      : `<span class="ss-dot">●</span> synced · ${lagMs>0?'+':''}${lagMs}ms BT lag`; break;
-    case 'quiet':   el.innerHTML = '<span class="ss-dot">●</span> quiet · waiting for audio'; break;
-    default:        el.innerHTML = '';
-  }
-}
-
-audio.addEventListener('emptied', () => { _cachedAudioBuf = null; });
-  switch(state){
-    case 'ready':   el.innerHTML = '<span class="ss-dot">●</span> speaker sync active'; break;
-    case 'syncing': el.innerHTML = '<span class="ss-dot">●</span> syncing speakers…'; break;
-    case 'synced':  el.innerHTML = Math.abs(lagMs) < SYNC_MIN_LAG_MS
-      ? '<span class="ss-dot">●</span> speakers in sync'
-      : `<span class="ss-dot">●</span> synced · ${lagMs>0?'+':''}${lagMs}ms BT lag`; break;
-    case 'quiet':   el.innerHTML = '<span class="ss-dot">●</span> quiet · waiting for audio'; break;
-    default:        el.innerHTML = '';
-  }
-}
-
-audio.addEventListener('emptied', () => { _cachedAudioBuf = null; });
-
 
 function showToast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
