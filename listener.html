@@ -2104,9 +2104,11 @@ function toggleFriend() {
   updateGuestList();
 }
 
-// Receive presence from other listeners
+// Receive presence from other listeners — and broadcast our own
 function initGuestListChannel(zoneId) {
   if (window._guestChannel) { window._guestChannel.unsubscribe(); }
+  if (window._guestBroadcastInterval) clearInterval(window._guestBroadcastInterval);
+
   window._guestChannel = db.channel(`presence_${zoneId}`)
     .on('broadcast', { event: 'proximity' }, ({ payload }) => {
       if (payload.id === listenerId) return;
@@ -2120,11 +2122,27 @@ function initGuestListChannel(zoneId) {
         status:   distMeters <= zoneRadius ? 'present' : distMeters <= 500 ? 'ontheway' : null,
         lastSeen: Date.now(),
       };
-      // Drop people too far away
       if (liveGuests[payload.id].status === null) delete liveGuests[payload.id];
       updateGuestList();
     })
-    .subscribe();
+    .subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        // Broadcast our presence so other phones can see us
+        const sendPresence = () => {
+          if (!activeZone || !userLat) return;
+          const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
+          const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
+          const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
+          const emoji   = currentUser?.user_metadata?.emoji || '🎧';
+          window._guestChannel.send({
+            type: 'broadcast', event: 'proximity',
+            payload: { id: listenerId, dist, bearing, name, emoji }
+          });
+        };
+        sendPresence();  // immediate first ping
+        window._guestBroadcastInterval = setInterval(sendPresence, 4000);
+      }
+    });
 }
 
 // Prune stale guests every 35s
@@ -2659,22 +2677,25 @@ class ProximityGrid {
     this._startSelfBroadcast(zoneId);
   }
 
-  _startSelfBroadcast(zoneId) {
+   _startSelfBroadcast(zoneId) {
     if (this._broadcastInterval) clearInterval(this._broadcastInterval);
-    this._broadcastInterval = setInterval(() => {
+    // Send first ping immediately on join, then every 4 seconds
+    const sendPing = () => {
       if (!activeZone || !userLat) return;
       const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
       const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
       const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
       const emoji   = currentUser?.user_metadata?.emoji || '🎧';
       const phone   = currentUser?.user_metadata?.phone || '';
-      if (this.presenceChannel) {
+            if (this.presenceChannel) {
         this.presenceChannel.send({
           type: 'broadcast', event: 'proximity',
           payload: { id: listenerId, dist, bearing, name, emoji, phone }
         });
       }
-    }, 8000);
+    };
+    sendPing();  // immediate first ping
+    this._broadcastInterval = setInterval(sendPing, 4000);  // then every 4s
   }
 
   _addDemoPeople(n) {
@@ -2927,18 +2948,25 @@ async function initAutoSync(){
   if (!_syncEnabled) { setSyncIndicator('off'); return; }
   if (_syncState !== 'idle') return;
 
-  // Skip if solo — no other speakers in the zone
+  // Wait 6 seconds to let presence broadcasts arrive from other phones
+  // (presence pings every 4s, so by 6s we should have heard from anyone nearby)
+  setSyncIndicator('syncing');
+  console.log('[AutoSync] Waiting for presence discovery...');
+  await new Promise(r => setTimeout(r, 6000));
+
+  // Now check guest count
   const guestCount = Object.keys(liveGuests || {}).length;
   if (guestCount === 0) {
     console.log('[AutoSync] Solo listener — skipping mic sync');
     setSyncIndicator('solo');
-    // Watch for guests joining — re-trigger if a second person enters
     _watchForGuests();
     return;
   }
 
+  console.log('[AutoSync] ' + guestCount + ' other guest(s) detected — starting sync');
   await _enterLockingState();
 }
+
 
 async function _enterLockingState(){
   if (_syncState === 'locking') return;
