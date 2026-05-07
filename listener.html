@@ -1590,8 +1590,9 @@ async function syncZoneAudio() {
     activeZone = z;
     if (!z.active) { stopEverything(); showToast('The zone has ended 🎤'); return; }
     if (z.current_track_url === 'webrtc-live' || !z.current_track_url) return;
-    /    // Drift correction
+        // Drift correction
     if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
+
       // Only correct big drifts — don't fight the BT lag correction
       // BT sync handles sub-second corrections; this only catches clock drift > 2s
       const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
