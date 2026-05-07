@@ -3263,14 +3263,15 @@ async function runAutoSync(){
     else if(_cachedAudioBuf) ref = sliceAudioBuffer(_cachedAudioBuf, snapPos, SYNC_CAPTURE_S);
     if(!ref || rmsSync(ref) < SYNC_MIN_RMS){ setSyncIndicator('quiet'); _syncRunning = false; return; }
     const lagSamples = crossCorrelateSync(mic, ref, Math.floor(SYNC_SEARCH_MS/1000*SYNC_RATE));
-    const lagMs = Math.round(lagSamples / SYNC_RATE * 1000);
-        if(Math.abs(lagMs) >= SYNC_MIN_LAG_MS && Math.abs(lagMs) < SYNC_SEARCH_MS){
+        const lagMs = Math.round(lagSamples / SYNC_RATE * 1000);
+    if(Math.abs(lagMs) >= SYNC_MIN_LAG_MS && Math.abs(lagMs) < SYNC_SEARCH_MS){
       const lagS = lagMs / 1000;
       seekPreservingBT(audio.currentTime + lagS);
     }
     setSyncIndicator('synced', lagMs);
   }catch(err){ setSyncIndicator('ready'); }
-
+  _syncRunning = false;
+}
 
 function captureParallel(ctx, micSrc, refSrc, micOut, refOut, durationS){
   return new Promise(resolve=>{
