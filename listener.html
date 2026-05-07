@@ -3103,6 +3103,12 @@ async function _enterLockingState(){
   }
 }
 
+  function seekPreservingBT(newTime) {
+  audio.muted = true;
+  audio.currentTime = Math.max(0, newTime);
+  setTimeout(() => { if (!_isMuted) audio.muted = false; }, 120);
+}
+
 async function _runLockingPass(){
   if (_syncState !== 'locking' && _syncState !== 'verifying') return;
   await runAutoSync();
@@ -3260,12 +3266,9 @@ async function runAutoSync(){
     const lagMs = Math.round(lagSamples / SYNC_RATE * 1000);
         if(Math.abs(lagMs) >= SYNC_MIN_LAG_MS && Math.abs(lagMs) < SYNC_SEARCH_MS){
       const lagS = lagMs / 1000;
-      audio.currentTime = Math.max(0, audio.currentTime + lagS);
-      if(typeof _calOffset !== 'undefined'){
-        _calOffset = (_calOffset || 0) + lagS;
-        if(typeof updateCalLabel === 'function') updateCalLabel();
-      }
-         }
+    seekPreservingBT(audio.currentTime + lagS);
+
+      
     setSyncIndicator('synced', lagMs);
   }catch(err){ setSyncIndicator('ready'); }
   _syncRunning = false;
