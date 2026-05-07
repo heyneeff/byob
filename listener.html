@@ -3239,7 +3239,9 @@ async function runAutoSync(){
     const wallElapsed = activeZone?.playback_started_at
       ? (Date.now() - new Date(activeZone.playback_started_at).getTime()) / 1000
       : audio.currentTime;
-    const snapPos = wallElapsed % (audio.duration || 1);
+        const btCompensation = (_deviceLatencyMs || 0) / 1000;
+    const snapPos = Math.max(0, wallElapsed - btCompensation) % (audio.duration || 1);
+
 
     await captureParallel(ctx, micSrc, refSrc, micBuf, refBuf, SYNC_CAPTURE_S);
     await ctx.close();
