@@ -3152,7 +3152,11 @@ async function runAutoSync(){
       const ps = audio.captureStream?.() ?? audio.mozCaptureStream?.();
       if(ps) refSrc = ctx.createMediaStreamSource(ps);
     }catch(_){}
-    const snapPos = audio.currentTime;
+    const wallElapsed = activeZone?.playback_started_at
+      ? (Date.now() - new Date(activeZone.playback_started_at).getTime()) / 1000
+      : audio.currentTime;
+    const snapPos = wallElapsed % (audio.duration || 1);
+
     await captureParallel(ctx, micSrc, refSrc, micBuf, refBuf, SYNC_CAPTURE_S);
     await ctx.close();
     const mic = toFloat32(micBuf, SYNC_RATE * SYNC_CAPTURE_S);
