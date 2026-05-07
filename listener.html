@@ -2169,7 +2169,7 @@ let knownZones     = [];   // cached from last loadZones
 let insideZoneIds  = new Set();
 
 // Called every GPS tick — checks all known zones
-alet _preSyncZoneId = null;
+let _preSyncZoneId = null;
 
 async function preSyncApproach(z) {
   if (_preSyncZoneId === z.id) return;       // already warming up for this zone
