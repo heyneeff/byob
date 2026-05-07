@@ -1599,6 +1599,7 @@ async function syncZoneAudio() {
       const expected = (elapsed + _calOffset) % audio.duration;
       const drift = Math.abs(audio.currentTime - expected);
       if (drift > 2.0) { console.log('Drift fix:', drift.toFixed(2)+'s'); audio.currentTime = expected; }
+
     }
     
   } catch(e) { console.warn('Sync error:', e.message); }
@@ -2969,7 +2970,7 @@ let toastTimer;
   // ═══════════════════════════════════════════════════════════════════════
 // AUTO SPEAKER SYNC ENGINE — smart scheduling
 // ═══════════════════════════════════════════════════════════════════════
-const SYNC_RATE = 8000, SYNC_CAPTURE_S = 2.0, SYNC_SEARCH_MS = 500;
+const SYNC_RATE = 8000, SYNC_CAPTURE_S = 2.0, SYNC_SEARCH_MS = 1200;
 const SYNC_MIN_RMS = 0.003, SYNC_MIN_LAG_MS = 8;
 
 
