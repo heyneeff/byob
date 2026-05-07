@@ -2427,7 +2427,12 @@ async function activateZone(z) {
   _crowdTriggered.clear();
   liveGuests = {};
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
-  startSyncEngine();
+    startSyncEngine();
+  // Auto-calibrate BT latency on first ever zone entry
+  if (!localStorage.getItem('byob_device_latency')) {
+    setTimeout(() => calibrateDeviceLatency(), 6000); // wait for music to settle
+  }
+
 
   if (z.current_track_url === 'webrtc-live') {
     document.getElementById('track-name').textContent = z.track_name || '🔴 LIVE';
