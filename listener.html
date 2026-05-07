@@ -2452,6 +2452,21 @@ async function activateZone(z) {
       if (!zn.active) { stopEverything(); showToast('Zone ended 🎤'); return; }
 
       // DJ announcement — boombox delivers the message
+            // Coordinated resync — all phones seek simultaneously
+      if (zn.resync_at) {
+        const waitMs = new Date(zn.resync_at).getTime() - Date.now();
+        if (waitMs > 0 && waitMs < 10000) {
+          boomSay('Syncing all speakers…', waitMs, false, 'regular');
+          setTimeout(() => {
+            if (!activeZone || !audio.duration) return;
+            const elapsed = (Date.now() - new Date(zn.playback_started_at).getTime()) / 1000;
+            const target = (elapsed + _calOffset) % audio.duration;
+            seekPreservingBT(target);
+            setSyncIndicator('synced', 0);
+          }, waitMs);
+        }
+      }
+
       if (zn.last_message && zn.last_message !== zones_cache[zn.id]?._lastSeenMsg) {
         zones_cache[zn.id]._lastSeenMsg = zn.last_message;
         boomSay(`📣 ${zn.last_message}`, 5000, true, 'devious');
@@ -2997,6 +3012,13 @@ let _deviceLatencyMs = parseFloat(localStorage.getItem('byob_device_latency') ||
 
 async function calibrateDeviceLatency() {
   if (!_sfxCtx) return;
+  // Skip if other phones are present — mic would pick up the click and corrupt their sync
+  const guestCount = Object.keys(liveGuests || {}).length;
+  if (guestCount > 0) {
+    console.log('[Calibrate] Skipping — ' + guestCount + ' other phone(s) present');
+    return;
+  }
+
   boomSay('Calibrating your speakers… stay quiet for 2 seconds', 3000, false, 'regular');
   await new Promise(r => setTimeout(r, 500));
   try {
