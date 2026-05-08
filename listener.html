@@ -3085,14 +3085,18 @@ async function calibrateDeviceLatency() {
 
     const latencyMs = Math.round((maxIdx / sr - 0.15) * 1000);
 
-    if (latencyMs > 5 && latencyMs < 600) {
+        if (latencyMs > 5 && latencyMs < 600) {
       _deviceLatencyMs = latencyMs;
       localStorage.setItem('byob_device_latency', latencyMs.toString());
-      console.log('[Calibrate] Device latency: ' + latencyMs + 'ms — stored');
-      boomSay('Speaker calibrated! ' + latencyMs + 'ms delay measured.', 3000, false, 'regular');
+      console.log('[Calibrate] ✅ Device latency: ' + latencyMs + 'ms — stored');
+      boomSay('🔊 Calibrated: ' + latencyMs + 'ms BT delay detected.', 4000, false, 'regular');
+      showToast('📡 BT latency: ' + latencyMs + 'ms');
     } else {
-      console.log('[Calibrate] Result unclear (' + latencyMs + 'ms) — using 0');
+      console.log('[Calibrate] ❌ Result out of range: ' + latencyMs + 'ms — not stored');
+      boomSay('Calibration unclear. Try in a quieter spot.', 3000, false, 'regular');
+      showToast('⚠️ Calibration failed: ' + latencyMs + 'ms');
     }
+
 
   } catch(e) {
     console.log('[Calibrate] Mic not available:', e.message);
