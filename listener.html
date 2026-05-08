@@ -1152,10 +1152,11 @@ function seekToSync(startedAt, playAt, playFromS) {
     const delayMs = playAt - Date.now();
     seekTo = (playFromS || 0) + _calOffset;
     if (delayMs < 0) seekTo += (-delayMs / 1000);
-  } else if (startedAt) {
-    const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+    } else if (startedAt) {
+    const elapsed = (Date.now() + _clockOffset - new Date(startedAt).getTime()) / 1000;
     seekTo = elapsed + _calOffset;
   }
+
   audio.currentTime = Math.max(0, seekTo % audio.duration);
 }
 
@@ -2423,6 +2424,8 @@ async function previewZone(z) {
 async function activateZone(z) {
   activeZone = z;
   unlockUI(z);
+    measureClockOffset(); // calibrate clock vs server once per zone entry
+
   // Start real guest list
   initGuestListChannel(z.id);
   _crowdTriggered.clear();
@@ -3008,7 +3011,20 @@ let _syncLastLat = null, _syncLastLng = null;
 let _syncLastTrackUrl = null;
 let _syncReverifyTimer = null;
 let _syncEnabled = localStorage.getItem('byob_sync_enabled') !== '0';
-let _deviceLatencyMs = parseFloat(localStorage.getItem('byob_device_latency') || '0');
+let _clockOffset = 0; // ms: our clock vs Supabase server clock
+
+async function measureClockOffset() {
+  try {
+    const t0 = Date.now();
+    const { data } = await db.rpc('now').single();  // returns server timestamp
+    const t1 = Date.now();
+    if (!data) return;
+    const serverMs = new Date(data).getTime();
+    _clockOffset = serverMs - (t0 + (t1 - t0) / 2);
+    console.log('[ClockSync] Offset:', _clockOffset.toFixed(0) + 'ms');
+  } catch(e) { _clockOffset = 0; }
+}
+
 
 async function calibrateDeviceLatency() {
   if (!_sfxCtx) return;
@@ -3125,6 +3141,19 @@ async function _enterLockingState(){
     _syncState = 'idle';
   }
 }
+function applyDriftCorrection(lagMs) {
+  if (Math.abs(lagMs) < 15) return;
+  if (Math.abs(lagMs) > 500) {
+    seekPreservingBT(audio.currentTime + lagMs / 1000); // big jump = seek
+    return;
+  }
+  // Small drift = rate correction — completely inaudible at ±3%
+  const rate = lagMs > 0 ? 1.03 : 0.97;
+  audio.playbackRate = rate;
+  const correctionMs = Math.abs(lagMs) / 0.03 * 1000;
+  setTimeout(() => { audio.playbackRate = 1.0; }, correctionMs);
+}
+
 
   function seekPreservingBT(newTime) {
   audio.muted = true;
@@ -3285,8 +3314,10 @@ async function runAutoSync(){
     if(!ref || rmsSync(ref) < SYNC_MIN_RMS){ setSyncIndicator('quiet'); _syncRunning = false; return; }
     const lagSamples = crossCorrelateSync(mic, ref, Math.floor(SYNC_SEARCH_MS/1000*SYNC_RATE));
     const lagMs = Math.round(lagSamples / SYNC_RATE * 1000);
-    if(Math.abs(lagMs) >= SYNC_MIN_LAG_MS && Math.abs(lagMs) < SYNC_SEARCH_MS){
-      seekPreservingBT(audio.currentTime + lagMs / 1000);
+       if(Math.abs(lagMs) >= SYNC_MIN_LAG_MS && Math.abs(lagMs) < SYNC_SEARCH_MS){
+      applyDriftCorrection(lagMs);
+    }
+
     }
     setSyncIndicator('synced', lagMs);
   }catch(err){ setSyncIndicator('ready'); }
