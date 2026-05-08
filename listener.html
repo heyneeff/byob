@@ -1049,6 +1049,10 @@ function onBoomyTap(){
   _sfxCtx.resume();
   unlockSfxForIOS();
   startAudioHeartbeat();
+  // Pre-authorize audio element for iOS — must happen during a real user tap
+  audio.muted = true;
+  audio.play().then(() => { audio.pause(); audio.muted = false; }).catch(()=>{});
+
   initAutoSync();
 
   try{
