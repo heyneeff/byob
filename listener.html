@@ -2196,23 +2196,7 @@ async function preSyncApproach(z) {
 }
 
 
-  // Pre-decode the track silently so buffer is ready at zone entry
-  if (z.current_track_url && z.current_track_url !== 'webrtc-live') {
-    preDecodeTrack(z.current_track_url);
-  }
-
-  // Request mic permission now so there's no delay at zone entry
-  try {
-    if (!_autoMicStream) {
-      _autoMicStream = await navigator.mediaDevices.getUserMedia({
-        audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}
-      });
-      console.log('[PreSync] Mic ready before zone entry');
-    }
-  } catch(e) {
-    console.log('[PreSync] Mic not available yet:', e.message);
-  }
-}
+  
 
 async function checkGeofences() {
   if (!userLat || !knownZones.length) return;
@@ -3120,55 +3104,6 @@ async function calibrateDeviceLatency() {
 }
 
 
-  boomSay('Calibrating your speakers… stay quiet for 2 seconds', 3000, false, 'regular');
-  await new Promise(r => setTimeout(r, 500));
-  try {
-    const micStream = _autoMicStream || await navigator.mediaDevices.getUserMedia({
-      audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}
-    });
-    const ctx = new AudioContext({sampleRate:44100});
-    const micSrc = ctx.createMediaStreamSource(micStream);
-    const recorded = [];
-    const proc = ctx.createScriptProcessor(2048,1,1);
-    proc.onaudioprocess = e => recorded.push(...e.inputBuffer.getChannelData(0));
-    micSrc.connect(proc); proc.connect(ctx.destination);
-
-    // Fire a short click through the speaker
-    const clickTime = ctx.currentTime + 0.15;
-    const osc = ctx.createOscillator(), env = ctx.createGain();
-    osc.frequency.value = 1000; osc.type = 'sine';
-    env.gain.setValueAtTime(0, clickTime);
-    env.gain.linearRampToValueAtTime(0.7, clickTime + 0.003);
-    env.gain.exponentialRampToValueAtTime(0.001, clickTime + 0.06);
-    osc.connect(env); env.connect(ctx.destination);
-    osc.start(clickTime); osc.stop(clickTime + 0.1);
-
-    await new Promise(r => setTimeout(r, 700));
-    proc.disconnect(); proc.onaudioprocess = null;
-    await ctx.close();
-
-    // Find peak in recorded buffer — that's when the click arrived at the mic
-    const sr = 44100;
-    const searchFrom = Math.floor(sr * 0.1);   // start looking 100ms in
-    let maxAmp = 0, maxIdx = searchFrom;
-    for (let i = searchFrom; i < Math.min(recorded.length, sr); i++) {
-      if (Math.abs(recorded[i]) > maxAmp) { maxAmp = Math.abs(recorded[i]); maxIdx = i; }
-    }
-
-    const heardAtS   = maxIdx / sr;
-    const firedAtS   = 0.15;   // we scheduled the click 150ms from recording start
-    const latencyMs  = Math.round((heardAtS - firedAtS) * 1000);
-
-    if (latencyMs > 5 && latencyMs < 600) {
-      _deviceLatencyMs = latencyMs;
-      localStorage.setItem('byob_device_latency', latencyMs.toString());
-      boomSay(`Speaker delay: ${latencyMs}ms — calibrated! Syncs will be tighter now.`, 4000, false, 'regular');
-    } else {
-      boomSay('Calibration unclear — try in a quieter spot.', 3000, false, 'regular');
-    }
-  } catch(e) { console.warn('[Calibrate]', e); }
-}
-
 
 async function initAutoSync(){
   // Mic sync disabled — iOS kills Bluetooth when getUserMedia opens.
@@ -3177,18 +3112,7 @@ async function initAutoSync(){
 }
 
 
-  // Now check guest count
-  const guestCount = Object.keys(liveGuests || {}).length;
-  if (guestCount === 0) {
-    console.log('[AutoSync] Solo listener — skipping mic sync');
-    setSyncIndicator('solo');
-    _watchForGuests();
-    return;
-  }
-
-  console.log('[AutoSync] ' + guestCount + ' other guest(s) detected — starting sync');
-  await _enterLockingState();
-}
+ 
 
 
 async function _enterLockingState(){
