@@ -1152,10 +1152,11 @@ function seekToSync(startedAt, playAt, playFromS) {
     const delayMs = playAt - Date.now();
     seekTo = (playFromS || 0) + _calOffset;
     if (delayMs < 0) seekTo += (-delayMs / 1000);
-    } else if (startedAt) {
+      } else if (startedAt) {
     const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
-    seekTo = elapsed + _calOffset;
+    seekTo = elapsed + _calOffset + (_deviceLatencyMs / 1000);
   }
+
 
   audio.currentTime = Math.max(0, seekTo % audio.duration);
 }
