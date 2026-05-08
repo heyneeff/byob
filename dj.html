@@ -750,9 +750,7 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     statusEl.textContent='Uploading…'; statusEl.style.color='var(--teal)';
   try{
     const path=`tracks/${currentUser?.id||'anon'}/${Date.now()}_${file.name}`;
-    const uploadPromise = db.storage.from('boombox').upload(path,file);
-    const timeout = new Promise((_,reject)=>setTimeout(()=>reject(new Error('Upload timed out — check Supabase Storage: does the "boombox" bucket exist with public access?')),15000));
-    const {error:upErr} = await Promise.race([uploadPromise,timeout]);
+       const {error:upErr} = await db.storage.from('boombox').upload(path,file);
     if(upErr)throw upErr;
 
     const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
