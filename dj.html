@@ -385,7 +385,13 @@ audio{display:none;}
       <select class="device-select" id="device-select"><option value="">— select audio input —</option></select>
       <button class="btn-scan-sm" onclick="scanDevices()">Scan</button>
     </div>
-    <div class="input-meter"><div class="meter-fill" id="meter-fill"></div></div>
+        <div class="input-meter"><div class="meter-fill" id="meter-fill"></div></div>
+    <button onclick="triggerResync()" style="
+      width:100%;padding:16px;background:#00cc99;color:#000;
+      border:none;border-radius:8px;font-family:'Roboto Condensed',sans-serif;
+      font-size:18px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
+      cursor:pointer;margin-top:8px;box-shadow:3px 3px 0 rgba(0,0,0,.4);
+    ">🔄 Sync All Speakers</button>
   </div>
 
   <!-- PLAYER / VISUALIZER -->
@@ -1046,6 +1052,12 @@ function renderLiveGuestList() {
       <span class="guest-status ${l.status}">${l.status}</span>`;
     el.appendChild(row);
   });
+}
+async function triggerResync() {
+  if (!activeZone) return showToast('No active zone');
+  const resyncAt = new Date(Date.now() + 4000).toISOString();
+  await db.from('zones').update({ resync_at: resyncAt }).eq('id', activeZone.id);
+  showToast('🔄 Sync pulse sent — all speakers locking in 4s…');
 }
 
 async function killStream(){
