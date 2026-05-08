@@ -2174,10 +2174,27 @@ let insideZoneIds  = new Set();
 let _preSyncZoneId = null;
 
 async function preSyncApproach(z) {
-  if (_preSyncZoneId === z.id) return;       // already warming up for this zone
-  if (activeZone) return;                     // already inside a zone
+  if (_preSyncZoneId === z.id) return;
+  if (activeZone) return;
   _preSyncZoneId = z.id;
-  console.log('[PreSync] Approaching zone — warming up mic + pre-decoding track');
+  console.log('[PreSync] Approaching zone — pre-decoding track + calibrating device');
+
+  // Pre-decode track so buffer is ready at zone entry
+  if (z.current_track_url && z.current_track_url !== 'webrtc-live') {
+    preDecodeTrack(z.current_track_url);
+  }
+
+  // Only calibrate if we haven't measured this device yet
+  if (localStorage.getItem('byob_device_latency')) {
+    console.log('[PreSync] Device latency already calibrated:', _deviceLatencyMs + 'ms');
+    return;
+  }
+
+  // Small delay so user isn't startled by a click immediately on approach
+  await new Promise(r => setTimeout(r, 1500));
+  await calibrateDeviceLatency();
+}
+
 
   // Pre-decode the track silently so buffer is ready at zone entry
   if (z.current_track_url && z.current_track_url !== 'webrtc-live') {
@@ -2266,9 +2283,9 @@ function triggerBoomyHeroEntry(){
     startMusicWithFade();
   }, 400);
 
-  // Initialize sync engine — wait until music fade completes
-  // Sync engine internally delays mic request another 5s
-  setTimeout(() => initAutoSync(), 8500);
+    // Wall-clock sync handles drift — no mic needed
+  setSyncIndicator('locked');
+
 
 
   // Hide hero element after animation completes, then start Boomy chatting
@@ -2432,10 +2449,8 @@ async function activateZone(z) {
   liveGuests = {};
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
     startSyncEngine();
-  // Auto-calibrate BT latency on first ever zone entry
-  if (!localStorage.getItem('byob_device_latency')) {
-    setTimeout(() => calibrateDeviceLatency(), 6000); // wait for music to settle
-  }
+
+    // Calibration already ran during approach — nothing to do here
 
 
   if (z.current_track_url === 'webrtc-live') {
@@ -3030,13 +3045,80 @@ async function measureClockOffset() {
 
 
 async function calibrateDeviceLatency() {
-  if (!_sfxCtx) return;
-  // Skip if other phones are present — mic would pick up the click and corrupt their sync
-  const guestCount = Object.keys(liveGuests || {}).length;
-  if (guestCount > 0) {
-    console.log('[Calibrate] Skipping — ' + guestCount + ' other phone(s) present');
+  // Never run during playback — iOS kills BT when mic opens during audio session
+  if (_webAudioPlaying || (audio.src && !audio.paused)) {
+    console.log('[Calibrate] Skipping — audio is playing');
     return;
   }
+
+  console.log('[Calibrate] Starting device latency measurement...');
+  let micStream = null;
+
+  try {
+    // Open mic
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}
+    });
+
+    const ctx = new AudioContext({sampleRate:44100});
+    const micSrc = ctx.createMediaStreamSource(micStream);
+    const recorded = [];
+    const proc = ctx.createScriptProcessor(2048,1,1);
+    proc.onaudioprocess = e => recorded.push(...e.inputBuffer.getChannelData(0));
+    micSrc.connect(proc); proc.connect(ctx.destination);
+
+    // Fire calibration click through speaker
+    const clickTime = ctx.currentTime + 0.15;
+    const osc = ctx.createOscillator(), env = ctx.createGain();
+    osc.frequency.value = 1000; osc.type = 'sine';
+    env.gain.setValueAtTime(0, clickTime);
+    env.gain.linearRampToValueAtTime(0.6, clickTime + 0.003);
+    env.gain.exponentialRampToValueAtTime(0.001, clickTime + 0.06);
+    osc.connect(env); env.connect(ctx.destination);
+    osc.start(clickTime); osc.stop(clickTime + 0.1);
+
+    await new Promise(r => setTimeout(r, 700));
+
+    // Clean up immediately — mic must be closed before music starts
+    proc.disconnect(); proc.onaudioprocess = null;
+    await ctx.close();
+
+    // Find peak in recording = when click arrived at mic
+    const sr = 44100;
+    const searchFrom = Math.floor(sr * 0.1);
+    let maxAmp = 0, maxIdx = searchFrom;
+    for (let i = searchFrom; i < Math.min(recorded.length, sr); i++) {
+      if (Math.abs(recorded[i]) > maxAmp) { maxAmp = Math.abs(recorded[i]); maxIdx = i; }
+    }
+
+    const latencyMs = Math.round((maxIdx / sr - 0.15) * 1000);
+
+    if (latencyMs > 5 && latencyMs < 600) {
+      _deviceLatencyMs = latencyMs;
+      localStorage.setItem('byob_device_latency', latencyMs.toString());
+      console.log('[Calibrate] Device latency: ' + latencyMs + 'ms — stored');
+      boomSay('Speaker calibrated! ' + latencyMs + 'ms delay measured.', 3000, false, 'regular');
+    } else {
+      console.log('[Calibrate] Result unclear (' + latencyMs + 'ms) — using 0');
+    }
+
+  } catch(e) {
+    console.log('[Calibrate] Mic not available:', e.message);
+  } finally {
+    // ALWAYS release mic — no matter what happened
+    if (micStream) {
+      micStream.getTracks().forEach(t => t.stop());
+      micStream = null;
+      console.log('[Calibrate] Mic released');
+    }
+    // Clear any lingering mic reference
+    if (_autoMicStream) {
+      _autoMicStream.getTracks().forEach(t => t.stop());
+      _autoMicStream = null;
+    }
+  }
+}
+
 
   boomSay('Calibrating your speakers… stay quiet for 2 seconds', 3000, false, 'regular');
   await new Promise(r => setTimeout(r, 500));
@@ -3089,14 +3171,11 @@ async function calibrateDeviceLatency() {
 
 
 async function initAutoSync(){
-  if (!_syncEnabled) { setSyncIndicator('off'); return; }
-  if (_syncState !== 'idle') return;
+  // Mic sync disabled — iOS kills Bluetooth when getUserMedia opens.
+  // Wall-clock sync + manual resync button is sufficient for live events.
+  setSyncIndicator('locked');
+}
 
-  // Wait 6 seconds to let presence broadcasts arrive from other phones
-  // (presence pings every 4s, so by 6s we should have heard from anyone nearby)
-  setSyncIndicator('syncing');
-  console.log('[AutoSync] Waiting for presence discovery...');
-  await new Promise(r => setTimeout(r, 6000));
 
   // Now check guest count
   const guestCount = Object.keys(liveGuests || {}).length;
