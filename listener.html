@@ -1153,7 +1153,7 @@ function seekToSync(startedAt, playAt, playFromS) {
     seekTo = (playFromS || 0) + _calOffset;
     if (delayMs < 0) seekTo += (-delayMs / 1000);
     } else if (startedAt) {
-    const elapsed = (Date.now() + _clockOffset - new Date(startedAt).getTime()) / 1000;
+    const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
     seekTo = elapsed + _calOffset;
   }
 
@@ -2424,7 +2424,7 @@ async function previewZone(z) {
 async function activateZone(z) {
   activeZone = z;
   unlockUI(z);
-    measureClockOffset(); // calibrate clock vs server once per zone entry
+
 
   // Start real guest list
   initGuestListChannel(z.id);
@@ -2456,17 +2456,19 @@ async function activateZone(z) {
 
       // DJ announcement — boombox delivers the message
             // Coordinated resync — all phones seek simultaneously
-      if (zn.resync_at) {
+            if (zn.resync_at) {
         const waitMs = new Date(zn.resync_at).getTime() - Date.now();
-        if (waitMs > 0 && waitMs < 10000) {
+        if (Math.abs(waitMs) < 10000) {
+          const delay = Math.max(0, waitMs);
+
           boomSay('Syncing all speakers…', waitMs, false, 'regular');
-          setTimeout(() => {
+                    setTimeout(() => {
             if (!activeZone || !audio.duration) return;
             const elapsed = (Date.now() - new Date(zn.playback_started_at).getTime()) / 1000;
             const target = (elapsed + _calOffset) % audio.duration;
             seekPreservingBT(target);
             setSyncIndicator('synced', 0);
-          }, waitMs);
+          }, delay);
         }
       }
 
