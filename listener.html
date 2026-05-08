@@ -3012,6 +3012,7 @@ let _syncLastTrackUrl = null;
 let _syncReverifyTimer = null;
 let _syncEnabled = localStorage.getItem('byob_sync_enabled') !== '0';
 let _clockOffset = 0; // ms: our clock vs Supabase server clock
+let _deviceLatencyMs = parseFloat(localStorage.getItem('byob_device_latency') || '0');
 
 async function measureClockOffset() {
   try {
@@ -3318,7 +3319,7 @@ async function runAutoSync(){
       applyDriftCorrection(lagMs);
     }
 
-    }
+  
     setSyncIndicator('synced', lagMs);
   }catch(err){ setSyncIndicator('ready'); }
   _syncRunning = false;
