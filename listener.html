@@ -1015,7 +1015,11 @@ function nudge(deltaSeconds) {
   localStorage.setItem('byob_cal_offset', _calOffset.toString());
   updateCalLabel();
   if (audio.duration && !audio.paused) audio.currentTime = Math.max(0, audio.currentTime + deltaSeconds);
+  // Save as device latency so next zone entry is automatic
+  _deviceLatencyMs = -_calOffset * 1000;
+  if (_deviceLatencyMs > 0) localStorage.setItem('byob_device_latency', _deviceLatencyMs.toString());
 }
+
 function updateCalLabel() {
   const ms = Math.round(_calOffset * 1000);
   const el = document.getElementById('cal-label');
@@ -1126,9 +1130,12 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     if (!audio.duration) return;
     seekToSync(startedAt, playAt, playFromS);
 
-    audio.addEventListener('playing', function onPlaying() {
+        audio.addEventListener('playing', function onPlaying() {
       audio.removeEventListener('playing', onPlaying);
-      seekToSync(startedAt, playAt, playFromS); // fine-tune
+      seekToSync(startedAt, playAt, playFromS);
+      // Buffer needs ~400ms to stabilize — re-seek once more
+      setTimeout(() => seekToSync(startedAt, playAt, playFromS), 400);
+
       hideTapBanner();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title: title||'BYOB', artist: 'Live from the Zone 🎧', album: activeZone?.name||'BYOB' });
@@ -1153,8 +1160,8 @@ function seekToSync(startedAt, playAt, playFromS) {
     seekTo = (playFromS || 0) + _calOffset;
     if (delayMs < 0) seekTo += (-delayMs / 1000);
       } else if (startedAt) {
-    const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
-    seekTo = elapsed + _calOffset + (_deviceLatencyMs / 1000);
+       const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+    seekTo = elapsed + _calOffset - (_deviceLatencyMs / 1000);
   }
 
 
