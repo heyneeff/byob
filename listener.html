@@ -11,7 +11,10 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
-<style>
+
+ 
+  
+  <style>
 :root{
   --bg:#000; --red:#ef3c23; --orange:#f57e20;
   --teal:#00cc99; --dark-teal:#003333;
@@ -546,7 +549,19 @@ audio{display:none;}
 .sync-status.solo{color:var(--muted);}
 @keyframes ssDot{0%,100%{opacity:1}50%{opacity:.15}}
 
-
+ /* ── SYNC DEBUG HUD ── */
+#hud-btn{position:fixed;bottom:80px;left:12px;z-index:9999;width:36px;height:36px;background:#111;border:1px solid var(--teal);border-radius:8px;color:var(--teal);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+#hud{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.92);display:none;flex-direction:column;padding:20px;font-family:'Roboto Mono',monospace;font-size:12px;color:#0f0;overflow-y:auto;}
+#hud.open{display:flex;}
+#hud-rows{flex:1;display:flex;flex-direction:column;gap:4px;}
+.hud-row{display:flex;justify-content:space-between;border-bottom:1px solid #1a1a1a;padding:3px 0;}
+.hud-key{color:#555;}
+.hud-val{color:#0f0;text-align:right;}
+.hud-val.warn{color:var(--orange);}
+.hud-val.bad{color:var(--red);}
+#hud-actions{display:flex;gap:8px;margin-top:16px;}
+.hud-act{flex:1;padding:10px;border:1px solid #333;border-radius:6px;background:transparent;color:#0f0;font-size:12px;cursor:pointer;font-family:'Roboto Mono',monospace;}
+.hud-act:active{background:#1a1a1a;}
 </style>
 </head>
 <body>
@@ -726,7 +741,14 @@ audio{display:none;}
   <div class="boom-popup-bubble" id="boom-popup-bubble"></div>
 </div>
 
-
+<button id="hud-btn" onclick="toggleHUD()">📊</button>
+<div id="hud">
+  <div id="hud-rows"></div>
+  <div id="hud-actions">
+    <button class="hud-act" onclick="copyHUD()">📋 COPY</button>
+    <button class="hud-act" onclick="toggleHUD()">✕ CLOSE</button>
+  </div>
+</div>
 <div id="toast"></div>
 <audio id="audio-player" loop playsinline webkit-playsinline></audio>
 
@@ -3471,6 +3493,77 @@ function showToast(msg){
   const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000);
 }
+  // ── SYNC DEBUG HUD ───────────────────────────────────────
+function toggleHUD() {
+  document.getElementById('hud').classList.toggle('open');
+}
+
+function hudVal(val, warnFn) {
+  const s = String(val ?? '—');
+  const cls = !warnFn ? '' : warnFn(val) === 'bad' ? ' bad' : warnFn(val) === 'warn' ? ' warn' : '';
+  return `<span class="hud-val${cls}">${s}</span>`;
+}
+
+function buildHUDRows() {
+  const now = Date.now();
+  const startedAt = activeZone?.playback_started_at
+    ? new Date(activeZone.playback_started_at).getTime() : null;
+  const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
+  const expectedPos = elapsed !== null && audio.duration
+    ? ((elapsed + _calOffset - _deviceLatencyMs/1000) % audio.duration) : null;
+  const drift = expectedPos !== null
+    ? (audio.currentTime - expectedPos) : null;
+
+  const rows = [
+    ['Date.now()',        now],
+    ['playback_started', activeZone?.playback_started_at ?? '—'],
+    ['wall elapsed',     elapsed !== null ? elapsed.toFixed(3)+'s' : '—'],
+    ['audio.currentTime',audio.duration ? audio.currentTime.toFixed(3)+'s' : '—'],
+    ['expected position',expectedPos !== null ? expectedPos.toFixed(3)+'s' : '—'],
+    ['DRIFT',            drift !== null ? (drift*1000).toFixed(0)+'ms' : '—',
+      v => { const ms=parseFloat(v); return Math.abs(ms)>500?'bad':Math.abs(ms)>100?'warn':''; }],
+    ['audio.duration',   audio.duration ? audio.duration.toFixed(2)+'s' : '—'],
+    ['audio.volume',     audio.volume.toFixed(3)],
+    ['audio.paused',     String(audio.paused)],
+    ['audio.muted',      String(audio.muted)],
+    ['_webAudioPlaying', String(_webAudioPlaying)],
+    ['_deviceLatencyMs', _deviceLatencyMs+'ms',
+      v => parseFloat(v)===0?'warn':''],
+    ['_calOffset',       (_calOffset*1000).toFixed(0)+'ms'],
+    ['_syncState',       typeof _syncState !== 'undefined' ? _syncState : '—'],
+    ['activeZone',       activeZone?.name ?? 'none'],
+    ['zone.radius_m',    activeZone?.radius_m ?? '—'],
+    ['audio.src',        audio.src ? '✓ '+audio.src.split('/').pop().slice(0,30) : '—'],
+    ['rtcPeer',          typeof rtcPeer!=='undefined' && rtcPeer ? rtcPeer.connectionState : 'none'],
+  ];
+
+  const el = document.getElementById('hud-rows');
+  if (!el) return;
+  el.innerHTML = rows.map(([k, v, wFn]) =>
+    `<div class="hud-row">
+      <span class="hud-key">${k}</span>
+      ${hudVal(v, wFn)}
+    </div>`
+  ).join('');
+}
+
+function copyHUD() {
+  const rows = document.querySelectorAll('.hud-row');
+  const text = Array.from(rows).map(r => {
+    const k = r.querySelector('.hud-key')?.textContent ?? '';
+    const v = r.querySelector('.hud-val')?.textContent ?? '';
+    return `${k.padEnd(22)} ${v}`;
+  }).join('\n');
+  const ts = new Date().toISOString();
+  navigator.clipboard.writeText(`BYOB SYNC DUMP — ${ts}\n${'─'.repeat(40)}\n${text}`)
+    .then(() => showToast('📋 Copied to clipboard'))
+    .catch(() => showToast('Copy failed — try long-press'));
+}
+
+// Update HUD every second when open
+setInterval(() => {
+  if (document.getElementById('hud')?.classList.contains('open')) buildHUDRows();
+}, 1000);
 </script>
 </body>
 </html>
