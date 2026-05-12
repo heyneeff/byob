@@ -744,9 +744,15 @@ audio{display:none;}
 <button id="hud-btn" onclick="toggleHUD()">📊</button>
 <div id="hud">
   <div id="hud-rows"></div>
-  <div id="hud-actions">
+ <div id="hud-actions">
     <button class="hud-act" onclick="copyHUD()">📋 COPY</button>
+    <button class="hud-act" onclick="shareHUD()">📤 SHARE</button>
     <button class="hud-act" onclick="toggleHUD()">✕ CLOSE</button>
+  </div>
+  <div style="display:flex;gap:6px;margin-top:8px;">
+    <button class="hud-act" onclick="hudForceEnter()">⚡ ENTER</button>
+    <button class="hud-act" onclick="hudForceExit()">🚪 EXIT</button>
+    <button class="hud-act" onclick="hudReSeek()">🎯 RE-SEEK</button>
   </div>
 </div>
 <div id="toast"></div>
@@ -1158,10 +1164,10 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
         audio.addEventListener('playing', function onPlaying() {
       audio.removeEventListener('playing', onPlaying);
-      seekToSync(startedAt, playAt, playFromS);
-      // Buffer needs ~400ms to stabilize — re-seek once more
+   seekToSync(startedAt, playAt, playFromS);
       setTimeout(() => seekToSync(startedAt, playAt, playFromS), 400);
-
+      setTimeout(() => seekToSync(startedAt, playAt, playFromS), 800);
+      setTimeout(() => seekToSync(startedAt, playAt, playFromS), 1500);
       hideTapBanner();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title: title||'BYOB', artist: 'Live from the Zone 🎧', album: activeZone?.name||'BYOB' });
@@ -1178,19 +1184,18 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   audio.load();
 }
 
+const SEEK_STAB_S = 0.16; // audio seek stabilization latency ~160ms
 function seekToSync(startedAt, playAt, playFromS) {
   if (!audio.duration) return;
   let seekTo = 0;
   if (playAt && playFromS !== undefined) {
     const delayMs = playAt - Date.now();
-    seekTo = (playFromS || 0) + _calOffset;
+    seekTo = (playFromS || 0) + _calOffset + SEEK_STAB_S;
     if (delayMs < 0) seekTo += (-delayMs / 1000);
-      } else if (startedAt) {
-       const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
-    seekTo = elapsed + _calOffset - (_deviceLatencyMs / 1000);
+  } else if (startedAt) {
+    const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+    seekTo = elapsed + _calOffset - (_deviceLatencyMs / 1000) + SEEK_STAB_S;
   }
-
-
   audio.currentTime = Math.max(0, seekTo % audio.duration);
 }
 
@@ -1633,7 +1638,7 @@ async function syncZoneAudio() {
       const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
       const expected = (elapsed + _calOffset) % audio.duration;
       const drift = Math.abs(audio.currentTime - expected);
-      if (drift > 2.0) { console.log('Drift fix:', drift.toFixed(2)+'s'); audio.currentTime = expected; }
+    if (drift > 0.3) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
 
     }
     
@@ -3564,6 +3569,80 @@ function copyHUD() {
 setInterval(() => {
   if (document.getElementById('hud')?.classList.contains('open')) buildHUDRows();
 }, 1000);
+
+  // ── HUD BROADCAST TO debug.html ──────────────────────────
+let _hudChannel = null;
+const _hudDeviceId = 'dev_' + Math.random().toString(36).substr(2, 6);
+
+function ensureHUDChannel() {
+  if (_hudChannel) return;
+  _hudChannel = db.channel('byob_debug').subscribe();
+}
+
+function broadcastHUD() {
+  ensureHUDChannel();
+  const now = Date.now();
+  const startedAt = activeZone?.playback_started_at
+    ? new Date(activeZone.playback_started_at).getTime() : null;
+  const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
+  const expectedPos = elapsed !== null && audio.duration
+    ? ((elapsed + _calOffset - _deviceLatencyMs / 1000) % audio.duration) : null;
+  const drift = expectedPos !== null ? (audio.currentTime - expectedPos) : null;
+  _hudChannel.send({
+    type: 'broadcast', event: 'hud_data',
+    payload: {
+      deviceId: _hudDeviceId, ts: now,
+      elapsed:     elapsed?.toFixed(3),
+      currentTime: audio.duration ? audio.currentTime.toFixed(3) : null,
+      expectedPos: expectedPos?.toFixed(3),
+      driftMs:     drift !== null ? (drift * 1000).toFixed(0) : null,
+      duration:    audio.duration?.toFixed(2),
+      deviceLatencyMs: _deviceLatencyMs,
+      calOffset:   Math.round(_calOffset * 1000),
+      syncState:   typeof _syncState !== 'undefined' ? _syncState : '—',
+      zone:        activeZone?.name || null,
+      src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
+    }
+  });
+}
+
+setInterval(() => {
+  if (document.getElementById('hud')?.classList.contains('open')) broadcastHUD();
+}, 3000);
+
+// ── HUD FORCE BUTTONS ─────────────────────────────────────
+function hudForceEnter() {
+  const z = activeZone || knownZones?.[0];
+  if (!z) { showToast('No zone available'); return; }
+  insideZoneIds.add(z.id);
+  onEnterZone(z);
+  showToast('⚡ Force-entered: ' + z.name);
+}
+
+function hudForceExit() {
+  if (!activeZone) { showToast('Not in a zone'); return; }
+  const z = activeZone;
+  insideZoneIds.delete(z.id);
+  onLeaveZone(z);
+  showToast('🚪 Force-exited zone');
+}
+
+function hudReSeek() {
+  if (!activeZone || !audio.duration) { showToast('No active track'); return; }
+  seekToSync(activeZone.playback_started_at, activeZone.play_at, activeZone.play_from_s);
+  showToast('🎯 Re-seeked to wall clock');
+}
+
+function shareHUD() {
+  const rows = document.querySelectorAll('.hud-row');
+  const text = Array.from(rows).map(r =>
+    (r.querySelector('.hud-key')?.textContent ?? '').padEnd(22) +
+    (r.querySelector('.hud-val')?.textContent ?? '')
+  ).join('\n');
+  const full = `BYOB SYNC ${new Date().toISOString()}\n${'─'.repeat(40)}\n${text}`;
+  if (navigator.share) navigator.share({ title: 'BYOB Sync', text: full }).catch(() => {});
+  else navigator.clipboard.writeText(full).then(() => showToast('📋 Copied')).catch(() => {});
+}
 </script>
 </body>
 </html>
