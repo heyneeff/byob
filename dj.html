@@ -1065,9 +1065,19 @@ function renderLiveGuestList() {
 }
 async function triggerResync() {
   if (!activeZone) return showToast('No active zone');
-  const resyncAt = new Date(Date.now() + 4000).toISOString();
-  await db.from('zones').update({ resync_at: resyncAt }).eq('id', activeZone.id);
-  showToast('🔄 Sync pulse sent — all speakers locking in 4s…');
+  if (!audio.src || !audio.duration) return showToast('No track loaded');
+
+  const resyncDelayMs = 4000;
+  const resyncAt = new Date(Date.now() + resyncDelayMs).toISOString();
+  // Recalculate anchor from current position — kills any accumulated drift
+  const freshStartedAt = new Date(Date.now() - audio.currentTime * 1000).toISOString();
+
+  await db.from('zones').update({
+    resync_at: resyncAt,
+    playback_started_at: freshStartedAt
+  }).eq('id', activeZone.id);
+
+  showToast('🔄 Hard sync in 4s — all speakers locking in…');
 }
 
 async function killStream(){
