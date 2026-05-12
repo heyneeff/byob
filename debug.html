@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BYOB — Sync Dashboard</title>
+<style>
+:root{--teal:#00cc99;--orange:#f57e20;--red:#ef3c23;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;color:#0f0;font-family:monospace;font-size:12px;padding:16px;}
+h1{font-size:14px;color:var(--teal);letter-spacing:.2em;text-transform:uppercase;margin-bottom:12px;}
+#status{font-size:11px;color:#555;margin-bottom:12px;}
+#diff{display:none;margin-bottom:12px;padding:10px;border:1px solid var(--teal);border-radius:6px;}
+#diff-label{font-size:10px;color:var(--teal);margin-bottom:4px;letter-spacing:.1em;text-transform:uppercase;}
+#diff-val{font-size:20px;font-weight:bold;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
+.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:6px;padding:10px;}
+.card-hdr{display:flex;justify-content:space-between;margin-bottom:6px;}
+.dev-id{color:var(--orange);font-weight:bold;}
+.dev-age{color:#444;font-size:10px;}
+.row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:2px 0;}
+.k{color:#555;}.v{color:#0f0;text-align:right;}
+.warn{color:var(--orange);}.bad{color:var(--red);}
+</style>
+</head>
+<body>
+<h1>📡 BYOB Sync Dashboard</h1>
+<div id="status">Connecting…</div>
+<div id="diff">
+  <div id="diff-label">position delta between devices</div>
+  <div id="diff-val">—</div>
+</div>
+<div class="grid" id="grid"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient(
+  'https://ohacvuwzvuifpyqckise.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY'
+);
+
+const devs = {};
+
+db.channel('byob_debug')
+  .on('broadcast', { event: 'hud_data' }, ({ payload }) => {
+    devs[payload.deviceId] = { ...payload, lastSeen: Date.now() };
+    render();
+  })
+  .subscribe(s => {
+    document.getElementById('status').textContent =
+      s === 'SUBSCRIBED' ? '● Listening — open HUD on any device to stream data here' : s;
+  });
+
+function render() {
+  const ids = Object.keys(devs);
+  document.getElementById('grid').innerHTML = ids.map(id => {
+    const d = devs[id];
+    const age = Math.round((Date.now() - d.lastSeen) / 1000);
+    const dm = parseFloat(d.driftMs);
+    const dc = Math.abs(dm) > 500 ? 'bad' : Math.abs(dm) > 100 ? 'warn' : '';
+    return `<div class="card">
+      <div class="card-hdr">
+        <span class="dev-id">${d.deviceId}</span>
+        <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
+      </div>
+      ${r('elapsed',     d.elapsed    ? d.elapsed + 's'    : '—')}
+      ${r('currentTime', d.currentTime? d.currentTime+'s'  : '—')}
+      ${r('expectedPos', d.expectedPos? d.expectedPos+'s'  : '—')}
+      ${r('DRIFT',       d.driftMs !== null ? d.driftMs+'ms':'—', dc)}
+      ${r('BT latency',  d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
+      ${r('calOffset',   (d.calOffset>=0?'+':'')+d.calOffset+'ms')}
+      ${r('syncState',   d.syncState || '—')}
+      ${r('src',         d.src || '—')}
+    </div>`;
+  }).join('');
+
+  if (ids.length >= 2) {
+    const vals = ids.map(id => parseFloat(devs[id].currentTime)).filter(v => !isNaN(v));
+    if (vals.length >= 2) {
+      const delta = Math.abs(vals[0] - vals[1]) * 1000;
+      const el = document.getElementById('diff-val');
+      el.textContent = delta.toFixed(0) + 'ms apart';
+      el.style.color = delta > 500 ? '#ef3c23' : delta > 100 ? '#f57e20' : '#00cc99';
+      document.getElementById('diff').style.display = 'block';
+    }
+  }
+}
+
+function r(key, val, cls='') {
+  return `<div class="row"><span class="k">${key}</span><span class="v ${cls}">${val}</span></div>`;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  Object.keys(devs).forEach(id => { if (now - devs[id].lastSeen > 30000) { delete devs[id]; changed = true; } });
+  if (changed) render();
+}, 5000);
+</script>
+</body>
+</html>
