@@ -733,49 +733,60 @@ document.getElementById('progress-bar').addEventListener('click',e=>{
 });
 document.getElementById('volume').addEventListener('input',e=>audio.volume=e.target.value/100);
 
-document.getElementById('file-input').addEventListener('change',async(e)=>{
-  const file=e.target.files[0]; if(!file)return;
-  const statusEl=document.getElementById('upload-status');
-  // Play locally immediately
-  let trackStartedAt = null;
-  audio.src=URL.createObjectURL(file); 
-  audio.loop=true;
-  // Capture the EXACT moment audio actually starts outputting to speakers
-  audio.play().catch(()=>{});
-  trackStartedAt = new Date().toISOString(); // set immediately — close enough
-  
-  isPlaying=true; document.getElementById('btn-play').textContent='⏸'; document.getElementById('btn-play').classList.add('playing');
-  document.getElementById('track-name').textContent=file.name.replace(/\.[^/.]+$/,'');
-  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
-    statusEl.textContent='Uploading…'; statusEl.style.color='var(--teal)';
-  try{
-    const path=`tracks/${currentUser?.id||'anon'}/${Date.now()}_${file.name}`;
-       const {error:upErr} = await db.storage.from('boombox').upload(path,file);
-    if(upErr)throw upErr;
+document.getElementById('file-input').addEventListener('change', async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const statusEl = document.getElementById('upload-status');
 
-    const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
-    await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
-    if(activeZone){
+  // Capture EXACT moment audio actually starts — not when play() is called
+  let playbackStartedAt = null;
+  audio.addEventListener('playing', () => {
+    if (!playbackStartedAt) playbackStartedAt = new Date().toISOString();
+  }, { once: true });
+
+  audio.src = URL.createObjectURL(file);
+  audio.loop = true;
+  audio.play().catch(() => {});
+
+  isPlaying = true;
+  document.getElementById('btn-play').textContent = '⏸';
+  document.getElementById('btn-play').classList.add('playing');
+  document.getElementById('track-name').textContent = file.name.replace(/\.[^/.]+$/, '');
+  document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState = 'running');
+
+  statusEl.textContent = 'Uploading…'; statusEl.style.color = 'var(--teal)';
+  try {
+    const path = `tracks/${currentUser?.id || 'anon'}/${Date.now()}_${file.name}`;
+    const { error: upErr } = await db.storage.from('boombox').upload(path, file);
+    if (upErr) throw upErr;
+
+    const { data: urlData } = db.storage.from('boombox').getPublicUrl(path);
+    await db.from('tracks').insert({
+      user_id: currentUser?.id || null, zone_id: activeZone?.id || null,
+      title: file.name.replace(/\.[^/.]+$/, ''), file_path: path, public_url: urlData.publicUrl
+    });
+
+    if (activeZone) {
       const bufferMs = 2000;
       const playAt = Date.now() + bufferMs;
-      // play_from_s = where DJ will be AT play_at (current pos + buffer window)
       const playFromS = audio.currentTime + (bufferMs / 1000);
+      // playbackStartedAt from 'playing' event — precise anchor for all listeners
+      const startedAt = playbackStartedAt || new Date().toISOString();
       await db.from('zones').update({
         current_track_url: urlData.publicUrl,
-        track_name: file.name.replace(/\.[^/.]+$/,''),
-        playback_position: 0,
-        playback_started_at: trackStartedAt||new Date().toISOString(),
+        track_name: file.name.replace(/\.[^/.]+$/, ''),
+        playback_started_at: startedAt,
         play_at: playAt,
         play_from_s: playFromS
-      }).eq('id',activeZone.id);
+      }).eq('id', activeZone.id);
     }
-    statusEl.textContent='● live'; statusEl.style.color='var(--teal)'; showToast('Broadcasting 📡');
-  }catch(err){
+    statusEl.textContent = '● live'; statusEl.style.color = 'var(--teal)';
+    showToast('Broadcasting 📡');
+  } catch (err) {
     console.error('Upload error:', err);
-    statusEl.textContent='⚠ '+err.message;
-    statusEl.style.color='var(--red)';
+    statusEl.textContent = '⚠ ' + err.message;
+    statusEl.style.color = 'var(--red)';
   }
-  e.target.value='';
+  e.target.value = '';
 });
 
 // ── WEBRTC BROADCAST ─────────────────────────────────────
