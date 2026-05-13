@@ -1185,7 +1185,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   audio.load();
 }
 
-const SEEK_STAB_S = 0.16; // audio seek stabilization latency ~160ms
+const SEEK_STAB_S = 0.27; // audio seek stabilization latency ~160ms
 function seekToSync(startedAt, playAt, playFromS) {
   if (!audio.duration) return;
   let seekTo = 0;
@@ -2579,6 +2579,14 @@ audio.addEventListener('ended', () => {
   audio.currentTime = 0;
   audio.play().catch(()=>{});
   document.getElementById('progress-fill').style.width = '0%';
+  // Re-anchor on loop restart — prevents drift accumulation across loops
+  if (activeZone) {
+    setTimeout(() => seekToSync(
+      activeZone.playback_started_at,
+      activeZone.play_at,
+      activeZone.play_from_s
+    ), 400);
+  }
 });
 audio.addEventListener('timeupdate',()=>{
   if(!audio.duration)return;
@@ -2586,6 +2594,7 @@ audio.addEventListener('timeupdate',()=>{
   document.getElementById('time-cur').textContent=fmt(audio.currentTime);
   document.getElementById('time-dur').textContent=fmt(audio.duration);
 });
+  
 document.getElementById('progress-bar').addEventListener('click',e=>{
   const r=e.currentTarget.getBoundingClientRect();
   if(audio.duration) audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration;
@@ -3655,7 +3664,24 @@ function shareHUD() {
   else navigator.clipboard.writeText(full).then(() => showToast('📋 Copied')).catch(() => {});
 }
 
-  
+  // Keep zone subscription alive for DJ sync signals
+function ensureZoneSubscription() {
+  if (!activeZone?.id || window._zoneChannel) return;
+  window._zoneChannel = db.channel('zone_' + activeZone.id)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zones', filter: 'id=eq.' + activeZone.id }, ({ new: zn }) => {
+      if (zn.resync_at) {
+        const waitMs = new Date(zn.resync_at).getTime() - Date.now();
+        if (Math.abs(waitMs) < 10000) {
+          setTimeout(() => {
+            if (!audio.duration) return;
+            const elapsed = (Date.now() - new Date(zn.playback_started_at).getTime()) / 1000;
+            seekPreservingBT((elapsed + _calOffset) % audio.duration);
+          }, Math.max(0, waitMs));
+        }
+      }
+    }).subscribe();
+}
+setInterval(ensureZoneSubscription, 5000);
 
 </script>
 </body>
