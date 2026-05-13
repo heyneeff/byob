@@ -1070,6 +1070,17 @@ async function triggerResync() {
   const resyncAt = Date.now() + 4000;
   const freshStartedAt = new Date(Date.now() - audio.currentTime * 1000).toISOString();
 
+  const ch = db.channel('sync_' + activeZone.id);
+  ch.subscribe(status => {
+    if (status !== 'SUBSCRIBED') return;
+    ch.send({
+      type: 'broadcast', event: 'hard_sync',
+      payload: { resyncAt, playback_started_at: freshStartedAt, resetOffsets: true }
+    });
+    showToast('🔄 Hard sync in 4s — locking all speakers…');
+  });
+}
+  
   // Broadcast direct to listeners — no postgres polling needed
   const ch = db.channel('sync_' + activeZone.id);
   ch.subscribe(status => {
