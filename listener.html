@@ -2534,19 +2534,29 @@ async function activateZone(z) {
 // ── BROADCAST SYNC CHANNEL — stays alive even after GPS exit ──
 if (window._syncChannel) { window._syncChannel.unsubscribe(); }
 window._syncChannel = db.channel('sync_' + z.id)
-  .on('broadcast', { event: 'hard_sync' }, ({ payload }) => {
-    const waitMs = payload.resyncAt - Date.now();
-    if (Math.abs(waitMs) > 10000) return;
-    const delay = Math.max(0, waitMs);
-    boomSay('Syncing all speakers…', delay + 500, false, 'regular');
-    setTimeout(() => {
-      if (!audio.duration) return;
-      const elapsed = (Date.now() - new Date(payload.playback_started_at).getTime()) / 1000;
-      seekPreservingBT((elapsed + _calOffset + SEEK_STAB_S) % audio.duration);
-      setSyncIndicator('synced', 0);
-      showToast('🔄 Synced by DJ');
-    }, delay);
-  })
+ .on('broadcast', { event: 'hard_sync' }, ({ payload }) => {
+  const waitMs = payload.resyncAt - Date.now();
+  if (Math.abs(waitMs) > 10000) return;
+
+  // Reset stale offsets before seeking — same as hitting RESET in HUD
+  if (payload.resetOffsets) {
+    localStorage.removeItem('byob_cal_offset');
+    localStorage.removeItem('byob_device_latency');
+    _calOffset = 0;
+    _deviceLatencyMs = 0;
+    updateCalLabel();
+  }
+
+  const delay = Math.max(0, waitMs);
+  boomSay('Syncing all speakers…', delay + 500, false, 'regular');
+  setTimeout(() => {
+    if (!audio.duration) return;
+    const elapsed = (Date.now() - new Date(payload.playback_started_at).getTime()) / 1000;
+    seekPreservingBT((elapsed + SEEK_STAB_S) % audio.duration);
+    setSyncIndicator('synced', 0);
+    showToast('🔄 Synced by DJ');
+  }, delay);
+})
   .subscribe();
 // Keep joinZone as alias for geofence auto-trigger
 async function joinZone(z) {
