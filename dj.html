@@ -1081,17 +1081,7 @@ async function triggerResync() {
   });
 }
   
-  // Broadcast direct to listeners — no postgres polling needed
-  const ch = db.channel('sync_' + activeZone.id);
-  ch.subscribe(status => {
-    if (status !== 'SUBSCRIBED') return;
-    ch.send({
-      type: 'broadcast', event: 'hard_sync',
-      payload: { resyncAt, playback_started_at: freshStartedAt }
-    });
-    showToast('🔄 Hard sync in 4s — locking all speakers…');
-  });
-}
+
 
 async function killStream(){
   if(!confirm('Kill the stream and deactivate zone?')) return;
