@@ -1067,17 +1067,19 @@ async function triggerResync() {
   if (!activeZone) return showToast('No active zone');
   if (!audio.src || !audio.duration) return showToast('No track loaded');
 
-  const resyncDelayMs = 4000;
-  const resyncAt = new Date(Date.now() + resyncDelayMs).toISOString();
-  // Recalculate anchor from current position — kills any accumulated drift
+  const resyncAt = Date.now() + 4000;
   const freshStartedAt = new Date(Date.now() - audio.currentTime * 1000).toISOString();
 
-  await db.from('zones').update({
-    resync_at: resyncAt,
-    playback_started_at: freshStartedAt
-  }).eq('id', activeZone.id);
-
-  showToast('🔄 Hard sync in 4s — all speakers locking in…');
+  // Broadcast direct to listeners — no postgres polling needed
+  const ch = db.channel('sync_' + activeZone.id);
+  ch.subscribe(status => {
+    if (status !== 'SUBSCRIBED') return;
+    ch.send({
+      type: 'broadcast', event: 'hard_sync',
+      payload: { resyncAt, playback_started_at: freshStartedAt }
+    });
+    showToast('🔄 Hard sync in 4s — locking all speakers…');
+  });
 }
 
 async function killStream(){
