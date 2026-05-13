@@ -3643,6 +3643,13 @@ function shareHUD() {
   if (navigator.share) navigator.share({ title: 'BYOB Sync', text: full }).catch(() => {});
   else navigator.clipboard.writeText(full).then(() => showToast('📋 Copied')).catch(() => {});
 }
+
+  { label: '🔄 RESET CAL', action: () => {
+  localStorage.setItem('byob_cal_offset', '0');
+  localStorage.setItem('byob_device_latency', '0');
+  location.reload();
+}}
+
 </script>
 </body>
 </html>
