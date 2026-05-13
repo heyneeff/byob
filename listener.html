@@ -753,6 +753,7 @@ audio{display:none;}
     <button class="hud-act" onclick="hudForceEnter()">⚡ ENTER</button>
     <button class="hud-act" onclick="hudForceExit()">🚪 EXIT</button>
     <button class="hud-act" onclick="hudReSeek()">🎯 RE-SEEK</button>
+    <button class="hud-act" onclick="hudResetCal()">🔄 RESET CAL</button>
   </div>
 </div>
 <div id="toast"></div>
@@ -3627,6 +3628,16 @@ function hudForceExit() {
   showToast('🚪 Force-exited zone');
 }
 
+function hudResetCal() {
+  localStorage.setItem('byob_cal_offset', '0');
+  localStorage.setItem('byob_device_latency', '0');
+  _calOffset = 0;
+  _deviceLatencyMs = 0;
+  updateCalLabel();
+  showToast('🔄 Calibration reset — re-entering zone recommended');
+}
+
+  
 function hudReSeek() {
   if (!activeZone || !audio.duration) { showToast('No active track'); return; }
   seekToSync(activeZone.playback_started_at, activeZone.play_at, activeZone.play_from_s);
@@ -3644,11 +3655,7 @@ function shareHUD() {
   else navigator.clipboard.writeText(full).then(() => showToast('📋 Copied')).catch(() => {});
 }
 
-  { label: '🔄 RESET CAL', action: () => {
-  localStorage.setItem('byob_cal_offset', '0');
-  localStorage.setItem('byob_device_latency', '0');
-  location.reload();
-}}
+  
 
 </script>
 </body>
