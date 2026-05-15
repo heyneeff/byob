@@ -1639,7 +1639,7 @@ async function syncZoneAudio() {
       const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
       const expected = (elapsed + _calOffset) % audio.duration;
       const drift = Math.abs(audio.currentTime - expected);
-    if (drift > 0.3) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
+    if (drift > 0.08) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
 
     }
     
