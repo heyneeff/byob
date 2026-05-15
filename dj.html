@@ -781,6 +781,15 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
     }
     statusEl.textContent = '● live'; statusEl.style.color = 'var(--teal)';
     showToast('Broadcasting 📡');
+// Auto-resync all speakers every 5 minutes
+if (window._autoResyncInterval) clearInterval(window._autoResyncInterval);
+window._autoResyncInterval = setInterval(() => {
+  if (activeZone && audio.src && !audio.paused && !liveStream) {
+    triggerResync();
+    console.log('[AutoSync] Periodic resync broadcast sent');
+  }
+}, 5 * 60 * 1000);
+
   } catch (err) {
     console.error('Upload error:', err);
     statusEl.textContent = '⚠ ' + err.message;
@@ -1089,6 +1098,7 @@ async function killStream(){
   audio.pause(); audio.src=''; audio.load();
   if(liveStream){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;}
   stopWebRTCBroadcast();
+  if (window._autoResyncInterval) { clearInterval(window._autoResyncInterval); window._autoResyncInterval = null; }
 
   document.getElementById('btn-go-live').classList.remove('active');
   document.getElementById('btn-go-live').textContent='Go Live';
