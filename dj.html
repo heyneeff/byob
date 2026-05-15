@@ -315,6 +315,38 @@ audio{display:none;}
   </div>
 </div>
 
+<!-- EVENT CREATE PANEL -->
+<div id="event-panel" style="
+  position:fixed;bottom:0;left:0;right:0;z-index:400;
+  background:var(--surface2);border-top:3px solid var(--red);
+  padding:16px 18px 30px;
+  transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);
+  max-width:520px;margin:0 auto;box-shadow:0 -4px 30px rgba(0,0,0,.7);
+">
+  <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--red);margin-bottom:8px;">Schedule Event</div>
+  <input class="zdp-name" id="evt-name" type="text" placeholder="Event name"/>
+  <input class="zdp-name" id="evt-artists" type="text" placeholder="Artists (comma separated)" style="margin-top:6px;"/>
+  <textarea class="zdp-name" id="evt-desc" placeholder="Description (optional)" style="margin-top:6px;height:60px;resize:none;"></textarea>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+    <div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Event starts</div>
+      <input class="zdp-name" id="evt-start" type="datetime-local" style="margin:0;font-size:12px;"/>
+    </div>
+    <div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Reveal location at</div>
+      <input class="zdp-name" id="evt-reveal" type="datetime-local" style="margin:0;font-size:12px;"/>
+    </div>
+  </div>
+  <div style="font-size:10px;color:var(--muted);margin-top:8px;margin-bottom:10px;">
+    Location uses current zone center — set zone first, then schedule event.
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+    <button class="zdp-confirm" onclick="confirmEvent()">✓ Schedule</button>
+    <button class="zdp-cancel" onclick="closeEventPanel()">✕ Cancel</button>
+  </div>
+</div>
+
+  
 <!-- MESSAGE MODAL -->
 <div id="msg-modal" onclick="closeMsgModal(event)">
   <div class="msg-card">
@@ -362,6 +394,18 @@ audio{display:none;}
 
   <button class="btn-create-zone" id="btn-create-zone" onclick="onCreateZone()">Create Zone</button>
 
+<div class="section-label" style="margin-top:16px;">Events</div>
+<button onclick="openEventPanel()" style="
+  display:block;width:100%;padding:16px;margin-bottom:18px;
+  background:transparent;color:var(--red);
+  border:2px solid var(--red);border-radius:12px;
+  font-family:'Roboto Condensed',sans-serif;
+  font-size:22px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
+  cursor:pointer;
+">📅 Schedule Event</button>
+<div id="event-list" style="margin-bottom:18px;"></div>
+
+  
   <!-- GO LIVE — above visualizer, contains all audio options -->
   <div class="section-label">Broadcast</div>
   <button class="btn-go-live" id="btn-go-live" onclick="toggleLiveMenu()">⚡ Go Live</button>
@@ -450,6 +494,8 @@ document.getElementById('lips-img').src  = LIPS_B64;
 document.getElementById('kill-img').src  = KILL_B64;
 document.getElementById('eye-img').src   = EYE_B64;
 document.getElementById('auth-logo').src = LOGO_B64;
+
+  
 
 const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
@@ -1146,6 +1192,77 @@ function showToast(msg,isError=false){
   const t=document.getElementById('toast');t.textContent=msg;t.style.borderColor=isError?'var(--red)':'var(--teal)';
   t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),isError?5000:3000);
 }
+  function openEventPanel() {
+  // Pre-fill reveal time to 1 hour before event start as default
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + 60);
+  document.getElementById('evt-start').value = toLocalInput(now);
+  const reveal = new Date(now); reveal.setMinutes(reveal.getMinutes() - 30);
+  document.getElementById('evt-reveal').value = toLocalInput(reveal);
+  document.getElementById('event-panel').style.transform = 'translateY(0)';
+}
+
+function closeEventPanel() {
+  document.getElementById('event-panel').style.transform = 'translateY(100%)';
+  ['evt-name','evt-artists','evt-desc'].forEach(id => document.getElementById(id).value = '');
+}
+
+function toLocalInput(d) {
+  // datetime-local needs format: YYYY-MM-DDTHH:MM
+  return new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
+}
+
+async function confirmEvent() {
+  const name    = document.getElementById('evt-name').value.trim();
+  const artists = document.getElementById('evt-artists').value.split(',').map(a=>a.trim()).filter(Boolean);
+  const desc    = document.getElementById('evt-desc').value.trim();
+  const start   = document.getElementById('evt-start').value;
+  const reveal  = document.getElementById('evt-reveal').value;
+
+  if (!name)   { showToast('Event needs a name'); return; }
+  if (!start)  { showToast('Set an event start time'); return; }
+  if (!reveal) { showToast('Set a reveal time'); return; }
+
+  const lat = activeZone?.lat || draftCenter?.lat || userLat;
+  const lng = activeZone?.lng || draftCenter?.lng || userLng;
+  if (!lat) { showToast('Set a zone location first'); return; }
+
+  try {
+    const { error } = await db.from('events').insert({
+      name, artists, description: desc || null,
+      event_start: new Date(start).toISOString(),
+      location_reveal_at: new Date(reveal).toISOString(),
+      lat, lng,
+      radius_m: activeZone?.radius_m || draftRadius || 200,
+      zone_id: activeZone?.id || null,
+      created_by: currentUser.id
+    });
+    if (error) throw error;
+    closeEventPanel();
+    showToast(`"${name}" scheduled 📅`);
+    loadEvents();
+  } catch(e) { showToast('Error: ' + e.message); }
+}
+
+async function loadEvents() {
+  const { data } = await db.from('events')
+    .select('*').eq('created_by', currentUser.id)
+    .order('event_start', { ascending: true }).limit(10);
+  const el = document.getElementById('event-list');
+  if (!data?.length) { el.innerHTML = ''; return; }
+  el.innerHTML = data.map(e => {
+    const start  = new Date(e.event_start).toLocaleString();
+    const reveal = new Date(e.location_reveal_at).toLocaleString();
+    const artists = e.artists?.join(', ') || '—';
+    return `<div style="background:var(--surface2);border:1px solid #222;border-left:3px solid var(--red);border-radius:4px;padding:10px 12px;margin-bottom:8px;">
+      <div style="font-weight:700;color:var(--cream);font-size:13px;">${e.name}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:3px;">${artists}</div>
+      <div style="font-size:10px;color:var(--muted);margin-top:2px;">📅 ${start}</div>
+      <div style="font-size:10px;color:var(--orange);margin-top:2px;">📍 Reveals: ${reveal}</div>
+    </div>`;
+  }).join('');
+}
+
 </script>
 </body>
 </html>
