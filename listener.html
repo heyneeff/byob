@@ -606,7 +606,12 @@ audio{display:none;}
     <div class="profile-avatar" id="profile-emoji">🎧</div>
     <div class="profile-title">What's your name?</div>
     <div class="profile-sub">This is how you'll appear on the guest list and the DJ's screen.</div>
-    <input class="profile-inp" id="profile-name" type="text" placeholder="Your name" maxlength="30" autocomplete="name"/>
+   <input class="profile-inp" id="profile-name" type="text" placeholder="Your name" maxlength="30" autocomplete="name"/>
+    <div style="width:100%;text-align:center;margin-top:8px;">
+      <div style="font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;">Your vibe</div>
+      <div id="vibe-grid" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;"></div>
+    </div>
+    <input type="hidden" id="selected-vibe" value=""/>
     <button class="btn-profile-save" onclick="saveProfile()">Let's Go →</button>
   </div>
 </div>
@@ -1773,9 +1778,10 @@ async function handleLogin() {
     let data, error;
     if (isSignUp) {
       const phone = document.getElementById('login-phone').value.trim();
+      const referredBy = new URLSearchParams(window.location.search).get('ref') || null;
       ({ data, error } = await db.auth.signUp({
         email, password,
-        options: { data: { role: loginRole, phone } }
+        options: { data: { role: loginRole, phone, referred_by: referredBy } }
       }));
     } else {
       ({ data, error } = await db.auth.signInWithPassword({ email, password }));
@@ -1820,11 +1826,12 @@ function enterApp() {
 
     // Check if profile is set
     const displayName = currentUser.user_metadata?.display_name;
-    if (!displayName) {
+  if (!displayName) {
       // First login — show profile setup
       document.getElementById('profile-screen').classList.add('active');
+      buildVibePicker();
       // Fun emoji picker on tap
-      const emojis = ['🎧','🎵','🎶','🎤','🎸','🥁','🎺','🎻','🔊','🎛️','🕺','💃','🦊','🐙','🌀'];
+      const emojis = ['🎪','🌀','🔮','🦑','🐙','👁','🦊','🌊','🎭','🔥','⚡','🌙','☄️','🦋','🐍','🌵','🎠','🧿','🪬','🦜','🐉','🌋','🎆','🧲','🪄','💀','👾','🤖','🛸','🌈','🍄','🦩','🦚','🦝','🦉','🐺','🌺','🧬','⚗️','🪩','🎡','🎢','🎰','🃏','🀄','🎴','🧸','🪆','🎃','🕯️'];
       document.getElementById('profile-emoji').addEventListener('click', () => {
         document.getElementById('profile-emoji').textContent = emojis[Math.floor(Math.random()*emojis.length)];
       });
@@ -1836,9 +1843,29 @@ function enterApp() {
 }
 
 async function saveProfile() {
-  const name = document.getElementById('profile-name').value.trim();
-  if (!name) { document.getElementById('profile-name').style.borderColor='var(--red)'; return; }
+  const name  = document.getElementById('profile-name').value.trim();
+  const vibe  = document.getElementById('selected-vibe').value;
   const emoji = document.getElementById('profile-emoji').textContent;
+
+  if (!name) { document.getElementById('profile-name').style.borderColor='var(--red)'; return; }
+
+  await db.auth.updateUser({
+    data: { display_name: name, emoji, vibe_tag: vibe, role: userRole }
+  });
+
+  await db.from('profiles').upsert({
+    id: currentUser.id,
+    display_name: name,
+    emoji,
+    vibe_tag: vibe || null,
+  });
+
+  const { data: freshUser } = await db.auth.getUser();
+  if (freshUser?.user) currentUser = freshUser.user;
+
+  document.getElementById('profile-screen').classList.remove('active');
+  launchApp();
+}
 
   // Save to Supabase user metadata
   await db.auth.updateUser({
@@ -2639,6 +2666,44 @@ function showPartyInfo(z) {
 function openVisuals(){window.open('mandalforge_sync.html?zone='+(activeZone?.id||'demo')+'&role=viewer','_blank');}
 
 // ── VISUALIZER ───────────────────────────────────────────
+  const VIBE_TAGS = [
+  {tag:'Dancer',    emoji:'💃'},
+  {tag:'Wanderer',  emoji:'🌀'},
+  {tag:'Instigator',emoji:'🔥'},
+  {tag:'Oracle',    emoji:'🔮'},
+  {tag:'Tender',    emoji:'🌿'},
+  {tag:'Witness',   emoji:'👁'},
+  {tag:'Architect', emoji:'🎪'},
+  {tag:'Catalyst',  emoji:'⚡'},
+];
+
+function buildVibePicker() {
+  const grid = document.getElementById('vibe-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  VIBE_TAGS.forEach(({tag, emoji}) => {
+    const pill = document.createElement('div');
+    pill.style.cssText = `
+      padding:10px 16px;border-radius:20px;cursor:pointer;
+      background:var(--surface2);border:2px solid var(--border);
+      font-family:'Barlow Condensed',sans-serif;font-size:16px;
+      font-weight:700;color:var(--muted);transition:all .15s;
+    `;
+    pill.textContent = emoji + ' ' + tag;
+    pill.addEventListener('click', () => {
+      document.querySelectorAll('#vibe-grid > div').forEach(p => {
+        p.style.borderColor = 'var(--border)';
+        p.style.color = 'var(--muted)';
+        p.style.background = 'var(--surface2)';
+      });
+      pill.style.borderColor = 'var(--teal)';
+      pill.style.color = 'var(--teal)';
+      pill.style.background = 'rgba(0,204,153,.1)';
+      document.getElementById('selected-vibe').value = tag;
+    });
+    grid.appendChild(pill);
+  });
+}
 function buildVisualizer(){
   const wrap = document.getElementById('visualizer');
   if (!wrap) return;
