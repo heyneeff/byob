@@ -1867,18 +1867,7 @@ async function saveProfile() {
   launchApp();
 }
 
-  // Save to Supabase user metadata
-  await db.auth.updateUser({
-    data: { display_name: name, emoji, role: userRole }
-  });
-
-  // Re-fetch
-  const { data: freshUser } = await db.auth.getUser();
-  if (freshUser?.user) currentUser = freshUser.user;
-
-  document.getElementById('profile-screen').classList.remove('active');
-  launchApp();
-}
+ 
 
 function launchApp() {
   document.getElementById('app').classList.add('visible');
