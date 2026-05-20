@@ -2547,6 +2547,8 @@ async function activateZone(z) {
       }
 }).subscribe();
 
+      }).subscribe();
+
   // ── BROADCAST SYNC CHANNEL — stays alive even after GPS exit ──
   if (window._syncChannel) { window._syncChannel.unsubscribe(); }
   window._syncChannel = db.channel('sync_' + z.id)
@@ -2569,6 +2571,7 @@ async function activateZone(z) {
     }, delay);
   }).subscribe();
 }
+
   // Reset stale offsets before seeking — same as hitting RESET in HUD
   if (payload.resetOffsets) {
     localStorage.removeItem('byob_cal_offset');
