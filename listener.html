@@ -1200,7 +1200,8 @@ function seekToSync(startedAt, playAt, playFromS) {
     if (delayMs < 0) seekTo += (-delayMs / 1000);
   } else if (startedAt) {
     const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
-    seekTo = elapsed + _calOffset - (_deviceLatencyMs / 1000) + SEEK_STAB_S;
+        seekTo = elapsed + _calOffset - (_deviceLatencyMs / 1000) + SEEK_STAB_S - (_scatterOffsetMs / 1000);
+
   }
   audio.currentTime = Math.max(0, seekTo % audio.duration);
 }
@@ -2553,23 +2554,34 @@ async function activateZone(z) {
    .on('broadcast', { event: 'hard_sync' }, ({ payload }) => {
     const waitMs = payload.resyncAt - Date.now();
     if (Math.abs(waitMs) > 10000) return;
-    if (payload.resetOffsets) {
+        if (payload.resetOffsets) {
       localStorage.removeItem('byob_cal_offset');
       localStorage.removeItem('byob_device_latency');
-      _calOffset = 0; _deviceLatencyMs = 0; updateCalLabel();
+      _calOffset = 0; _deviceLatencyMs = 0; _scatterOffsetMs = 0; updateCalLabel();
     }
     const delay = Math.max(0, waitMs);
     boomSay('Syncing all speakers…', delay + 500, false, 'regular');
-    setTimeout(() => {
+       setTimeout(() => {
       if (!audio.duration) return;
       const elapsed = (Date.now() - new Date(payload.playback_started_at).getTime()) / 1000;
       seekPreservingBT((elapsed + SEEK_STAB_S) % audio.duration);
       setSyncIndicator('synced', 0);
       showToast('🔄 Synced by DJ');
     }, delay);
+  })
+  .on('broadcast', { event: 'scatter' }, ({ payload }) => {
+    const maxMs  = payload.maxMs  || 1000;
+    const voices = payload.voices || 4;
+    const slot   = simpleHash(listenerId) % voices;
+    _scatterOffsetMs = voices > 1 ? Math.round((slot / (voices - 1)) * maxMs) : 0;
+    boomSay(`♩ +${(_scatterOffsetMs/1000).toFixed(2)}s`, 1800, false, 'devious');
+    if (activeZone?.playback_started_at && audio.duration) {
+      const elapsed = (Date.now() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+      const raw = elapsed + _calOffset - (_deviceLatencyMs/1000) + SEEK_STAB_S - (_scatterOffsetMs/1000);
+      seekPreservingBT(((raw % audio.duration) + audio.duration) % audio.duration);
+    }
   }).subscribe();
 }
-
  
 // Keep joinZone as alias for geofence auto-trigger
 async function joinZone(z) {
@@ -3108,7 +3120,12 @@ function getBearing(lat1, lng1, lat2, lng2) {
 }
 
 // ── UTILS ────────────────────────────────────────────────
-function distM(la1,ln1,la2,ln2){const R=6371000,dL=(la2-la1)*Math.PI/180,dN=(ln2-ln1)*Math.PI/180;const a=Math.sin(dL/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dN/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
+function simpleHash(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  return Math.abs(h);
+}
+  function distM(la1,ln1,la2,ln2){const R=6371000,dL=(la2-la1)*Math.PI/180,dN=(ln2-ln1)*Math.PI/180;const a=Math.sin(dL/2)**2+Math.cos(la1*Math.PI/180)*Math.cos(la2*Math.PI/180)*Math.sin(dN/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));}
 function fmt(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return `${m}:${sec.toString().padStart(2,'0')}`;}
 let toastTimer;
 
@@ -3140,6 +3157,8 @@ let _syncReverifyTimer = null;
 let _syncEnabled = localStorage.getItem('byob_sync_enabled') !== '0';
 let _clockOffset = 0; // ms: our clock vs Supabase server clock
 let _deviceLatencyMs = parseFloat(localStorage.getItem('byob_device_latency') || '0');
+let _scatterOffsetMs = 0;
+
 
 async function measureClockOffset() {
   try {
