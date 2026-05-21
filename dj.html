@@ -1025,7 +1025,28 @@ window._autoResyncInterval = setInterval(() => {
   }
   e.target.value = '';
 });
-
+<!-- ── TRACK LIBRARY MODAL ─────────────────────────── -->
+<div id="library-modal" style="
+  position:fixed;inset:0;z-index:500;
+  background:rgba(0,0,0,.88);
+  display:none;align-items:flex-end;justify-content:center;
+">
+  <div style="
+    background:#111;border-top:3px solid var(--orange);
+    border-radius:20px 20px 0 0;
+    width:100%;max-width:520px;
+    padding:20px 18px 36px;
+    max-height:75vh;display:flex;flex-direction:column;
+    box-shadow:0 -4px 40px rgba(0,0,0,.8);
+  ">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-family:'Roboto Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--orange);">Track Library</div>
+      <button onclick="closeLibrary()" style="background:transparent;border:1px solid #333;border-radius:6px;color:var(--muted);padding:6px 12px;cursor:pointer;font-size:13px;">✕ Close</button>
+    </div>
+    <div id="library-status" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
+    <div id="library-list" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+</div>
 // ── WEBRTC BROADCAST ─────────────────────────────────────
 let _rtcConfigCache=null;
 async function getRTCConfig(){
@@ -1444,28 +1465,6 @@ async function loadEvents() {
     </div>`;
   }).join('');
 }
-<!-- ── TRACK LIBRARY MODAL ─────────────────────────── -->
-<div id="library-modal" style="
-  position:fixed;inset:0;z-index:500;
-  background:rgba(0,0,0,.88);
-  display:none;align-items:flex-end;justify-content:center;
-">
-  <div style="
-    background:#111;border-top:3px solid var(--orange);
-    border-radius:20px 20px 0 0;
-    width:100%;max-width:520px;
-    padding:20px 18px 36px;
-    max-height:75vh;display:flex;flex-direction:column;
-    box-shadow:0 -4px 40px rgba(0,0,0,.8);
-  ">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-      <div style="font-family:'Roboto Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--orange);">Track Library</div>
-      <button onclick="closeLibrary()" style="background:transparent;border:1px solid #333;border-radius:6px;color:var(--muted);padding:6px 12px;cursor:pointer;font-size:13px;">✕ Close</button>
-    </div>
-    <div id="library-status" style="font-size:11px;color:var(--muted);margin-bottom:10px;"></div>
-    <div id="library-list" style="overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:8px;"></div>
-  </div>
-</div>
 </script>
 
 
