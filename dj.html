@@ -1096,7 +1096,7 @@ async function sendMessage(){
   const text=document.getElementById('msg-text').value.trim();
   if(!text){showToast('Type a message first');return;}
   const targets=msgTarget==='all'?DEMO_GUESTS:DEMO_GUESTS.filter(g=>g.status===msgTarget);
-  if(activeZone)last_message:text,last_message_at:new Date().toISOString()}).eq('id',activeZone.id);
+  if(activeZone) await db.from('zones').update({last_message:text,last_message_at:new Date().toISOString()}).eq('id',activeZone.id);
   document.getElementById('msg-modal').classList.remove('open');
   document.getElementById('msg-text').value='';
   showToast(`✓ Sent to ${targets.length} guest${targets.length!==1?'s':''}`);
