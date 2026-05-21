@@ -1543,6 +1543,13 @@ function sweepGrid(pattern) {
   showToast(`⟋ ${pattern} sweep · ${sorted.length} speakers`);
   drawGrid();
 }
+function switchPanel(name) {
+  document.querySelectorAll('.dj-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.dj-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + name)?.classList.add('active');
+  document.getElementById('tab-' + name)?.classList.add('active');
+  window.scrollTo(0, 0);
+}
 
 function showToast(msg,isError=false){
   const t=document.getElementById('toast');t.textContent=msg;t.style.borderColor=isError?'var(--red)':'var(--teal)';
