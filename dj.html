@@ -479,7 +479,17 @@ audio{display:none;}
 ">📅 Schedule Event</button>
 <div id="event-list" style="margin-bottom:18px;"></div>
 
-  </div><!-- /panel-setup -->
+  <!-- GO LIVE -->
+  <div class="section-label" style="margin-top:8px;">Broadcast</div>
+  <button class="btn-go-live" id="btn-go-live" onclick="toggleLive()" style="margin-bottom:24px;">⚡ Go Live</button>
+
+  <div class="kill-label">Kill Stream</div>
+  <button class="btn-kill" onclick="killStream()">
+    <img class="kill-icon" id="kill-img" alt="kill"/>
+  </button>
+
+</div><!-- /panel-setup -->
+
 
 <div class="dj-panel" id="panel-tools">
 
