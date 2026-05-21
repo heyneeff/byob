@@ -483,18 +483,18 @@ audio{display:none;}
 
 <div class="dj-panel" id="panel-tools">
 
-  <!-- GO LIVE — above visualizer, contains all audio options -->
-  <div class="section-label">Broadcast</div>
-
-
-  <!-- Live menu — expands to show stream vs upload options -->
-  <div class="live-menu" id="live-menu">
+    <!-- AUDIO SOURCE — set up first -->
+  <div class="section-label">Audio Source</div>
+  <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:14px;">
     <div class="live-menu-row">
       <button class="btn-live-option btn-live-stream" onclick="startLiveStream()">
-        🎙 Live Audio Stream
+        🎙 Live Stream
       </button>
       <button class="btn-live-option btn-live-upload" onclick="document.getElementById('file-input').click()">
         🎵 Upload Track
+      </button>
+      <button class="btn-live-option" onclick="openLibrary()" style="background:#111;color:var(--orange);border:1px solid var(--orange);grid-column:1/-1;">
+        📚 Track Library
       </button>
     </div>
     <input type="file" id="file-input" multiple/>
@@ -506,6 +506,12 @@ audio{display:none;}
       <select class="device-select" id="device-select"><option value="">— select audio input —</option></select>
       <button class="btn-scan-sm" onclick="scanDevices()">Scan</button>
     </div>
+  </div>
+
+  <!-- BROADCAST TOOLS -->
+  <div class="section-label">Broadcast Tools</div>
+  <div class="live-menu open" id="live-menu">
+
     <!-- ── SCATTER / SNAP ─────────────────────────── -->
 <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:8px;padding:14px;margin-bottom:10px;">
   <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Scatter Spread</div>
@@ -538,14 +544,18 @@ audio{display:none;}
     ">🗺 Spatial Grid</button>
 
 </div>   
-    <div class="input-meter"><div class="meter-fill" id="meter-fill"></div></div>
-    <button onclick="triggerResync()" style="
+    
+        <button onclick="triggerResync()" style="
       width:100%;padding:16px;background:#00cc99;color:#000;
       border:none;border-radius:8px;font-family:'Roboto Condensed',sans-serif;
       font-size:18px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
       cursor:pointer;margin-top:8px;box-shadow:3px 3px 0 rgba(0,0,0,.4);
     ">🔄 Sync All Speakers</button>
   </div>
+
+  <!-- INPUT METER -->
+  <div class="input-meter" style="margin-bottom:14px;"><div class="meter-fill" id="meter-fill"></div></div>
+
 
   <!-- PLAYER / VISUALIZER -->
   <div class="section-label" style="margin-top:8px;">Connect</div>
@@ -583,10 +593,15 @@ audio{display:none;}
     Message <img class="lips-icon" id="lips-img" alt="msg"/>
   </button>
 
+    <!-- GO LIVE — final step, launches broadcast -->
+  <div class="section-label" style="margin-top:8px;">Broadcast</div>
+  <button class="btn-go-live" id="btn-go-live" onclick="toggleLive()" style="margin-bottom:24px;">⚡ Go Live</button>
+
   <div class="kill-label">Kill Stream</div>
   <button class="btn-kill" onclick="killStream()">
     <img class="kill-icon" id="kill-img" alt="kill"/>
   </button>
+
 
 </div>
 </div><!-- /panel-tools -->
