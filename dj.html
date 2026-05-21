@@ -775,7 +775,11 @@ async function confirmZone(){
   try{
     const {data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0,tip_url:tipUrl}).select().single();
     if(error)throw error;
-    activeZone=data; cancelZoneDraw();
+    activeZone=data;
+window._djSyncChannel = db.channel('sync_' + data.id).subscribe();
+window._currentZone = { playback_started_at: data.playback_started_at };
+
+    cancelZoneDraw();
     zoneCircles[data.id]=L.circle([data.lat,data.lng],{radius:data.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.07,weight:1.5}).addTo(leafletMap);
     document.getElementById('btn-create-zone').textContent='✓ '+name;
     document.getElementById('btn-create-zone').classList.add('has-zone');
@@ -878,6 +882,7 @@ document.getElementById('file-input').addEventListener('change', async (e) => {
         play_at: playAt,
         play_from_s: playFromS
       }).eq('id', activeZone.id);
+    window._currentZone = { playback_started_at: startedAt }; // ← add this
     }
     statusEl.textContent = '● live'; statusEl.style.color = 'var(--teal)';
     showToast('Broadcasting 📡');
@@ -1091,7 +1096,7 @@ async function sendMessage(){
   const text=document.getElementById('msg-text').value.trim();
   if(!text){showToast('Type a message first');return;}
   const targets=msgTarget==='all'?DEMO_GUESTS:DEMO_GUESTS.filter(g=>g.status===msgTarget);
-  if(activeZone)await db.from('zones').update({last_message:text,last_message_at:new Date().toISOString()}).eq('id',activeZone.id);
+  if(activeZone)last_message:text,last_message_at:new Date().toISOString()}).eq('id',activeZone.id);
   document.getElementById('msg-modal').classList.remove('open');
   document.getElementById('msg-text').value='';
   showToast(`✓ Sent to ${targets.length} guest${targets.length!==1?'s':''}`);
