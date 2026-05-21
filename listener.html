@@ -589,6 +589,10 @@ audio{display:none;}
     <input class="login-inp" type="tel" id="login-phone" placeholder="Phone number" autocomplete="tel" style="display:none"/>
     <input class="login-inp" type="password" id="login-password" placeholder="Password" autocomplete="current-password"/>
     <button class="btn-login" id="login-btn" onclick="handleLogin()">Sign In</button>
+    <button class="btn-login" onclick="handleGuestLogin()" style="background:var(--teal);color:#000;margin-top:0;">
+  ⚡ Join as Guest
+</button>
+
     <div class="login-toggle" id="login-toggle">No account? <span onclick="toggleSignUp()">Sign up</span></div>
     <div class="login-err" id="login-err"></div>
     <div class="login-dj-note" id="dj-note">
@@ -1764,6 +1768,23 @@ function toggleSignUp() {
     : 'No account? <span onclick="toggleSignUp()">Sign up</span>';
   // Role tabs only relevant for sign-up
   document.querySelector('.role-tabs').style.display = isSignUp ? 'grid' : 'none';
+}
+function handleGuestLogin() {
+  // Generate a random guest identity — no auth needed
+  const names  = ['Wanderer','Catalyst','Witness','Oracle','Tender','Dancer','Instigator','Architect'];
+  const emojis = ['🎧','🌀','🔮','🦊','⚡','🌊','🎭','🔥','👁','🌙'];
+  const name   = names[Math.floor(Math.random() * names.length)];
+  const emoji  = emojis[Math.floor(Math.random() * emojis.length)];
+
+  currentUser = {
+    id: 'guest_' + Math.random().toString(36).substr(2, 9),
+    email: 'guest@byob.local',
+    user_metadata: { display_name: name, emoji, role: 'listener' }
+  };
+  userRole  = 'listener';
+  loginRole = 'listener';
+
+  enterApp();
 }
 
 async function handleLogin() {
