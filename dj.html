@@ -280,6 +280,42 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;h
 
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--surface2);border:1px solid var(--teal);color:var(--cream);font-size:12px;padding:10px 18px;border-radius:6px;z-index:1000;transition:transform .25s;white-space:nowrap;box-shadow:3px 3px 0 rgba(0,0,0,.5);font-family:'Roboto',sans-serif;}
 #toast.show{transform:translateX(-50%) translateY(0);}
+  /* ── SPATIAL GRID ── */
+#spatial-grid-panel{
+  position:fixed;inset:0;z-index:450;background:rgba(0,0,0,.96);
+  display:none;flex-direction:column;align-items:center;
+  justify-content:flex-start;padding:20px 0 30px;overflow-y:auto;
+}
+.grid-header{
+  width:100%;max-width:340px;display:flex;align-items:center;
+  justify-content:space-between;margin-bottom:16px;padding:0 8px;
+}
+.grid-title{
+  font-family:'Roboto Condensed',sans-serif;font-size:20px;
+  font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--orange);
+}
+.btn-close-grid{
+  background:transparent;border:1px solid #333;border-radius:6px;
+  color:var(--muted);padding:6px 12px;cursor:pointer;font-size:13px;
+}
+#grid-canvas{border-radius:50%;border:2px solid var(--teal);background:#050505;margin-bottom:20px;}
+.sweep-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:320px;margin-bottom:10px;}
+.btn-sweep{
+  padding:13px 8px;border:none;border-radius:8px;
+  font-family:'Roboto Condensed',sans-serif;font-size:13px;font-weight:900;
+  letter-spacing:.06em;text-transform:uppercase;cursor:pointer;
+  background:#111;color:var(--teal);border:1px solid var(--teal);transition:all .1s;
+}
+.btn-sweep:active{transform:translate(1px,1px);}
+.btn-sweep.full{grid-column:1/-1;}
+.btn-sweep.chaos{color:var(--red);border-color:var(--red);}
+.grid-legend{
+  display:flex;gap:14px;flex-wrap:wrap;justify-content:center;
+  max-width:320px;margin-top:8px;
+}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+
 audio{display:none;}
 </style>
 </head>
@@ -368,6 +404,31 @@ audio{display:none;}
 <div id="boom-menu">
   <div class="boom-menu-item danger" onclick="djLogout()">⏏ Log Out</div>
 </div>
+<!-- ── SPATIAL GRID PANEL ─────────────────────────── -->
+<div id="spatial-grid-panel">
+  <div class="grid-header">
+    <div class="grid-title">🗺 Spatial Grid</div>
+    <button class="btn-close-grid" onclick="closeGrid()">✕ Close</button>
+  </div>
+
+  <canvas id="grid-canvas" width="300" height="300"></canvas>
+
+  <div style="font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px;" id="grid-count">0 listeners</div>
+
+  <div style="font-size:11px;color:var(--muted);margin-bottom:10px;letter-spacing:.08em;text-transform:uppercase;">Sweep Pattern</div>
+
+  <div class="sweep-row">
+    <button class="btn-sweep" onclick="sweepGrid('lr')">→ Left → Right</button>
+    <button class="btn-sweep" onclick="sweepGrid('rl')">← Right → Left</button>
+    <button class="btn-sweep" onclick="sweepGrid('ring')">◎ Ring Out</button>
+    <button class="btn-sweep" onclick="sweepGrid('inward')">● Ring In</button>
+    <button class="btn-sweep" onclick="sweepGrid('diag')">⟋ Diagonal</button>
+    <button class="btn-sweep" onclick="sweepGrid('snake')">∿ Snake</button>
+    <button class="btn-sweep full chaos" onclick="sweepGrid('chaos')">⚡ Chaos</button>
+  </div>
+
+  <div class="grid-legend" id="grid-legend"></div>
+</div>
 
 <div id="toast"></div>
 
@@ -451,6 +512,15 @@ audio{display:none;}
     <button onclick="scatterSpeakers()" style="flex:1;padding:16px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;cursor:pointer;box-shadow:3px 3px 0 rgba(0,0,0,.4);">♩ SCATTER</button>
     <button onclick="snapSpeakers()" style="flex:1;padding:16px;background:var(--teal);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;cursor:pointer;box-shadow:3px 3px 0 rgba(0,0,0,.4);">⚡ SNAP</button>
   </div>
+      <button onclick="openGrid()" style="
+      width:100%;padding:12px;margin-top:10px;
+      background:#111;color:var(--orange);
+      border:1px solid var(--orange);border-radius:8px;
+      font-family:'Roboto Condensed',sans-serif;
+      font-size:16px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;
+      cursor:pointer;
+    ">🗺 Spatial Grid</button>
+
 </div>   
     <div class="input-meter"><div class="meter-fill" id="meter-fill"></div></div>
     <button onclick="triggerResync()" style="
@@ -1149,6 +1219,8 @@ function renderLiveGuestList() {
     document.getElementById('stat-present').textContent = '0';
     document.getElementById('stat-approaching').textContent = '0';
     return;
+    if (document.getElementById('spatial-grid-panel')?.style.display !== 'none') drawGrid();
+
   }
 
   const present    = listeners.filter(l => l.status === 'present').length;
@@ -1247,6 +1319,193 @@ function buildVisualizer(){
 
 function fmt(s){const m=Math.floor(s/60),sec=Math.floor(s%60);return `${m}:${sec.toString().padStart(2,'0')}`;}
 let toastTimer;
+  // ── SPATIAL GRID ─────────────────────────────────────────
+const VOICE_COLORS = ['#00cc99','#ff3333','#f57e20','#ffffff','#cc66ff','#ffff00','#00ccff','#ff66cc'];
+
+function openGrid() {
+  document.getElementById('spatial-grid-panel').style.display = 'flex';
+  buildLegend();
+  drawGrid();
+}
+
+function closeGrid() {
+  document.getElementById('spatial-grid-panel').style.display = 'none';
+}
+
+function buildLegend() {
+  const voices = parseInt(document.getElementById('scatter-voices')?.value || 4);
+  const dirs = ['N','NE','E','SE','S','SW','W','NW'];
+  const sectorSize = 360 / voices;
+  const el = document.getElementById('grid-legend');
+  el.innerHTML = '';
+  for (let i = 0; i < voices; i++) {
+    const bearing = Math.round(i * sectorSize);
+    const dir = dirs[Math.round(bearing / 45) % 8];
+    el.innerHTML += `<div class="legend-item">
+      <div class="legend-dot" style="background:${VOICE_COLORS[i]};"></div>
+      Voice ${i+1} · ${dir}
+    </div>`;
+  }
+}
+
+function getVoiceSlot(bearing, voices) {
+  const sectorSize = 360 / voices;
+  return Math.floor(((bearing % 360) + sectorSize / 2) % 360 / sectorSize) % voices;
+}
+
+function bearingToXY(bearing, distRatio, cx, cy, r) {
+  const angle = bearing * Math.PI / 180;
+  return {
+    x: cx + Math.sin(angle) * distRatio * r,
+    y: cy - Math.cos(angle) * distRatio * r
+  };
+}
+
+function drawGrid() {
+  const canvas = document.getElementById('grid-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const r = W / 2 - 14;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#050505';
+  ctx.fill();
+
+  // Range rings
+  [0.25, 0.5, 0.75, 1].forEach(ratio => {
+    ctx.beginPath();
+    ctx.arc(cx, cy, r * ratio, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,204,153,0.1)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  });
+
+  // Crosshairs
+  ctx.strokeStyle = 'rgba(0,204,153,0.12)';
+  ctx.lineWidth = 1;
+  [[cx, cy-r, cx, cy+r],[cx-r, cy, cx+r, cy]].forEach(([x1,y1,x2,y2]) => {
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  });
+
+  // Cardinal labels
+  ctx.font = '700 10px Roboto';
+  ctx.fillStyle = 'rgba(0,204,153,0.35)';
+  ctx.textAlign = 'center';
+  [['N',cx,cy-r+13],['S',cx,cy+r-5],['E',cx+r-8,cy+4],['W',cx-r+8,cy+4]].forEach(([t,x,y]) => {
+    ctx.fillText(t,x,y);
+  });
+
+  // Voice sector shading
+  const voices = parseInt(document.getElementById('scatter-voices')?.value || 4);
+  const sectorSize = (Math.PI * 2) / voices;
+  for (let i = 0; i < voices; i++) {
+    const startAngle = -Math.PI/2 + i * sectorSize;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, startAngle, startAngle + sectorSize);
+    ctx.closePath();
+    ctx.fillStyle = VOICE_COLORS[i] + '08';
+    ctx.fill();
+    ctx.strokeStyle = VOICE_COLORS[i] + '22';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // DJ center — 4 orange dots in 2x2
+  [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dy]) => {
+    ctx.beginPath();
+    ctx.arc(cx+dx, cy+dy, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#f57e20';
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // Listener dots
+  const listeners = Object.values(liveListeners);
+  const zoneRadius = activeZone?.radius_m || 200;
+
+  listeners.forEach(l => {
+    const slot = getVoiceSlot(l.bearing || 0, voices);
+    const color = VOICE_COLORS[slot % VOICE_COLORS.length];
+    const distMeters = (l.dist || 0) * 1609.34;
+    const distRatio = Math.min(distMeters / zoneRadius, 0.95);
+    const {x, y} = bearingToXY(l.bearing || 0, distRatio, cx, cy, r);
+
+    // Glow for approaching
+    if (l.status === 'approaching') {
+      ctx.beginPath();
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      ctx.fillStyle = color + '22';
+      ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+
+  // Update count
+  const countEl = document.getElementById('grid-count');
+  if (countEl) countEl.textContent = listeners.length + ' listener' + (listeners.length !== 1 ? 's' : '');
+}
+
+function sweepGrid(pattern) {
+  const maxMs  = parseInt(document.getElementById('scatter-ms')?.value || 2000);
+  const voices = parseInt(document.getElementById('scatter-voices')?.value || 4);
+  if (!window._djSyncChannel) { showToast('No active zone'); return; }
+
+  const listeners = Object.values(liveListeners);
+  let sorted = [...listeners];
+
+  switch(pattern) {
+    case 'lr':    sorted.sort((a,b) => Math.sin((a.bearing||0)*Math.PI/180) - Math.sin((b.bearing||0)*Math.PI/180)); break;
+    case 'rl':    sorted.sort((a,b) => Math.sin((b.bearing||0)*Math.PI/180) - Math.sin((a.bearing||0)*Math.PI/180)); break;
+    case 'ring':  sorted.sort((a,b) => (a.dist||0) - (b.dist||0)); break;
+    case 'inward':sorted.sort((a,b) => (b.dist||0) - (a.dist||0)); break;
+    case 'diag':  sorted.sort((a,b) => {
+      const score = l => Math.sin((l.bearing||0)*Math.PI/180) - Math.cos((l.bearing||0)*Math.PI/180);
+      return score(a) - score(b);
+    }); break;
+    case 'snake': sorted.sort((a,b) => {
+      const aE = Math.sin((a.bearing||0)*Math.PI/180) > 0;
+      const bE = Math.sin((b.bearing||0)*Math.PI/180) > 0;
+      if (aE !== bE) return aE ? 1 : -1;
+      const aC = Math.cos((a.bearing||0)*Math.PI/180);
+      const bC = Math.cos((b.bearing||0)*Math.PI/180);
+      return aE ? bC - aC : aC - bC;
+    }); break;
+    case 'chaos': sorted.sort(() => Math.random() - .5); break;
+  }
+
+  window._djSyncChannel.send({
+    type: 'broadcast', event: 'scatter',
+    payload: {
+      maxMs, voices, pattern,
+      orderedIds: sorted.map(l => l.id)
+    }
+  });
+
+  // Flash button
+  document.querySelectorAll('.btn-sweep').forEach(b => b.classList.remove('active'));
+  event?.target?.classList.add('active');
+  setTimeout(() => document.querySelectorAll('.btn-sweep').forEach(b => b.classList.remove('active')), 800);
+
+  showToast(`⟋ ${pattern} sweep · ${sorted.length} speakers`);
+  drawGrid();
+}
+
 function showToast(msg,isError=false){
   const t=document.getElementById('toast');t.textContent=msg;t.style.borderColor=isError?'var(--red)':'var(--teal)';
   t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),isError?5000:3000);
