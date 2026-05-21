@@ -1643,9 +1643,9 @@ async function syncZoneAudio() {
       // Only correct big drifts — don't fight the BT lag correction
       // BT sync handles sub-second corrections; this only catches clock drift > 2s
       const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
-      const expected = (elapsed + _calOffset) % audio.duration;
-      const drift = Math.abs(audio.currentTime - expected);
-    if (drift > 0.08) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
+const expected = (elapsed + _calOffset - (_scatterOffsetMs / 1000)) % audio.duration;
+const drift = Math.abs(audio.currentTime - expected);
+if (drift > 0.08) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
 
     }
     
