@@ -429,7 +429,30 @@ audio{display:none;}
       <select class="device-select" id="device-select"><option value="">— select audio input —</option></select>
       <button class="btn-scan-sm" onclick="scanDevices()">Scan</button>
     </div>
-        <div class="input-meter"><div class="meter-fill" id="meter-fill"></div></div>
+    <!-- ── SCATTER / SNAP ─────────────────────────── -->
+<div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:8px;padding:14px;margin-bottom:10px;">
+  <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Scatter Spread</div>
+  <input type="range" id="scatter-ms" min="0" max="30000" step="250" value="2000"
+    style="width:100%;accent-color:var(--red);margin-bottom:6px;"
+    oninput="updateScatterLabel()"/>
+  <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:10px;">
+    <span>0s</span>
+    <span id="scatter-label" style="color:var(--white);font-weight:700;">2.0s spread</span>
+    <span>30s</span>
+  </div>
+  <select id="scatter-voices" style="width:100%;background:var(--surface);border:1px solid var(--border);color:var(--white);padding:10px 12px;border-radius:6px;margin-bottom:10px;font-size:13px;">
+    <option value="2">2 voices</option>
+    <option value="3">3 voices</option>
+    <option value="4" selected>4 voices</option>
+    <option value="6">6 voices</option>
+    <option value="8">8 voices</option>
+  </select>
+  <div style="display:flex;gap:8px;">
+    <button onclick="scatterSpeakers()" style="flex:1;padding:16px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;cursor:pointer;box-shadow:3px 3px 0 rgba(0,0,0,.4);">♩ SCATTER</button>
+    <button onclick="snapSpeakers()" style="flex:1;padding:16px;background:var(--teal);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;cursor:pointer;box-shadow:3px 3px 0 rgba(0,0,0,.4);">⚡ SNAP</button>
+  </div>
+</div>   
+    <div class="input-meter"><div class="meter-fill" id="meter-fill"></div></div>
     <button onclick="triggerResync()" style="
       width:100%;padding:16px;background:#00cc99;color:#000;
       border:none;border-radius:8px;font-family:'Roboto Condensed',sans-serif;
@@ -593,6 +616,37 @@ function toggleDJSignUp(){
   document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';
   document.getElementById('dj-auth-toggle').innerHTML=djIsSignUp?'Have an account? <span>Sign in</span>':'No account? <span>Sign up</span>';
 }
+  function updateScatterLabel() {
+  const ms = parseInt(document.getElementById('scatter-ms').value);
+  const s  = (ms / 1000).toFixed(ms < 1000 ? 1 : 1);
+  document.getElementById('scatter-label').textContent = s + 's spread';
+}
+
+function scatterSpeakers() {
+  const maxMs  = parseInt(document.getElementById('scatter-ms').value);
+  const voices = parseInt(document.getElementById('scatter-voices').value);
+  if (!window._djSyncChannel) { showToast('No active zone'); return; }
+  window._djSyncChannel.send({
+    type: 'broadcast', event: 'scatter',
+    payload: { maxMs, voices }
+  });
+  showToast(`♩ ${voices} voices · ${(maxMs/1000).toFixed(1)}s spread`);
+}
+
+function snapSpeakers() {
+  if (!window._djSyncChannel) { showToast('No active zone'); return; }
+  const resyncAt = Date.now() + 1500;
+  window._djSyncChannel.send({
+    type: 'broadcast', event: 'hard_sync',
+    payload: {
+      resyncAt,
+      playback_started_at: window._currentZone?.playback_started_at,
+      resetOffsets: true
+    }
+  });
+  showToast('⚡ SNAP in 1.5s…');
+}
+
 
 // ── DEMO MODE ─────────────────────────────────────────────
 function loadDemoMode(){
