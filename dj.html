@@ -1706,7 +1706,7 @@ function switchPanel(name) {
   document.getElementById('tab-' + name)?.classList.add('active');
   window.scrollTo(0, 0);
 }
-
+let toastTimer;
 function showToast(msg,isError=false){
   const t=document.getElementById('toast');t.textContent=msg;t.style.borderColor=isError?'var(--red)':'var(--teal)';
   t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),isError?5000:3000);
