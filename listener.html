@@ -412,7 +412,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 
 /* ── PLAYER CARD ── */
 .player-card{border:2px solid var(--teal);border-radius:12px;padding:16px 14px 14px;background:var(--surface2);margin-bottom:10px;position:relative;overflow:hidden;}
-.viz-wrap{width:100%;height:120px;border-radius:8px;overflow:hidden;position:relative;background:#000;}
+.viz-wrap{width:100%;height:160px;border-radius:8px;overflow:hidden;position:relative;background:#000;cursor:pointer;}
 #viz-canvas{display:block;width:100%;height:100%;}
 
 .play-btn{
@@ -2723,104 +2723,194 @@ function buildVibePicker() {
     grid.appendChild(pill);
   });
 }
-function buildVisualizer(){
+function buildVisualizer() {
   const wrap = document.getElementById('visualizer');
   if (!wrap) return;
   wrap.innerHTML = '';
 
   const cv = document.createElement('canvas');
   cv.id = 'viz-canvas';
+  cv.style.cssText = 'width:100%;height:100%;cursor:pointer;';
+  cv.addEventListener('click', toggleVizFullscreen);
   wrap.appendChild(cv);
   const ctx = cv.getContext('2d');
 
-  let W, H;
-  function sizeCanvas(){
+  // ── Audio analysis setup ──────────────────────────
+  let analyser = null, freqData = null;
+
+  function connectAnalyser() {
+    if (analyser) return;
+    try {
+      const actx = getSfxCtx();
+      analyser = actx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.8;
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+      // Connect audio element
+      const src = actx.createMediaElementSource(audio);
+      src.connect(analyser);
+      analyser.connect(actx.destination);
+    } catch(e) { analyser = null; }
+  }
+
+  audio.addEventListener('playing', connectAnalyser, { once: true });
+
+  function getFreqBands() {
+    if (!analyser) return { bass: 0, mid: 0, treble: 0 };
+    analyser.getByteFrequencyData(freqData);
+    const len = freqData.length;
+    let bass = 0, mid = 0, treble = 0;
+    // Bass: 0–10%, Mid: 10–45%, Treble: 45–100%
+    const bassEnd   = Math.floor(len * 0.10);
+    const midEnd    = Math.floor(len * 0.45);
+    for (let i = 0; i < bassEnd; i++)   bass   += freqData[i];
+    for (let i = bassEnd; i < midEnd; i++) mid  += freqData[i];
+    for (let i = midEnd; i < len; i++)  treble  += freqData[i];
+    return {
+      bass:   (bass   / (bassEnd          * 255)),
+      mid:    (mid    / ((midEnd-bassEnd)  * 255)),
+      treble: (treble / ((len-midEnd)      * 255)),
+    };
+  }
+
+  // ── Grid config ───────────────────────────────────
+  const COLS = 28, ROWS = 14;
+  const COLORS = {
+    bass:   [239, 60,  35],   // red
+    mid:    [245, 126, 32],   // orange
+    treble: [0,   204, 153],  // teal
+    idle:   [30,  30,  30],   // near black
+  };
+
+  // Pre-build grid cells
+  const cells = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      cells.push({
+        c, r,
+        // Wave phase offset — creates ripple effect
+        phase: (c / COLS) * Math.PI * 4 + (r / ROWS) * Math.PI * 2,
+        // Which band drives this cell
+        band: r < ROWS * 0.35 ? 'bass' : r < ROWS * 0.7 ? 'mid' : 'treble',
+        // Current brightness 0–1
+        bright: 0,
+        // Pixel size multiplier
+        size: 1,
+      });
+    }
+  }
+
+  let W, H, cellW, cellH, pixSize;
+  function sizeCanvas() {
     W = cv.width  = wrap.offsetWidth  || 300;
     H = cv.height = wrap.offsetHeight || 120;
+    cellW = W / COLS;
+    cellH = H / ROWS;
+    pixSize = Math.max(2, Math.floor(Math.min(cellW, cellH) * 0.55));
   }
   sizeCanvas();
   window.addEventListener('resize', sizeCanvas);
 
-  // ── Hex to RGB helper ──────────────────────────────────
-  function hRGB(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+  let frame = 0;
+  let energy = 0;
 
-  // ── Particles ─────────────────────────────────────────
-  const COLS = ['#ef3c23','#f57e20','#00cc99','#ffffff','#ef3c23','#00cc99'];
-  const N = 65;
-  const pts = Array.from({length:N}, (_,i) => ({
-    x: Math.random()*300,
-    y: Math.random()*120,
-    vx: (Math.random()-.5)*.3,
-    vy: (Math.random()-.5)*.3,
-    r: 1.5 + Math.random()*2.5,
-    col: COLS[Math.floor(Math.random()*COLS.length)],
-    phase: Math.random()*Math.PI*2,
-    band: i % 3,   // 0=bass  1=mid  2=treble
-  }));
-
-  // ── Energy ────────────────────────────────────────────
-  let energy = 0;  // 0=calm → 1=full
-
-  function draw(){
+  function draw() {
     requestAnimationFrame(draw);
     if (!W || !H) { sizeCanvas(); return; }
-    if (W < 4 || H < 4) return;
 
-    // Smooth energy transition — reads global _webAudioPlaying
-    const target = (_webAudioPlaying && !_isMuted) ? 1 : 0;
-    energy += (target - energy) * 0.025;
+    frame++;
+    const t = frame * 0.03;
+    const { bass, mid, treble } = getFreqBands();
 
-    const t = Date.now() / 1000;
+    // Smooth global energy
+    const rawEnergy = (bass * 0.5 + mid * 0.3 + treble * 0.2);
+    energy += ((_webAudioPlaying && !_isMuted ? rawEnergy : 0) - energy) * 0.08;
 
-    // Simulated frequency bands — overlapping sines mimic music dynamics
-    const e  = energy;
-    const bass   = e * (0.5 + 0.5*Math.sin(t*1.9  + Math.sin(t*.7)*2));
-    const mid    = e * (0.5 + 0.5*Math.sin(t*4.3  + Math.sin(t*1.4)*1.5));
-    const treble = e * (0.5 + 0.5*Math.sin(t*9.2  + Math.sin(t*2.2)*1));
+    // Clear — solid black for 8-bit feel
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
 
-    // Clear with motion-blur trail (heavier trail = calmer feel)
-    ctx.fillStyle = `rgba(0,0,0,${0.18 + (1-e)*.6})`;
-    ctx.fillRect(0,0,W,H);
+    // Draw each pixel cell
+    for (const cell of cells) {
+      const bv = cell.band === 'bass' ? bass
+               : cell.band === 'mid'  ? mid
+               : treble;
 
-    // Subtle center glow when active
-    if (e > 0.05){
-      const g = ctx.createRadialGradient(W/2,H/2,0,W/2,H/2,W*.55);
-      g.addColorStop(0,`rgba(0,204,153,${e*.06})`);
-      g.addColorStop(1,'rgba(0,0,0,0)');
-      ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+      // Wave displacement — sine ripple across grid
+      const wave = Math.sin(t * 2.5 + cell.phase) * 0.5 + 0.5;
+      const wave2 = Math.sin(t * 1.3 + cell.phase * 0.7 + Math.PI) * 0.3 + 0.3;
+
+      // Target brightness — combines wave + frequency band
+      const target = energy > 0.02
+        ? Math.pow(wave * bv + wave2 * energy, 0.7)
+        : wave * 0.06; // idle shimmer
+
+      cell.bright += (target - cell.bright) * (energy > 0.05 ? 0.25 : 0.08);
+
+      // Size pulse on beat
+      const targetSize = 1 + (cell.band === 'bass' ? bass * 1.8 : cell.band === 'mid' ? mid * 1.2 : treble * 0.8) * energy;
+      cell.size += (targetSize - cell.size) * 0.15;
+
+      // Color interpolation between idle and band color
+      const col = COLORS[cell.band];
+      const idle = COLORS.idle;
+      const b = Math.min(1, cell.bright);
+      const r = Math.round(idle[0] + (col[0] - idle[0]) * b);
+      const g = Math.round(idle[1] + (col[1] - idle[1]) * b);
+      const bv2 = Math.round(idle[2] + (col[2] - idle[2]) * b);
+
+      // Draw chunky pixel — centered in cell
+      const px = Math.round(cell.c * cellW + cellW/2);
+      const py = Math.round(cell.r * cellH + cellH/2);
+      const ps = Math.round(pixSize * cell.size);
+
+      ctx.fillStyle = `rgb(${r},${g},${bv2})`;
+      // Snap to pixel grid — 8-bit feel
+      ctx.fillRect(px - Math.floor(ps/2), py - Math.floor(ps/2), ps, ps);
+
+      // Bright center highlight on hot cells
+      if (b > 0.7) {
+        ctx.fillStyle = `rgba(255,255,255,${(b - 0.7) * 0.8})`;
+        const hs = Math.max(1, Math.floor(ps * 0.3));
+        ctx.fillRect(px - Math.floor(hs/2), py - Math.floor(hs/2), hs, hs);
+      }
     }
 
-    for(const p of pts){
-      const bv = p.band===0 ? bass : p.band===1 ? mid : treble;
+    // Scanlines — the 8-bit signature
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    for (let y = 0; y < H; y += 2) ctx.fillRect(0, y, W, 1);
 
-      // Velocity jitter — quiet when calm, reactive when active
-      const jitter = 0.04 + e * bv * 0.22;
-      p.vx += (Math.random()-.5)*jitter;
-      p.vy += (Math.random()-.5)*jitter;
-
-      // Speed cap — scales with energy + band
-      const maxSpd = 0.35 + e * (p.band===0 ? 1.4 : p.band===1 ? 2.2 : 3.5) * bv;
-      const spd = Math.sqrt(p.vx*p.vx+p.vy*p.vy);
-      if(spd > maxSpd){ p.vx=p.vx/spd*maxSpd; p.vy=p.vy/spd*maxSpd; }
-
-      p.x+=p.vx; p.y+=p.vy;
-      if(p.x<0)p.x=W; if(p.x>W)p.x=0;
-      if(p.y<0)p.y=H; if(p.y>H)p.y=0;
-
-      // Size pulses on band energy
-      const drawR = p.r * (1 + bv * (p.band===0?2.2:p.band===1?1.4:.7) * e);
-
-      // Alpha: dim when calm, bright when active + on beat
-      const alpha = 0.12 + bv*e*.85 + (1-e)*.08;
-
-      const [pr,pg,pb] = hRGB(p.col);
-      ctx.beginPath();
-      ctx.arc(p.x,p.y,drawR,0,Math.PI*2);
-      ctx.fillStyle=`rgba(${pr},${pg},${pb},${alpha})`;
-      ctx.fill();
-    }
+    // Subtle vignette
+    const vg = ctx.createRadialGradient(W/2, H/2, H*0.3, W/2, H/2, H*0.85);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.45)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
   }
+
   draw();
+}
+
+// ── FULLSCREEN VISUALIZER ──────────────────────────
+let _vizFullscreen = false;
+function toggleVizFullscreen() {
+  const wrap = document.getElementById('visualizer');
+  if (!wrap) return;
+  _vizFullscreen = !_vizFullscreen;
+  if (_vizFullscreen) {
+    wrap.style.cssText = `
+      position:fixed;inset:0;z-index:999;
+      width:100vw;height:100vh;
+      border-radius:0;border:none;
+    `;
+  } else {
+    wrap.style.cssText = '';
+  }
+  // Resize canvas to new dimensions
+  setTimeout(() => {
+    const cv = document.getElementById('viz-canvas');
+    if (cv) { cv.width = wrap.offsetWidth; cv.height = wrap.offsetHeight; }
+  }, 50);
 }
 
 // ── DOT GRID ─────────────────────────────────────────────
