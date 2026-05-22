@@ -3,742 +3,889 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<title>BYOB — Spatial DJ</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=Roboto+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
+<title>BYOB — Spatial Instrument</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;0,900;1,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
 <style>
-:root {
-  --bg:     #07050302;
-  --bg:     #080503;
-  --card:   #110d08;
-  --card2:  #181008;
-  --orange: #f57e20;
-  --red:    #ef3c23;
-  --teal:   #00cc99;
-  --purple: #a78bfa;
-  --pink:   #f472b6;
-  --green:  #34d399;
-  --white:  #fff;
-  --muted:  #5a4030;
-  --border: #1e1408;
+:root{
+  --bg:#060402;
+  --card:#0e0a06;
+  --card2:#151008;
+  --rim:#1e1608;
+  --orange:#f57e20;
+  --red:#ef3c23;
+  --teal:#00cc99;
+  --muted:#4a3820;
+  --white:#f5f0e8;
+  --t1:#f57e20;
+  --t2:#00cc99;
+  --t3:#ef3c23;
+  --t4:#a78bfa;
+  --t5:#f472b6;
+  --t6:#34d399;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--white);font-family:'Barlow Condensed',sans-serif;}
 
-/* ── TOP BAR ── */
+/* ═══ TOP BAR ═══════════════════════════════════════════ */
 .topbar{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:0 20px;height:50px;
-  background:var(--card);border-bottom:1px solid var(--border);
-  position:relative;z-index:10;
+  height:48px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;background:var(--card);border-bottom:1px solid var(--rim);
+  position:relative;z-index:20;
 }
-.logo{font-size:26px;font-weight:900;letter-spacing:.04em;}
-.logo span{color:var(--orange);}
-.topbar-stats{display:flex;gap:28px;align-items:center;}
-.tstat{text-align:center;}
-.tstat-val{font-size:22px;font-weight:900;color:var(--orange);line-height:1;}
-.tstat-label{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
-.topbar-right{display:flex;gap:10px;align-items:center;}
-.btn-golive{
-  padding:8px 22px;background:var(--red);color:#fff;border:none;
-  border-radius:24px;font-family:'Barlow Condensed',sans-serif;
-  font-size:16px;font-weight:900;letter-spacing:.08em;cursor:pointer;
-  box-shadow:0 0 20px rgba(239,60,35,.35);transition:all .2s;
+.logo{font-size:22px;font-weight:900;letter-spacing:.06em;color:var(--white);}
+.logo em{color:var(--orange);font-style:normal;}
+.topbar-center{display:flex;gap:20px;align-items:center;}
+.tstat{text-align:center;line-height:1;}
+.tstat-v{font-size:20px;font-weight:900;color:var(--orange);}
+.tstat-l{font-size:8px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:1px;}
+.btn-live{
+  padding:7px 20px;border:none;border-radius:20px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;
+  letter-spacing:.08em;background:var(--red);color:#fff;
+  box-shadow:0 0 16px rgba(239,60,35,.3);transition:all .2s;
 }
-.btn-golive.on{background:var(--teal);color:#000;box-shadow:0 0 20px rgba(0,204,153,.4);animation:liveblink 1.6s ease-in-out infinite;}
-@keyframes liveblink{0%,100%{box-shadow:0 0 20px rgba(0,204,153,.4);}50%{box-shadow:0 0 40px rgba(0,204,153,.7);}}
+.btn-live.on{background:var(--teal);color:#000;box-shadow:0 0 24px rgba(0,204,153,.4);animation:livepulse 1.8s ease-in-out infinite;}
+@keyframes livepulse{0%,100%{box-shadow:0 0 16px rgba(0,204,153,.35);}50%{box-shadow:0 0 40px rgba(0,204,153,.7);}}
 
-/* ── MAIN GRID ── */
-.main{
+/* ═══ BODY GRID ══════════════════════════════════════════ */
+.body{
   display:grid;
-  grid-template-columns:240px 1fr 240px;
-  height:calc(100vh - 50px - 54px);
-  overflow:hidden;
+  grid-template-columns:220px 1fr 200px;
+  height:calc(100vh - 48px - 48px);
 }
 
-/* ── PANELS ── */
-.panel{
-  overflow-y:auto;overflow-x:hidden;
-  padding:12px;display:flex;flex-direction:column;gap:8px;
+/* ═══ LEFT — LIBRARY DECK ════════════════════════════════ */
+.lib{
+  background:var(--card);border-right:1px solid var(--rim);
+  display:flex;flex-direction:column;overflow:hidden;
 }
-.panel::-webkit-scrollbar{width:2px;}
-.panel::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-.panel-left{border-right:1px solid var(--border);}
-.panel-right{border-left:1px solid var(--border);}
-
-/* ── CARD ── */
-.card{
-  background:var(--card);border-radius:18px;padding:14px;
-  box-shadow:0 6px 28px rgba(0,0,0,.5);flex-shrink:0;
+.lib-head{
+  padding:10px 12px 8px;border-bottom:1px solid var(--rim);
+  display:flex;align-items:center;justify-content:space-between;flex-shrink:0;
 }
-.clabel{
-  font-size:9px;letter-spacing:.16em;text-transform:uppercase;
-  color:var(--muted);margin-bottom:10px;
+.lib-title{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
+.lib-upload{
+  padding:4px 10px;border:none;border-radius:12px;
+  background:var(--orange);color:#000;
+  font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;
+  letter-spacing:.06em;cursor:pointer;
 }
-
-/* ── LIB SEARCH ── */
 .lib-search{
-  width:100%;background:var(--card2);border:none;border-radius:12px;
-  padding:10px 14px;color:var(--white);
-  font-family:'Barlow Condensed',sans-serif;font-size:14px;
-  outline:none;letter-spacing:.04em;
+  margin:8px 10px;padding:8px 12px;
+  background:var(--card2);border:none;border-radius:10px;
+  color:var(--white);font-family:'Barlow Condensed',sans-serif;font-size:13px;
+  outline:none;width:calc(100% - 20px);flex-shrink:0;
 }
 .lib-search::placeholder{color:var(--muted);}
+.lib-list{flex:1;overflow-y:auto;padding:0 8px 8px;}
+.lib-list::-webkit-scrollbar{width:2px;}
+.lib-list::-webkit-scrollbar-thumb{background:var(--rim);}
 
-/* ── TRACK CHIP ── */
-.track-chip{
-  background:var(--card2);border-radius:14px;padding:10px 12px;
-  display:flex;align-items:center;gap:10px;cursor:grab;
-  transition:all .15s;flex-shrink:0;
-}
-.track-chip:active{cursor:grabbing;transform:scale(.96);opacity:.7;}
-.track-chip.dragging{opacity:.4;}
-.tdot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
-.tinfo{flex:1;min-width:0;}
-.tname{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.tartist{font-size:10px;color:var(--muted);letter-spacing:.04em;}
-.tbpm{font-size:13px;font-weight:700;color:var(--muted);}
-
-/* ── ZONE LIST ── */
-.zone-item{
+/* Track chip — deck style */
+.tchip{
   display:flex;align-items:center;gap:8px;
-  padding:7px 10px;background:var(--card2);border-radius:10px;
-  margin-bottom:5px;
+  padding:8px 10px;border-radius:12px;
+  background:var(--card2);margin-bottom:5px;
+  cursor:grab;transition:all .12s;border:1.5px solid transparent;
 }
-.zone-letter{font-size:13px;font-weight:900;min-width:20px;}
-.zone-tname{font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);}
-.zone-clear{color:var(--muted);cursor:pointer;font-size:16px;padding:0 4px;}
-.zone-clear:hover{color:var(--red);}
+.tchip:active{cursor:grabbing;opacity:.6;transform:scale(.97);}
+.tchip.playing{border-color:var(--orange);background:#130e05;}
+.tcolor{width:4px;height:36px;border-radius:2px;flex-shrink:0;}
+.ttext{flex:1;min-width:0;}
+.tname{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;}
+.tartist{font-size:9px;color:var(--muted);letter-spacing:.04em;margin-top:2px;}
+.tmeta{display:flex;align-items:center;gap:6px;margin-top:3px;}
+.tbpm{font-size:10px;font-weight:700;color:var(--orange);font-family:'DM Mono',monospace;}
+.tkey{font-size:9px;color:var(--teal);font-family:'DM Mono',monospace;}
+.tchip-play{
+  width:24px;height:24px;border-radius:6px;border:none;
+  background:transparent;color:var(--muted);font-size:11px;cursor:pointer;
+  flex-shrink:0;transition:all .12s;
+}
+.tchip-play:hover{background:var(--orange);color:#000;}
 
-/* ── CENTER ── */
+/* ═══ CENTER — INSTRUMENT ════════════════════════════════ */
 .center{
   display:flex;flex-direction:column;align-items:center;
-  padding:10px 14px 10px;gap:10px;
+  padding:10px 12px 8px;gap:8px;
+  background:var(--bg);
 }
-.mode-pills{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;}
-.mpill{
-  padding:6px 14px;border-radius:20px;
-  font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;
-  letter-spacing:.06em;cursor:pointer;border:none;
-  background:var(--card);color:var(--muted);transition:all .15s;
+
+/* Mode strip */
+.mode-strip{
+  display:flex;gap:5px;width:100%;
+  background:var(--card);border-radius:14px;padding:5px;
+  flex-shrink:0;
 }
-.mpill.active{background:var(--orange);color:#000;}
-.canvas-wrap{flex:1;width:100%;display:flex;align-items:center;justify-content:center;position:relative;}
-#sg{border-radius:20px;touch-action:none;}
-
-/* ── SCATTER CONTROLS ── */
-.sc-row{display:flex;gap:10px;width:100%;}
-.btn-sc{
-  flex:1;padding:14px;border:none;border-radius:16px;
-  font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;
-  letter-spacing:.04em;cursor:pointer;transition:transform .1s;
-  box-shadow:0 4px 20px rgba(0,0,0,.4);
+.mbutton{
+  flex:1;padding:7px 4px;border:none;border-radius:10px;
+  font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;
+  letter-spacing:.05em;text-transform:uppercase;cursor:pointer;
+  background:transparent;color:var(--muted);transition:all .15s;
+  white-space:nowrap;
 }
-.btn-sc:active{transform:scale(.96);}
-.btn-scatter{background:var(--red);color:#fff;}
-.btn-snap{background:var(--teal);color:#000;}
+.mbutton.active{background:var(--orange);color:#000;}
 
-/* ── KNOB ── */
-.knob-row{display:flex;justify-content:space-around;gap:4px;}
-.kgroup{display:flex;flex-direction:column;align-items:center;gap:4px;}
-.kwrap{position:relative;cursor:pointer;flex-shrink:0;}
-.kwrap svg{display:block;}
-.klabel{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
-.kval{font-size:12px;font-weight:900;color:var(--orange);min-width:28px;text-align:center;}
-
-/* ── STAT CHIPS ── */
-.stat-row{display:flex;gap:6px;}
-.schip{flex:1;background:var(--card2);border-radius:14px;padding:10px 6px;text-align:center;}
-.schip-val{font-size:26px;font-weight:900;color:var(--orange);line-height:1;}
-.schip-label{font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:3px;}
-
-/* ── METER ── */
-.meter-wrap{height:10px;background:var(--card2);border-radius:5px;overflow:hidden;}
-.meter-fill{height:100%;width:42%;background:linear-gradient(90deg,var(--teal),var(--orange),var(--red));border-radius:5px;transition:width .08s;}
-
-/* ── GUEST ── */
-.gitem{
-  display:flex;align-items:center;gap:8px;padding:8px 10px;
-  background:var(--card2);border-radius:12px;margin-bottom:5px;
+/* Grid canvas */
+.grid-wrap{
+  flex:1;width:100%;display:flex;align-items:center;justify-content:center;
+  position:relative;min-height:0;
 }
-.gemoji{font-size:18px;}
-.gname{font-size:14px;font-weight:700;flex:1;}
-.gdist{font-size:10px;color:var(--teal);font-weight:700;}
+#sg{border-radius:50%;touch-action:none;cursor:crosshair;}
 
-/* ── MSG BTN ── */
-.btn-msg{
-  width:100%;padding:14px;background:var(--card2);border:none;
-  border-radius:16px;color:var(--white);
+/* Track slots — below grid */
+.slots-wrap{
+  width:100%;display:flex;gap:5px;flex-shrink:0;
+}
+.slot{
+  flex:1;border-radius:12px;padding:7px 8px;
+  background:var(--card);border:1.5px dashed var(--rim);
+  text-align:center;cursor:pointer;transition:all .15s;
+  min-width:0;
+}
+.slot.filled{border-style:solid;}
+.slot.active{box-shadow:0 0 12px rgba(245,126,32,.3);}
+.slot-num{font-size:9px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;}
+.slot-name{font-size:11px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.slot-clear{font-size:10px;color:var(--muted);margin-top:1px;cursor:pointer;}
+.slot-clear:hover{color:var(--red);}
+
+/* Action row */
+.action-row{display:flex;gap:8px;width:100%;flex-shrink:0;}
+.abtn{
+  flex:1;padding:13px;border:none;border-radius:14px;
   font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;
-  letter-spacing:.06em;cursor:pointer;transition:all .15s;
+  letter-spacing:.04em;cursor:pointer;transition:transform .1s;
+  box-shadow:0 4px 20px rgba(0,0,0,.5);
+}
+.abtn:active{transform:scale(.96);}
+.abtn-scatter{background:var(--red);color:#fff;}
+.abtn-snap{background:var(--teal);color:#000;}
+.abtn-dist{background:var(--card);color:var(--orange);border:1px solid var(--orange);font-size:13px;}
+
+/* ═══ RIGHT — CONTROLS ═══════════════════════════════════ */
+.controls{
+  background:var(--card);border-left:1px solid var(--rim);
+  display:flex;flex-direction:column;gap:0;overflow-y:auto;
+}
+.controls::-webkit-scrollbar{width:2px;}
+.csect{padding:10px 12px;border-bottom:1px solid var(--rim);}
+.csect-label{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;}
+
+/* Knob row */
+.knob-row{display:flex;justify-content:space-between;gap:4px;}
+.kgroup{display:flex;flex-direction:column;align-items:center;gap:3px;}
+.kring{position:relative;cursor:ns-resize;flex-shrink:0;}
+.kring svg{display:block;}
+.klabel{font-size:8px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+.kval{font-size:11px;font-weight:700;font-family:'DM Mono',monospace;color:var(--orange);}
+
+/* VU meter */
+.vu{height:8px;background:var(--card2);border-radius:4px;overflow:hidden;margin-top:2px;}
+.vu-fill{height:100%;width:55%;background:linear-gradient(90deg,var(--teal) 0%,var(--orange) 70%,var(--red) 100%);border-radius:4px;transition:width .07s;}
+
+/* Stats */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;}
+.statbox{background:var(--card2);border-radius:10px;padding:7px 5px;text-align:center;}
+.statbox-v{font-size:22px;font-weight:900;color:var(--orange);line-height:1;}
+.statbox-l{font-size:7px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:2px;}
+
+/* Guest list */
+.glist{display:flex;flex-direction:column;gap:4px;}
+.gitem{display:flex;align-items:center;gap:7px;padding:6px 8px;background:var(--card2);border-radius:9px;}
+.gemoji{font-size:15px;}
+.gname{font-size:13px;font-weight:700;flex:1;}
+.gdist{font-size:9px;font-family:'DM Mono',monospace;color:var(--teal);}
+
+/* Scatter spread */
+.spread-ring{display:flex;flex-direction:column;align-items:center;gap:4px;}
+
+/* Lights btn */
+.btn-lights{
+  width:100%;padding:10px;border:none;border-radius:12px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;
+  letter-spacing:.06em;background:var(--card2);color:var(--muted);transition:all .15s;
+}
+.btn-lights.on{background:#1a1505;color:#f5c842;box-shadow:0 0 16px rgba(245,200,66,.2);}
+.btn-msg{
+  width:100%;padding:10px;border:none;border-radius:12px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;
+  letter-spacing:.06em;background:var(--card2);color:var(--white);transition:all .15s;
+  margin-top:5px;
 }
 .btn-msg:active{background:var(--orange);color:#000;}
 
-/* ── BOTTOM TABS ── */
-.btabs{
-  display:grid;grid-template-columns:repeat(5,1fr);
-  height:54px;background:var(--card);border-top:1px solid var(--border);
+/* ═══ BOTTOM TABS ════════════════════════════════════════ */
+.bottomtabs{
+  height:48px;display:flex;background:var(--card);
+  border-top:1px solid var(--rim);
 }
 .btab{
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:2px;cursor:pointer;color:var(--muted);
-  font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:1px;cursor:pointer;
+  color:var(--muted);font-size:8px;letter-spacing:.1em;
+  text-transform:uppercase;font-weight:700;
   border-top:2px solid transparent;transition:all .15s;
 }
 .btab.active{color:var(--orange);border-top-color:var(--orange);}
-.btab-icon{font-size:17px;}
+.btab-i{font-size:15px;line-height:1;}
 
-/* ── SCROLL KNOB (large) ── */
-.kwrap-lg{width:80px;height:80px;}
-
-/* ── LIGHT MODE BTN ── */
-.btn-light{
-  width:100%;padding:12px;border:none;border-radius:16px;
-  font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;
-  letter-spacing:.06em;cursor:pointer;transition:all .15s;
-  background:var(--card2);color:var(--muted);
+/* ═══ GRAIN OVERLAY ══════════════════════════════════════ */
+body::after{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:100;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+  opacity:.5;mix-blend-mode:overlay;
 }
-.btn-light.on{background:#1a1008;color:#f5c842;box-shadow:0 0 20px rgba(245,200,66,.2);}
 </style>
 </head>
 <body>
 
 <!-- TOP BAR -->
 <div class="topbar">
-  <div class="logo">BY<span>O</span>B</div>
-  <div class="topbar-stats">
-    <div class="tstat"><div class="tstat-val">124</div><div class="tstat-label">BPM</div></div>
-    <div class="tstat"><div class="tstat-val" id="tb-listeners">18</div><div class="tstat-label">Listeners</div></div>
-    <div class="tstat"><div class="tstat-val" id="tb-zone">Unnamed</div><div class="tstat-label">Zone</div></div>
+  <div class="logo">BY<em>O</em>B</div>
+  <div class="topbar-center">
+    <div class="tstat"><div class="tstat-v">124</div><div class="tstat-l">BPM</div></div>
+    <div class="tstat"><div class="tstat-v" id="tb-l">18</div><div class="tstat-l">Live</div></div>
+    <div class="tstat"><div class="tstat-v">6</div><div class="tstat-l">Zones</div></div>
+    <div class="tstat"><div class="tstat-v">—</div><div class="tstat-l">Mode</div></div>
   </div>
-  <div class="topbar-right">
-    <button class="btn-golive" id="btn-golive" onclick="toggleLive()">⚡ Go Live</button>
-  </div>
+  <button class="btn-live" id="btn-live" onclick="toggleLive()">⚡ Go Live</button>
 </div>
 
-<!-- MAIN -->
-<div class="main">
+<!-- BODY -->
+<div class="body">
 
-  <!-- LEFT — Library -->
-  <div class="panel panel-left">
-
-    <div class="clabel">Library</div>
-    <input class="lib-search" type="text" placeholder="Search tracks…"/>
-
-    <div class="clabel" style="margin-top:4px;">Drag onto the grid →</div>
-
-    <div class="track-chip" draggable="true" ondragstart="startDrag(event,'A')" id="tc-A">
-      <div class="tdot" style="background:#f57e20;"></div>
-      <div class="tinfo"><div class="tname">Midnight Groove</div><div class="tartist">Oliver Smith</div></div>
-      <div class="tbpm">124</div>
+  <!-- LEFT — LIBRARY -->
+  <div class="lib">
+    <div class="lib-head">
+      <div class="lib-title">Library</div>
+      <button class="lib-upload">+ Upload</button>
     </div>
-    <div class="track-chip" draggable="true" ondragstart="startDrag(event,'B')" id="tc-B">
-      <div class="tdot" style="background:#00cc99;"></div>
-      <div class="tinfo"><div class="tname">Liquid Dreams</div><div class="tartist">Nora Van Elken</div></div>
-      <div class="tbpm">124</div>
-    </div>
-    <div class="track-chip" draggable="true" ondragstart="startDrag(event,'C')" id="tc-C">
-      <div class="tdot" style="background:#ef3c23;"></div>
-      <div class="tinfo"><div class="tname">Afterglow</div><div class="tartist">Lucas & Steve</div></div>
-      <div class="tbpm">126</div>
-    </div>
-    <div class="track-chip" draggable="true" ondragstart="startDrag(event,'D')" id="tc-D">
-      <div class="tdot" style="background:#a78bfa;"></div>
-      <div class="tinfo"><div class="tname">Echoes</div><div class="tartist">Maya Jane Coles</div></div>
-      <div class="tbpm">123</div>
-    </div>
-    <div class="track-chip" draggable="true" ondragstart="startDrag(event,'E')" id="tc-E">
-      <div class="tdot" style="background:#f472b6;"></div>
-      <div class="tinfo"><div class="tname">Rising High</div><div class="tartist">Dom Dolla</div></div>
-      <div class="tbpm">125</div>
-    </div>
-    <div class="track-chip" draggable="true" ondragstart="startDrag(event,'F')" id="tc-F">
-      <div class="tdot" style="background:#34d399;"></div>
-      <div class="tinfo"><div class="tname">Back To You</div><div class="tartist">Sonny Fodera</div></div>
-      <div class="tbpm">124</div>
-    </div>
-
-    <!-- Zone Assignments -->
-    <div class="card" style="margin-top:4px;">
-      <div class="clabel">Zone Assignments</div>
-      <div id="zone-list">
-        <div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0;">
-          Drop tracks onto zones
-        </div>
-      </div>
-    </div>
-
+    <input class="lib-search" placeholder="Search…" type="text" oninput="filterLib(this.value)"/>
+    <div class="lib-list" id="lib-list"></div>
   </div>
 
-  <!-- CENTER — Spatial Grid -->
+  <!-- CENTER — SPATIAL INSTRUMENT -->
   <div class="center">
 
-    <div class="mode-pills">
-      <button class="mpill active" onclick="setMode('grid',this)">🗺 Grid</button>
-      <button class="mpill" onclick="setMode('scatter',this)">♩ Scatter</button>
-      <button class="mpill" onclick="setMode('pulse',this)">◎ Pulse</button>
-      <button class="mpill" onclick="setMode('sweep',this)">→ Sweep</button>
-      <button class="mpill" onclick="setMode('gravity',this)">⊕ Gravity</button>
+    <!-- Mode strip -->
+    <div class="mode-strip">
+      <button class="mbutton active" onclick="setMode('zone',this)">⊕ Zone</button>
+      <button class="mbutton" onclick="setMode('cluster',this)">⬡ Cluster</button>
+      <button class="mbutton" onclick="setMode('orbit',this)">◎ Orbit</button>
+      <button class="mbutton" onclick="setMode('wander',this)">〜 Wander</button>
+      <button class="mbutton" onclick="setMode('point',this)">⊙ Point</button>
+      <button class="mbutton" onclick="setMode('layer',this)">≋ Layer</button>
     </div>
 
-    <div class="canvas-wrap">
+    <!-- Spatial grid -->
+    <div class="grid-wrap">
       <canvas id="sg"
-        ondragover="event.preventDefault()"
-        ondrop="onDrop(event)"
+        ondragover="ev.preventDefault()"
         ontouchstart="onTouch(event)"
-        onmousedown="onMouse(event)"
-      ></canvas>
+        onmousedown="onMouse(event)">
+      </canvas>
     </div>
 
-    <div class="sc-row">
-      <button class="btn-sc btn-scatter" onclick="doScatter()">♩ SCATTER</button>
-      <button class="btn-sc btn-snap" onclick="doSnap()">⚡ SNAP</button>
+    <!-- Track slots -->
+    <div class="slots-wrap" id="slots-wrap"></div>
+
+    <!-- Actions -->
+    <div class="action-row">
+      <button class="abtn abtn-scatter" onclick="doScatter()">♩ SCATTER</button>
+      <button class="abtn abtn-dist"    onclick="doDistribute()">⊕ DISTRIBUTE</button>
+      <button class="abtn abtn-snap"    onclick="doSnap()">⚡ SNAP</button>
     </div>
 
   </div>
 
-  <!-- RIGHT — EQ + Crowd -->
-  <div class="panel panel-right">
+  <!-- RIGHT — CONTROLS -->
+  <div class="controls">
 
     <!-- EQ -->
-    <div class="card">
-      <div class="clabel">EQ</div>
-      <div class="knob-row">
-        <div class="kgroup">
-          <div class="kwrap" id="kn-hi" data-val="75" style="width:52px;height:52px;"><svg width="52" height="52"></svg></div>
-          <div class="klabel">HI</div>
-          <div class="kval" id="kn-hi-v">0</div>
-        </div>
-        <div class="kgroup">
-          <div class="kwrap" id="kn-mid" data-val="75" style="width:52px;height:52px;"><svg width="52" height="52"></svg></div>
-          <div class="klabel">MID</div>
-          <div class="kval" id="kn-mid-v">0</div>
-        </div>
-        <div class="kgroup">
-          <div class="kwrap" id="kn-low" data-val="75" style="width:52px;height:52px;"><svg width="52" height="52"></svg></div>
-          <div class="klabel">LOW</div>
-          <div class="kval" id="kn-low-v">0</div>
-        </div>
-        <div class="kgroup">
-          <div class="kwrap" id="kn-vol" data-val="80" style="width:52px;height:52px;"><svg width="52" height="52"></svg></div>
-          <div class="klabel">VOL</div>
-          <div class="kval" id="kn-vol-v">+5</div>
-        </div>
+    <div class="csect">
+      <div class="csect-label">EQ</div>
+      <div class="knob-row" id="knob-row"></div>
+    </div>
+
+    <!-- Scatter spread -->
+    <div class="csect">
+      <div class="csect-label">Scatter Spread</div>
+      <div class="spread-ring">
+        <div class="kring" id="kn-spread" data-val="33" style="width:64px;height:64px;"><svg width="64" height="64"></svg></div>
+        <div class="kval" id="kn-spread-v">2.0s</div>
+        <div class="klabel">drag to set</div>
       </div>
     </div>
 
-    <!-- Scatter knob -->
-    <div class="card">
-      <div class="clabel">Scatter Spread</div>
-      <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
-        <div class="kwrap kwrap-lg" id="kn-scatter" data-val="33" style="width:80px;height:80px;"><svg width="80" height="80"></svg></div>
-        <div class="kval" id="kn-scatter-v" style="font-size:18px;">2.0s</div>
-        <div class="klabel">drag to set spread</div>
-      </div>
+    <!-- Input level -->
+    <div class="csect">
+      <div class="csect-label">Input Level</div>
+      <div class="vu"><div class="vu-fill" id="vu-fill"></div></div>
     </div>
 
     <!-- Stats -->
-    <div class="stat-row">
-      <div class="schip"><div class="schip-val">18</div><div class="schip-label">Present</div></div>
-      <div class="schip"><div class="schip-val">4</div><div class="schip-label">Coming</div></div>
-      <div class="schip"><div class="schip-val">18</div><div class="schip-label">Speakers</div></div>
-    </div>
-
-    <!-- Meter -->
-    <div class="card">
-      <div class="clabel">Input Level</div>
-      <div class="meter-wrap"><div class="meter-fill" id="meter-fill"></div></div>
+    <div class="csect">
+      <div class="csect-label">Crowd</div>
+      <div class="stat-grid">
+        <div class="statbox"><div class="statbox-v">18</div><div class="statbox-l">Here</div></div>
+        <div class="statbox"><div class="statbox-v">4</div><div class="statbox-l">Coming</div></div>
+        <div class="statbox"><div class="statbox-v">6</div><div class="statbox-l">Zones</div></div>
+      </div>
     </div>
 
     <!-- Guests -->
-    <div class="card">
-      <div class="clabel">Guest List</div>
-      <div id="guest-list"></div>
+    <div class="csect" style="flex:1;">
+      <div class="csect-label">Guest List</div>
+      <div class="glist" id="glist"></div>
     </div>
 
-    <!-- Lights -->
-    <button class="btn-light" id="btn-light" onclick="toggleLight()">💡 Lighting Mode</button>
-
-    <!-- Message -->
-    <button class="btn-msg">📣 Message Crowd</button>
+    <!-- Lights + message -->
+    <div class="csect">
+      <button class="btn-lights" id="btn-lights" onclick="toggleLights()">💡 Lighting Mode</button>
+      <button class="btn-msg">📣 Message</button>
+    </div>
 
   </div>
-
 </div>
 
 <!-- BOTTOM TABS -->
-<div class="btabs">
-  <div class="btab active" onclick="switchTab(this)"><div class="btab-icon">🗺</div>Grid</div>
-  <div class="btab" onclick="switchTab(this)"><div class="btab-icon">🎛</div>Deck</div>
-  <div class="btab" onclick="switchTab(this)"><div class="btab-icon">🎚</div>EQ</div>
-  <div class="btab" onclick="switchTab(this)"><div class="btab-icon">👥</div>Crowd</div>
-  <div class="btab" onclick="switchTab(this)"><div class="btab-icon">💡</div>Lights</div>
+<div class="bottomtabs">
+  <div class="btab active" onclick="switchTab(this)"><div class="btab-i">🗺</div>Grid</div>
+  <div class="btab" onclick="switchTab(this)"><div class="btab-i">🎛</div>Deck</div>
+  <div class="btab" onclick="switchTab(this)"><div class="btab-i">🎚</div>Mix</div>
+  <div class="btab" onclick="switchTab(this)"><div class="btab-i">👥</div>Crowd</div>
+  <div class="btab" onclick="switchTab(this)"><div class="btab-i">💡</div>Lights</div>
 </div>
 
 <script>
-// ── PALETTE ──────────────────────────────────────────────
-const TCOLORS = {
-  A:'#f57e20', B:'#00cc99', C:'#ef3c23',
-  D:'#a78bfa', E:'#f472b6', F:'#34d399'
-};
-const TNAMES = {
-  A:'Midnight Groove', B:'Liquid Dreams', C:'Afterglow',
-  D:'Echoes', E:'Rising High', F:'Back To You'
-};
+// ═══════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════
+const TRACKS = [
+  {id:'A', name:'Midnight Groove', artist:'Oliver Smith',   bpm:124, key:'8A', col:'#f57e20'},
+  {id:'B', name:'Liquid Dreams',   artist:'Nora Van Elken', bpm:124, key:'8A', col:'#00cc99'},
+  {id:'C', name:'Afterglow',       artist:'Lucas & Steve',  bpm:126, key:'9A', col:'#ef3c23'},
+  {id:'D', name:'Echoes',          artist:'Maya Jane Coles',bpm:123, key:'7A', col:'#a78bfa'},
+  {id:'E', name:'Rising High',     artist:'Dom Dolla',      bpm:125, key:'10A',col:'#f472b6'},
+  {id:'F', name:'Back To You',     artist:'Sonny Fodera',   bpm:124, key:'11A',col:'#34d399'},
+  {id:'G', name:'Cascade',         artist:'Lane 8',         bpm:122, key:'6A', col:'#f57e20'},
+  {id:'H', name:'Devotion',        artist:'Bicep',          bpm:128, key:'5A', col:'#00cc99'},
+];
 
-// ── SPATIAL GRID ─────────────────────────────────────────
+const GUESTS = [
+  {e:'🎧',n:'Catalyst',  d:'12ft'},
+  {e:'🌀',n:'Wanderer',  d:'28ft'},
+  {e:'🔮',n:'Oracle',    d:'35ft'},
+  {e:'⚡',n:'Instigator',d:'41ft'},
+  {e:'🦊',n:'Fox',       d:'55ft'},
+];
+
+const NUM_SLOTS = 6;
+let slots       = Array(NUM_SLOTS).fill(null); // {track, col}
+let activeSlot  = null;
+let gridMode    = 'zone';
+let isLive      = false;
+let dragging    = null;
+let ripples     = [];
+let listeners   = [];
+let orbitAngle  = 0;
+let frame       = 0;
+
+// ═══════════════════════════════════════════════════════
+// LIBRARY
+// ═══════════════════════════════════════════════════════
+function buildLib(filter='') {
+  const el = document.getElementById('lib-list');
+  const filtered = TRACKS.filter(t =>
+    t.name.toLowerCase().includes(filter.toLowerCase()) ||
+    t.artist.toLowerCase().includes(filter.toLowerCase())
+  );
+  el.innerHTML = filtered.map(t => `
+    <div class="tchip" id="tc-${t.id}"
+      draggable="true"
+      ondragstart="startDrag(event,'${t.id}')"
+      onclick="quickAssign('${t.id}')">
+      <div class="tcolor" style="background:${t.col};"></div>
+      <div class="ttext">
+        <div class="tname">${t.name}</div>
+        <div class="tartist">${t.artist}</div>
+        <div class="tmeta">
+          <span class="tbpm">${t.bpm}</span>
+          <span class="tkey">${t.key}</span>
+        </div>
+      </div>
+      <button class="tchip-play" onclick="event.stopPropagation();previewTrack('${t.id}')">▶</button>
+    </div>
+  `).join('');
+}
+buildLib();
+function filterLib(v){ buildLib(v); }
+
+// ═══════════════════════════════════════════════════════
+// SLOTS
+// ═══════════════════════════════════════════════════════
+function buildSlots() {
+  const wrap = document.getElementById('slots-wrap');
+  wrap.innerHTML = slots.map((s,i) => `
+    <div class="slot ${s?'filled':''} ${activeSlot===i?'active':''}"
+      id="slot-${i}"
+      style="${s?`border-color:${s.col};`:''}"
+      ondragover="event.preventDefault()"
+      ondrop="dropOnSlot(event,${i})"
+      onclick="selectSlot(${i})">
+      <div class="slot-num">${i+1}</div>
+      <div class="slot-name" style="${s?`color:${s.col};`:'color:var(--muted);'}">
+        ${s ? s.track.name : '— drop —'}
+      </div>
+      ${s ? `<div class="slot-clear" onclick="event.stopPropagation();clearSlot(${i})">×</div>` : ''}
+    </div>
+  `).join('');
+}
+buildSlots();
+
+function selectSlot(i) {
+  activeSlot = i;
+  buildSlots();
+}
+function clearSlot(i) {
+  slots[i] = null;
+  if (activeSlot === i) activeSlot = null;
+  buildSlots();
+  drawGrid();
+}
+function dropOnSlot(ev, i) {
+  ev.preventDefault();
+  const id = ev.dataTransfer.getData('track-id') || dragging;
+  if (!id) return;
+  const track = TRACKS.find(t => t.id === id);
+  if (!track) return;
+  slots[i] = { track, col: track.col };
+  activeSlot = i;
+  buildSlots();
+  rippleBurst(canvas.width/2, canvas.height/2);
+}
+function quickAssign(id) {
+  if (activeSlot === null) {
+    // Auto-find next empty slot
+    const empty = slots.findIndex(s => !s);
+    if (empty === -1) { activeSlot = 0; }
+    else { activeSlot = empty; }
+  }
+  const track = TRACKS.find(t => t.id === id);
+  if (!track) return;
+  slots[activeSlot] = { track, col: track.col };
+  buildSlots();
+  rippleBurst(canvas.width/2, canvas.height/2);
+}
+function startDrag(ev, id) {
+  dragging = id;
+  ev.dataTransfer.setData('track-id', id);
+}
+
+// ═══════════════════════════════════════════════════════
+// SPATIAL GRID
+// ═══════════════════════════════════════════════════════
 const canvas = document.getElementById('sg');
 const ctx    = canvas.getContext('2d');
 
-let zoneMap    = {};   // { N:'A', E:'B', ... }
-let dragging   = null;
-let hoverZone  = null;
-let ripples    = [];
-let listeners  = [];
-let frame      = 0;
-let gridMode   = 'grid';
+// Listeners
+for (let i = 0; i < 24; i++) {
+  const a = Math.random() * Math.PI * 2;
+  const d = 0.1 + Math.random() * 0.82;
+  listeners.push({
+    x: Math.cos(a)*d, y: Math.sin(a)*d,
+    vx:(Math.random()-.5)*.0014, vy:(Math.random()-.5)*.0014,
+    col:'#f5f0e8', targetX:null, targetY:null,
+  });
+}
 
 function resize() {
   const wrap = canvas.parentElement;
-  const s = Math.min(wrap.clientWidth - 16, wrap.clientHeight - 8);
-  canvas.width  = s;
-  canvas.height = s;
+  const s = Math.min(wrap.clientWidth - 20, wrap.clientHeight - 12);
+  canvas.width = canvas.height = s;
+  canvas.style.width = canvas.style.height = s + 'px';
 }
 resize();
 window.addEventListener('resize', resize);
 
-// Demo listeners
-for (let i = 0; i < 22; i++) {
-  const a = Math.random() * Math.PI * 2;
-  const d = 0.12 + Math.random() * 0.8;
-  listeners.push({
-    x: Math.cos(a)*d, y: Math.sin(a)*d,
-    vx:(Math.random()-.5)*.0018, vy:(Math.random()-.5)*.0018,
-  });
+function hexRGB(h){
+  return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
 }
 
-function zoneAt(nx,ny) {
-  const d = Math.sqrt(nx*nx+ny*ny);
-  if (d < 0.22) return 'C';
-  const ang = Math.atan2(ny,nx)*180/Math.PI;
-  if (ang>=-45 && ang<45)  return 'E';
-  if (ang>=45  && ang<135) return 'S';
-  if (ang>=135 || ang<-135)return 'W';
-  return 'N';
+// Assign colors to listeners based on mode + slots
+function getListenerColor(lx, ly) {
+  const filled = slots.filter(Boolean);
+  if (!filled.length) return '#f5f0e8';
+  if (gridMode === 'zone') {
+    // compass zones
+    const ang = Math.atan2(ly, lx) * 180/Math.PI;
+    const d   = Math.sqrt(lx*lx + ly*ly);
+    if (d < 0.22) return filled[0]?.col || '#f5f0e8';
+    if (ang >= -45 && ang < 45)  return filled[1 % filled.length]?.col || '#f5f0e8';
+    if (ang >= 45  && ang < 135) return filled[2 % filled.length]?.col || '#f5f0e8';
+    if (ang >= 135 || ang < -135)return filled[3 % filled.length]?.col || '#f5f0e8';
+    return filled[4 % filled.length]?.col || '#f5f0e8';
+  }
+  if (gridMode === 'cluster') {
+    // proximity clusters — assign by quadrant for demo
+    const qi = Math.floor((Math.atan2(ly,lx)+Math.PI)/(Math.PI*2)*filled.length);
+    return filled[qi % filled.length]?.col || '#f5f0e8';
+  }
+  if (gridMode === 'orbit') {
+    const ang2 = Math.atan2(ly,lx);
+    const band = Math.floor(((ang2 + Math.PI)/(Math.PI*2)) * filled.length);
+    return filled[band % filled.length]?.col || '#f5f0e8';
+  }
+  return filled[Math.floor(Math.random() * filled.length)]?.col || '#f5f0e8';
 }
 
-function hexRGB(h){ return [parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]; }
+function rippleBurst(x, y, n=1) {
+  for(let i=0;i<n;i++) ripples.push({x,y,r:6+i*5,a:.9-.15*i,col:'#f57e20'});
+}
 
-function draw() {
-  requestAnimationFrame(draw);
-  const W=canvas.width, H=canvas.height;
-  if(!W||!H) return;
-  frame++;
-  const t = frame*.022;
-  const cx=W/2, cy=H/2, R=Math.min(W,H)/2-6;
+function drawGrid() {
+  const W = canvas.width, H = canvas.height;
+  if (!W || !H) return;
+  const cx = W/2, cy = H/2, R = W/2 - 4;
+  const t = frame * 0.018;
 
   // BG
-  ctx.fillStyle='#080503';
+  ctx.fillStyle = '#060402';
   ctx.fillRect(0,0,W,H);
 
-  // Clip
+  // Clip to circle
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx,cy,R,0,Math.PI*2);
   ctx.clip();
 
-  // Zone fills
-  const ZONES=[
-    {z:'N', a0:-Math.PI/2-Math.PI/4, a1:-Math.PI/2+Math.PI/4},
-    {z:'E', a0:-Math.PI/4, a1:Math.PI/4},
-    {z:'S', a0:Math.PI/4, a1:3*Math.PI/4},
-    {z:'W', a0:3*Math.PI/4, a1:5*Math.PI/4},
-  ];
-  ZONES.forEach(({z,a0,a1})=>{
-    const col   = zoneMap[z] ? TCOLORS[zoneMap[z]] : (hoverZone===z?'#ffffff':'#ffffff');
-    const alpha = zoneMap[z] ? .18 : (hoverZone===z?.1:.03);
-    const [r,g,b]=hexRGB(col);
-    ctx.beginPath();
-    ctx.moveTo(cx,cy);
-    ctx.arc(cx,cy,R,a0,a1);
-    ctx.closePath();
-    ctx.fillStyle=`rgba(${r},${g},${b},${alpha})`;
-    ctx.fill();
-  });
-
-  // Center zone
-  const [cr,cg,cb] = zoneMap['C'] ? hexRGB(TCOLORS[zoneMap['C']]) : [255,255,255];
-  ctx.beginPath();
-  ctx.arc(cx,cy,R*.22,0,Math.PI*2);
-  ctx.fillStyle=`rgba(${cr},${cg},${cb},${zoneMap['C']?.18:.04})`;
-  ctx.fill();
-
-  // Zone dividers
-  ctx.strokeStyle='rgba(255,255,255,0.05)';
-  ctx.lineWidth=1;
-  [-45,45,135,225].forEach(deg=>{
-    const rad=deg*Math.PI/180;
-    ctx.beginPath();
-    ctx.moveTo(cx+Math.cos(rad)*R*.22, cy+Math.sin(rad)*R*.22);
-    ctx.lineTo(cx+Math.cos(rad)*R,     cy+Math.sin(rad)*R);
-    ctx.stroke();
-  });
+  // Zone fills — based on mode
+  const filled = slots.filter(Boolean);
+  if (gridMode === 'zone' && filled.length) {
+    const ZONE_ARCS = [
+      {a0:-Math.PI/4, a1:Math.PI/4},      // E
+      {a0:Math.PI/4,  a1:3*Math.PI/4},    // S
+      {a0:3*Math.PI/4,a1:5*Math.PI/4},    // W
+      {a0:-3*Math.PI/4,a1:-Math.PI/4},    // N
+    ];
+    ZONE_ARCS.forEach(({a0,a1},i)=>{
+      const s = filled[(i+1) % filled.length];
+      if (!s) return;
+      const [r,g,b] = hexRGB(s.col);
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,R,a0,a1);
+      ctx.closePath();
+      ctx.fillStyle=`rgba(${r},${g},${b},0.12)`;
+      ctx.fill();
+    });
+    // Center
+    const c0 = filled[0];
+    const [r,g,b] = hexRGB(c0.col);
+    ctx.beginPath();ctx.arc(cx,cy,R*.22,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${r},${g},${b},0.18)`;ctx.fill();
+  }
+  if (gridMode === 'cluster' && filled.length) {
+    // Draw cluster zones as organic blobs
+    const n = filled.length;
+    for(let i=0;i<n;i++){
+      const ang = (i/n)*Math.PI*2 - Math.PI/2;
+      const bx = cx + Math.cos(ang)*R*.48;
+      const by = cy + Math.sin(ang)*R*.48;
+      const [r,g,b] = hexRGB(filled[i].col);
+      const gr = ctx.createRadialGradient(bx,by,0,bx,by,R*.35);
+      gr.addColorStop(0,`rgba(${r},${g},${b},0.22)`);
+      gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
+      ctx.beginPath();ctx.arc(bx,by,R*.38,0,Math.PI*2);
+      ctx.fillStyle=gr;ctx.fill();
+    }
+  }
+  if (gridMode === 'orbit' && filled.length) {
+    // Rotating arc segments
+    const n = filled.length;
+    for(let i=0;i<n;i++){
+      const a0 = orbitAngle + (i/n)*Math.PI*2;
+      const a1 = a0 + (Math.PI*2/n)*.85;
+      const [r,g,b] = hexRGB(filled[i].col);
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,R,a0,a1);
+      ctx.closePath();
+      ctx.fillStyle=`rgba(${r},${g},${b},0.1)`;ctx.fill();
+    }
+    orbitAngle += 0.004;
+  }
 
   // Rings
   [.22,.4,.6,.8,1].forEach((f,i)=>{
-    const pulse=i<4?.5+.5*Math.sin(t*1.1-i*.9):1;
-    ctx.beginPath();
-    ctx.arc(cx,cy,R*f,0,Math.PI*2);
-    ctx.strokeStyle=`rgba(255,255,255,${.045*pulse})`;
-    ctx.lineWidth=i===4?1.5:.8;
-    ctx.stroke();
+    const pulse = i<4 ? .5+.5*Math.sin(t*1.2-i*.8) : 1;
+    ctx.beginPath();ctx.arc(cx,cy,R*f,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(245,240,232,${.04*pulse})`;
+    ctx.lineWidth=i===4?1.5:.7;ctx.stroke();
   });
 
-  // Zone labels
-  [
-    {z:'N',px:cx,    py:cy-R*.65},
-    {z:'E',px:cx+R*.65,py:cy},
-    {z:'S',px:cx,    py:cy+R*.65},
-    {z:'W',px:cx-R*.65,py:cy},
-    {z:'C',px:cx,    py:cy},
-  ].forEach(({z,px,py})=>{
-    const assigned=zoneMap[z];
-    ctx.textAlign='center';ctx.textBaseline='middle';
-    ctx.font=`900 11px 'Barlow Condensed',sans-serif`;
-    ctx.fillStyle=assigned?TCOLORS[assigned]:'rgba(255,255,255,0.18)';
-    ctx.fillText(z,px,py);
-    if(assigned){
-      ctx.font=`700 9px 'Barlow Condensed',sans-serif`;
-      ctx.fillStyle=TCOLORS[assigned];
-      ctx.fillText(TNAMES[assigned].slice(0,10),px,py+14);
-    }
-  });
+  // Zone dividers for zone mode
+  if (gridMode === 'zone') {
+    ctx.strokeStyle='rgba(245,240,232,0.04)';ctx.lineWidth=.8;
+    [-45,45,135,225].forEach(deg=>{
+      const rad=deg*Math.PI/180;
+      ctx.beginPath();
+      ctx.moveTo(cx+Math.cos(rad)*R*.22,cy+Math.sin(rad)*R*.22);
+      ctx.lineTo(cx+Math.cos(rad)*R,cy+Math.sin(rad)*R);ctx.stroke();
+    });
+  }
 
-  // Listener dots
+  // Listeners
   listeners.forEach(l=>{
     l.x+=l.vx; l.y+=l.vy;
     const d=Math.sqrt(l.x*l.x+l.y*l.y);
-    if(d>.93){l.vx*=-.7;l.vy*=-.7;}
-    const z=zoneAt(l.x,l.y);
-    const col=zoneMap[z]?TCOLORS[zoneMap[z]]:'#ffffff';
-    const [r,g,b]=hexRGB(col);
+    if(d>.92){l.vx*=-.65;l.vy*=-.65;}
+    l.col = getListenerColor(l.x,l.y);
     const px=cx+l.x*R, py=cy+l.y*R;
+    const [r,g,b]=hexRGB(l.col);
     // glow
-    ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);
-    ctx.fillStyle=`rgba(${r},${g},${b},0.1)`;ctx.fill();
+    ctx.beginPath();ctx.arc(px,py,8,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${r},${g},${b},0.08)`;ctx.fill();
     // dot
-    ctx.beginPath();ctx.arc(px,py,3,0,Math.PI*2);
-    ctx.fillStyle=`rgba(${r},${g},${b},0.9)`;ctx.fill();
+    ctx.beginPath();ctx.arc(px,py,2.8,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${r},${g},${b},0.92)`;ctx.fill();
   });
 
+  // Orbit source indicator
+  if (gridMode === 'orbit' && filled.length) {
+    const ox = cx + Math.cos(orbitAngle)*R*.62;
+    const oy = cy + Math.sin(orbitAngle)*R*.62;
+    const [r,g,b]=hexRGB(filled[0].col);
+    ctx.beginPath();ctx.arc(ox,oy,12,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${r},${g},${b},0.18)`;ctx.fill();
+    ctx.beginPath();ctx.arc(ox,oy,5,0,Math.PI*2);
+    ctx.fillStyle=filled[0].col;ctx.fill();
+  }
+
+  // Slot indicators — small labeled dots at zone centers
+  if (gridMode === 'zone') {
+    const ZPOS=[
+      {z:'C',x:0,   y:0},
+      {z:'N',x:0,   y:-.58},
+      {z:'E',x:.58, y:0},
+      {z:'S',x:0,   y:.58},
+      {z:'W',x:-.58,y:0},
+    ];
+    ZPOS.forEach(({z,x,y},i)=>{
+      const s = slots[i];
+      if(!s)return;
+      const px=cx+x*R, py=cy+y*R;
+      const[r,g,b]=hexRGB(s.col);
+      ctx.beginPath();ctx.arc(px,py,14,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${r},${g},${b},0.2)`;ctx.fill();
+      ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);
+      ctx.fillStyle=s.col;ctx.fill();
+      ctx.textAlign='center';ctx.textBaseline='middle';
+      ctx.font="900 8px 'Barlow Condensed'";
+      ctx.fillStyle='rgba(245,240,232,0.5)';
+      ctx.fillText(s.track.name.slice(0,6).toUpperCase(),px,py+18);
+    });
+  }
+
   // DJ center
-  const pulse2=.65+.35*Math.sin(t*3.2);
-  ctx.beginPath();ctx.arc(cx,cy,10*pulse2,0,Math.PI*2);
-  ctx.fillStyle=`rgba(245,126,32,${.18*pulse2})`;ctx.fill();
-  ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);
+  const pulse3=.6+.4*Math.sin(t*3.8);
+  ctx.beginPath();ctx.arc(cx,cy,12*pulse3,0,Math.PI*2);
+  ctx.fillStyle=`rgba(245,126,32,${.15*pulse3})`;ctx.fill();
+  ctx.beginPath();ctx.arc(cx,cy,4.5,0,Math.PI*2);
   ctx.fillStyle='#f57e20';ctx.fill();
 
   // Ripples
-  ripples=ripples.filter(rp=>rp.a>.008);
+  ripples=ripples.filter(rp=>rp.a>.01);
   ripples.forEach(rp=>{
-    rp.r+=3.5;rp.a*=.9;
+    rp.r+=4;rp.a*=.88;
+    const[r,g,b]=hexRGB(rp.col||'#f57e20');
     ctx.beginPath();ctx.arc(rp.x,rp.y,rp.r,0,Math.PI*2);
-    ctx.strokeStyle=`rgba(245,126,32,${rp.a})`;
+    ctx.strokeStyle=`rgba(${r},${g},${b},${rp.a})`;
     ctx.lineWidth=2;ctx.stroke();
   });
 
   ctx.restore();
 
-  // Outer border
+  // Outer rim
   ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);
-  ctx.strokeStyle='rgba(245,126,32,0.12)';
-  ctx.lineWidth=1.5;ctx.stroke();
-}
-draw();
-
-// ── DRAG & DROP ───────────────────────────────────────────
-function startDrag(e,id){ dragging=id; e.dataTransfer.setData('t',id); }
-
-canvas.addEventListener('dragover',e=>{
-  e.preventDefault();
-  const r=canvas.getBoundingClientRect();
-  const nx=(e.clientX-r.left-canvas.width/2)/(canvas.width/2-6);
-  const ny=(e.clientY-r.top -canvas.height/2)/(canvas.height/2-6);
-  hoverZone=Math.sqrt(nx*nx+ny*ny)<=1?zoneAt(nx,ny):null;
-});
-canvas.addEventListener('dragleave',()=>hoverZone=null);
-
-function onDrop(e){
-  e.preventDefault();
-  const id=e.dataTransfer.getData('t')||dragging;
-  if(!id)return;
-  const r=canvas.getBoundingClientRect();
-  const nx=(e.clientX-r.left-canvas.width/2)/(canvas.width/2-6);
-  const ny=(e.clientY-r.top -canvas.height/2)/(canvas.height/2-6);
-  if(Math.sqrt(nx*nx+ny*ny)>1){hoverZone=null;return;}
-  const z=zoneAt(nx,ny);
-  zoneMap[z]=id;
-  hoverZone=null;dragging=null;
-  ripples.push({x:e.clientX-r.left,y:e.clientY-r.top,r:8,a:.9});
-  renderZoneList();
+  ctx.strokeStyle='rgba(245,126,32,0.1)';ctx.lineWidth=1.5;ctx.stroke();
 }
 
-// Touch on grid
+function loop(){
+  requestAnimationFrame(loop);
+  frame++;
+  if(canvas.width>0) drawGrid();
+}
+loop();
+
+// Touch / mouse
 function onTouch(e){
   e.preventDefault();
-  const t=e.touches[0];
-  const r=canvas.getBoundingClientRect();
-  ripples.push({x:t.clientX-r.left,y:t.clientY-r.top,r:6,a:.9});
+  const t=e.touches[0],r=canvas.getBoundingClientRect();
+  rippleBurst(t.clientX-r.left,t.clientY-r.top,2);
 }
 function onMouse(e){
   const r=canvas.getBoundingClientRect();
-  ripples.push({x:e.clientX-r.left,y:e.clientY-r.top,r:6,a:.9});
+  rippleBurst(e.clientX-r.left,e.clientY-r.top,2);
 }
 
-function renderZoneList(){
-  const el=document.getElementById('zone-list');
-  const entries=Object.entries(zoneMap);
-  if(!entries.length){
-    el.innerHTML='<div style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0;">Drop tracks onto zones</div>';
-    return;
-  }
-  el.innerHTML=entries.map(([z,t])=>`
-    <div class="zone-item">
-      <div class="zone-letter" style="color:${TCOLORS[t]};">${z}</div>
-      <div class="tdot" style="background:${TCOLORS[t]};flex-shrink:0;"></div>
-      <div class="zone-tname">${TNAMES[t]}</div>
-      <div class="zone-clear" onclick="clearZone('${z}')">×</div>
-    </div>`).join('');
-}
-function clearZone(z){delete zoneMap[z];renderZoneList();}
+canvas.addEventListener('dragover',e=>e.preventDefault());
+canvas.addEventListener('drop',e=>{
+  e.preventDefault();
+  const id=e.dataTransfer.getData('track-id')||dragging;
+  if(!id)return;
+  quickAssign(id);
+  const r=canvas.getBoundingClientRect();
+  rippleBurst(e.clientX-r.left,e.clientY-r.top,3);
+});
 
-// ── SCATTER / SNAP ────────────────────────────────────────
-function doScatter(){
-  const cx=canvas.width/2, cy=canvas.height/2;
-  for(let i=0;i<3;i++) setTimeout(()=>ripples.push({x:cx,y:cy,r:8+i*4,a:.9-.2*i}),i*180);
-  listeners.forEach(l=>{
-    l.vx+=(Math.random()-.5)*.04;
-    l.vy+=(Math.random()-.5)*.04;
-  });
-}
-function doSnap(){
-  const cx=canvas.width/2, cy=canvas.height/2;
-  listeners.forEach(l=>{l.vx=-l.x*.06;l.vy=-l.y*.06;});
-  ripples.push({x:cx,y:cy,r:5,a:1});
-}
-
-// ── KNOBS ─────────────────────────────────────────────────
-function arc2pt(cx,cy,r,angle){
-  return{x:cx+r*Math.cos(angle),y:cy+r*Math.sin(angle)};
-}
-function arcPath(cx,cy,r,a0,a1){
-  const s=arc2pt(cx,cy,r,a1), e=arc2pt(cx,cy,r,a0);
-  const large=a1-a0>Math.PI?1:0;
-  return`M${s.x} ${s.y} A${r} ${r} 0 ${large} 0 ${e.x} ${e.y}`;
-}
-
-function drawKnob(id,val){
-  const wrap=document.getElementById(id);
-  if(!wrap)return;
-  const svg=wrap.querySelector('svg');
-  const W=parseInt(svg.getAttribute('width'));
-  const H=parseInt(svg.getAttribute('height'));
-  const cx=W/2,cy=H/2,r=W/2-5;
-  const sw=W>60?6:5;
+// ═══════════════════════════════════════════════════════
+// KNOBS
+// ═══════════════════════════════════════════════════════
+function drawKnob(id,val,size=48){
+  const el=document.getElementById(id);
+  if(!el)return;
+  const svg=el.querySelector('svg');
+  const cx=size/2,cy=size/2,r=size/2-5;
+  const sw=size>60?6:4.5;
   const minA=-140*Math.PI/180-Math.PI/2;
-  const maxA= 140*Math.PI/180-Math.PI/2;
+  const maxA=140*Math.PI/180-Math.PI/2;
   const a=minA+(val/100)*(maxA-minA);
-  const indPt=arc2pt(cx,cy,r-3,a);
-
+  const ix=cx+r*Math.cos(a),iy=cy+r*Math.sin(a);
+  const la=(ax)=>cx+r*Math.cos(ax)+','+( cy+r*Math.sin(ax));
+  const arc=(v0,v1)=>{
+    const a0=minA+(v0/100)*(maxA-minA);
+    const a1=minA+(v1/100)*(maxA-minA);
+    const large=a1-a0>Math.PI?1:0;
+    return`M${la(a1)} A${r} ${r} 0 ${large} 0 ${la(a0)}`;
+  };
+  svg.setAttribute('width',size);svg.setAttribute('height',size);
   svg.innerHTML=`
-    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1e1408" stroke-width="${sw}"/>
-    <path d="${arcPath(cx,cy,r,minA,a)}" fill="none" stroke="#f57e20" stroke-width="${sw}" stroke-linecap="round"/>
-    <circle cx="${cx}" cy="${cy}" r="${r-sw-2}" fill="#110d08"/>
-    <line x1="${cx}" y1="${cy}" x2="${indPt.x}" y2="${indPt.y}" stroke="#f57e20" stroke-width="2.5" stroke-linecap="round"/>
-    <circle cx="${cx}" cy="${cy}" r="3" fill="#f57e20"/>
-  `;
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#1e1608" stroke-width="${sw}"/>
+    <path d="${arc(0,val)}" fill="none" stroke="#f57e20" stroke-width="${sw}" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="${r-sw-2}" fill="#0e0a06"/>
+    <line x1="${cx}" y1="${cy}" x2="${ix}" y2="${iy}" stroke="#f57e20" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="${cx}" cy="${cy}" r="2.5" fill="#f57e20"/>`;
 }
 
-function knobLabel(id,val){
+// Build EQ knobs
+const EQ_KNOBS=[
+  {id:'khi',  label:'HI',  val:75},
+  {id:'kmid', label:'MID', val:75},
+  {id:'klow', label:'LOW', val:75},
+  {id:'kvol', label:'VOL', val:80},
+];
+const kr=document.getElementById('knob-row');
+kr.innerHTML=EQ_KNOBS.map(k=>`
+  <div class="kgroup">
+    <div class="kring" id="${k.id}" data-val="${k.val}" style="width:48px;height:48px;"><svg width="48" height="48"></svg></div>
+    <div class="klabel">${k.label}</div>
+    <div class="kval" id="${k.id}-v">0</div>
+  </div>`).join('');
+
+function knobVal(id,val){
   const el=document.getElementById(id+'-v');
   if(!el)return;
-  if(id==='kn-scatter'){
-    el.textContent=(val/100*30).toFixed(1)+'s';
-  } else {
-    const db=Math.round((val-75)/75*12);
-    el.textContent=db>=0?'+'+db:''+db;
-  }
+  if(id==='kn-spread'){el.textContent=(val/100*30).toFixed(1)+'s';}
+  else{const db=Math.round((val-75)/75*12);el.textContent=(db>=0?'+':'')+db;}
 }
 
-const KNOBS=['kn-hi','kn-mid','kn-low','kn-vol','kn-scatter'];
-KNOBS.forEach(id=>{
+[...EQ_KNOBS.map(k=>({id:k.id,size:48})),{id:'kn-spread',size:64}].forEach(({id,size})=>{
   const el=document.getElementById(id);
   if(!el)return;
   let val=parseInt(el.dataset.val||'75');
-  let startY=0,startVal=0;
-  drawKnob(id,val);knobLabel(id,val);
-
-  const move=cy=>{
-    val=Math.max(0,Math.min(100,startVal+(startY-cy)/1.8));
-    el.dataset.val=val;drawKnob(id,val);knobLabel(id,val);
-  };
-  el.addEventListener('mousedown',e=>{
-    startY=e.clientY;startVal=val;
-    const mm=e2=>move(e2.clientY);
-    const mu=()=>{window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);};
-    window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);
-    e.preventDefault();
-  });
-  el.addEventListener('touchstart',e=>{e.preventDefault();startY=e.touches[0].clientY;startVal=val;},{passive:false});
+  let sy=0,sv=0;
+  drawKnob(id,val,size);knobVal(id,val);
+  const move=cy=>{val=Math.max(0,Math.min(100,sv+(sy-cy)/1.6));el.dataset.val=val;drawKnob(id,val,size);knobVal(id,val);};
+  el.addEventListener('mousedown',e=>{sy=e.clientY;sv=val;const mm=e2=>move(e2.clientY);const mu=()=>{window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);};window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);e.preventDefault();});
+  el.addEventListener('touchstart',e=>{e.preventDefault();sy=e.touches[0].clientY;sv=val;},{passive:false});
   el.addEventListener('touchmove',e=>{e.preventDefault();move(e.touches[0].clientY);},{passive:false});
 });
 
-// Meter animation
-let meterDir=1,meterVal=42;
-setInterval(()=>{
-  meterVal+=meterDir*(2+Math.random()*4);
-  if(meterVal>88||meterVal<18)meterDir*=-1;
-  meterVal=Math.max(18,Math.min(92,meterVal));
-  const f=document.getElementById('meter-fill');
-  if(f)f.style.width=meterVal+'%';
-},120);
+// Spread knob
+const spEl=document.getElementById('kn-spread');
+if(spEl){drawKnob('kn-spread',33,64);knobVal('kn-spread',33);}
 
-// ── GUESTS ────────────────────────────────────────────────
-const DEMO_GUESTS=[
-  {e:'🎧',n:'Catalyst',d:'12 ft'},{e:'🌀',n:'Wanderer',d:'28 ft'},
-  {e:'🔮',n:'Oracle',d:'35 ft'},{e:'⚡',n:'Instigator',d:'41 ft'},
-  {e:'🦊',n:'Fox',d:'55 ft'},{e:'🌊',n:'Tender',d:'67 ft'},
-];
-const gl=document.getElementById('guest-list');
-if(gl) gl.innerHTML=DEMO_GUESTS.map(g=>`
+// ═══════════════════════════════════════════════════════
+// VU METER
+// ═══════════════════════════════════════════════════════
+let vuDir=1,vuVal=45;
+setInterval(()=>{
+  vuVal+=vuDir*(2+Math.random()*5);
+  if(vuVal>90||vuVal<15)vuDir*=-1;
+  vuVal=Math.max(15,Math.min(92,vuVal));
+  const el=document.getElementById('vu-fill');
+  if(el)el.style.width=vuVal+'%';
+},100);
+
+// ═══════════════════════════════════════════════════════
+// GUESTS
+// ═══════════════════════════════════════════════════════
+document.getElementById('glist').innerHTML=GUESTS.map(g=>`
   <div class="gitem">
     <div class="gemoji">${g.e}</div>
     <div class="gname">${g.n}</div>
     <div class="gdist">${g.d}</div>
   </div>`).join('');
 
-// ── CONTROLS ──────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════
 function setMode(m,btn){
   gridMode=m;
-  document.querySelectorAll('.mpill').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.mbutton').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
+  document.getElementById('tb-l').textContent = m.charAt(0).toUpperCase()+m.slice(1);
+}
+
+function doScatter(){
+  const cx=canvas.width/2,cy=canvas.height/2;
+  for(let i=0;i<4;i++) setTimeout(()=>rippleBurst(cx,cy,2),i*150);
+  listeners.forEach(l=>{l.vx+=(Math.random()-.5)*.05;l.vy+=(Math.random()-.5)*.05;});
+}
+
+function doSnap(){
+  listeners.forEach(l=>{l.vx+=-l.x*.08;l.vy+=-l.y*.08;});
+  rippleBurst(canvas.width/2,canvas.height/2,4);
+}
+
+function doDistribute(){
+  const filled=slots.filter(Boolean);
+  if(!filled.length){return;}
+  // Visual burst showing distribution
+  const n=filled.length;
+  for(let i=0;i<n;i++){
+    const ang=(i/n)*Math.PI*2;
+    const x=canvas.width/2+Math.cos(ang)*canvas.width*.3;
+    const y=canvas.height/2+Math.sin(ang)*canvas.height*.3;
+    setTimeout(()=>ripples.push({x,y,r:5,a:.9,col:filled[i].col}),i*100);
+  }
+}
+
+function previewTrack(id){
+  document.querySelectorAll('.tchip').forEach(c=>c.classList.remove('playing'));
+  document.getElementById('tc-'+id)?.classList.add('playing');
+}
+
+function toggleLive(){
+  isLive=!isLive;
+  const b=document.getElementById('btn-live');
+  b.classList.toggle('on',isLive);
+  b.textContent=isLive?'■ On Air':'⚡ Go Live';
+}
+function toggleLights(){
+  const b=document.getElementById('btn-lights');
+  b.classList.toggle('on');
+  b.textContent=b.classList.contains('on')?'💡 Lights Active':'💡 Lighting Mode';
 }
 function switchTab(el){
   document.querySelectorAll('.btab').forEach(t=>t.classList.remove('active'));
   el.classList.add('active');
 }
-function toggleLive(){
-  const b=document.getElementById('btn-golive');
-  b.classList.toggle('on');
-  b.textContent=b.classList.contains('on')?'■ On Air':'⚡ Go Live';
-}
-function toggleLight(){
-  const b=document.getElementById('btn-light');
-  b.classList.toggle('on');
-  b.textContent=b.classList.contains('on')?'💡 Lights Active':'💡 Lighting Mode';
-}
 
-// Resize knobs after fonts load
-setTimeout(()=>{ KNOBS.forEach(id=>{ const el=document.getElementById(id); if(el)drawKnob(id,parseInt(el.dataset.val||'75')); }); resize(); },200);
+// Resize after load
+setTimeout(()=>{ resize(); EQ_KNOBS.forEach(k=>drawKnob(k.id,k.val,48)); },200);
 </script>
 </body>
 </html>
