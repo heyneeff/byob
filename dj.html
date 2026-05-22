@@ -322,6 +322,48 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:12px;h
 .dj-panel{display:none;}
 .dj-panel.active{display:block;}
 
+/* ── ZONE MODES ── */
+.zone-mode-btn{
+  padding:7px 12px;border-radius:20px;border:none;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:12px;font-weight:900;letter-spacing:.06em;
+  cursor:pointer;background:var(--surface2);color:var(--muted);
+  transition:all .15s;
+}
+.zone-mode-btn.active{background:var(--orange);color:#000;}
+
+/* ── ZONE SLOTS ── */
+.zone-slot{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 12px;
+  background:var(--surface2);border-radius:12px;
+  border:1.5px solid transparent;
+  cursor:pointer;transition:all .15s;
+}
+.zone-slot:hover{border-color:var(--border);}
+.zone-slot.selected{border-color:var(--orange);}
+.zone-slot.loaded{background:#0d0d00;}
+.zslot-badge{
+  width:28px;height:28px;border-radius:8px;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:14px;font-weight:900;color:#000;flex-shrink:0;
+}
+.zslot-info{flex:1;min-width:0;}
+.zslot-name{
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:15px;font-weight:700;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.zslot-sub{font-size:10px;color:var(--muted);letter-spacing:.06em;margin-top:1px;}
+.zslot-controls{display:flex;gap:5px;flex-shrink:0;}
+.zslot-btn{
+  width:28px;height:28px;border-radius:6px;border:none;
+  background:var(--surface);color:var(--white);
+  font-size:12px;cursor:pointer;transition:all .15s;
+}
+.zslot-btn:hover{background:var(--orange);color:#000;}
+.zslot-btn.danger:hover{background:var(--red);}
   
 audio{display:none;}
 </style>
@@ -522,6 +564,113 @@ audio{display:none;}
   <div class="section-label">Broadcast Tools</div>
   <div class="live-menu open" id="live-menu">
 
+<!-- SPATIAL ZONES -->
+<div class="section-label">Spatial Zones</div>
+
+<!-- Mode buttons -->
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+  <button class="zone-mode-btn active" id="zmode-zone" onclick="setZoneMode('zone',this)">⊕ Zone</button>
+  <button class="zone-mode-btn" id="zmode-cluster" onclick="setZoneMode('cluster',this)">⬡ Cluster</button>
+  <button class="zone-mode-btn" id="zmode-orbit" onclick="setZoneMode('orbit',this)">◎ Orbit</button>
+  <button class="zone-mode-btn" id="zmode-wander" onclick="setZoneMode('wander',this)">〜 Wander</button>
+  <button class="zone-mode-btn" id="zmode-point" onclick="setZoneMode('point',this)">⊙ Point</button>
+  <button class="zone-mode-btn" id="zmode-layer" onclick="setZoneMode('layer',this)">≋ Layer</button>
+</div>
+
+<!-- Zone slots -->
+<div id="zone-slots" style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+  <div class="zone-slot" id="slot-C" data-zone="C" 
+    ondragover="event.preventDefault()" 
+    ondrop="dropOnZone(event,'C')"
+    onclick="selectZoneSlot('C')">
+    <div class="zslot-badge" style="background:var(--orange);">C</div>
+    <div class="zslot-info">
+      <div class="zslot-name" id="slot-C-name">Center — drop track</div>
+      <div class="zslot-sub" id="slot-C-sub">All speakers</div>
+    </div>
+    <div class="zslot-controls" id="slot-C-controls" style="display:none;">
+      <button class="zslot-btn" onclick="playZone(event,'C')">▶</button>
+      <button class="zslot-btn" onclick="muteZone(event,'C')">M</button>
+      <button class="zslot-btn danger" onclick="clearZoneSlot(event,'C')">×</button>
+    </div>
+  </div>
+
+  <div class="zone-slot" id="slot-N" data-zone="N"
+    ondragover="event.preventDefault()"
+    ondrop="dropOnZone(event,'N')"
+    onclick="selectZoneSlot('N')">
+    <div class="zslot-badge" style="background:var(--teal);">N</div>
+    <div class="zslot-info">
+      <div class="zslot-name" id="slot-N-name">North — drop track</div>
+      <div class="zslot-sub" id="slot-N-sub">↑ speakers</div>
+    </div>
+    <div class="zslot-controls" id="slot-N-controls" style="display:none;">
+      <button class="zslot-btn" onclick="playZone(event,'N')">▶</button>
+      <button class="zslot-btn" onclick="muteZone(event,'N')">M</button>
+      <button class="zslot-btn danger" onclick="clearZoneSlot(event,'N')">×</button>
+    </div>
+  </div>
+
+  <div class="zone-slot" id="slot-E" data-zone="E"
+    ondragover="event.preventDefault()"
+    ondrop="dropOnZone(event,'E')"
+    onclick="selectZoneSlot('E')">
+    <div class="zslot-badge" style="background:var(--red);">E</div>
+    <div class="zslot-info">
+      <div class="zslot-name" id="slot-E-name">East — drop track</div>
+      <div class="zslot-sub" id="slot-E-sub">→ speakers</div>
+    </div>
+    <div class="zslot-controls" id="slot-E-controls" style="display:none;">
+      <button class="zslot-btn" onclick="playZone(event,'E')">▶</button>
+      <button class="zslot-btn" onclick="muteZone(event,'E')">M</button>
+      <button class="zslot-btn danger" onclick="clearZoneSlot(event,'E')">×</button>
+    </div>
+  </div>
+
+  <div class="zone-slot" id="slot-S" data-zone="S"
+    ondragover="event.preventDefault()"
+    ondrop="dropOnZone(event,'S')"
+    onclick="selectZoneSlot('S')">
+    <div class="zslot-badge" style="background:var(--purple,#a78bfa);">S</div>
+    <div class="zslot-info">
+      <div class="zslot-name" id="slot-S-name">South — drop track</div>
+      <div class="zslot-sub" id="slot-S-sub">↓ speakers</div>
+    </div>
+    <div class="zslot-controls" id="slot-S-controls" style="display:none;">
+      <button class="zslot-btn" onclick="playZone(event,'S')">▶</button>
+      <button class="zslot-btn" onclick="muteZone(event,'S')">M</button>
+      <button class="zslot-btn danger" onclick="clearZoneSlot(event,'S')">×</button>
+    </div>
+  </div>
+
+  <div class="zone-slot" id="slot-W" data-zone="W"
+    ondragover="event.preventDefault()"
+    ondrop="dropOnZone(event,'W')"
+    onclick="selectZoneSlot('W')">
+    <div class="zslot-badge" style="background:var(--pink,#f472b6);">W</div>
+    <div class="zslot-info">
+      <div class="zslot-name" id="slot-W-name">West — drop track</div>
+      <div class="zslot-sub" id="slot-W-sub">← speakers</div>
+    </div>
+    <div class="zslot-controls" id="slot-W-controls" style="display:none;">
+      <button class="zslot-btn" onclick="playZone(event,'W')">▶</button>
+      <button class="zslot-btn" onclick="muteZone(event,'W')">M</button>
+      <button class="zslot-btn danger" onclick="clearZoneSlot(event,'W')">×</button>
+    </div>
+  </div>
+</div>
+
+<!-- Broadcast all zones -->
+<button onclick="broadcastAllZones()" style="
+  width:100%;padding:14px;
+  background:var(--surface2);color:var(--orange);
+  border:1px solid var(--orange);border-radius:12px;
+  font-family:'Barlow Condensed',sans-serif;
+  font-size:18px;font-weight:900;letter-spacing:.08em;
+  cursor:pointer;margin-bottom:10px;
+">⚡ Broadcast All Zones</button>
+
+    
     <!-- ── SCATTER / SNAP ─────────────────────────── -->
 <div style="background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--red);border-radius:8px;padding:14px;margin-bottom:10px;">
   <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">Scatter Spread</div>
@@ -1772,15 +1921,133 @@ async function openLibrary() {
   `).join('');
 }
 
+
+  
 async function loadFromLibrary(filename) {
-  const { data } = db.storage.from('tracks').getPublicUrl(filename);
+  const { data } = db.storage.from('tracks').getPublicUrl('boombox/' + filename);
   if (!data?.publicUrl) { showToast('Could not load track'); return; }
 
-  audio.src = data.publicUrl;
+  const url  = data.publicUrl;
+  const name = filename.replace(/\.[^/.]+$/, '');
+
+  // If a zone slot is selected — assign there
+  if (selectedSlot) {
+    assignTrackToZone(selectedSlot, url, name);
+    document.getElementById('library-modal').style.display = 'none';
+    return;
+  }
+
+  // Otherwise load as main track
+  audio.src = url;
   audio.load();
-  document.getElementById('track-name').textContent = filename.replace(/\.[^/.]+$/, '');
+  document.getElementById('track-name').textContent = name;
   document.getElementById('library-modal').style.display = 'none';
-  showToast('Track loaded — press Go Live to broadcast ⚡');
+  showToast('Track loaded — select a zone slot or Go Live ⚡');
+}
+
+  // ── ZONE SLOT SYSTEM ──────────────────────────────────────
+let zoneMode    = 'zone';
+let zoneTracks  = {};   // { N: {url, name}, E: {url, name}, ... }
+let selectedSlot = null;
+let _draggingTrack = null;
+
+function setZoneMode(mode, btn) {
+  zoneMode = mode;
+  document.querySelectorAll('.zone-mode-btn')
+    .forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  showToast('Mode: ' + mode.charAt(0).toUpperCase() + mode.slice(1));
+}
+
+function selectZoneSlot(zone) {
+  selectedSlot = zone;
+  document.querySelectorAll('.zone-slot')
+    .forEach(s => s.classList.remove('selected'));
+  document.getElementById('slot-' + zone)?.classList.add('selected');
+}
+
+function dropOnZone(event, zone) {
+  event.preventDefault();
+  const url  = event.dataTransfer.getData('track-url')  || _draggingTrack?.url;
+  const name = event.dataTransfer.getData('track-name') || _draggingTrack?.name;
+  if (!url) return;
+  assignTrackToZone(zone, url, name);
+}
+
+function assignTrackToZone(zone, url, name) {
+  zoneTracks[zone] = { url, name };
+
+  const slot = document.getElementById('slot-' + zone);
+  const nameEl = document.getElementById('slot-' + zone + '-name');
+  const controls = document.getElementById('slot-' + zone + '-controls');
+
+  if (nameEl) nameEl.textContent = name || url.split('/').pop();
+  if (slot) slot.classList.add('loaded');
+  if (controls) controls.style.display = 'flex';
+
+  showToast(`Zone ${zone} → ${name || 'track loaded'}`);
+}
+
+function clearZoneSlot(event, zone) {
+  event.stopPropagation();
+  delete zoneTracks[zone];
+
+  const slot     = document.getElementById('slot-' + zone);
+  const nameEl   = document.getElementById('slot-' + zone + '-name');
+  const controls = document.getElementById('slot-' + zone + '-controls');
+
+  const defaults = {
+    C:'Center — drop track', N:'North — drop track',
+    E:'East — drop track',   S:'South — drop track', W:'West — drop track'
+  };
+  if (nameEl)   nameEl.textContent = defaults[zone];
+  if (slot)     slot.classList.remove('loaded','selected');
+  if (controls) controls.style.display = 'none';
+}
+
+function playZone(event, zone) {
+  event.stopPropagation();
+  const t = zoneTracks[zone];
+  if (!t) return;
+  audio.src = t.url;
+  audio.play().catch(() => {});
+  document.getElementById('track-name').textContent = t.name;
+  showToast(`Playing Zone ${zone}: ${t.name}`);
+}
+
+function muteZone(event, zone) {
+  event.stopPropagation();
+  showToast(`Zone ${zone} muted`);
+}
+
+async function broadcastAllZones() {
+  if (!activeZone) { showToast('Create a zone first'); return; }
+  if (!Object.keys(zoneTracks).length) {
+    showToast('Assign tracks to zones first'); return;
+  }
+
+  // Build the zone_tracks payload
+  const payload = {};
+  Object.entries(zoneTracks).forEach(([z, t]) => {
+    payload[z] = t.url;
+  });
+
+  // Save to Supabase — listeners will read this
+  await db.from('zones').update({
+    zone_tracks: payload,
+    playback_started_at: new Date().toISOString(),
+    active: true
+  }).eq('id', activeZone.id);
+
+  // Also set the center/fallback track
+  if (zoneTracks['C']) {
+    await db.from('zones').update({
+      current_track_url: zoneTracks['C'].url,
+      track_name: zoneTracks['C'].name
+    }).eq('id', activeZone.id);
+  }
+
+  showToast('⚡ All zones broadcasting');
 }
 
   
