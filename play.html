@@ -987,24 +987,59 @@ function drawPlatter(id,deck,color){
 // Drag to scratch
 function makePlatterDraggable(id,deck){
   const cv=document.getElementById(id);if(!cv)return;
-  let dr=false,ly=0;
-  cv.addEventListener('mousedown',e=>{dr=true;ly=e.clientY;e.preventDefault();});
-  window.addEventListener('mousemove',e=>{if(!dr)return;deck.angle+=(e.clientY-ly)*.05;ly=e.clientY;});
-  window.addEventListener('mouseup',()=>dr=false);
-  cv.addEventListener('touchstart',e=>{e.preventDefault();dr=true;ly=e.touches[0].clientY;},{passive:false});
-  cv.addEventListener('touchmove',e=>{e.preventDefault();if(!dr)return;deck.angle+=(e.touches[0].clientY-ly)*.05;ly=e.touches[0].clientY;},{passive:false});
-  cv.addEventListener('touchend',()=>dr=false);
+  let dr=false,ly=0,lastDy=0,lastT=0,velocity=0;
+
+  const onDown=y=>{
+    dr=true;ly=y;velocity=0;lastDy=0;lastT=Date.now();
+  };
+  const onMove=y=>{
+    if(!dr)return;
+    const now=Date.now();
+    const dy=y-ly;
+    const dt=Math.max(1,now-lastT);
+    velocity=dy/dt; // px per ms
+    deck.angle+=dy*.05;
+    ly=y;lastT=now;lastDy=dy;
+  };
+  const onUp=()=>{
+    if(!dr)return;
+    dr=false;
+    // Kick off momentum decay
+    let vel=velocity*40; // convert to angle units
+    const decay=()=>{
+      if(Math.abs(vel)<0.001)return;
+      deck.angle+=vel;
+      vel*=0.94; // friction
+      requestAnimationFrame(decay);
+    };
+    requestAnimationFrame(decay);
+  };
+
+  cv.addEventListener('mousedown',e=>{onDown(e.clientY);e.preventDefault();});
+  window.addEventListener('mousemove',e=>{if(dr)onMove(e.clientY);});
+  window.addEventListener('mouseup',onUp);
+  cv.addEventListener('touchstart',e=>{e.preventDefault();onDown(e.touches[0].clientY);},{passive:false});
+  cv.addEventListener('touchmove',e=>{e.preventDefault();onMove(e.touches[0].clientY);},{passive:false});
+  cv.addEventListener('touchend',onUp);
 }
-  function sizePlatters(){
+ function sizePlatters(){
   ['platter-a','platter-b'].forEach(id=>{
     const cv=document.getElementById(id);if(!cv)return;
     const wrap=cv.parentElement;
-    const s=Math.min(wrap.clientWidth-12,wrap.clientHeight-12);
-    cv.width=cv.height=Math.max(80,s);
-    cv.style.width=cv.style.height=Math.max(80,s)+'px';
+    const s=Math.max(80,Math.min(wrap.clientWidth-8,wrap.clientHeight-8));
+    cv.width=cv.height=s;
+    cv.style.width=cv.style.height=s+'px';
   });
 }
+// Run immediately, after fonts, and whenever layout changes
 sizePlatters();
+setTimeout(sizePlatters,100);
+setTimeout(sizePlatters,400);
+// Watch for resize
+if(window.ResizeObserver){
+  const ro=new ResizeObserver(sizePlatters);
+  document.querySelectorAll('.dk-platter-wrap').forEach(el=>ro.observe(el));
+}
 window.addEventListener('resize',sizePlatters);
 
 makePlatterDraggable('platter-a',deckA);
