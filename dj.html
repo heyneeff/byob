@@ -612,6 +612,18 @@ audio{display:none;}
 </div><!-- /panel-tools -->
 </div><!-- /screen -->
 </div><!-- /dj-app -->
+
+<!-- TRACK LIBRARY MODAL -->
+<div id="library-modal" style="position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.88);display:none;align-items:flex-end;justify-content:center;">
+  <div style="background:#111;border-top:3px solid var(--orange);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:20px 18px 40px;max-height:75vh;overflow-y:auto;">
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:900;letter-spacing:.06em;color:var(--orange);margin-bottom:14px;">📚 Track Library</div>
+    <div id="library-status" style="font-size:11px;color:var(--muted);margin-bottom:12px;"></div>
+    <div id="library-list"></div>
+    <button onclick="document.getElementById('library-modal').style.display='none'" style="width:100%;padding:14px;margin-top:14px;background:transparent;border:1px solid #333;border-radius:10px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:16px;cursor:pointer;">Close</button>
+  </div>
+</div>
+
+  
 <audio id="audio-player" loop></audio>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -1725,6 +1737,53 @@ function switchPanel(name) {
   window.scrollTo(0, 0);
 }
 let toastTimer;
+
+// ── TRACK LIBRARY ──────────────────────────────────────────
+async function openLibrary() {
+  const modal  = document.getElementById('library-modal');
+  const list   = document.getElementById('library-list');
+  const status = document.getElementById('library-status');
+  modal.style.display = 'flex';
+  list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">Loading…</div>';
+
+  const { data, error } = await db.storage.from('tracks').list('', {
+    limit: 50, offset: 0, sortBy: { column: 'created_at', order: 'desc' }
+  });
+
+  if (error) {
+    list.innerHTML = `<div style="color:var(--red);font-size:13px;">${error.message}</div>`;
+    return;
+  }
+  if (!data?.length) {
+    list.innerHTML = '<div style="color:var(--muted);font-size:13px;">No tracks yet — upload one above.</div>';
+    return;
+  }
+
+  status.textContent = data.length + ' track' + (data.length !== 1 ? 's' : '') + ' in library';
+
+  list.innerHTML = data.map(f => `
+    <div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border-radius:10px;margin-bottom:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${f.name}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">${(f.metadata?.size/1024/1024).toFixed(1)} MB</div>
+      </div>
+      <button onclick="loadFromLibrary('${f.name}')" style="padding:10px 16px;background:var(--orange);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;flex-shrink:0;">Load</button>
+    </div>
+  `).join('');
+}
+
+async function loadFromLibrary(filename) {
+  const { data } = db.storage.from('tracks').getPublicUrl(filename);
+  if (!data?.publicUrl) { showToast('Could not load track'); return; }
+
+  audio.src = data.publicUrl;
+  audio.load();
+  document.getElementById('track-name').textContent = filename.replace(/\.[^/.]+$/, '');
+  document.getElementById('library-modal').style.display = 'none';
+  showToast('Track loaded — press Go Live to broadcast ⚡');
+}
+
+  
 function showToast(msg,isError=false){
   const t=document.getElementById('toast');t.textContent=msg;t.style.borderColor=isError?'var(--red)':'var(--teal)';
   t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),isError?5000:3000);
