@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>BYOB — v6</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;0,900;1,700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --bg:#050302;
@@ -136,14 +139,16 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 }
 
 /* ── Each deck half ── */
-  .dhalf{display:flex;flex-direction:column;
+.dhalf{
+  display:grid;
+  grid-template-columns:auto 1fr; /* platter | info */
   background:var(--card);overflow:hidden;
+}
+.dhalf-b{
+  grid-template-columns:1fr auto; /* info | platter — mirrored */
 }
 .dhalf:first-child{border-right:1px solid var(--rim);}
 .dhalf:last-child{border-left:1px solid var(--rim);}
-.dk-top{flex-shrink:0;padding:8px 10px;display:flex;flex-direction:column;gap:5px;border-bottom:1px solid var(--rim);}
-.dk-platter-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:6px;background:var(--bg);}
-.dk-platter-label{font-size:7px;letter-spacing:.14em;text-transform:uppercase;font-weight:900;text-align:center;padding-bottom:4px;}
 
 /* Platter column */
 .platter-col{
@@ -405,13 +410,40 @@ canvas.platter:active{cursor:grabbing;}
 .eq-close{font-size:11px;color:var(--muted);cursor:pointer;align-self:flex-end;padding:2px 6px;}
 .eq-close:hover{color:var(--red);}
 
-  .deck-library{position:relative;}
-.lib-drag-handle{
-  position:absolute;top:0;left:0;right:0;height:5px;
-  cursor:row-resize;background:transparent;z-index:10;
-}
-.lib-drag-handle:hover{background:var(--orange);opacity:.4;}
-
+/* Setup panel */
+.setup-panel{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px;}
+.setup-panel::-webkit-scrollbar{width:2px;}
+.setup-panel::-webkit-scrollbar-thumb{background:var(--rim);}
+.setup-section-label{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);}
+.map-frame-play{border:2px solid var(--teal);border-radius:12px;overflow:hidden;height:200px;position:relative;}
+#map{width:100%;height:200px;}
+.leaflet-container{background:#000!important;}
+.leaflet-control-attribution{display:none!important;}
+.leaflet-tile-pane{opacity:.82;}
+.setup-input{width:100%;background:var(--card2);border:1px solid var(--rim);border-radius:8px;padding:10px 12px;color:var(--white);font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;}
+.setup-input::placeholder{color:var(--muted);}
+.setup-input:focus{border-color:var(--orange);}
+.setup-search-results{position:absolute;top:210px;left:0;right:0;z-index:500;background:var(--card2);border:1px solid var(--rim);border-radius:8px;overflow:hidden;display:none;}
+.setup-search-item{padding:10px 12px;font-size:12px;cursor:pointer;border-bottom:1px solid var(--rim);color:var(--white);}
+.setup-search-item:hover{background:rgba(0,204,153,.1);color:var(--teal);}
+.btn-create-zone-play{width:100%;padding:16px;background:var(--teal);color:#000;border:none;border-radius:12px;font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:.06em;cursor:pointer;box-shadow:3px 3px 0 rgba(0,0,0,.5);transition:all .15s;}
+.btn-go-live-setup{width:100%;padding:20px;background:var(--red);color:#fff;border:none;border-radius:12px;font-family:'Barlow Condensed',sans-serif;font-size:26px;font-weight:900;letter-spacing:.08em;cursor:pointer;box-shadow:4px 4px 0 rgba(0,0,0,.5);transition:all .2s;}
+.btn-go-live-setup.on{background:var(--teal);color:#000;animation:lp 1.8s ease-in-out infinite;}
+.btn-kill-play{width:100%;padding:14px;background:var(--card2);color:var(--muted);border:1px solid var(--rim);border-radius:12px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;transition:all .2s;}
+.btn-kill-play.armed{background:var(--red);color:#fff;}
+.setup-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.setup-btn{padding:12px 8px;border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;transition:all .15s;}
+.setup-btn-orange{background:var(--orange);color:#000;}
+.setup-btn-outline{background:var(--card2);color:var(--teal);border:1px solid var(--teal);}
+.setup-btn-red{background:transparent;color:var(--red);border:2px solid var(--red);}
+/* Zone draw + event floating panels */
+.float-panel{position:fixed;bottom:0;left:0;right:0;z-index:400;background:var(--card);border-top:3px solid var(--orange);padding:14px 16px 28px;transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:0 -4px 30px rgba(0,0,0,.7);}
+.float-panel.open{transform:translateY(0);}
+.float-panel-red{border-top-color:var(--red);}
+.float-panel-label{font-size:10px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:var(--orange);margin-bottom:8px;}
+.float-panel-label-red{color:var(--red);}
+.zdp-input{width:100%;background:var(--bg);border:1px solid var(--rim);border-radius:8px;padding:10px 12px;color:var(--white);font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;margin-bottom:8px;}
+.zdp-input:focus{border-color:var(--orange);}
 /* grain */
 body::after{
   content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
@@ -463,8 +495,7 @@ body::after{
     <canvas id="sg" ontouchstart="onTouch(event)" onmousedown="onMouse(event)"
       ondragover="event.preventDefault()" ondrop="onDrop(event)"></canvas>
   </div>
-  <div class="sp-library" id="sp-lib" style="height:340px;min-height:120px;max-height:540px;"></div>
-
+  <div class="sp-library" id="sp-lib"></div>
 </div>
 </div>
 
@@ -474,9 +505,15 @@ body::after{
 
   <div class="deck-top">
 
-        <!-- ── DECK A ── -->
+    <!-- ── DECK A ── platter LEFT, info RIGHT -->
     <div class="dhalf" ondragover="event.preventDefault()" ondrop="dropDeck(event,'a')">
-      <div class="dk-top">
+
+      <div class="platter-col">
+        <canvas class="platter" id="platter-a" width="160" height="160"></canvas>
+        <div class="platter-label" style="color:var(--da);">DECK A</div>
+      </div>
+
+      <div class="deck-info-col">
         <div class="dk-head">
           <div class="dk-badge da-badge">A</div>
           <div class="dk-track">
@@ -488,14 +525,19 @@ body::after{
             <div class="dk-bpm-l">BPM</div>
           </div>
         </div>
+        <div class="dk-wave"><canvas id="wv-a"></canvas></div>
+        <div class="dk-time-row">
+          <span class="dk-elapsed" id="da-time">0:00</span>
+          <span class="dk-remain" id="da-remain">—</span>
+          <input type="range" class="dk-pitch" min="-8" max="8" value="0" step="0.1" title="Pitch"/>
+        </div>
         <div class="dk-controls">
           <button class="dkbtn on" id="da-play" onclick="toggleDeck('a')">▶ PLAY</button>
-          <button class="dkbtn">CUE</button>
-          <button class="dkbtn">LOOP</button>
-          <button class="dkbtn">IN</button>
-          <button class="dkbtn">OUT</button>
+          <button class="dkbtn" onclick="">CUE</button>
+          <button class="dkbtn" onclick="">LOOP</button>
+          <button class="dkbtn" onclick="">IN</button>
+          <button class="dkbtn" onclick="">OUT</button>
         </div>
-        <div class="dk-wave"><canvas id="wv-a"></canvas></div>
         <div class="dk-cues">
           <button class="hcue">1</button>
           <button class="hcue">2</button>
@@ -503,10 +545,6 @@ body::after{
           <button class="hcue">4</button>
         </div>
       </div>
-      <div class="dk-platter-wrap">
-        <canvas class="platter" id="platter-a"></canvas>
-      </div>
-      <div class="dk-platter-label" style="color:var(--da);">DECK A</div>
     </div>
 
     <!-- ── MIXER CENTER ── -->
@@ -530,28 +568,33 @@ body::after{
     </div>
 
     <!-- ── DECK B ── info LEFT, platter RIGHT -->
-        <!-- ── DECK B ── -->
-    <div class="dhalf" ondragover="event.preventDefault()" ondrop="dropDeck(event,'b')">
-      <div class="dk-top">
+    <div class="dhalf dhalf-b" ondragover="event.preventDefault()" ondrop="dropDeck(event,'b')">
+
+      <div class="deck-info-col">
         <div class="dk-head">
-          <div class="dk-badge db-badge">B</div>
-          <div class="dk-track">
-            <div class="dk-name" id="db-name">— Load Track —</div>
-            <div class="dk-artist" id="db-artist">drag from library or click B</div>
-          </div>
           <div class="dk-bpm">
             <div class="dk-bpm-v" style="color:var(--db);" id="db-bpm">—</div>
             <div class="dk-bpm-l">BPM</div>
           </div>
-        </div>
-        <div class="dk-controls">
-          <button class="dkbtn">OUT</button>
-          <button class="dkbtn">IN</button>
-          <button class="dkbtn">LOOP</button>
-          <button class="dkbtn">CUE</button>
-          <button class="dkbtn on-b" id="db-play" onclick="toggleDeck('b')">▶ PLAY</button>
+          <div class="dk-track">
+            <div class="dk-name" id="db-name">— Load Track —</div>
+            <div class="dk-artist" id="db-artist">drag from library or click B</div>
+          </div>
+          <div class="dk-badge db-badge">B</div>
         </div>
         <div class="dk-wave"><canvas id="wv-b"></canvas></div>
+        <div class="dk-time-row">
+          <input type="range" class="dk-pitch" min="-8" max="8" value="0" step="0.1" title="Pitch"/>
+          <span class="dk-remain" id="db-remain">—</span>
+          <span class="dk-elapsed" id="db-time" style="text-align:right;">0:00</span>
+        </div>
+        <div class="dk-controls">
+          <button class="dkbtn" onclick="">OUT</button>
+          <button class="dkbtn" onclick="">IN</button>
+          <button class="dkbtn" onclick="">LOOP</button>
+          <button class="dkbtn" onclick="">CUE</button>
+          <button class="dkbtn on-b" id="db-play" onclick="toggleDeck('b')">▶ PLAY</button>
+        </div>
         <div class="dk-cues">
           <button class="hcue">1</button>
           <button class="hcue">2</button>
@@ -559,17 +602,16 @@ body::after{
           <button class="hcue">4</button>
         </div>
       </div>
-      <div class="dk-platter-wrap">
-        <canvas class="platter" id="platter-b"></canvas>
+
+      <div class="platter-col">
+        <canvas class="platter" id="platter-b" width="160" height="160"></canvas>
+        <div class="platter-label" style="color:var(--db);">DECK B</div>
       </div>
-      <div class="dk-platter-label" style="color:var(--db);">DECK B</div>
+
     </div>
   </div><!-- /deck-top -->
 
-    <div class="deck-library" id="deck-lib" style="height:340px;min-height:120px;max-height:540px;">
-    <!-- resize handle -->
-  </div>
-
+  <div class="deck-library" id="deck-lib"></div>
 
 </div>
 </div><!-- /deck panel -->
@@ -614,6 +656,53 @@ body::after{
 </div>
 </div>
 
+<!-- ════════════════ SETUP ════════════════ -->
+<div class="panel" id="panel-setup">
+<div class="setup-panel">
+
+  <!-- MAP -->
+  <div style="position:relative;">
+    <div class="map-frame-play">
+      <div id="map"></div>
+      <div onclick="centerOnUser()" style="position:absolute;bottom:8px;right:8px;z-index:1000;width:32px;height:32px;background:rgba(0,0,0,.88);border:1px solid var(--teal);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;">◎</div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <input id="map-search-input" type="text" placeholder="Search location…" class="setup-input" style="font-size:12px;padding:8px 12px;"
+        onkeydown="if(event.key==='Enter')searchMap()"/>
+      <button onclick="searchMap()" style="background:var(--teal);color:#000;border:none;border-radius:8px;padding:8px 14px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;flex-shrink:0;">Go</button>
+    </div>
+    <div id="search-results" class="setup-search-results"></div>
+    <div style="font-size:10px;color:var(--muted);padding:3px 2px;"><strong id="map-coords" style="color:var(--white);">Locating…</strong> — tap map to place zone</div>
+  </div>
+
+  <!-- ZONE -->
+  <button id="btn-create-zone" class="btn-create-zone-play" onclick="onCreateZone()">⊕ Create Zone</button>
+
+  <!-- EVENTS -->
+  <div class="setup-section-label">Events</div>
+  <button onclick="openEventPanel()" class="setup-btn setup-btn-red" style="width:100%;padding:14px;font-size:18px;">📅 Schedule Event</button>
+  <div id="event-list"></div>
+
+  <!-- AUDIO SOURCE -->
+  <div class="setup-section-label">Audio Source</div>
+  <div class="setup-grid-2">
+    <button onclick="startLiveStream()" class="setup-btn setup-btn-orange">🎙 Live Stream</button>
+    <button onclick="document.getElementById('file-input-setup').click()" class="setup-btn setup-btn-outline">🎵 Upload Track</button>
+  </div>
+  <input type="file" id="file-input-setup" style="display:none;" accept="audio/*"/>
+  <div id="upload-status-setup" style="font-size:11px;color:var(--muted);min-height:16px;"></div>
+  <div id="device-row-setup" style="display:none;">
+    <select id="device-select" style="width:100%;background:var(--card2);border:1px solid var(--rim);color:var(--white);padding:8px 10px;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;outline:none;"><option value="">— select audio input —</option></select>
+  </div>
+
+  <!-- BROADCAST -->
+  <div class="setup-section-label">Broadcast</div>
+  <button id="btn-go-live-setup" class="btn-go-live-setup" onclick="toggleLive()">⚡ Go Live</button>
+  <button id="btn-kill-setup" class="btn-kill-play" onclick="killStep(this)">☠ Kill Stream</button>
+
+</div>
+</div><!-- /setup panel -->
+
 </div><!-- /content -->
 
 <!-- RIGHT NAV -->
@@ -632,8 +721,8 @@ body::after{
   </div>
   <div class="rnsep"></div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
-    <button class="rnbtn" onclick="toggleEQ()">🎚</button>
-    <div class="rnlabel">EQ</div>
+    <button class="rnbtn" onclick="switchPanel('setup',this)">⚙️</button>
+    <div class="rnlabel">Setup</div>
   </div>
   <div class="rnsep"></div>
   <div class="vu-strip">
@@ -697,7 +786,6 @@ for(let i=0;i<28;i++){
 function libHTML(filter=''){
   const list=TRACKS.filter(t=>t.name.toLowerCase().includes(filter.toLowerCase())||t.artist.toLowerCase().includes(filter.toLowerCase()));
   return`
-    <div class="lib-drag-handle" onmousedown="startLibResize(event)" ontouchstart="startLibResize(event)"></div>
     <div class="lib-bar">
       <div class="crates">
         <button class="crate active" onclick="crateActive(this)">All</button>
@@ -738,19 +826,9 @@ function buildLibs(f=''){
   document.getElementById('deck-lib').innerHTML=libHTML(f);
 }
 buildLibs();
-// Re-attach resize handles after rebuild
-document.querySelectorAll('.lib-drag-handle').forEach(h=>{
-  h.addEventListener('mousedown',startLibResize);
-  h.addEventListener('touchstart',startLibResize,{passive:false});
-});
-
-function filterLib(v){
-  buildLibs(v);
-  document.querySelectorAll('.lib-drag-handle').forEach(h=>{
-    h.addEventListener('mousedown',startLibResize);
-    h.addEventListener('touchstart',startLibResize,{passive:false});
-  });
-}
+function filterLib(v){buildLibs(v);}
+function crateActive(el){el.closest('.crates').querySelectorAll('.crate').forEach(c=>c.classList.remove('active'));el.classList.add('active');}
+function startDrag(ev,id){dragging=id;ev.dataTransfer.setData('track-id',id);}
 
 // ═══════════════════════════════════════════════════════
 // MIXER EQ — built in center column
@@ -998,61 +1076,14 @@ function drawPlatter(id,deck,color){
 // Drag to scratch
 function makePlatterDraggable(id,deck){
   const cv=document.getElementById(id);if(!cv)return;
-  let dr=false,ly=0,lastDy=0,lastT=0,velocity=0;
-
-  const onDown=y=>{
-    dr=true;ly=y;velocity=0;lastDy=0;lastT=Date.now();
-  };
-  const onMove=y=>{
-    if(!dr)return;
-    const now=Date.now();
-    const dy=y-ly;
-    const dt=Math.max(1,now-lastT);
-    velocity=dy/dt; // px per ms
-    deck.angle+=dy*.05;
-    ly=y;lastT=now;lastDy=dy;
-  };
-  const onUp=()=>{
-    if(!dr)return;
-    dr=false;
-    // Kick off momentum decay
-    let vel=velocity*40; // convert to angle units
-    const decay=()=>{
-      if(Math.abs(vel)<0.001)return;
-      deck.angle+=vel;
-      vel*=0.94; // friction
-      requestAnimationFrame(decay);
-    };
-    requestAnimationFrame(decay);
-  };
-
-  cv.addEventListener('mousedown',e=>{onDown(e.clientY);e.preventDefault();});
-  window.addEventListener('mousemove',e=>{if(dr)onMove(e.clientY);});
-  window.addEventListener('mouseup',onUp);
-  cv.addEventListener('touchstart',e=>{e.preventDefault();onDown(e.touches[0].clientY);},{passive:false});
-  cv.addEventListener('touchmove',e=>{e.preventDefault();onMove(e.touches[0].clientY);},{passive:false});
-  cv.addEventListener('touchend',onUp);
+  let dr=false,ly=0;
+  cv.addEventListener('mousedown',e=>{dr=true;ly=e.clientY;e.preventDefault();});
+  window.addEventListener('mousemove',e=>{if(!dr)return;deck.angle+=(e.clientY-ly)*.05;ly=e.clientY;});
+  window.addEventListener('mouseup',()=>dr=false);
+  cv.addEventListener('touchstart',e=>{e.preventDefault();dr=true;ly=e.touches[0].clientY;},{passive:false});
+  cv.addEventListener('touchmove',e=>{e.preventDefault();if(!dr)return;deck.angle+=(e.touches[0].clientY-ly)*.05;ly=e.touches[0].clientY;},{passive:false});
+  cv.addEventListener('touchend',()=>dr=false);
 }
- function sizePlatters(){
-  ['platter-a','platter-b'].forEach(id=>{
-    const cv=document.getElementById(id);if(!cv)return;
-    const wrap=cv.parentElement;
-    const s=Math.max(80,Math.min(wrap.clientWidth-8,wrap.clientHeight-8));
-    cv.width=cv.height=s;
-    cv.style.width=cv.style.height=s+'px';
-  });
-}
-// Run immediately, after fonts, and whenever layout changes
-sizePlatters();
-setTimeout(sizePlatters,100);
-setTimeout(sizePlatters,400);
-// Watch for resize
-if(window.ResizeObserver){
-  const ro=new ResizeObserver(sizePlatters);
-  document.querySelectorAll('.dk-platter-wrap').forEach(el=>ro.observe(el));
-}
-window.addEventListener('resize',sizePlatters);
-
 makePlatterDraggable('platter-a',deckA);
 makePlatterDraggable('platter-b',deckB);
 
@@ -1249,7 +1280,10 @@ function setMode(m,btn){gridMode=m;document.querySelectorAll('.mbutton').forEach
 function doScatter(){const cx=sg.width/2,cy=sg.height/2;for(let i=0;i<4;i++)setTimeout(()=>rippleBurst(cx,cy,2),i*140);listeners.forEach(l=>{l.vx+=(Math.random()-.5)*.05;l.vy+=(Math.random()-.5)*.05;});}
 function doSnap(){listeners.forEach(l=>{l.vx+=-l.x*.09;l.vy+=-l.y*.09;});rippleBurst(sg.width/2,sg.height/2,4);}
 function doDistribute(){const f=slots.filter(Boolean);f.forEach((s,i)=>{const a=(i/f.length)*Math.PI*2;const x=sg.width/2+Math.cos(a)*sg.width*.3,y=sg.height/2+Math.sin(a)*sg.height*.3;setTimeout(()=>ripples.push({x,y,r:5,a:.9,col:s.col}),i*100);});}
-function toggleLive(){const b=document.getElementById('btn-live');b.classList.toggle('on');b.textContent=b.classList.contains('on')?'■ On Air':'⚡ Go Live';}
+function toggleLive(){
+  // Delegated to full implementation below
+  _toggleLive();
+}
 function setLight(btn,col){document.querySelectorAll('.lbtn').forEach(b=>{b.classList.remove('on');b.style.background='';});btn.classList.add('on');if(col!=='strobe'&&col!=='pulse')btn.style.background=col+'22';}
 function onTouch(e){e.preventDefault();const t=e.touches[0],r=sg.getBoundingClientRect();rippleBurst(t.clientX-r.left,t.clientY-r.top,2);}
 function onMouse(e){const r=sg.getBoundingClientRect();rippleBurst(e.clientX-r.left,e.clientY-r.top,2);}
@@ -1259,34 +1293,7 @@ document.querySelectorAll('.mtbtn').forEach(b=>{b.addEventListener('click',()=>{
 // ═══════════════════════════════════════════════════════
 // MAIN LOOP
 // ═══════════════════════════════════════════════════════
-// ── LIBRARY RESIZE ──────────────────────────────────────
-function startLibResize(e){
-  e.preventDefault();
-  e.stopPropagation();
-  const lib=e.target.closest('.deck-library,.sp-library');
-  if(!lib)return;
-  const startY=e.touches?e.touches[0].clientY:e.clientY;
-  const startH=lib.offsetHeight;
-  const move=ev=>{
-    ev.preventDefault();
-    const y=ev.touches?ev.touches[0].clientY:ev.clientY;
-    const newH=Math.max(120,Math.min(540,startH-(y-startY)));
-    lib.style.height=newH+'px';
-  };
-  const up=()=>{
-    window.removeEventListener('mousemove',move);
-    window.removeEventListener('mouseup',up);
-    window.removeEventListener('touchmove',move);
-    window.removeEventListener('touchend',up);
-  };
-  window.addEventListener('mousemove',move);
-  window.addEventListener('mouseup',up);
-  window.addEventListener('touchmove',move,{passive:false});
-  window.addEventListener('touchend',up);
-}
-
-  
-  function loop(){
+function loop(){
   requestAnimationFrame(loop);frame++;
   if(sg.width>0)drawSG();
   drawPlatter('platter-a',deckA,'#f57e20');
@@ -1296,6 +1303,419 @@ function startLibResize(e){
 }
 loop();
 setTimeout(()=>{resizeSG();},200);
+
+// ═══════════════════════════════════════════════════════
+// SUPABASE + GEOFENCING BACKEND
+// ═══════════════════════════════════════════════════════
+const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const DENVER_LL = [39.7392, -104.9903];
+let leafletMap=null, userMarker=null, draftCircle=null, draftMarker=null, zoneCircles={};
+let activeZone=null, currentUser=null;
+let userLat=null, userLng=null;
+let draftCenter=null, draftRadius=200, drawMode=false;
+let liveStream=null, peerConnections={}, signalingChannel=null, localStream=null;
+let liveListeners={}, presenceChannel=null;
+
+// Patch switchPanel to init map on first Setup visit
+const _origSwitchPanel = switchPanel;
+function switchPanel(p, btn){
+  _origSwitchPanel(p, btn);
+  if(p==='setup'){
+    if(!window._mapInited){
+      db.auth.getSession().then(({data:{session}})=>{
+        if(session){currentUser=session.user;}
+        _initSetup();
+      });
+    } else if(leafletMap){
+      setTimeout(()=>leafletMap.invalidateSize(),100);
+    }
+  }
+}
+
+// Auto-init if session exists
+(async()=>{
+  try{
+    const {data:{session}}=await db.auth.getSession();
+    if(session){currentUser=session.user;}
+  }catch(e){}
+})();
+
+function _initSetup(){
+  if(window._mapInited)return;
+  window._mapInited=true;
+  _initMap(DENVER_LL[0],DENVER_LL[1]);
+  loadZones();
+  loadEvents();
+}
+
+// ── MAP ──────────────────────────────────────────────────
+function _initMap(lat,lng){
+  leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(leafletMap);
+  L.control.zoom({position:'bottomleft'}).addTo(leafletMap);
+  [100,300,600].forEach(ms=>setTimeout(()=>leafletMap.invalidateSize(),ms));
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+    _placeUserDot(userLat,userLng);
+    leafletMap.setView([userLat,userLng],16);
+    _updateMapHint(userLat,userLng);
+  },()=>_updateMapHint(lat,lng),{enableHighAccuracy:true,timeout:10000,maximumAge:0});
+  navigator.geolocation.watchPosition(pos=>{
+    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+    if(!userMarker)_placeUserDot(userLat,userLng);
+    else userMarker.setLatLng([userLat,userLng]);
+  },null,{enableHighAccuracy:true,maximumAge:3000});
+}
+function _placeUserDot(lat,lng){
+  if(userMarker)userMarker.remove();
+  userMarker=L.marker([lat,lng],{icon:L.divIcon({html:'<div style="width:14px;height:14px;border-radius:50%;background:#4a90e2;border:2px solid #fff;box-shadow:0 0 0 3px rgba(74,144,226,.4);"></div>',iconSize:[14,14],iconAnchor:[7,7],className:''}),zIndexOffset:1000}).addTo(leafletMap);
+}
+function _updateMapHint(lat,lng){const el=document.getElementById('map-coords');if(el)el.textContent=`${lat.toFixed(5)}, ${lng.toFixed(5)}`;}
+function centerOnUser(){
+  if(userLat&&leafletMap){leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});return;}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+    if(!userMarker)_placeUserDot(userLat,userLng);else userMarker.setLatLng([userLat,userLng]);
+    leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});
+  },()=>showToast('Location not available'),{enableHighAccuracy:true,timeout:8000});
+}
+async function searchMap(){
+  const q=document.getElementById('map-search-input')?.value.trim();if(!q)return;
+  try{
+    const res=await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=4`);
+    const json=await res.json();
+    const container=document.getElementById('search-results');
+    if(!json.features?.length){container.style.display='none';return;}
+    container.innerHTML='';container.style.display='block';
+    json.features.forEach(f=>{
+      const[lng2,lat2]=f.geometry.coordinates;const p=f.properties;
+      const label=[p.name,p.city||p.town||p.village,p.country].filter(Boolean).join(', ');
+      const item=document.createElement('div');item.className='setup-search-item';item.textContent=label;
+      item.addEventListener('click',()=>{
+        leafletMap.setView([lat2,lng2],15);_updateMapHint(lat2,lng2);
+        userLat=lat2;userLng=lng2;
+        if(userMarker)userMarker.setLatLng([lat2,lng2]);
+        container.style.display='none';
+        document.getElementById('map-search-input').value=p.name||label;
+        if(drawMode)placeDraft(L.latLng(lat2,lng2));
+      });
+      container.appendChild(item);
+    });
+  }catch(e){}
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#panel-setup'))document.getElementById('search-results').style.display='none';
+});
+
+// ── ZONE CREATE ──────────────────────────────────────────
+function onCreateZone(){
+  if(activeZone){showToast('Zone active — kill stream first');return;}
+  if(!leafletMap){showToast('Map loading — wait a moment');return;}
+  drawMode=true;
+  document.getElementById('zone-draw-panel').classList.add('open');
+  placeDraft(L.latLng(userLat||DENVER_LL[0],userLng||DENVER_LL[1]));
+  leafletMap.on('click',onMapClick);
+}
+function onMapClick(e){if(drawMode)placeDraft(e.latlng);}
+function placeDraft(latlng){
+  draftCenter=latlng;
+  if(draftCircle){draftCircle.remove();draftCircle=null;}
+  if(draftMarker){draftMarker.remove();draftMarker=null;}
+  draftCircle=L.circle(latlng,{radius:draftRadius,color:'#f57e20',fillColor:'#f57e20',fillOpacity:.1,weight:2,dashArray:'6 4'}).addTo(leafletMap);
+  const icon=L.divIcon({html:'<div style="width:14px;height:14px;border-radius:50%;background:#f57e20;border:2px solid #000;box-shadow:0 0 0 3px rgba(245,126,32,.4);"></div>',iconSize:[14,14],iconAnchor:[7,7],className:''});
+  draftMarker=L.marker(latlng,{icon,draggable:true}).addTo(leafletMap);
+  draftMarker.on('drag',e=>{draftCenter=e.latlng;draftCircle.setLatLng(e.latlng);_updateMapHint(e.latlng.lat,e.latlng.lng);});
+  document.getElementById('zdp-hint').textContent=`${latlng.lat.toFixed(5)}, ${latlng.lng.toFixed(5)} — drag to adjust`;
+  _updateMapHint(latlng.lat,latlng.lng);
+}
+function onRadiusSlider(val){
+  draftRadius=parseInt(val);
+  const label=draftRadius>=1000?(draftRadius/1000).toFixed(1)+'km':draftRadius+'m';
+  document.getElementById('zdp-radius-val').textContent=label;
+  if(draftCircle)draftCircle.setRadius(draftRadius);
+}
+async function confirmZone(){
+  if(!draftCenter){showToast('Tap map to place center');return;}
+  const name=document.getElementById('zdp-name').value.trim()||'Unnamed Zone';
+  const tipUrl=document.getElementById('zdp-tip-url').value.trim()||null;
+  try{
+    let hostId=currentUser?.id;
+    if(!hostId){const {data:{session}}=await db.auth.getSession();hostId=session?.user?.id;}
+    const {data,error}=await db.from('zones').insert({name,host_id:hostId,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0,tip_url:tipUrl}).select().single();
+    if(error)throw error;
+    activeZone=data;
+    window._djSyncChannel=db.channel('sync_'+data.id).subscribe();
+    window._currentZone={playback_started_at:data.playback_started_at};
+    cancelZoneDraw();
+    zoneCircles[data.id]=L.circle([data.lat,data.lng],{radius:data.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.07,weight:1.5}).addTo(leafletMap);
+    const btn=document.getElementById('btn-create-zone');
+    if(btn){btn.textContent='✓ '+name;btn.style.background='#003333';btn.style.color='var(--teal)';btn.style.border='2px solid var(--teal)';}
+    document.getElementById('tb-zone').textContent=name.slice(0,8);
+    startListenerTracking(data.id);
+    showToast(`Zone "${name}" created 📡`);
+  }catch(err){showToast('Error: '+err.message);}
+}
+function cancelZoneDraw(){
+  drawMode=false;if(leafletMap)leafletMap.off('click',onMapClick);
+  document.getElementById('zone-draw-panel').classList.remove('open');
+  document.getElementById('zdp-name').value='';
+  if(draftCircle){draftCircle.remove();draftCircle=null;}
+  if(draftMarker){draftMarker.remove();draftMarker=null;}
+  draftCenter=null;
+}
+async function loadZones(){
+  const {data}=await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(5);
+  if(!data?.length)return;
+  data.forEach(z=>{
+    if(zoneCircles[z.id])return;
+    if(leafletMap)zoneCircles[z.id]=L.circle([z.lat,z.lng],{radius:z.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.06,weight:1.5}).addTo(leafletMap);
+    if(!activeZone){
+      activeZone=z;
+      const btn=document.getElementById('btn-create-zone');
+      if(btn){btn.textContent='✓ '+z.name;btn.style.background='#003333';btn.style.color='var(--teal)';btn.style.border='2px solid var(--teal)';}
+      document.getElementById('tb-zone').textContent=z.name.slice(0,8);
+      startListenerTracking(z.id);
+      window._djSyncChannel=db.channel('sync_'+z.id).subscribe();
+      window._currentZone={playback_started_at:z.playback_started_at};
+    }
+  });
+}
+
+// ── LISTENER TRACKING ───────────────────────────────────
+function startListenerTracking(zoneId){
+  if(presenceChannel)presenceChannel.unsubscribe();
+  liveListeners={};
+  presenceChannel=db.channel(`presence_${zoneId}`)
+    .on('broadcast',{event:'proximity'},({payload})=>{
+      const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
+      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',dist:payload.dist,bearing:payload.bearing||0,status,updated:Date.now()};
+      const count=Object.values(liveListeners).length;
+      document.getElementById('tb-live').textContent=count;
+    }).subscribe();
+  setInterval(()=>{
+    const now=Date.now();let changed=false;
+    Object.keys(liveListeners).forEach(id=>{if(now-liveListeners[id].updated>30000){delete liveListeners[id];changed=true;}});
+    if(changed)document.getElementById('tb-live').textContent=Object.values(liveListeners).length;
+  },10000);
+}
+
+// ── GO LIVE / KILL ───────────────────────────────────────
+async function _toggleLive(){
+  const btns=[document.getElementById('btn-live'),document.getElementById('btn-go-live-setup')];
+  const setLiveState=(on)=>{
+    btns.forEach(b=>{if(!b)return;
+      b.classList.toggle('on',on);
+      b.textContent=on?'■ On Air':'⚡ Go Live';
+    });
+  };
+
+  if(liveStream){
+    liveStream.getTracks().forEach(t=>t.stop());liveStream=null;
+    _stopWebRTC();
+    if(activeZone)await db.from('zones').update({current_track_url:null,track_name:null}).eq('id',activeZone.id);
+    setLiveState(false);showToast('Live ended');return;
+  }
+  if(!activeZone){showToast('Create a zone first — tap ⚙️ Setup');return;}
+  const deviceId=document.getElementById('device-select')?.value||'';
+  const constraints={audio:deviceId?{deviceId:{exact:deviceId},echoCancellation:false,noiseSuppression:false}:{echoCancellation:false,noiseSuppression:false}};
+  try{
+    liveStream=await navigator.mediaDevices.getUserMedia(constraints);
+    await _startWebRTC(liveStream);
+    await db.from('zones').update({current_track_url:'webrtc-live',track_name:'🔴 LIVE',playback_started_at:new Date().toISOString()}).eq('id',activeZone.id);
+    setLiveState(true);showToast('You are LIVE 🎛️');
+  }catch(e){showToast('Cannot access mic: '+e.message);}
+}
+
+// 2-step kill
+let _killTimer=null;
+function killStep(btn){
+  if(!_killTimer){
+    btn.textContent='TAP AGAIN TO KILL';btn.classList.add('armed');
+    let count=3;
+    const iv=setInterval(()=>{
+      count--;btn.textContent=`TAP AGAIN TO KILL (${count})`;
+      if(count<=0){clearInterval(iv);_resetKillBtn(btn);_killTimer=null;}
+    },1000);
+    _killTimer=iv;
+  } else {
+    clearInterval(_killTimer);_killTimer=null;
+    killStream();
+  }
+}
+function _resetKillBtn(btn){btn.textContent='☠ Kill Stream';btn.classList.remove('armed');}
+async function killStream(){
+  if(liveStream){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;}
+  _stopWebRTC();
+  [document.getElementById('btn-live'),document.getElementById('btn-go-live-setup')].forEach(b=>{if(b){b.classList.remove('on');b.textContent='⚡ Go Live';}});
+  const kb=document.getElementById('btn-kill-setup');if(kb)_resetKillBtn(kb);
+  if(activeZone){
+    await db.from('zones').update({active:false,current_track_url:null,track_name:null,playback_started_at:null}).eq('id',activeZone.id);
+    if(zoneCircles[activeZone.id]&&leafletMap){zoneCircles[activeZone.id].remove();delete zoneCircles[activeZone.id];}
+    if(presenceChannel){presenceChannel.unsubscribe();presenceChannel=null;}
+    activeZone=null;
+  }
+  const btn=document.getElementById('btn-create-zone');
+  if(btn){btn.textContent='⊕ Create Zone';btn.style.background='var(--teal)';btn.style.color='#000';btn.style.border='none';}
+  document.getElementById('tb-zone').textContent='Zone 1';
+  document.getElementById('tb-live').textContent='0';
+  showToast('Stream killed 💀');
+}
+
+// ── WEBRTC ───────────────────────────────────────────────
+let _rtcCfg=null;
+async function _getRTC(){
+  if(_rtcCfg)return _rtcCfg;
+  try{const r=await fetch('https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7');_rtcCfg={iceServers:await r.json()};}
+  catch(e){_rtcCfg={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};}
+  return _rtcCfg;
+}
+async function _startWebRTC(stream){
+  localStream=stream;if(!activeZone)return;
+  signalingChannel=db.channel(`webrtc_${activeZone.id}`)
+    .on('broadcast',{event:'listener-joined'},async({payload})=>{await _createOffer(payload.listenerId);})
+    .on('broadcast',{event:'answer'},async({payload})=>{const pc=peerConnections[payload.from];if(pc)await pc.setRemoteDescription({type:'answer',sdp:payload.sdp});})
+    .on('broadcast',{event:'ice-dj'},async({payload})=>{const pc=peerConnections[payload.from];if(pc&&payload.candidate)await pc.addIceCandidate(payload.candidate).catch(()=>{});})
+    .subscribe();
+}
+async function _createOffer(lid){
+  if(!localStream)return;
+  const cfg=await _getRTC();const pc=new RTCPeerConnection(cfg);peerConnections[lid]=pc;
+  localStream.getAudioTracks().forEach(t=>pc.addTrack(t,localStream));
+  pc.onicecandidate=({candidate})=>{if(candidate&&signalingChannel)signalingChannel.send({type:'broadcast',event:'ice-listener',payload:{to:lid,from:'dj',candidate}});};
+  pc.onconnectionstatechange=()=>{if(['failed','disconnected'].includes(pc.connectionState)){pc.close();delete peerConnections[lid];}};
+  const offer=await pc.createOffer({offerToReceiveAudio:false});await pc.setLocalDescription(offer);
+  signalingChannel.send({type:'broadcast',event:'offer',payload:{to:lid,sdp:offer.sdp}});
+}
+function _stopWebRTC(){
+  Object.values(peerConnections).forEach(pc=>pc.close());peerConnections={};
+  if(signalingChannel){signalingChannel.unsubscribe();signalingChannel=null;}localStream=null;
+}
+
+// ── EVENTS ───────────────────────────────────────────────
+function openEventPanel(){
+  const now=new Date();now.setMinutes(now.getMinutes()+60);
+  document.getElementById('evt-start').value=_toLocal(now);
+  const rev=new Date(now);rev.setMinutes(rev.getMinutes()-30);
+  document.getElementById('evt-reveal').value=_toLocal(rev);
+  document.getElementById('event-panel').classList.add('open');
+}
+function closeEventPanel(){
+  document.getElementById('event-panel').classList.remove('open');
+  ['evt-name','evt-artists'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+}
+function _toLocal(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+async function confirmEvent(){
+  const name=document.getElementById('evt-name').value.trim();
+  const artists=document.getElementById('evt-artists').value.split(',').map(a=>a.trim()).filter(Boolean);
+  const start=document.getElementById('evt-start').value;
+  const reveal=document.getElementById('evt-reveal').value;
+  if(!name){showToast('Event needs a name');return;}
+  const lat=activeZone?.lat||draftCenter?.lat||userLat;
+  const lng2=activeZone?.lng||draftCenter?.lng||userLng;
+  if(!lat){showToast('Set a zone location first');return;}
+  try{
+    const {error}=await db.from('events').insert({name,artists,event_start:new Date(start).toISOString(),location_reveal_at:new Date(reveal).toISOString(),lat,lng:lng2,radius_m:activeZone?.radius_m||draftRadius||200,zone_id:activeZone?.id||null,created_by:currentUser?.id});
+    if(error)throw error;
+    closeEventPanel();showToast(`"${name}" scheduled 📅`);loadEvents();
+  }catch(e){showToast('Error: '+e.message);}
+}
+async function loadEvents(){
+  if(!currentUser)return;
+  const {data}=await db.from('events').select('*').eq('created_by',currentUser.id).order('event_start',{ascending:true}).limit(10);
+  const el=document.getElementById('event-list');if(!el)return;
+  if(!data?.length){el.innerHTML='';return;}
+  el.innerHTML=data.map(e=>`<div style="background:var(--card2);border-left:3px solid var(--red);border-radius:6px;padding:8px 10px;margin-bottom:6px;">
+    <div style="font-size:13px;font-weight:900;color:var(--white);">${e.name}</div>
+    <div style="font-size:9px;color:var(--muted);margin-top:2px;">📅 ${new Date(e.event_start).toLocaleString()}</div>
+    <div style="font-size:9px;color:var(--orange);margin-top:1px;">📍 Reveals: ${new Date(e.location_reveal_at).toLocaleString()}</div>
+  </div>`).join('');
+}
+
+// ── AUDIO SOURCE FROM SETUP ──────────────────────────────
+function startLiveStream(){
+  document.getElementById('device-row-setup').style.display='block';
+  navigator.mediaDevices.enumerateDevices().then(devices=>{
+    const inputs=devices.filter(d=>d.kind==='audioinput');
+    if(inputs.length&&inputs[0].label){
+      document.getElementById('device-select').innerHTML=inputs.map(d=>`<option value="${d.deviceId}">${d.label||'Input'}</option>`).join('');
+    } else {
+      document.getElementById('device-select').innerHTML='<option value="">Default microphone</option>';
+    }
+  });
+  showToast('Select input then tap Go Live');
+}
+document.getElementById('file-input-setup')?.addEventListener('change',async e=>{
+  const file=e.target.files[0];if(!file)return;
+  // Load into deck A
+  loadDeck('a',null);
+  // Wire audio element directly
+  const audioEl=new Audio(URL.createObjectURL(file));
+  audioEl.loop=true;audioEl.play().catch(()=>{});
+  document.getElementById('da-name').textContent=file.name.replace(/\.[^/.]+$/,'');
+  document.getElementById('da-artist').textContent='Uploaded track';
+  document.getElementById('da-play').textContent='⏸ PAUSE';
+  deckA.playing=true;deckA.track={name:file.name.replace(/\.[^/.]+$/,''),bpm:124};deckA.bpm=124;
+  // Upload to Supabase if zone active
+  if(activeZone&&currentUser){
+    const statusEl=document.getElementById('upload-status-setup');
+    if(statusEl)statusEl.textContent='Uploading…';
+    try{
+      const path=`tracks/${currentUser.id}/${Date.now()}_${file.name}`;
+      const{error}=await db.storage.from('boombox').upload(path,file);
+      if(error)throw error;
+      const{data:urlData}=db.storage.from('boombox').getPublicUrl(path);
+      await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_started_at:new Date().toISOString()}).eq('id',activeZone.id);
+      if(statusEl)statusEl.textContent='● live';
+      showToast('Track broadcasting 📡');
+    }catch(err){if(statusEl)statusEl.textContent='⚠ '+err.message;}
+  }
+  e.target.value='';
+});
 </script>
+<!-- ZONE DRAW PANEL -->
+<div id="zone-draw-panel" class="float-panel">
+  <div class="float-panel-label">Draw Zone</div>
+  <div id="zdp-hint" style="font-size:12px;color:var(--muted);margin-bottom:10px;">Tap the map to place your zone center</div>
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+    <span style="font-size:11px;color:var(--muted);min-width:50px;">Radius</span>
+    <input type="range" id="zdp-radius" min="10" max="2000" value="200" step="10" oninput="onRadiusSlider(this.value)" style="flex:1;accent-color:var(--orange);"/>
+    <span id="zdp-radius-val" style="font-size:11px;color:var(--orange);min-width:40px;text-align:right;">200m</span>
+  </div>
+  <input id="zdp-name" type="text" placeholder="Zone name…" class="zdp-input"/>
+  <input id="zdp-tip-url" type="url" placeholder="Tip link (optional)" class="zdp-input" style="opacity:.8;font-size:12px;"/>
+  <div class="setup-grid-2">
+    <button onclick="confirmZone()" style="padding:12px;background:var(--orange);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;">✓ Create Zone</button>
+    <button onclick="cancelZoneDraw()" style="padding:12px;background:transparent;color:var(--muted);border:1px solid var(--rim);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;cursor:pointer;">✕ Cancel</button>
+  </div>
+</div>
+
+<!-- EVENT PANEL -->
+<div id="event-panel" class="float-panel float-panel-red">
+  <div class="float-panel-label float-panel-label-red">Schedule Event</div>
+  <input id="evt-name" type="text" placeholder="Event name" class="zdp-input"/>
+  <input id="evt-artists" type="text" placeholder="Artists (comma separated)" class="zdp-input" style="font-size:12px;"/>
+  <div class="setup-grid-2" style="margin-bottom:8px;">
+    <div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">Event starts</div>
+      <input id="evt-start" type="datetime-local" class="zdp-input" style="margin:0;font-size:11px;"/>
+    </div>
+    <div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:3px;">Reveal location at</div>
+      <input id="evt-reveal" type="datetime-local" class="zdp-input" style="margin:0;font-size:11px;"/>
+    </div>
+  </div>
+  <div style="font-size:9px;color:var(--muted);margin-bottom:8px;">Location uses current zone center — set zone first.</div>
+  <div class="setup-grid-2">
+    <button onclick="confirmEvent()" style="padding:12px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;">✓ Schedule</button>
+    <button onclick="closeEventPanel()" style="padding:12px;background:transparent;color:var(--muted);border:1px solid var(--rim);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;cursor:pointer;">✕ Cancel</button>
+  </div>
+</div>
+
+<div id="toast-setup" style="position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(60px);background:var(--card2);border:1px solid var(--teal);color:var(--white);font-size:12px;padding:10px 18px;border-radius:6px;z-index:1000;transition:transform .25s;white-space:nowrap;box-shadow:3px 3px 0 rgba(0,0,0,.5);font-family:'Barlow Condensed',sans-serif;"></div>
+
 </body>
 </html>
