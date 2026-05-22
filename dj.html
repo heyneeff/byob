@@ -1201,23 +1201,30 @@ async function toggleLive(){
 }
 
 function startMeter(){
-  if(!audioCtx) audioCtx = new AudioContext();
-  if(!analyserNode){
-    analyserNode = audioCtx.createAnalyser();
-    analyserNode.fftSize = 256;
-    audioCtx.createMediaElementSource(audio).connect(analyserNode);
-    analyserNode.connect(audioCtx.destination);
+  try {
+    if(!audioCtx) audioCtx = new AudioContext();
+    if(!analyserNode){
+      analyserNode = audioCtx.createAnalyser();
+      analyserNode.fftSize = 256;
+      // Cache the source node — can only be created once per audio element
+      if(!window._djAudioSrc){
+        window._djAudioSrc = audioCtx.createMediaElementSource(audio);
+      }
+      window._djAudioSrc.connect(analyserNode);
+      analyserNode.connect(audioCtx.destination);
+    }
+    const meterData = new Uint8Array(analyserNode.frequencyBinCount);
+    const tick = () => {
+      analyserNode.getByteFrequencyData(meterData);
+      const avg = meterData.reduce((a,b)=>a+b,0)/meterData.length;
+      document.getElementById('meter-fill').style.width=Math.min(avg*2,100)+'%';
+      meterRAF = requestAnimationFrame(tick);
+    };
+    tick();
+  } catch(e) {
+    console.warn('Meter error:', e.message);
   }
-  const meterData = new Uint8Array(analyserNode.frequencyBinCount);
-  const tick = () => {
-    analyserNode.getByteFrequencyData(meterData);
-    const avg = meterData.reduce((a,b)=>a+b,0)/meterData.length;
-    document.getElementById('meter-fill').style.width=Math.min(avg*2,100)+'%';
-    meterRAF = requestAnimationFrame(tick);
-  };
-  tick();
 }
-
 function openVisuals(){window.open(`mandalforge_sync.html?zone=${activeZone?.id||'demo'}&role=dj`,'_blank');}
 
 function openMsgModal(){updateMsgSub();document.getElementById('msg-modal').classList.add('open');}
