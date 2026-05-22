@@ -1746,7 +1746,7 @@ async function openLibrary() {
   modal.style.display = 'flex';
   list.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">Loading…</div>';
 
-  const { data, error } = await db.storage.from('tracks').list('', {
+  const { data, error } = await db.storage.from('tracks').list('boombox', {
     limit: 50, offset: 0, sortBy: { column: 'created_at', order: 'desc' }
   });
 
