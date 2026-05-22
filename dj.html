@@ -1160,6 +1160,24 @@ async function toggleLive(){
 
   if(!activeZone){showToast('Create a zone first');return;}
 
+    // If uploaded track is ready — broadcast it directly, no mic
+  if(audio.src && audio.src !== '' && !liveStream){
+    btn.classList.add('active'); btn.textContent='■ Stop Live';
+    document.getElementById('track-name').textContent='📡 LIVE — '+activeZone.name;
+    audio.play().catch(()=>{});
+    await db.from('zones').update({
+      current_track_url: audio.src,
+      track_name: document.getElementById('track-name').textContent,
+      playback_started_at: new Date().toISOString(),
+      active: true
+    }).eq('id', activeZone.id);
+    showToast('Broadcasting track ⚡');
+    return;
+  }
+
+  // No source — tell DJ to pick one
+  if(!liveStream){ showToast('Choose an audio source first ↑'); return; }
+
   const deviceId=document.getElementById('device-select').value;
   const constraints = { audio: deviceId ? { deviceId:{exact:deviceId}, echoCancellation:false, noiseSuppression:false, sampleRate:48000 } : { echoCancellation:false, noiseSuppression:false } };
 
