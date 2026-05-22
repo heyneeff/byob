@@ -463,7 +463,8 @@ body::after{
     <canvas id="sg" ontouchstart="onTouch(event)" onmousedown="onMouse(event)"
       ondragover="event.preventDefault()" ondrop="onDrop(event)"></canvas>
   </div>
-  <div class="sp-library" id="sp-lib"></div>
+  <div class="sp-library" id="sp-lib" style="height:340px;min-height:120px;max-height:540px;"></div>
+
 </div>
 </div>
 
@@ -565,7 +566,7 @@ body::after{
     </div>
   </div><!-- /deck-top -->
 
-    <div class="deck-library" id="deck-lib" style="height:260px;min-height:120px;max-height:480px;">
+    <div class="deck-library" id="deck-lib" style="height:340px;min-height:120px;max-height:540px;">
     <!-- resize handle -->
   </div>
 
@@ -737,9 +738,19 @@ function buildLibs(f=''){
   document.getElementById('deck-lib').innerHTML=libHTML(f);
 }
 buildLibs();
-function filterLib(v){buildLibs(v);}
-function crateActive(el){el.closest('.crates').querySelectorAll('.crate').forEach(c=>c.classList.remove('active'));el.classList.add('active');}
-function startDrag(ev,id){dragging=id;ev.dataTransfer.setData('track-id',id);}
+// Re-attach resize handles after rebuild
+document.querySelectorAll('.lib-drag-handle').forEach(h=>{
+  h.addEventListener('mousedown',startLibResize);
+  h.addEventListener('touchstart',startLibResize,{passive:false});
+});
+
+function filterLib(v){
+  buildLibs(v);
+  document.querySelectorAll('.lib-drag-handle').forEach(h=>{
+    h.addEventListener('mousedown',startLibResize);
+    h.addEventListener('touchstart',startLibResize,{passive:false});
+  });
+}
 
 // ═══════════════════════════════════════════════════════
 // MIXER EQ — built in center column
@@ -1251,18 +1262,27 @@ document.querySelectorAll('.mtbtn').forEach(b=>{b.addEventListener('click',()=>{
 // ── LIBRARY RESIZE ──────────────────────────────────────
 function startLibResize(e){
   e.preventDefault();
-  const lib = e.target.closest('.deck-library, .sp-library');
+  e.stopPropagation();
+  const lib=e.target.closest('.deck-library,.sp-library');
   if(!lib)return;
-  const startY = e.touches?e.touches[0].clientY:e.clientY;
-  const startH = lib.offsetHeight;
-  const move = ev=>{
-    const y = ev.touches?ev.touches[0].clientY:ev.clientY;
-    const newH = Math.max(120,Math.min(480,startH-(y-startY)));
-    lib.style.height = newH+'px';
+  const startY=e.touches?e.touches[0].clientY:e.clientY;
+  const startH=lib.offsetHeight;
+  const move=ev=>{
+    ev.preventDefault();
+    const y=ev.touches?ev.touches[0].clientY:ev.clientY;
+    const newH=Math.max(120,Math.min(540,startH-(y-startY)));
+    lib.style.height=newH+'px';
   };
-  const up = ()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);window.removeEventListener('touchmove',move);window.removeEventListener('touchend',up);};
-  window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
-  window.addEventListener('touchmove',move,{passive:false});window.addEventListener('touchend',up);
+  const up=()=>{
+    window.removeEventListener('mousemove',move);
+    window.removeEventListener('mouseup',up);
+    window.removeEventListener('touchmove',move);
+    window.removeEventListener('touchend',up);
+  };
+  window.addEventListener('mousemove',move);
+  window.addEventListener('mouseup',up);
+  window.addEventListener('touchmove',move,{passive:false});
+  window.addEventListener('touchend',up);
 }
 
   
