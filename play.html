@@ -136,16 +136,14 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 }
 
 /* ── Each deck half ── */
-.dhalf{
-  display:grid;
-  grid-template-columns:auto 1fr; /* platter | info */
+  .dhalf{display:flex;flex-direction:column;
   background:var(--card);overflow:hidden;
-}
-.dhalf-b{
-  grid-template-columns:1fr auto; /* info | platter — mirrored */
 }
 .dhalf:first-child{border-right:1px solid var(--rim);}
 .dhalf:last-child{border-left:1px solid var(--rim);}
+.dk-top{flex-shrink:0;padding:8px 10px;display:flex;flex-direction:column;gap:5px;border-bottom:1px solid var(--rim);}
+.dk-platter-wrap{flex:1;display:flex;align-items:center;justify-content:center;padding:6px;background:var(--bg);}
+.dk-platter-label{font-size:7px;letter-spacing:.14em;text-transform:uppercase;font-weight:900;text-align:center;padding-bottom:4px;}
 
 /* Platter column */
 .platter-col{
@@ -407,6 +405,13 @@ canvas.platter:active{cursor:grabbing;}
 .eq-close{font-size:11px;color:var(--muted);cursor:pointer;align-self:flex-end;padding:2px 6px;}
 .eq-close:hover{color:var(--red);}
 
+  .deck-library{position:relative;}
+.lib-drag-handle{
+  position:absolute;top:0;left:0;right:0;height:5px;
+  cursor:row-resize;background:transparent;z-index:10;
+}
+.lib-drag-handle:hover{background:var(--orange);opacity:.4;}
+
 /* grain */
 body::after{
   content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
@@ -468,15 +473,9 @@ body::after{
 
   <div class="deck-top">
 
-    <!-- ── DECK A ── platter LEFT, info RIGHT -->
+        <!-- ── DECK A ── -->
     <div class="dhalf" ondragover="event.preventDefault()" ondrop="dropDeck(event,'a')">
-
-      <div class="platter-col">
-        <canvas class="platter" id="platter-a" width="160" height="160"></canvas>
-        <div class="platter-label" style="color:var(--da);">DECK A</div>
-      </div>
-
-      <div class="deck-info-col">
+      <div class="dk-top">
         <div class="dk-head">
           <div class="dk-badge da-badge">A</div>
           <div class="dk-track">
@@ -488,19 +487,14 @@ body::after{
             <div class="dk-bpm-l">BPM</div>
           </div>
         </div>
-        <div class="dk-wave"><canvas id="wv-a"></canvas></div>
-        <div class="dk-time-row">
-          <span class="dk-elapsed" id="da-time">0:00</span>
-          <span class="dk-remain" id="da-remain">—</span>
-          <input type="range" class="dk-pitch" min="-8" max="8" value="0" step="0.1" title="Pitch"/>
-        </div>
         <div class="dk-controls">
           <button class="dkbtn on" id="da-play" onclick="toggleDeck('a')">▶ PLAY</button>
-          <button class="dkbtn" onclick="">CUE</button>
-          <button class="dkbtn" onclick="">LOOP</button>
-          <button class="dkbtn" onclick="">IN</button>
-          <button class="dkbtn" onclick="">OUT</button>
+          <button class="dkbtn">CUE</button>
+          <button class="dkbtn">LOOP</button>
+          <button class="dkbtn">IN</button>
+          <button class="dkbtn">OUT</button>
         </div>
+        <div class="dk-wave"><canvas id="wv-a"></canvas></div>
         <div class="dk-cues">
           <button class="hcue">1</button>
           <button class="hcue">2</button>
@@ -508,6 +502,10 @@ body::after{
           <button class="hcue">4</button>
         </div>
       </div>
+      <div class="dk-platter-wrap">
+        <canvas class="platter" id="platter-a"></canvas>
+      </div>
+      <div class="dk-platter-label" style="color:var(--da);">DECK A</div>
     </div>
 
     <!-- ── MIXER CENTER ── -->
@@ -531,33 +529,28 @@ body::after{
     </div>
 
     <!-- ── DECK B ── info LEFT, platter RIGHT -->
-    <div class="dhalf dhalf-b" ondragover="event.preventDefault()" ondrop="dropDeck(event,'b')">
-
-      <div class="deck-info-col">
+        <!-- ── DECK B ── -->
+    <div class="dhalf" ondragover="event.preventDefault()" ondrop="dropDeck(event,'b')">
+      <div class="dk-top">
         <div class="dk-head">
-          <div class="dk-bpm">
-            <div class="dk-bpm-v" style="color:var(--db);" id="db-bpm">—</div>
-            <div class="dk-bpm-l">BPM</div>
-          </div>
+          <div class="dk-badge db-badge">B</div>
           <div class="dk-track">
             <div class="dk-name" id="db-name">— Load Track —</div>
             <div class="dk-artist" id="db-artist">drag from library or click B</div>
           </div>
-          <div class="dk-badge db-badge">B</div>
-        </div>
-        <div class="dk-wave"><canvas id="wv-b"></canvas></div>
-        <div class="dk-time-row">
-          <input type="range" class="dk-pitch" min="-8" max="8" value="0" step="0.1" title="Pitch"/>
-          <span class="dk-remain" id="db-remain">—</span>
-          <span class="dk-elapsed" id="db-time" style="text-align:right;">0:00</span>
+          <div class="dk-bpm">
+            <div class="dk-bpm-v" style="color:var(--db);" id="db-bpm">—</div>
+            <div class="dk-bpm-l">BPM</div>
+          </div>
         </div>
         <div class="dk-controls">
-          <button class="dkbtn" onclick="">OUT</button>
-          <button class="dkbtn" onclick="">IN</button>
-          <button class="dkbtn" onclick="">LOOP</button>
-          <button class="dkbtn" onclick="">CUE</button>
+          <button class="dkbtn">OUT</button>
+          <button class="dkbtn">IN</button>
+          <button class="dkbtn">LOOP</button>
+          <button class="dkbtn">CUE</button>
           <button class="dkbtn on-b" id="db-play" onclick="toggleDeck('b')">▶ PLAY</button>
         </div>
+        <div class="dk-wave"><canvas id="wv-b"></canvas></div>
         <div class="dk-cues">
           <button class="hcue">1</button>
           <button class="hcue">2</button>
@@ -565,16 +558,17 @@ body::after{
           <button class="hcue">4</button>
         </div>
       </div>
-
-      <div class="platter-col">
-        <canvas class="platter" id="platter-b" width="160" height="160"></canvas>
-        <div class="platter-label" style="color:var(--db);">DECK B</div>
+      <div class="dk-platter-wrap">
+        <canvas class="platter" id="platter-b"></canvas>
       </div>
-
+      <div class="dk-platter-label" style="color:var(--db);">DECK B</div>
     </div>
   </div><!-- /deck-top -->
 
-  <div class="deck-library" id="deck-lib"></div>
+    <div class="deck-library" id="deck-lib" style="height:260px;min-height:120px;max-height:480px;">
+    <!-- resize handle -->
+  </div>
+
 
 </div>
 </div><!-- /deck panel -->
@@ -702,6 +696,7 @@ for(let i=0;i<28;i++){
 function libHTML(filter=''){
   const list=TRACKS.filter(t=>t.name.toLowerCase().includes(filter.toLowerCase())||t.artist.toLowerCase().includes(filter.toLowerCase()));
   return`
+    <div class="lib-drag-handle" onmousedown="startLibResize(event)" ontouchstart="startLibResize(event)"></div>
     <div class="lib-bar">
       <div class="crates">
         <button class="crate active" onclick="crateActive(this)">All</button>
@@ -1000,6 +995,18 @@ function makePlatterDraggable(id,deck){
   cv.addEventListener('touchmove',e=>{e.preventDefault();if(!dr)return;deck.angle+=(e.touches[0].clientY-ly)*.05;ly=e.touches[0].clientY;},{passive:false});
   cv.addEventListener('touchend',()=>dr=false);
 }
+  function sizePlatters(){
+  ['platter-a','platter-b'].forEach(id=>{
+    const cv=document.getElementById(id);if(!cv)return;
+    const wrap=cv.parentElement;
+    const s=Math.min(wrap.clientWidth-12,wrap.clientHeight-12);
+    cv.width=cv.height=Math.max(80,s);
+    cv.style.width=cv.style.height=Math.max(80,s)+'px';
+  });
+}
+sizePlatters();
+window.addEventListener('resize',sizePlatters);
+
 makePlatterDraggable('platter-a',deckA);
 makePlatterDraggable('platter-b',deckB);
 
@@ -1206,7 +1213,25 @@ document.querySelectorAll('.mtbtn').forEach(b=>{b.addEventListener('click',()=>{
 // ═══════════════════════════════════════════════════════
 // MAIN LOOP
 // ═══════════════════════════════════════════════════════
-function loop(){
+// ── LIBRARY RESIZE ──────────────────────────────────────
+function startLibResize(e){
+  e.preventDefault();
+  const lib = e.target.closest('.deck-library, .sp-library');
+  if(!lib)return;
+  const startY = e.touches?e.touches[0].clientY:e.clientY;
+  const startH = lib.offsetHeight;
+  const move = ev=>{
+    const y = ev.touches?ev.touches[0].clientY:ev.clientY;
+    const newH = Math.max(120,Math.min(480,startH-(y-startY)));
+    lib.style.height = newH+'px';
+  };
+  const up = ()=>{window.removeEventListener('mousemove',move);window.removeEventListener('mouseup',up);window.removeEventListener('touchmove',move);window.removeEventListener('touchend',up);};
+  window.addEventListener('mousemove',move);window.addEventListener('mouseup',up);
+  window.addEventListener('touchmove',move,{passive:false});window.addEventListener('touchend',up);
+}
+
+  
+  function loop(){
   requestAnimationFrame(loop);frame++;
   if(sg.width>0)drawSG();
   drawPlatter('platter-a',deckA,'#f57e20');
