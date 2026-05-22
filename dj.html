@@ -935,9 +935,10 @@ audio.addEventListener('ended', () => {
   audio.play().catch(()=>{});
   document.getElementById('progress-fill').style.width = '0%';
 });
-audio.addEventListener('timeupdate',()=>{
-  if(!audio.duration)return;
-  document.getElementById('progress-fill').style.width=(audio.currentTime/audio.duration*100)+'%';
+audio.addEventListener('timeupdate',()=>{audio.addEventListener('timeupdate',()=>{
+  if(!audio.duration || !isFinite(audio.duration)) return;
+  document.getElementById('progress-fill').style.width=
+    (audio.currentTime/audio.duration*100)+'%';
   document.getElementById('time-cur').textContent=fmt(audio.currentTime);
   document.getElementById('time-dur').textContent=fmt(audio.duration);
 });
@@ -1145,57 +1146,78 @@ function startLiveStream() {
 async function toggleLive(){
   const btn=document.getElementById('btn-go-live');
 
-  if(liveStream){
-    // Stop live
-    liveStream.getTracks().forEach(t=>t.stop()); liveStream=null;
+  // ── STOP ──────────────────────────────────────────
+  if(btn.classList.contains('active')){
+    if(liveStream){ liveStream.getTracks().forEach(t=>t.stop()); liveStream=null; }
     if(meterRAF) cancelAnimationFrame(meterRAF);
     document.getElementById('meter-fill').style.width='0%';
-    btn.classList.remove('active'); btn.textContent='Go Live';
+    btn.classList.remove('active'); btn.textContent='⚡ Go Live';
     stopWebRTCBroadcast();
-    // Tell listeners stream ended
     if(activeZone) await db.from('zones').update({current_track_url:null,track_name:null}).eq('id',activeZone.id);
-    showToast('Live ended');
+    showToast('Broadcast ended');
     return;
   }
 
   if(!activeZone){showToast('Create a zone first');return;}
 
-  const deviceId=document.getElementById('device-select').value;
-  const constraints = { audio: deviceId ? { deviceId:{exact:deviceId}, echoCancellation:false, noiseSuppression:false, sampleRate:48000 } : { echoCancellation:false, noiseSuppression:false } };
+  // ── START — detect what audio source is already set ──
+  const hasUpload  = audio.src && audio.src !== '';
+  const hasLibrary = audio.src && audio.src !== '';
+  const hasMic     = liveStream;
 
-  try{
-    liveStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-    // Audio analyser for meter
-    audioCtx = new AudioContext();
-    analyserNode = audioCtx.createAnalyser(); analyserNode.fftSize=256;
-    audioCtx.createMediaStreamSource(liveStream).connect(analyserNode);
-    const meterData = new Uint8Array(analyserNode.frequencyBinCount);
-    const tick = () => {
-      analyserNode.getByteFrequencyData(meterData);
-      const avg=meterData.reduce((a,b)=>a+b,0)/meterData.length;
-      document.getElementById('meter-fill').style.width=Math.min(avg*2,100)+'%';
-      meterRAF=requestAnimationFrame(tick);
-    };
-    tick();
-
-    btn.classList.add('active'); btn.textContent='■ Stop Live';
-    document.getElementById('track-name').textContent='🔴 LIVE — '+activeZone.name;
-    document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
-
-    // Start WebRTC broadcast
-    await startWebRTCBroadcast(liveStream);
-
-    // Mark zone as live so listeners know to connect
+  if(hasUpload){
+    // Uploaded track — broadcast via Supabase, no mic needed
+    btn.classList.add('active'); btn.textContent='■ Stop Broadcast';
+    document.getElementById('track-name').textContent = 
+      '📡 LIVE — '+ activeZone.name;
+    audio.play().catch(()=>{});
     await db.from('zones').update({
-      current_track_url: 'webrtc-live',
-      track_name: '🔴 LIVE — '+activeZone.name,
-      playback_started_at: new Date().toISOString()
+      current_track_url: audio.src,
+      track_name: document.getElementById('track-name').textContent,
+      playback_started_at: new Date().toISOString(),
+      active: true
     }).eq('id', activeZone.id);
+    showToast('Broadcasting track ⚡');
+    startMeter();
+    return;
+  }
 
-    showToast('You are LIVE — listeners connecting 🎛️');
-  }catch(e){showToast('Cannot access input: '+e.message);}
+  if(liveStream){
+    // Mic already open from Live Stream button — broadcast via WebRTC
+    btn.classList.add('active'); btn.textContent='■ Stop Broadcast';
+    document.getElementById('track-name').textContent='🔴 LIVE — '+activeZone.name;
+    await startWebRTCBroadcast();
+    await db.from('zones').update({
+      current_track_url:'webrtc-live',
+      track_name:'🔴 LIVE — '+activeZone.name,
+      active:true
+    }).eq('id',activeZone.id);
+    showToast('Live stream broadcasting ⚡');
+    return;
+  }
+
+  // No source set — tell DJ to pick one first
+  showToast('Choose an audio source first ↑');
 }
+
+function startMeter(){
+  if(!audioCtx) audioCtx = new AudioContext();
+  if(!analyserNode){
+    analyserNode = audioCtx.createAnalyser();
+    analyserNode.fftSize = 256;
+    audioCtx.createMediaElementSource(audio).connect(analyserNode);
+    analyserNode.connect(audioCtx.destination);
+  }
+  const meterData = new Uint8Array(analyserNode.frequencyBinCount);
+  const tick = () => {
+    analyserNode.getByteFrequencyData(meterData);
+    const avg = meterData.reduce((a,b)=>a+b,0)/meterData.length;
+    document.getElementById('meter-fill').style.width=Math.min(avg*2,100)+'%';
+    meterRAF = requestAnimationFrame(tick);
+  };
+  tick();
+}
+
 function openVisuals(){window.open(`mandalforge_sync.html?zone=${activeZone?.id||'demo'}&role=dj`,'_blank');}
 
 function openMsgModal(){updateMsgSub();document.getElementById('msg-modal').classList.add('open');}
