@@ -3,334 +3,348 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-<title>BYOB — Spatial Instrument v3</title>
-<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;0,900;1,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<title>BYOB — Spatial Instrument v4</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;0,900;1,700&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
 <style>
 :root{
-  --bg:#060402;
-  --card:#0e0a06;
-  --card2:#141008;
-  --rim:#1e1408;
+  --bg:#050302;
+  --card:#0c0804;
+  --card2:#121006;
+  --rim:#1a1208;
   --orange:#f57e20;
   --red:#ef3c23;
   --teal:#00cc99;
+  --radar:#00ff88;
   --muted:#4a3820;
-  --muted2:#6a5040;
-  --white:#f5f0e8;
-  --deck-a:#f57e20;
-  --deck-b:#00cc99;
+  --muted2:#6a5535;
+  --white:#f0ebe0;
+  --da:#f57e20;
+  --db:#00cc99;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--white);font-family:'Barlow Condensed',sans-serif;}
 
 /* ═══ TOP BAR ══════════════════════════════════════════ */
 .topbar{
-  height:46px;display:flex;align-items:center;
+  height:44px;display:flex;align-items:center;
   padding:0 12px;background:var(--card);
   border-bottom:1px solid var(--rim);
-  gap:16px;flex-shrink:0;position:relative;z-index:30;
+  gap:14px;flex-shrink:0;z-index:30;position:relative;
 }
 .logo{font-size:20px;font-weight:900;letter-spacing:.06em;flex-shrink:0;}
 .logo em{color:var(--orange);font-style:normal;}
-.topbar-stats{display:flex;gap:16px;align-items:center;}
+.topbar-stats{display:flex;gap:14px;}
 .tstat{text-align:center;line-height:1;}
-.tstat-v{font-size:18px;font-weight:900;color:var(--orange);font-family:'DM Mono',monospace;}
-.tstat-l{font-size:7px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin-top:1px;}
-.topbar-spacer{flex:1;}
+.tstat-v{font-size:17px;font-weight:900;color:var(--orange);font-family:'DM Mono',monospace;}
+.tstat-l{font-size:6px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-top:1px;}
+.spacer{flex:1;}
 .btn-live{
-  padding:6px 18px;border:none;border-radius:18px;cursor:pointer;
-  font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;
+  padding:6px 16px;border:none;border-radius:16px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;
   letter-spacing:.08em;background:var(--red);color:#fff;flex-shrink:0;
-  box-shadow:0 0 14px rgba(239,60,35,.3);transition:all .2s;
+  box-shadow:0 0 12px rgba(239,60,35,.3);transition:all .2s;
 }
-.btn-live.on{background:var(--teal);color:#000;box-shadow:0 0 22px rgba(0,204,153,.5);animation:livepulse 1.8s ease-in-out infinite;}
-@keyframes livepulse{0%,100%{box-shadow:0 0 14px rgba(0,204,153,.35);}50%{box-shadow:0 0 36px rgba(0,204,153,.7);}}
+.btn-live.on{background:var(--teal);color:#000;animation:lp 1.8s ease-in-out infinite;}
+@keyframes lp{0%,100%{box-shadow:0 0 12px rgba(0,204,153,.35);}50%{box-shadow:0 0 32px rgba(0,204,153,.7);}}
 
-/* ═══ MAIN LAYOUT ══════════════════════════════════════ */
+/* ═══ APP SHELL ════════════════════════════════════════ */
 .app{
   display:grid;
-  grid-template-columns:1fr 52px;
-  grid-template-rows:auto 1fr auto;
-  height:calc(100vh - 46px);
+  grid-template-columns:1fr 48px;
+  grid-template-rows:1fr 1fr 200px;
+  height:calc(100vh - 44px);
   overflow:hidden;
 }
 
-/* ═══ DECKS ROW ════════════════════════════════════════ */
-.decks-row{
-  grid-column:1;
-  display:grid;
-  grid-template-columns:1fr 160px 1fr;
-  height:180px;
+/* ═══ TOP — SPATIAL GRID ═══════════════════════════════ */
+.spatial-zone{
+  grid-column:1;grid-row:1;
+  display:flex;flex-direction:column;
+  background:var(--bg);overflow:hidden;
   border-bottom:1px solid var(--rim);
-  flex-shrink:0;
-}
-
-/* ── Single deck ── */
-.deck{
-  display:flex;flex-direction:column;
-  padding:8px 10px;overflow:hidden;
-  background:var(--card);
-}
-.deck-a{border-right:1px solid var(--rim);}
-.deck-b{border-left:1px solid var(--rim);}
-.deck-head{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px;}
-.deck-letter{
-  font-size:11px;font-weight:900;letter-spacing:.14em;
-  padding:2px 7px;border-radius:6px;
-}
-.deck-a .deck-letter{background:rgba(245,126,32,.15);color:var(--deck-a);}
-.deck-b .deck-letter{background:rgba(0,204,153,.15);color:var(--deck-b);}
-.deck-info{flex:1;padding:0 8px;}
-.deck-tname{font-size:15px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;}
-.deck-artist{font-size:9px;color:var(--muted2);letter-spacing:.04em;margin-top:1px;}
-.deck-bpm{font-size:20px;font-weight:900;font-family:'DM Mono',monospace;color:var(--orange);line-height:1;}
-.deck-bpm-l{font-size:7px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:1px;}
-/* Waveform */
-.waveform-wrap{flex:1;position:relative;border-radius:8px;overflow:hidden;background:#080503;margin-bottom:6px;}
-.waveform-canvas{width:100%;height:100%;display:block;}
-/* Playhead */
-.waveform-wrap::after{
-  content:'';position:absolute;top:0;bottom:0;left:50%;
-  width:1.5px;background:rgba(255,255,255,.5);pointer-events:none;
-}
-/* Controls row */
-.deck-controls{display:flex;align-items:center;gap:6px;flex-shrink:0;}
-.dc-btn{
-  padding:4px 9px;border:none;border-radius:6px;cursor:pointer;
-  font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;
-  letter-spacing:.06em;background:var(--card2);color:var(--muted2);
-  transition:all .12s;flex-shrink:0;
-}
-.dc-btn:hover{background:var(--orange);color:#000;}
-.dc-btn.active{background:var(--orange);color:#000;}
-.dc-time{font-family:'DM Mono',monospace;font-size:11px;color:var(--white);flex:1;text-align:center;}
-.dc-pitch{
-  -webkit-appearance:none;width:48px;height:4px;
-  background:var(--rim);border-radius:2px;outline:none;cursor:pointer;
-}
-.dc-pitch::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:18px;background:var(--white);border-radius:3px;cursor:pointer;}
-
-/* ── Mixer center ── */
-.mixer{
-  display:flex;flex-direction:column;align-items:center;
-  padding:8px 10px;gap:6px;background:var(--card);
-}
-.mixer-label{font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);text-align:center;}
-.knob-mini{width:36px;height:36px;cursor:ns-resize;flex-shrink:0;}
-.knob-mini svg{display:block;}
-.eq-col{display:flex;flex-direction:column;align-items:center;gap:2px;}
-.eq-grid{display:flex;gap:8px;align-items:flex-end;}
-.eq-knob-label{font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
-/* Crossfader */
-.xfader-wrap{width:100%;padding:0 4px;}
-.xfader{
-  -webkit-appearance:none;width:100%;height:5px;
-  background:var(--rim);border-radius:3px;outline:none;cursor:pointer;
-}
-.xfader::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:22px;background:var(--white);border-radius:4px;cursor:pointer;}
-.xfader-labels{display:flex;justify-content:space-between;font-size:8px;color:var(--muted);margin-top:2px;font-family:'DM Mono',monospace;}
-/* Master vol */
-.master-knob{display:flex;flex-direction:column;align-items:center;gap:2px;}
-
-/* ═══ CENTER PANEL ═════════════════════════════════════ */
-.center-panel{
-  grid-column:1;
-  position:relative;overflow:hidden;
-  display:flex;flex-direction:column;
-}
-
-/* Panel views */
-.panel-view{position:absolute;inset:0;display:none;flex-direction:column;}
-.panel-view.active{display:flex;}
-
-/* Spatial view */
-.spatial-view{
-  display:flex;flex-direction:column;align-items:center;
-  padding:8px 10px;gap:6px;background:var(--bg);
 }
 .mode-strip{
-  display:flex;gap:4px;width:100%;
-  background:var(--card);border-radius:12px;padding:4px;flex-shrink:0;
+  display:flex;gap:4px;padding:6px 10px;
+  background:var(--card);border-bottom:1px solid var(--rim);
+  flex-shrink:0;
 }
 .mbutton{
-  flex:1;padding:6px 2px;border:none;border-radius:8px;cursor:pointer;
+  flex:1;padding:5px 2px;border:none;border-radius:7px;cursor:pointer;
   font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;
   letter-spacing:.04em;text-transform:uppercase;
   background:transparent;color:var(--muted);transition:all .15s;white-space:nowrap;
 }
 .mbutton.active{background:var(--orange);color:#000;}
-.sg-wrap{flex:1;width:100%;display:flex;align-items:center;justify-content:center;min-height:0;}
-#sg{border-radius:50%;touch-action:none;cursor:crosshair;}
-.spatial-actions{display:flex;gap:6px;width:100%;flex-shrink:0;}
+.sg-center{
+  flex:1;display:flex;align-items:center;justify-content:center;
+  padding:8px;min-height:0;position:relative;
+}
+#sg{touch-action:none;cursor:crosshair;}
+
+/* ═══ BOTTOM HALF — DECK / SPATIAL TOOLS ═══════════════ */
+.bottom-half{
+  grid-column:1;grid-row:2;
+  display:flex;flex-direction:column;
+  background:var(--bg);overflow:hidden;
+  border-bottom:1px solid var(--rim);
+}
+
+/* View switcher tabs */
+.view-tabs{
+  display:flex;gap:0;border-bottom:1px solid var(--rim);flex-shrink:0;
+}
+.vtab{
+  padding:7px 18px;border:none;border-bottom:2px solid transparent;
+  font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;
+  letter-spacing:.1em;text-transform:uppercase;cursor:pointer;
+  background:transparent;color:var(--muted);transition:all .15s;
+}
+.vtab.active{color:var(--orange);border-bottom-color:var(--orange);}
+
+/* Panel views */
+.view{display:none;flex:1;overflow:hidden;}
+.view.active{display:flex;}
+
+/* ── SPATIAL TOOLS VIEW ── */
+.spatial-tools{
+  flex:1;display:flex;flex-direction:column;
+  padding:8px 10px;gap:7px;
+}
+.slots-row{display:flex;gap:5px;flex-shrink:0;}
+.slot{
+  flex:1;border-radius:10px;padding:6px 7px;
+  background:var(--card);border:1.5px dashed var(--rim);
+  text-align:center;cursor:pointer;transition:all .15s;min-width:0;
+}
+.slot.filled{border-style:solid;}
+.slot.sel{box-shadow:0 0 10px rgba(245,126,32,.35);}
+.slot-n{font-size:7px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase;}
+.slot-t{font-size:11px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.slot-x{font-size:9px;color:var(--muted);cursor:pointer;margin-top:1px;}
+.slot-x:hover{color:var(--red);}
+.sact-row{display:flex;gap:6px;flex-shrink:0;}
 .sact{
-  flex:1;padding:10px;border:none;border-radius:12px;cursor:pointer;
+  flex:1;padding:11px;border:none;border-radius:12px;cursor:pointer;
   font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;
-  letter-spacing:.04em;transition:transform .1s;box-shadow:0 3px 14px rgba(0,0,0,.4);
+  letter-spacing:.04em;transition:transform .1s;box-shadow:0 3px 12px rgba(0,0,0,.4);
 }
 .sact:active{transform:scale(.96);}
 .sact-scatter{background:var(--red);color:#fff;}
 .sact-dist{background:var(--card);color:var(--orange);border:1px solid var(--orange);font-size:12px;}
 .sact-snap{background:var(--teal);color:#000;}
 
-/* Slots row */
-.slots-row{display:flex;gap:4px;width:100%;flex-shrink:0;}
-.slot{
-  flex:1;border-radius:10px;padding:5px 6px;
-  background:var(--card);border:1.5px dashed var(--rim);
-  text-align:center;cursor:pointer;transition:all .15s;min-width:0;
-}
-.slot.filled{border-style:solid;}
-.slot.sel{box-shadow:0 0 10px rgba(245,126,32,.4);}
-.slot-n{font-size:8px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;}
-.slot-t{font-size:10px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.slot-x{font-size:9px;color:var(--muted);cursor:pointer;margin-top:1px;}
-.slot-x:hover{color:var(--red);}
-
-/* Deck waveform view */
+/* ── DECK VIEW ── */
 .deck-view{
-  display:flex;flex-direction:column;
-  padding:8px 10px;gap:6px;background:var(--bg);
+  flex:1;display:grid;
+  grid-template-columns:1fr 200px 1fr;
+  padding:8px 10px;gap:8px;
 }
-.dual-wave{flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;min-height:0;}
-.wave-panel{border-radius:10px;overflow:hidden;background:#080503;position:relative;}
-.wave-panel::after{content:'';position:absolute;top:0;bottom:0;left:50%;width:1.5px;background:rgba(255,255,255,.4);pointer-events:none;}
-.wave-label{position:absolute;top:6px;left:8px;font-size:10px;font-weight:900;letter-spacing:.1em;opacity:.6;}
 
-/* Crowd view */
-.crowd-view{
-  display:flex;flex-direction:column;
-  padding:8px 10px;gap:8px;overflow-y:auto;
+/* Single deck strip */
+.dstrip{
+  display:flex;flex-direction:column;gap:6px;
+  background:var(--card);border-radius:14px;padding:10px;
 }
-.crowd-view::-webkit-scrollbar{width:2px;}
-.crowd-view::-webkit-scrollbar-thumb{background:var(--rim);}
-.section-head{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:4px;}
-.gitem{display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--card);border-radius:11px;margin-bottom:4px;}
-.gemoji{font-size:18px;}
-.gname{font-size:15px;font-weight:700;flex:1;}
-.gdist{font-size:10px;font-family:'DM Mono',monospace;color:var(--teal);}
-.gbadge{font-size:9px;padding:2px 7px;border-radius:8px;font-weight:700;letter-spacing:.06em;}
-.gbadge.here{background:rgba(0,204,153,.15);color:var(--teal);}
-.gbadge.coming{background:rgba(245,126,32,.15);color:var(--orange);}
-/* Message composer */
-.msg-box{background:var(--card);border-radius:12px;padding:10px;}
+.dstrip-head{display:flex;align-items:flex-start;justify-content:space-between;}
+.dl{
+  font-size:9px;font-weight:900;letter-spacing:.14em;padding:2px 6px;border-radius:5px;flex-shrink:0;
+}
+.da-l{background:rgba(245,126,32,.15);color:var(--da);}
+.db-l{background:rgba(0,204,153,.15);color:var(--db);}
+.dinfo{flex:1;padding:0 6px;min-width:0;}
+.dtname{font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dartist{font-size:8px;color:var(--muted2);margin-top:1px;}
+.dbpm{font-size:16px;font-weight:900;font-family:'DM Mono',monospace;text-align:right;line-height:1;}
+.dbpm-l{font-size:6px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:right;}
+/* Mini waveform */
+.mini-wave{height:32px;border-radius:6px;overflow:hidden;background:#060402;flex-shrink:0;position:relative;}
+.mini-wave::after{content:'';position:absolute;top:0;bottom:0;left:50%;width:1px;background:rgba(255,255,255,.35);pointer-events:none;}
+.mini-wave canvas{width:100%;height:100%;display:block;}
+/* Deck controls */
+.dcontrols{display:flex;align-items:center;gap:5px;flex-shrink:0;}
+.dcbtn{
+  padding:4px 8px;border:none;border-radius:6px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;
+  letter-spacing:.05em;background:var(--card2);color:var(--muted2);transition:all .12s;
+}
+.dcbtn:hover{background:var(--orange);color:#000;}
+.dcbtn.on{background:var(--orange);color:#000;}
+.dtime{font-family:'DM Mono',monospace;font-size:10px;color:var(--white);flex:1;text-align:center;}
+.dpitch{
+  -webkit-appearance:none;height:3px;flex:1;
+  background:var(--rim);border-radius:2px;cursor:pointer;
+}
+.dpitch::-webkit-slider-thumb{-webkit-appearance:none;width:8px;height:16px;background:var(--white);border-radius:2px;}
+
+/* ── TURNTABLE CENTER ── */
+.tt-center{
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;background:var(--card);
+  border-radius:14px;padding:10px;
+}
+.tt-wheels{display:flex;gap:10px;align-items:center;}
+.tt-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;}
+.tt-label{font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+canvas.wheel{cursor:grab;border-radius:50%;}
+canvas.wheel:active{cursor:grabbing;}
+/* Crossfader */
+.xf-wrap{width:100%;padding:0 8px;}
+.xf-label{font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);text-align:center;margin-bottom:4px;}
+.xfader{
+  -webkit-appearance:none;width:100%;height:4px;
+  background:var(--rim);border-radius:2px;cursor:pointer;
+}
+.xfader::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:20px;background:var(--white);border-radius:3px;}
+.xf-ends{display:flex;justify-content:space-between;font-size:8px;font-family:'DM Mono',monospace;margin-top:3px;}
+.sync-btn{
+  width:100%;padding:6px;border:none;border-radius:8px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;
+  letter-spacing:.06em;background:var(--card2);color:var(--orange);
+  border:1px solid var(--orange);transition:all .15s;
+}
+.sync-btn:active{background:var(--orange);color:#000;}
+
+/* ── CROWD VIEW ── */
+.crowd-view{
+  flex:1;display:grid;grid-template-columns:1fr 1fr;gap:8px;
+  padding:8px 10px;overflow:hidden;
+}
+.cv-col{display:flex;flex-direction:column;gap:6px;overflow-y:auto;}
+.cv-col::-webkit-scrollbar{width:2px;}
+.cv-col::-webkit-scrollbar-thumb{background:var(--rim);}
+.cv-head{font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);flex-shrink:0;}
+.gitem{display:flex;align-items:center;gap:7px;padding:7px 8px;background:var(--card);border-radius:10px;flex-shrink:0;}
+.gemoji{font-size:16px;}
+.gname{font-size:13px;font-weight:700;flex:1;}
+.gdist{font-size:9px;font-family:'DM Mono',monospace;color:var(--teal);}
+.gbadge{font-size:8px;padding:2px 6px;border-radius:6px;font-weight:700;letter-spacing:.06em;}
+.gbadge.here{background:rgba(0,204,153,.12);color:var(--teal);}
+.gbadge.coming{background:rgba(245,126,32,.12);color:var(--orange);}
+.msg-area{background:var(--card);border-radius:12px;padding:9px;display:flex;flex-direction:column;gap:5px;flex-shrink:0;}
 .msg-inp{
-  width:100%;background:var(--card2);border:none;border-radius:8px;
-  padding:8px 10px;color:var(--white);
-  font-family:'Barlow Condensed',sans-serif;font-size:14px;
-  outline:none;margin-bottom:6px;resize:none;
+  width:100%;background:var(--card2);border:none;border-radius:7px;
+  padding:7px 9px;color:var(--white);
+  font-family:'Barlow Condensed',sans-serif;font-size:13px;
+  outline:none;resize:none;
 }
 .msg-inp::placeholder{color:var(--muted);}
-.msg-btns{display:flex;gap:6px;}
-.msg-btn{
-  flex:1;padding:9px;border:none;border-radius:8px;cursor:pointer;
+.msg-send{
+  width:100%;padding:8px;border:none;border-radius:8px;cursor:pointer;
   font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;
-  letter-spacing:.06em;background:var(--card2);color:var(--muted2);transition:all .15s;
+  letter-spacing:.06em;background:var(--orange);color:#000;
 }
-.msg-btn.primary{background:var(--orange);color:#000;}
-/* Lighting panel */
-.lights-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.lights-mini{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
 .lbtn{
-  padding:10px;border:none;border-radius:10px;cursor:pointer;
-  font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;
-  letter-spacing:.04em;background:var(--card2);color:var(--muted2);
-  transition:all .15s;text-align:center;
+  padding:7px;border:none;border-radius:8px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;
+  background:var(--card2);color:var(--muted2);transition:all .15s;
 }
-.lbtn.active{color:#000;}
+.lbtn.on{color:#000;}
+.ff-btn{
+  width:100%;padding:9px;border:none;border-radius:10px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;
+  letter-spacing:.04em;background:var(--card2);color:var(--white);
+  border:1px solid var(--rim);transition:all .15s;flex-shrink:0;
+}
+.ff-btn:active{background:var(--teal);color:#000;}
 
 /* ═══ RIGHT NAV ════════════════════════════════════════ */
 .rightnav{
   grid-column:2;grid-row:1/4;
   background:var(--card);border-left:1px solid var(--rim);
   display:flex;flex-direction:column;align-items:center;
-  padding:6px 0;gap:2px;
+  padding:5px 0;
 }
-.rnav-btn{
-  width:40px;height:40px;border:none;border-radius:10px;
+.rnbtn{
+  width:38px;height:38px;border:none;border-radius:9px;
   background:transparent;color:var(--muted);cursor:pointer;
-  font-size:18px;display:flex;align-items:center;justify-content:center;
-  transition:all .15s;flex-shrink:0;position:relative;
+  font-size:17px;display:flex;align-items:center;justify-content:center;
+  transition:all .15s;flex-shrink:0;
 }
-.rnav-btn.active{background:rgba(245,126,32,.15);color:var(--orange);}
-.rnav-btn:hover{background:var(--card2);}
-.rnav-label{font-size:7px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-top:1px;}
-.rnav-group{display:flex;flex-direction:column;align-items:center;gap:1px;padding:4px 0;}
-.rnav-sep{width:24px;height:1px;background:var(--rim);margin:4px 6px;}
-/* EQ mini in right nav */
-.rnav-eq{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px 0;}
-.rnav-eq-label{font-size:6px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);}
+.rnbtn.active{background:rgba(245,126,32,.12);color:var(--orange);}
+.rnlabel{font-size:6px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);}
+.rnsep{width:22px;height:1px;background:var(--rim);margin:4px 0;}
+.rn-eq{display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 0;}
+.rn-eq-l{font-size:6px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-bottom:2px;}
+.rngrp{display:flex;flex-direction:column;align-items:center;gap:1px;padding:2px 0;}
+.vu-strip{
+  flex:1;display:flex;flex-direction:column;align-items:center;
+  gap:3px;padding:4px 0;width:100%;
+}
+.vu-bar{
+  flex:1;width:6px;background:var(--rim);border-radius:3px;
+  overflow:hidden;position:relative;margin:0 auto;
+}
+.vu-fill{
+  position:absolute;bottom:0;left:0;right:0;
+  background:linear-gradient(to top,var(--teal) 0%,var(--orange) 70%,var(--red) 100%);
+  border-radius:3px;transition:height .07s;
+}
 
 /* ═══ LIBRARY ══════════════════════════════════════════ */
 .library{
-  grid-column:1;
+  grid-column:1;grid-row:3;
   background:var(--card);border-top:1px solid var(--rim);
-  display:flex;flex-direction:column;
-  height:220px;flex-shrink:0;
+  display:flex;flex-direction:column;overflow:hidden;
 }
-.lib-topbar{
-  display:flex;align-items:center;gap:8px;
-  padding:6px 10px;border-bottom:1px solid var(--rim);flex-shrink:0;
+.lib-bar{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 10px;border-bottom:1px solid var(--rim);flex-shrink:0;
 }
-.lib-crates{display:flex;gap:4px;flex:1;}
+.crates{display:flex;gap:3px;flex:1;}
 .crate{
-  padding:4px 10px;border-radius:8px;
-  font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;
-  letter-spacing:.06em;cursor:pointer;color:var(--muted2);
-  background:transparent;border:none;transition:all .12s;
+  padding:4px 9px;border-radius:7px;border:none;
+  font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;
+  letter-spacing:.06em;cursor:pointer;color:var(--muted);
+  background:transparent;transition:all .12s;
 }
 .crate.active{background:var(--card2);color:var(--white);}
 .lib-search{
-  background:var(--card2);border:none;border-radius:8px;
-  padding:5px 10px;color:var(--white);
-  font-family:'Barlow Condensed',sans-serif;font-size:12px;
-  outline:none;width:160px;
+  background:var(--card2);border:none;border-radius:7px;
+  padding:4px 9px;color:var(--white);
+  font-family:'Barlow Condensed',sans-serif;font-size:11px;
+  outline:none;width:140px;
 }
 .lib-search::placeholder{color:var(--muted);}
 .lib-upload{
-  padding:5px 12px;border:none;border-radius:8px;
+  padding:4px 10px;border:none;border-radius:7px;
   background:var(--orange);color:#000;cursor:pointer;
-  font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;
+  font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;
   letter-spacing:.06em;flex-shrink:0;
 }
-/* Track list header */
-.lib-header{
-  display:grid;grid-template-columns:1fr 60px 50px 40px 80px;
-  padding:4px 10px;border-bottom:1px solid var(--rim);flex-shrink:0;
+.lib-cols{
+  display:grid;grid-template-columns:1fr 52px 44px 40px 76px;
+  padding:3px 10px;border-bottom:1px solid var(--rim);flex-shrink:0;
 }
-.lib-col{font-size:8px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
-/* Track rows */
-.lib-tracks{flex:1;overflow-y:auto;}
-.lib-tracks::-webkit-scrollbar{width:2px;}
-.lib-tracks::-webkit-scrollbar-thumb{background:var(--rim);}
+.lc{font-size:7px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
+.lib-rows{flex:1;overflow-y:auto;}
+.lib-rows::-webkit-scrollbar{width:2px;}
+.lib-rows::-webkit-scrollbar-thumb{background:var(--rim);}
 .trow{
-  display:grid;grid-template-columns:1fr 60px 50px 40px 80px;
-  align-items:center;padding:5px 10px;cursor:grab;
+  display:grid;grid-template-columns:1fr 52px 44px 40px 76px;
+  align-items:center;padding:4px 10px;cursor:grab;
   border-bottom:1px solid var(--rim);transition:background .1s;
 }
 .trow:hover{background:var(--card2);}
-.trow:active{cursor:grabbing;opacity:.7;}
-.trow.playing{background:#130e04;}
-.trow-name{display:flex;align-items:center;gap:7px;min-width:0;}
-.trow-color{width:3px;height:28px;border-radius:2px;flex-shrink:0;}
-.trow-text{min-width:0;}
-.trow-title{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.trow-artist{font-size:9px;color:var(--muted2);margin-top:1px;}
-.trow-bpm{font-size:12px;font-family:'DM Mono',monospace;color:var(--orange);}
-.trow-key{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);}
-.trow-dur{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted2);}
-.trow-acts{display:flex;gap:4px;justify-content:flex-end;}
-.trow-btn{
-  padding:3px 7px;border:none;border-radius:5px;cursor:pointer;
-  font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;
+.trow:active{cursor:grabbing;opacity:.65;}
+.trow.loaded{background:#120e04;}
+.tr-name{display:flex;align-items:center;gap:6px;min-width:0;}
+.tr-col{width:3px;height:26px;border-radius:2px;flex-shrink:0;}
+.tr-txt{min-width:0;}
+.tr-title{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;}
+.tr-artist{font-size:8px;color:var(--muted2);margin-top:1px;}
+.tr-bpm{font-size:11px;font-family:'DM Mono',monospace;color:var(--orange);}
+.tr-key{font-size:10px;font-family:'DM Mono',monospace;color:var(--teal);}
+.tr-dur{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted2);}
+.tr-acts{display:flex;gap:3px;justify-content:flex-end;}
+.tr-btn{
+  padding:3px 6px;border:none;border-radius:4px;cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;
   background:var(--card2);color:var(--muted2);transition:all .12s;
 }
-.trow-btn:hover{background:var(--orange);color:#000;}
-
-/* ═══ GRAIN ════════════════════════════════════════════ */
-body::after{
-  content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
-  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
-  opacity:.4;mix-blend-mode:overlay;
-}
+.tr-btn:hover{background:var(--orange);color:#000;}
+.tr-btn.b{background:rgba(0,204,153,.1);color:var(--teal);}
+.tr-btn.b:hover{background:var(--teal);color:#000;}
 </style>
 </head>
 <body>
@@ -341,103 +355,44 @@ body::after{
   <div class="topbar-stats">
     <div class="tstat"><div class="tstat-v" id="tb-bpm">124</div><div class="tstat-l">BPM</div></div>
     <div class="tstat"><div class="tstat-v" id="tb-live">18</div><div class="tstat-l">Live</div></div>
-    <div class="tstat"><div class="tstat-v" id="tb-zone">—</div><div class="tstat-l">Zone</div></div>
+    <div class="tstat"><div class="tstat-v" id="tb-zone">Zone 1</div><div class="tstat-l">Zone</div></div>
   </div>
-  <div class="topbar-spacer"></div>
+  <div class="spacer"></div>
   <button class="btn-live" id="btn-live" onclick="toggleLive()">⚡ Go Live</button>
 </div>
 
 <div class="app">
 
-  <!-- ═══ DECKS ROW ═══════════════════════════════════ -->
-  <div class="decks-row">
+  <!-- ═══ SPATIAL GRID TOP ═══════════════════════════ -->
+  <div class="spatial-zone">
+    <div class="mode-strip">
+      <button class="mbutton active" onclick="setMode('zone',this)">⊕ Zone</button>
+      <button class="mbutton" onclick="setMode('cluster',this)">⬡ Cluster</button>
+      <button class="mbutton" onclick="setMode('orbit',this)">◎ Orbit</button>
+      <button class="mbutton" onclick="setMode('wander',this)">〜 Wander</button>
+      <button class="mbutton" onclick="setMode('point',this)">⊙ Point</button>
+      <button class="mbutton" onclick="setMode('layer',this)">≋ Layer</button>
+    </div>
+    <div class="sg-center">
+      <canvas id="sg" ontouchstart="onTouch(event)" onmousedown="onMouse(event)"
+        ondragover="event.preventDefault()" ondrop="onDrop(event)"></canvas>
+    </div>
+  </div>
 
-    <!-- DECK A -->
-    <div class="deck deck-a">
-      <div class="deck-head">
-        <div class="deck-letter">A</div>
-        <div class="deck-info">
-          <div class="deck-tname" id="da-name">— Load a track —</div>
-          <div class="deck-artist" id="da-artist">drag from library below</div>
-        </div>
-        <div style="text-align:right;">
-          <div class="deck-bpm" id="da-bpm">—</div>
-          <div class="deck-bpm-l">BPM</div>
-        </div>
-      </div>
-      <div class="waveform-wrap">
-        <canvas class="waveform-canvas" id="wv-a"></canvas>
-      </div>
-      <div class="deck-controls">
-        <button class="dc-btn active" id="da-play" onclick="toggleDeck('a')">▶</button>
-        <button class="dc-btn" onclick="cue('a')">CUE</button>
-        <button class="dc-btn" onclick="loop('a')">LOOP</button>
-        <span class="dc-time" id="da-time">0:00</span>
-        <input type="range" class="dc-pitch" min="-8" max="8" value="0" step="0.1"
-          oninput="setPitch('a',this.value)"/>
-      </div>
+  <!-- ═══ BOTTOM HALF ═════════════════════════════════ -->
+  <div class="bottom-half">
+
+    <div class="view-tabs">
+      <button class="vtab active" onclick="switchView('spatial',this)">🗺 Spatial Tools</button>
+      <button class="vtab" onclick="switchView('deck',this)">🎛 Deck</button>
+      <button class="vtab" onclick="switchView('crowd',this)">👥 Crowd</button>
     </div>
 
-    <!-- MIXER -->
-    <div class="mixer">
-      <div class="mixer-label">EQ A</div>
-      <div class="eq-grid" id="eq-a-grid"></div>
-      <div class="xfader-wrap">
-        <div class="mixer-label">CROSSFADER</div>
-        <input type="range" class="xfader" id="xfader" min="0" max="100" value="50"/>
-        <div class="xfader-labels"><span>A</span><span>B</span></div>
-      </div>
-      <div class="eq-grid" id="eq-b-grid"></div>
-      <div class="mixer-label">EQ B</div>
-    </div>
-
-    <!-- DECK B -->
-    <div class="deck deck-b">
-      <div class="deck-head">
-        <div style="text-align:left;">
-          <div class="deck-bpm" id="db-bpm" style="color:var(--teal)">—</div>
-          <div class="deck-bpm-l">BPM</div>
-        </div>
-        <div class="deck-info">
-          <div class="deck-tname" id="db-name">— Load a track —</div>
-          <div class="deck-artist" id="db-artist">drag from library below</div>
-        </div>
-        <div class="deck-letter">B</div>
-      </div>
-      <div class="waveform-wrap">
-        <canvas class="waveform-canvas" id="wv-b"></canvas>
-      </div>
-      <div class="deck-controls">
-        <input type="range" class="dc-pitch" min="-8" max="8" value="0" step="0.1"
-          oninput="setPitch('b',this.value)"/>
-        <span class="dc-time" id="db-time">0:00</span>
-        <button class="dc-btn" onclick="loop('b')">LOOP</button>
-        <button class="dc-btn" onclick="cue('b')">CUE</button>
-        <button class="dc-btn active" id="db-play" onclick="toggleDeck('b')">▶</button>
-      </div>
-    </div>
-
-  </div><!-- /decks-row -->
-
-  <!-- ═══ CENTER PANEL ═══════════════════════════════ -->
-  <div class="center-panel">
-
-    <!-- SPATIAL VIEW -->
-    <div class="panel-view active" id="view-spatial">
-      <div class="spatial-view" style="height:100%;">
-        <div class="mode-strip">
-          <button class="mbutton active" onclick="setMode('zone',this)">⊕ Zone</button>
-          <button class="mbutton" onclick="setMode('cluster',this)">⬡ Cluster</button>
-          <button class="mbutton" onclick="setMode('orbit',this)">◎ Orbit</button>
-          <button class="mbutton" onclick="setMode('wander',this)">〜 Wander</button>
-          <button class="mbutton" onclick="setMode('point',this)">⊙ Point</button>
-          <button class="mbutton" onclick="setMode('layer',this)">≋ Layer</button>
-        </div>
-        <div class="sg-wrap">
-          <canvas id="sg" ontouchstart="onTouch(event)" onmousedown="onMouse(event)"></canvas>
-        </div>
+    <!-- SPATIAL TOOLS -->
+    <div class="view active" id="view-spatial">
+      <div class="spatial-tools">
         <div class="slots-row" id="slots-row"></div>
-        <div class="spatial-actions">
+        <div class="sact-row">
           <button class="sact sact-scatter" onclick="doScatter()">♩ SCATTER</button>
           <button class="sact sact-dist"    onclick="doDistribute()">⊕ DISTRIBUTE</button>
           <button class="sact sact-snap"    onclick="doSnap()">⚡ SNAP</button>
@@ -445,135 +400,186 @@ body::after{
       </div>
     </div>
 
-    <!-- DECK VIEW -->
-    <div class="panel-view" id="view-deck">
-      <div class="deck-view" style="height:100%;">
-        <div class="section-head">Beat Match — Dual Waveform</div>
-        <div class="dual-wave">
-          <div class="wave-panel">
-            <canvas id="bwv-a" style="width:100%;height:100%;display:block;"></canvas>
-            <div class="wave-label" style="color:var(--deck-a);">A</div>
+    <!-- DECK -->
+    <div class="view" id="view-deck">
+      <div class="deck-view">
+
+        <!-- DECK A -->
+        <div class="dstrip">
+          <div class="dstrip-head">
+            <div class="dl da-l">A</div>
+            <div class="dinfo">
+              <div class="dtname" id="da-name">— Load Track —</div>
+              <div class="dartist" id="da-artist">drag from library</div>
+            </div>
+            <div>
+              <div class="dbpm" style="color:var(--da);" id="da-bpm">—</div>
+              <div class="dbpm-l">BPM</div>
+            </div>
           </div>
-          <div class="wave-panel">
-            <canvas id="bwv-b" style="width:100%;height:100%;display:block;"></canvas>
-            <div class="wave-label" style="color:var(--deck-b);">B</div>
+          <div class="mini-wave">
+            <canvas id="mwv-a"></canvas>
+          </div>
+          <div class="dcontrols">
+            <button class="dcbtn on" id="da-play" onclick="toggleDeck('a')">▶</button>
+            <button class="dcbtn" onclick="">CUE</button>
+            <button class="dcbtn" onclick="">LOOP</button>
+            <span class="dtime" id="da-time">0:00</span>
+          </div>
+          <input type="range" class="dpitch" min="-8" max="8" value="0" step="0.1" title="Pitch A"/>
+        </div>
+
+        <!-- TURNTABLE CENTER -->
+        <div class="tt-center">
+          <div class="tt-wheels">
+            <div class="tt-wrap">
+              <div class="tt-label" style="color:var(--da);">DECK A</div>
+              <canvas class="wheel" id="wheel-a" width="80" height="80"></canvas>
+            </div>
+            <div class="tt-wrap">
+              <div class="tt-label" style="color:var(--db);">DECK B</div>
+              <canvas class="wheel" id="wheel-b" width="80" height="80"></canvas>
+            </div>
+          </div>
+          <div class="xf-wrap">
+            <div class="xf-label">CROSSFADER</div>
+            <input type="range" class="xfader" id="xfader" min="0" max="100" value="50"/>
+            <div class="xf-ends">
+              <span style="color:var(--da);">A</span>
+              <span style="color:var(--db);">B</span>
+            </div>
+          </div>
+          <button class="sync-btn" onclick="syncBPM()">⟳ SYNC BPM</button>
+        </div>
+
+        <!-- DECK B -->
+        <div class="dstrip">
+          <div class="dstrip-head">
+            <div>
+              <div class="dbpm" style="color:var(--db);" id="db-bpm">—</div>
+              <div class="dbpm-l">BPM</div>
+            </div>
+            <div class="dinfo">
+              <div class="dtname" id="db-name">— Load Track —</div>
+              <div class="dartist" id="db-artist">drag from library</div>
+            </div>
+            <div class="dl db-l">B</div>
+          </div>
+          <div class="mini-wave">
+            <canvas id="mwv-b"></canvas>
+          </div>
+          <div class="dcontrols">
+            <input type="range" class="dpitch" min="-8" max="8" value="0" step="0.1" title="Pitch B"/>
+            <span class="dtime" id="db-time">0:00</span>
+            <button class="dcbtn" onclick="">LOOP</button>
+            <button class="dcbtn" onclick="">CUE</button>
+            <button class="dcbtn on" id="db-play" onclick="toggleDeck('b')">▶</button>
           </div>
         </div>
-        <div style="display:flex;gap:8px;">
-          <button class="sact" style="background:var(--card);color:var(--orange);border:1px solid var(--orange);font-size:13px;" onclick="syncBPM()">⟳ SYNC BPM</button>
-          <button class="sact" style="background:var(--card);color:var(--teal);border:1px solid var(--teal);font-size:13px;" onclick="nudgeA(-1)">‹ NUDGE A</button>
-          <button class="sact" style="background:var(--card);color:var(--teal);border:1px solid var(--teal);font-size:13px;" onclick="nudgeA(1)">NUDGE A ›</button>
+
+      </div>
+    </div>
+
+    <!-- CROWD -->
+    <div class="view" id="view-crowd">
+      <div class="crowd-view">
+        <!-- Left col -->
+        <div class="cv-col">
+          <div class="cv-head">Guest List</div>
+          <div id="glist"></div>
+          <button class="ff-btn">🫂 Find Someone Nearby</button>
+        </div>
+        <!-- Right col -->
+        <div class="cv-col">
+          <div class="cv-head">Message</div>
+          <div class="msg-area">
+            <textarea class="msg-inp" rows="2" placeholder="Message your crowd…"></textarea>
+            <div style="display:flex;gap:5px;">
+              <button class="dcbtn" style="flex:1;">All</button>
+              <button class="dcbtn" style="flex:1;">Here</button>
+              <button class="dcbtn" style="flex:1;">Coming</button>
+            </div>
+            <button class="msg-send">📣 Send</button>
+          </div>
+          <div class="cv-head">Lighting</div>
+          <div class="lights-mini">
+            <button class="lbtn" onclick="setLight(this,'#f57e20')">🔥 Warm</button>
+            <button class="lbtn" onclick="setLight(this,'#00cc99')">🟢 Teal</button>
+            <button class="lbtn" onclick="setLight(this,'#ef3c23')">🔴 Red</button>
+            <button class="lbtn" onclick="setLight(this,'#ffffff')">⚪ White</button>
+            <button class="lbtn" onclick="setLight(this,'strobe')">⚡ Strobe</button>
+            <button class="lbtn" onclick="setLight(this,'pulse')">◎ Pulse</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- CROWD VIEW -->
-    <div class="panel-view" id="view-crowd">
-      <div class="crowd-view" style="height:100%;">
-        <div class="section-head">Guest List</div>
-        <div id="glist"></div>
-
-        <div class="section-head" style="margin-top:4px;">Message Crowd</div>
-        <div class="msg-box">
-          <textarea class="msg-inp" rows="2" placeholder="Type a message to your crowd…"></textarea>
-          <div class="msg-btns">
-            <button class="msg-btn">All</button>
-            <button class="msg-btn">Present</button>
-            <button class="msg-btn">Approaching</button>
-            <button class="msg-btn primary">Send 📣</button>
-          </div>
-        </div>
-
-        <div class="section-head" style="margin-top:4px;">Lighting</div>
-        <div class="lights-grid">
-          <button class="lbtn" onclick="setLight(this,'#f57e20')" style="">🔥 Warm</button>
-          <button class="lbtn" onclick="setLight(this,'#00cc99')" >🟢 Teal Wash</button>
-          <button class="lbtn" onclick="setLight(this,'#ef3c23')" >🔴 Red Alert</button>
-          <button class="lbtn" onclick="setLight(this,'#ffffff')" >⚪ White Out</button>
-          <button class="lbtn" onclick="setLight(this,'strobe')"  >⚡ Strobe</button>
-          <button class="lbtn" onclick="setLight(this,'pulse')"   >◎ Pulse Beat</button>
-        </div>
-
-        <div class="section-head" style="margin-top:4px;">Friend Finder</div>
-        <button class="msg-btn primary" style="width:100%;padding:12px;font-size:16px;">
-          🫂 Find Someone Nearby
-        </button>
-      </div>
-    </div>
-
-  </div><!-- /center-panel -->
+  </div><!-- /bottom-half -->
 
   <!-- ═══ RIGHT NAV ══════════════════════════════════ -->
   <div class="rightnav">
-    <div class="rnav-group">
-      <button class="rnav-btn active" onclick="switchView('spatial',this)" title="Spatial">🗺</button>
-      <div class="rnav-label">Spatial</div>
+    <div class="rngrp">
+      <button class="rnbtn active" onclick="switchNav('spatial',this)">🗺</button>
+      <div class="rnlabel">Grid</div>
     </div>
-    <div class="rnav-group">
-      <button class="rnav-btn" onclick="switchView('deck',this)" title="Deck">🎛</button>
-      <div class="rnav-label">Deck</div>
+    <div class="rngrp">
+      <button class="rnbtn" onclick="switchNav('deck',this)">🎛</button>
+      <div class="rnlabel">Deck</div>
     </div>
-    <div class="rnav-group">
-      <button class="rnav-btn" onclick="switchView('crowd',this)" title="Crowd">👥</button>
-      <div class="rnav-label">Crowd</div>
+    <div class="rngrp">
+      <button class="rnbtn" onclick="switchNav('crowd',this)">👥</button>
+      <div class="rnlabel">Crowd</div>
     </div>
-
-    <div class="rnav-sep"></div>
-
-    <!-- Mini EQ in right nav -->
-    <div class="rnav-eq">
-      <div class="rnav-eq-label">EQ</div>
-      <div class="rnav-group">
-        <canvas class="knob-mini" id="rnav-hi" data-val="75"></canvas>
-        <div class="rnav-label">HI</div>
+    <div class="rnsep"></div>
+    <div class="rn-eq">
+      <div class="rn-eq-l">EQ</div>
+      <div class="rngrp">
+        <canvas id="eq-hi"  width="32" height="32" style="cursor:ns-resize;" data-val="75"></canvas>
+        <div class="rnlabel">HI</div>
       </div>
-      <div class="rnav-group">
-        <canvas class="knob-mini" id="rnav-mid" data-val="75"></canvas>
-        <div class="rnav-label">MID</div>
+      <div class="rngrp">
+        <canvas id="eq-mid" width="32" height="32" style="cursor:ns-resize;" data-val="75"></canvas>
+        <div class="rnlabel">MID</div>
       </div>
-      <div class="rnav-group">
-        <canvas class="knob-mini" id="rnav-low" data-val="75"></canvas>
-        <div class="rnav-label">LOW</div>
+      <div class="rngrp">
+        <canvas id="eq-low" width="32" height="32" style="cursor:ns-resize;" data-val="75"></canvas>
+        <div class="rnlabel">LOW</div>
       </div>
-      <div class="rnav-group">
-        <canvas class="knob-mini" id="rnav-vol" data-val="80"></canvas>
-        <div class="rnav-label">VOL</div>
+      <div class="rngrp">
+        <canvas id="eq-vol" width="32" height="32" style="cursor:ns-resize;" data-val="80"></canvas>
+        <div class="rnlabel">VOL</div>
       </div>
     </div>
-
-    <div class="rnav-sep"></div>
-
-    <!-- VU -->
-    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:4px 6px;width:100%;">
-      <div class="rnav-label">IN</div>
-      <div style="width:6px;flex:1;background:var(--rim);border-radius:3px;overflow:hidden;min-height:60px;position:relative;">
-        <div id="vu-v" style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(to top,var(--teal),var(--orange),var(--red));border-radius:3px;height:55%;transition:height .07s;"></div>
+    <div class="rnsep"></div>
+    <div class="vu-strip">
+      <div class="rnlabel">IN</div>
+      <div class="vu-bar" style="min-height:60px;">
+        <div class="vu-fill" id="vu-fill" style="height:50%;"></div>
       </div>
     </div>
-
-  </div><!-- /rightnav -->
+  </div>
 
   <!-- ═══ LIBRARY ════════════════════════════════════ -->
   <div class="library">
-    <div class="lib-topbar">
-      <div class="lib-crates">
-        <button class="crate active">All Tracks</button>
+    <div class="lib-bar">
+      <div class="crates">
+        <button class="crate active">All</button>
         <button class="crate">Stems</button>
         <button class="crate">Playlists</button>
         <button class="crate">Recent</button>
-        <button class="crate">Favorites</button>
+        <button class="crate">★ Favs</button>
       </div>
-      <input class="lib-search" placeholder="🔍 Search…" oninput="filterTracks(this.value)"/>
+      <input class="lib-search" placeholder="🔍 Search…" oninput="filterLib(this.value)"/>
       <button class="lib-upload">+ Upload</button>
     </div>
-    <div class="lib-header">
-      <div class="lib-col">Title / Artist</div>
-      <div class="lib-col">BPM</div>
-      <div class="lib-col">Key</div>
-      <div class="lib-col">Time</div>
-      <div class="lib-col" style="text-align:right;">Load</div>
+    <div class="lib-cols">
+      <div class="lc">Title / Artist</div>
+      <div class="lc">BPM</div>
+      <div class="lc">Key</div>
+      <div class="lc">Time</div>
+      <div class="lc" style="text-align:right;">Load</div>
     </div>
-    <div class="lib-tracks" id="lib-tracks"></div>
+    <div class="lib-rows" id="lib-rows"></div>
   </div>
 
 </div><!-- /app -->
@@ -582,7 +588,7 @@ body::after{
 // ═══════════════════════════════════════════════════════
 // DATA
 // ═══════════════════════════════════════════════════════
-const TRACKS = [
+const TRACKS=[
   {id:'A',name:'Midnight Groove',  artist:'Oliver Smith',    bpm:124,key:'8A', dur:'6:32',col:'#f57e20'},
   {id:'B',name:'Liquid Dreams',    artist:'Nora Van Elken',  bpm:124,key:'8A', dur:'7:15',col:'#00cc99'},
   {id:'C',name:'Afterglow',        artist:'Lucas & Steve',   bpm:126,key:'9A', dur:'5:48',col:'#ef3c23'},
@@ -594,7 +600,6 @@ const TRACKS = [
   {id:'I',name:'Fading',           artist:'Bonobo',          bpm:120,key:'4A', dur:'5:22',col:'#ef3c23'},
   {id:'J',name:'You & Me',         artist:'Disclosure',      bpm:122,key:'3A', dur:'6:44',col:'#a78bfa'},
 ];
-
 const GUESTS=[
   {e:'🎧',n:'Catalyst',  d:'12ft', s:'here'},
   {e:'🌀',n:'Wanderer',  d:'28ft', s:'here'},
@@ -608,101 +613,103 @@ const GUESTS=[
 // ═══════════════════════════════════════════════════════
 // STATE
 // ═══════════════════════════════════════════════════════
-let gridMode = 'zone';
-let slots    = Array(6).fill(null);
-let activeSlot = null;
-let ripples  = [];
-let listeners= [];
-let orbitAng = 0;
-let frame    = 0;
-let dragging = null;
-let deckA    = {playing:false, bpm:0, track:null};
-let deckB    = {playing:false, bpm:0, track:null};
+let gridMode='zone';
+let slots=Array(6).fill(null);
+let activeSlot=null;
+let ripples=[];
+let listeners=[];
+let orbitAng=0;
+let frame=0;
+let dragging=null;
+let deckA={playing:false,bpm:0,track:null,angle:0,speed:0};
+let deckB={playing:false,bpm:0,track:null,angle:0,speed:0};
+let radarAngle=0;
 
-// Spawn demo listeners
-for(let i=0;i<26;i++){
-  const a=Math.random()*Math.PI*2, d=0.1+Math.random()*.84;
-  listeners.push({x:Math.cos(a)*d,y:Math.sin(a)*d,vx:(Math.random()-.5)*.0012,vy:(Math.random()-.5)*.0012,col:'#f5f0e8'});
+// Init listeners
+for(let i=0;i<28;i++){
+  const a=Math.random()*Math.PI*2,d=0.1+Math.random()*.84;
+  listeners.push({
+    x:Math.cos(a)*d, y:Math.sin(a)*d,
+    vx:(Math.random()-.5)*.0012, vy:(Math.random()-.5)*.0012,
+    col:'#f0ebe0', name:''
+  });
 }
+// Give some listeners names
+const LNAMES=['Catalyst','Wanderer','Oracle','Fox','Tender','Jester','Rook','Ember'];
+LNAMES.forEach((n,i)=>{ if(listeners[i]) listeners[i].name=n; });
 
 // ═══════════════════════════════════════════════════════
 // LIBRARY
 // ═══════════════════════════════════════════════════════
-function buildLibrary(filter=''){
-  const el=document.getElementById('lib-tracks');
+function buildLib(filter=''){
+  const el=document.getElementById('lib-rows');
   const list=TRACKS.filter(t=>
     t.name.toLowerCase().includes(filter.toLowerCase())||
     t.artist.toLowerCase().includes(filter.toLowerCase())
   );
   el.innerHTML=list.map(t=>`
-    <div class="trow ${deckA.track?.id===t.id||deckB.track?.id===t.id?'playing':''}"
-      draggable="true"
-      ondragstart="startDrag(event,'${t.id}')"
+    <div class="trow ${(deckA.track?.id===t.id||deckB.track?.id===t.id)?'loaded':''}"
+      draggable="true" ondragstart="startDrag(event,'${t.id}')"
       id="trow-${t.id}">
-      <div class="trow-name">
-        <div class="trow-color" style="background:${t.col};"></div>
-        <div class="trow-text">
-          <div class="trow-title">${t.name}</div>
-          <div class="trow-artist">${t.artist}</div>
+      <div class="tr-name">
+        <div class="tr-col" style="background:${t.col};"></div>
+        <div class="tr-txt">
+          <div class="tr-title">${t.name}</div>
+          <div class="tr-artist">${t.artist}</div>
         </div>
       </div>
-      <div class="trow-bpm">${t.bpm}</div>
-      <div class="trow-key">${t.key}</div>
-      <div class="trow-dur">${t.dur}</div>
-      <div class="trow-acts">
-        <button class="trow-btn" onclick="loadDeck('a','${t.id}')">A</button>
-        <button class="trow-btn" onclick="loadDeck('b','${t.id}')">B</button>
-        <button class="trow-btn" onclick="quickSlot('${t.id}')">+</button>
+      <div class="tr-bpm">${t.bpm}</div>
+      <div class="tr-key">${t.key}</div>
+      <div class="tr-dur">${t.dur}</div>
+      <div class="tr-acts">
+        <button class="tr-btn" onclick="loadDeck('a','${t.id}')">A</button>
+        <button class="tr-btn b" onclick="loadDeck('b','${t.id}')">B</button>
+        <button class="tr-btn" onclick="quickSlot('${t.id}')">+</button>
       </div>
     </div>`).join('');
 }
-buildLibrary();
-function filterTracks(v){buildLibrary(v);}
+buildLib();
+function filterLib(v){buildLib(v);}
+function startDrag(ev,id){dragging=id;ev.dataTransfer.setData('track-id',id);}
 
-function startDrag(ev,id){
-  dragging=id;
-  ev.dataTransfer.setData('track-id',id);
-}
+// Crates
+document.querySelectorAll('.crate').forEach(c=>{
+  c.addEventListener('click',()=>{
+    document.querySelectorAll('.crate').forEach(x=>x.classList.remove('active'));
+    c.classList.add('active');
+  });
+});
 
 // ═══════════════════════════════════════════════════════
-// DECK CONTROLS
+// DECKS
 // ═══════════════════════════════════════════════════════
-function loadDeck(deck,id){
-  const t=TRACKS.find(t=>t.id===id);
-  if(!t)return;
-  if(deck==='a'){
-    deckA.track=t; deckA.bpm=t.bpm;
+function loadDeck(d,id){
+  const t=TRACKS.find(t=>t.id===id);if(!t)return;
+  if(d==='a'){
+    deckA.track=t;deckA.bpm=t.bpm;deckA.playing=true;
     document.getElementById('da-name').textContent=t.name;
     document.getElementById('da-artist').textContent=t.artist;
     document.getElementById('da-bpm').textContent=t.bpm;
     document.getElementById('tb-bpm').textContent=t.bpm;
+    document.getElementById('da-play').textContent='⏸';
   } else {
-    deckB.track=t; deckB.bpm=t.bpm;
+    deckB.track=t;deckB.bpm=t.bpm;deckB.playing=true;
     document.getElementById('db-name').textContent=t.name;
     document.getElementById('db-artist').textContent=t.artist;
     document.getElementById('db-bpm').textContent=t.bpm;
+    document.getElementById('db-play').textContent='⏸';
   }
-  buildLibrary();
+  buildLib();
   rippleBurst(document.getElementById('sg').width/2,document.getElementById('sg').height/2,2);
 }
-
 function toggleDeck(d){
   if(d==='a'){deckA.playing=!deckA.playing;document.getElementById('da-play').textContent=deckA.playing?'⏸':'▶';}
   else{deckB.playing=!deckB.playing;document.getElementById('db-play').textContent=deckB.playing?'⏸':'▶';}
 }
-function cue(d){}
-function loop(d){}
-function setPitch(d,v){}
-function syncBPM(){}
-function nudgeA(dir){}
-function quickSlot(id){
-  const t=TRACKS.find(t=>t.id===id);
-  if(!t)return;
-  const i=activeSlot!==null?activeSlot:slots.findIndex(s=>!s);
-  if(i<0)return;
-  slots[i]={track:t,col:t.col};
-  buildSlots();
-  rippleBurst(document.getElementById('sg').width/2,document.getElementById('sg').height/2,2);
+function syncBPM(){
+  if(!deckA.track||!deckB.track)return;
+  deckB.bpm=deckA.bpm;
+  document.getElementById('db-bpm').textContent=deckA.bpm;
 }
 
 // ═══════════════════════════════════════════════════════
@@ -725,58 +732,65 @@ function buildSlots(){
     </div>`).join('');
 }
 buildSlots();
-
 function selSlot(i){activeSlot=i;buildSlots();}
 function clearSlot(i){slots[i]=null;if(activeSlot===i)activeSlot=null;buildSlots();}
+function quickSlot(id){
+  const t=TRACKS.find(t=>t.id===id);if(!t)return;
+  const i=activeSlot!==null?activeSlot:slots.findIndex(s=>!s);
+  if(i<0)return;
+  slots[i]={track:t,col:t.col};
+  buildSlots();
+  rippleBurst(sg.width/2,sg.height/2,2);
+}
 function dropSlot(ev,i){
   ev.preventDefault();
   const id=ev.dataTransfer.getData('track-id')||dragging;
   if(!id)return;
-  const t=TRACKS.find(t=>t.id===id);
-  if(!t)return;
+  const t=TRACKS.find(t=>t.id===id);if(!t)return;
   slots[i]={track:t,col:t.col};
   activeSlot=i;buildSlots();
-  rippleBurst(document.getElementById('sg').width/2,document.getElementById('sg').height/2,2);
+  rippleBurst(sg.width/2,sg.height/2,2);
 }
 
 // ═══════════════════════════════════════════════════════
-// SPATIAL GRID
+// SPATIAL GRID — RADAR
 // ═══════════════════════════════════════════════════════
 const sg=document.getElementById('sg');
 const ctx=sg.getContext('2d');
 
 function resizeSG(){
   const wrap=sg.parentElement;
-  const s=Math.min(wrap.clientWidth-16,wrap.clientHeight-8);
+  const s=Math.min(wrap.clientWidth-16,wrap.clientHeight-10);
   sg.width=sg.height=s;
   sg.style.width=sg.style.height=s+'px';
 }
 resizeSG();
-window.addEventListener('resize',resizeSG);
+window.addEventListener('resize',()=>{resizeSG();});
 
-function hex2rgb(h){return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];}
-
+function hex2rgb(h){
+  return[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+}
 function lCol(lx,ly){
   const filled=slots.filter(Boolean);
-  if(!filled.length)return'#f5f0e8';
+  if(!filled.length)return'#f0ebe0';
   if(gridMode==='zone'){
     const d=Math.sqrt(lx*lx+ly*ly);
-    if(d<.22)return filled[0]?.col||'#f5f0e8';
+    if(d<.22)return filled[0]?.col||'#f0ebe0';
     const ang=Math.atan2(ly,lx)*180/Math.PI;
-    if(ang>=-45&&ang<45)  return filled[1%filled.length]?.col||'#f5f0e8';
-    if(ang>=45 &&ang<135) return filled[2%filled.length]?.col||'#f5f0e8';
-    if(ang>=135||ang<-135)return filled[3%filled.length]?.col||'#f5f0e8';
-    return filled[4%filled.length]?.col||'#f5f0e8';
+    if(ang>=-45&&ang<45)  return filled[1%filled.length]?.col||'#f0ebe0';
+    if(ang>=45 &&ang<135) return filled[2%filled.length]?.col||'#f0ebe0';
+    if(ang>=135||ang<-135)return filled[3%filled.length]?.col||'#f0ebe0';
+    return filled[4%filled.length]?.col||'#f0ebe0';
   }
   if(gridMode==='cluster'){
     const qi=Math.floor((Math.atan2(ly,lx)+Math.PI)/(Math.PI*2)*filled.length);
-    return filled[qi%filled.length]?.col||'#f5f0e8';
+    return filled[qi%filled.length]?.col||'#f0ebe0';
   }
   if(gridMode==='orbit'){
     const band=Math.floor(((Math.atan2(ly,lx)+Math.PI)/(Math.PI*2))*filled.length);
-    return filled[band%filled.length]?.col||'#f5f0e8';
+    return filled[band%filled.length]?.col||'#f0ebe0';
   }
-  return'#f5f0e8';
+  return'#f0ebe0';
 }
 
 function rippleBurst(x,y,n=2){
@@ -787,59 +801,91 @@ function drawSG(){
   const W=sg.width,H=sg.height;
   if(!W||!H)return;
   const cx=W/2,cy=H/2,R=W/2-4;
-  const t=frame*.018;
-  ctx.fillStyle='#060402';ctx.fillRect(0,0,W,H);
+  const t=frame*.016;
+
+  // Deep black BG
+  ctx.fillStyle='#030201';ctx.fillRect(0,0,W,H);
   ctx.save();
   ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);ctx.clip();
 
   const filled=slots.filter(Boolean);
 
-  // Zone fills
+  // ── Zone fills ──────────────────────────────────────
   if(gridMode==='zone'&&filled.length){
     const arcs=[[-Math.PI/4,Math.PI/4],[Math.PI/4,3*Math.PI/4],[3*Math.PI/4,5*Math.PI/4],[-3*Math.PI/4,-Math.PI/4]];
     arcs.forEach(([a0,a1],i)=>{
       const s=filled[(i+1)%filled.length];if(!s)return;
       const[r,g,b]=hex2rgb(s.col);
       ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,R,a0,a1);ctx.closePath();
-      ctx.fillStyle=`rgba(${r},${g},${b},.12)`;ctx.fill();
+      ctx.fillStyle=`rgba(${r},${g},${b},.1)`;ctx.fill();
     });
     if(filled[0]){
       const[r,g,b]=hex2rgb(filled[0].col);
       ctx.beginPath();ctx.arc(cx,cy,R*.22,0,Math.PI*2);
-      ctx.fillStyle=`rgba(${r},${g},${b},.18)`;ctx.fill();
+      ctx.fillStyle=`rgba(${r},${g},${b},.16)`;ctx.fill();
     }
   }
   if(gridMode==='cluster'&&filled.length){
     filled.forEach((s,i)=>{
       const ang=(i/filled.length)*Math.PI*2-Math.PI/2;
-      const bx=cx+Math.cos(ang)*R*.5,by=cy+Math.sin(ang)*R*.5;
+      const bx=cx+Math.cos(ang)*R*.52,by=cy+Math.sin(ang)*R*.52;
       const[r,g,b]=hex2rgb(s.col);
-      const gr=ctx.createRadialGradient(bx,by,0,bx,by,R*.38);
-      gr.addColorStop(0,`rgba(${r},${g},${b},.24)`);gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
-      ctx.beginPath();ctx.arc(bx,by,R*.38,0,Math.PI*2);ctx.fillStyle=gr;ctx.fill();
+      const gr=ctx.createRadialGradient(bx,by,0,bx,by,R*.4);
+      gr.addColorStop(0,`rgba(${r},${g},${b},.22)`);
+      gr.addColorStop(1,`rgba(${r},${g},${b},0)`);
+      ctx.beginPath();ctx.arc(bx,by,R*.4,0,Math.PI*2);
+      ctx.fillStyle=gr;ctx.fill();
     });
   }
   if(gridMode==='orbit'&&filled.length){
     filled.forEach((s,i)=>{
       const a0=orbitAng+(i/filled.length)*Math.PI*2;
-      const a1=a0+(Math.PI*2/filled.length)*.82;
+      const a1=a0+(Math.PI*2/filled.length)*.8;
       const[r,g,b]=hex2rgb(s.col);
       ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,R,a0,a1);ctx.closePath();
-      ctx.fillStyle=`rgba(${r},${g},${b},.1)`;ctx.fill();
+      ctx.fillStyle=`rgba(${r},${g},${b},.09)`;ctx.fill();
     });
-    orbitAng+=.004;
+    orbitAng+=.0035;
   }
 
-  // Rings
-  [.22,.4,.6,.8,1].forEach((f,i)=>{
-    const p=i<4?.5+.5*Math.sin(t*1.2-i*.8):1;
-    ctx.beginPath();ctx.arc(cx,cy,R*f,0,Math.PI*2);
-    ctx.strokeStyle=`rgba(245,240,232,${.04*p})`;ctx.lineWidth=i===4?1.5:.6;ctx.stroke();
+  // ── RADAR GRID ───────────────────────────────────────
+  // Concentric range rings — green radar style
+  const RINGS=5;
+  for(let i=1;i<=RINGS;i++){
+    const rf=i/RINGS;
+    const glow=.04+.02*Math.sin(t*1.5-i*.6);
+    ctx.beginPath();ctx.arc(cx,cy,R*rf,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(0,255,136,${glow})`;
+    ctx.lineWidth=.8;ctx.stroke();
+    // Range label
+    if(i<RINGS){
+      ctx.textAlign='left';ctx.textBaseline='middle';
+      ctx.font=`400 8px 'DM Mono'`;
+      ctx.fillStyle=`rgba(0,255,136,.18)`;
+      ctx.fillText(Math.round(rf*500)+'m',cx+R*rf+3,cy);
+    }
+  }
+  // Bearing lines — compass cross + diagonals
+  [0,45,90,135,180,225,270,315].forEach((deg,i)=>{
+    const rad=deg*Math.PI/180;
+    const inner=i%2===0?0:R*.22;
+    ctx.beginPath();
+    ctx.moveTo(cx+Math.cos(rad)*inner,cy+Math.sin(rad)*inner);
+    ctx.lineTo(cx+Math.cos(rad)*R,cy+Math.sin(rad)*R);
+    ctx.strokeStyle=i%2===0?'rgba(0,255,136,.08)':'rgba(0,255,136,.04)';
+    ctx.lineWidth=.7;ctx.stroke();
+  });
+  // Cardinal labels
+  [{l:'N',a:-Math.PI/2},{l:'E',a:0},{l:'S',a:Math.PI/2},{l:'W',a:Math.PI}].forEach(({l,a})=>{
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.font="900 9px 'Barlow Condensed'";
+    ctx.fillStyle='rgba(0,255,136,.22)';
+    ctx.fillText(l,cx+Math.cos(a)*(R-.14*R),cy+Math.sin(a)*(R-.14*R));
   });
 
-  // Dividers zone mode
+  // Zone dividers
   if(gridMode==='zone'){
-    ctx.strokeStyle='rgba(245,240,232,.04)';ctx.lineWidth=.7;
+    ctx.strokeStyle='rgba(0,255,136,.06)';ctx.lineWidth=.6;
     [-45,45,135,225].forEach(deg=>{
       const rad=deg*Math.PI/180;
       ctx.beginPath();
@@ -848,25 +894,61 @@ function drawSG(){
     });
   }
 
-  // Listeners
+  // ── RADAR SWEEP ──────────────────────────────────────
+  radarAngle=(radarAngle+.012)%(Math.PI*2);
+  // Sweep gradient
+  const sweepGrad=ctx.createConicalGradient?null:null;
+  // Fallback — arc sweep
+  ctx.save();
+  ctx.beginPath();ctx.moveTo(cx,cy);
+  ctx.arc(cx,cy,R,radarAngle-0.7,radarAngle);
+  ctx.closePath();
+  const sg2=ctx.createLinearGradient(
+    cx+Math.cos(radarAngle-0.7)*R*.5,cy+Math.sin(radarAngle-0.7)*R*.5,
+    cx+Math.cos(radarAngle)*R,cy+Math.sin(radarAngle)*R
+  );
+  sg2.addColorStop(0,'rgba(0,255,136,0)');
+  sg2.addColorStop(1,'rgba(0,255,136,.18)');
+  ctx.fillStyle=sg2;ctx.fill();
+  ctx.restore();
+  // Sweep line
+  ctx.beginPath();
+  ctx.moveTo(cx,cy);
+  ctx.lineTo(cx+Math.cos(radarAngle)*R,cy+Math.sin(radarAngle)*R);
+  ctx.strokeStyle='rgba(0,255,136,.55)';ctx.lineWidth=1.2;ctx.stroke();
+
+  // ── LISTENER DOTS ────────────────────────────────────
   listeners.forEach(l=>{
     l.x+=l.vx;l.y+=l.vy;
-    const d=Math.sqrt(l.x*l.x+l.y*l.y);
-    if(d>.92){l.vx*=-.65;l.vy*=-.65;}
+    const d2=Math.sqrt(l.x*l.x+l.y*l.y);
+    if(d2>.92){l.vx*=-.65;l.vy*=-.65;}
     l.col=lCol(l.x,l.y);
     const px=cx+l.x*R,py=cy+l.y*R;
     const[r,g,b]=hex2rgb(l.col);
-    ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fillStyle=`rgba(${r},${g},${b},.09)`;ctx.fill();
-    ctx.beginPath();ctx.arc(px,py,2.5,0,Math.PI*2);ctx.fillStyle=`rgba(${r},${g},${b},.95)`;ctx.fill();
-  });
 
-  // Orbit source
-  if(gridMode==='orbit'&&filled.length){
-    const ox=cx+Math.cos(orbitAng)*R*.65,oy=cy+Math.sin(orbitAng)*R*.65;
-    const[r,g,b]=hex2rgb(filled[0].col);
-    ctx.beginPath();ctx.arc(ox,oy,10,0,Math.PI*2);ctx.fillStyle=`rgba(${r},${g},${b},.2)`;ctx.fill();
-    ctx.beginPath();ctx.arc(ox,oy,4,0,Math.PI*2);ctx.fillStyle=filled[0].col;ctx.fill();
-  }
+    // Ping when sweep passes over
+    const lAng=((Math.atan2(l.y,l.x)+Math.PI*2)%(Math.PI*2));
+    const sweepDiff=Math.abs(((radarAngle-lAng+Math.PI*2)%(Math.PI*2)));
+    const ping=sweepDiff<0.08;
+
+    // Glow
+    const glowR=ping?14:7;
+    const glowA=ping?.25:.08;
+    ctx.beginPath();ctx.arc(px,py,glowR,0,Math.PI*2);
+    ctx.fillStyle=`rgba(${r},${g},${b},${glowA})`;ctx.fill();
+
+    // Dot
+    ctx.beginPath();ctx.arc(px,py,ping?4:2.5,0,Math.PI*2);
+    ctx.fillStyle=ping?`rgb(${r},${g},${b})`:`rgba(${r},${g},${b},.88)`;ctx.fill();
+
+    // Name tag (only on ping or named)
+    if(ping&&l.name){
+      ctx.textAlign='center';ctx.textBaseline='bottom';
+      ctx.font="700 8px 'Barlow Condensed'";
+      ctx.fillStyle=`rgba(${r},${g},${b},.9)`;
+      ctx.fillText(l.name,px,py-6);
+    }
+  });
 
   // Zone labels
   if(gridMode==='zone'){
@@ -875,21 +957,33 @@ function drawSG(){
       const s=slots[i];if(!s)return;
       const px=cx+x*R,py=cy+y*R;
       const[r,g,b]=hex2rgb(s.col);
-      ctx.beginPath();ctx.arc(px,py,13,0,Math.PI*2);
-      ctx.fillStyle=`rgba(${r},${g},${b},.2)`;ctx.fill();
+      ctx.beginPath();ctx.arc(px,py,12,0,Math.PI*2);
+      ctx.fillStyle=`rgba(${r},${g},${b},.18)`;ctx.fill();
       ctx.beginPath();ctx.arc(px,py,5,0,Math.PI*2);
       ctx.fillStyle=s.col;ctx.fill();
       ctx.textAlign='center';ctx.textBaseline='middle';
       ctx.font="700 8px 'Barlow Condensed'";
-      ctx.fillStyle=`rgba(245,240,232,.55)`;
+      ctx.fillStyle=`rgba(240,235,224,.55)`;
       ctx.fillText(s.track.name.slice(0,7).toUpperCase(),px,py+17);
     });
   }
 
-  // DJ center pulse
-  const p3=.6+.4*Math.sin(t*3.8);
-  ctx.beginPath();ctx.arc(cx,cy,11*p3,0,Math.PI*2);ctx.fillStyle=`rgba(245,126,32,${.16*p3})`;ctx.fill();
-  ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);ctx.fillStyle='#f57e20';ctx.fill();
+  // Orbit source
+  if(gridMode==='orbit'&&filled.length){
+    const ox=cx+Math.cos(orbitAng)*R*.65,oy=cy+Math.sin(orbitAng)*R*.65;
+    const[r,g,b]=hex2rgb(filled[0].col);
+    ctx.beginPath();ctx.arc(ox,oy,9,0,Math.PI*2);ctx.fillStyle=`rgba(${r},${g},${b},.18)`;ctx.fill();
+    ctx.beginPath();ctx.arc(ox,oy,4,0,Math.PI*2);ctx.fillStyle=filled[0].col;ctx.fill();
+  }
+
+  // DJ center
+  const p3=.55+.45*Math.sin(t*3.8);
+  ctx.beginPath();ctx.arc(cx,cy,11*p3,0,Math.PI*2);
+  ctx.fillStyle=`rgba(245,126,32,${.14*p3})`;ctx.fill();
+  ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);
+  ctx.fillStyle='#f57e20';ctx.fill();
+  ctx.beginPath();ctx.arc(cx,cy,4,0,Math.PI*2);
+  ctx.strokeStyle='rgba(245,126,32,.4)';ctx.lineWidth=2;ctx.stroke();
 
   // Ripples
   ripples=ripples.filter(rp=>rp.a>.01);
@@ -901,98 +995,159 @@ function drawSG(){
   });
 
   ctx.restore();
+
+  // Outer rim — double ring
   ctx.beginPath();ctx.arc(cx,cy,R,0,Math.PI*2);
-  ctx.strokeStyle='rgba(245,126,32,.09)';ctx.lineWidth=1.5;ctx.stroke();
+  ctx.strokeStyle='rgba(0,255,136,.08)';ctx.lineWidth=2;ctx.stroke();
+  ctx.beginPath();ctx.arc(cx,cy,R+3,0,Math.PI*2);
+  ctx.strokeStyle='rgba(245,126,32,.06)';ctx.lineWidth=1;ctx.stroke();
 }
 
 // ═══════════════════════════════════════════════════════
-// WAVEFORM VISUALIZERS
+// TURNTABLE WHEELS
 // ═══════════════════════════════════════════════════════
-function drawWaveform(canvasId,color,deckObj,offset){
-  const cv=document.getElementById(canvasId);
-  if(!cv)return;
-  const ctx2=cv.getContext('2d');
-  const W=cv.clientWidth*2,H=cv.clientHeight*2;
-  cv.width=W;cv.height=H;
-  ctx2.fillStyle='#080503';ctx2.fillRect(0,0,W,H);
-  if(!deckObj.track){return;}
-  const t=Date.now()/1000+offset;
-  const mid=H/2;
-  ctx2.strokeStyle=color;
-  ctx2.lineWidth=1.5;
-  ctx2.globalAlpha=deckObj.playing?.9:.4;
-  // Simulated waveform — sine harmonics with pseudo-random variation
-  const bpm=deckObj.bpm||124;
-  const beatS=60/bpm;
-  ctx2.beginPath();
-  for(let x=0;x<W;x++){
-    const xT=t+(x-W/2)/(W/2)*4;
-    const beat=Math.sin(xT*(2*Math.PI/beatS));
-    const h1=Math.sin(xT*4.1+1.3)*0.4;
-    const h2=Math.sin(xT*8.3+2.1)*0.2;
-    const h3=Math.sin(xT*16.7+0.7)*0.1;
-    const amp=(Math.abs(beat)+h1+h2+h3)*(H*.38);
-    if(x===0)ctx2.moveTo(x,mid-amp);
-    else ctx2.lineTo(x,mid-amp);
-  }
-  ctx2.stroke();
-  ctx2.beginPath();
-  for(let x=0;x<W;x++){
-    const xT=t+(x-W/2)/(W/2)*4;
-    const beat=Math.sin(xT*(2*Math.PI/beatS));
-    const h1=Math.sin(xT*4.1+1.3)*0.4;
-    const h2=Math.sin(xT*8.3+2.1)*0.2;
-    const h3=Math.sin(xT*16.7+0.7)*0.1;
-    const amp=(Math.abs(beat)+h1+h2+h3)*(H*.38);
-    if(x===0)ctx2.moveTo(x,mid+amp);
-    else ctx2.lineTo(x,mid+amp);
-  }
-  ctx2.stroke();
-  ctx2.globalAlpha=1;
-  // Beat markers
-  ctx2.strokeStyle='rgba(255,255,255,.12)';ctx2.lineWidth=1;
-  for(let b=0;b<20;b++){
-    const bx=((b-10)*beatS/(4)*W/2+W/2)%W;
-    ctx2.beginPath();ctx2.moveTo(bx,0);ctx2.lineTo(bx,H);ctx2.stroke();
-  }
-}
-
-// ═══════════════════════════════════════════════════════
-// KNOBS (right nav)
-// ═══════════════════════════════════════════════════════
-function drawKnobCanvas(id,val){
+function drawWheel(id,deck,color){
   const cv=document.getElementById(id);
   if(!cv)return;
-  const W=36,H=36;cv.width=W;cv.height=H;
   const k=cv.getContext('2d');
-  const cx=W/2,cy=H/2,r=W/2-4,sw=4;
+  const W=cv.width,H=cv.height;
+  const cx=W/2,cy=H/2,R=W/2-3;
+  k.clearRect(0,0,W,H);
+
+  // BG
+  k.beginPath();k.arc(cx,cy,R,0,Math.PI*2);
+  k.fillStyle='#0a0804';k.fill();
+
+  // Grooves
+  for(let i=0;i<6;i++){
+    k.beginPath();k.arc(cx,cy,R*.3+i*(R*.65/6),0,Math.PI*2);
+    k.strokeStyle=`rgba(255,255,255,.04)`;k.lineWidth=.8;k.stroke();
+  }
+
+  // Rotating strobe dots
+  const spokeCount=12;
+  if(deck.playing) deck.angle+=deck.bpm>0?(deck.bpm/60)*0.05:0.03;
+  for(let i=0;i<spokeCount;i++){
+    const a=deck.angle+(i/spokeCount)*Math.PI*2;
+    const dx=cx+Math.cos(a)*R*.72,dy=cy+Math.sin(a)*R*.72;
+    k.beginPath();k.arc(dx,dy,2,0,Math.PI*2);
+    k.fillStyle=`rgba(255,255,255,.25)`;k.fill();
+  }
+
+  // Colored label ring
+  k.beginPath();k.arc(cx,cy,R*.45,0,Math.PI*2);
+  k.strokeStyle=color;k.lineWidth=2.5;k.globalAlpha=deck.playing?.7:.25;k.stroke();
+  k.globalAlpha=1;
+
+  // Center label
+  k.beginPath();k.arc(cx,cy,R*.28,0,Math.PI*2);
+  k.fillStyle=`rgba(${color==='#f57e20'?'245,126,32':'0,204,153'},.12)`;k.fill();
+  k.textAlign='center';k.textBaseline='middle';
+  k.font="900 7px 'Barlow Condensed'";
+  k.fillStyle=color;
+  k.fillText(deck.track?deck.track.name.slice(0,6).toUpperCase():'LOAD',cx,cy);
+
+  // Outer rim
+  k.beginPath();k.arc(cx,cy,R,0,Math.PI*2);
+  k.strokeStyle=`rgba(255,255,255,.08)`;k.lineWidth=1;k.stroke();
+
+  // Needle arm
+  const na=deck.angle*.3-Math.PI*.15;
+  const nx=cx+Math.cos(na)*R,ny=cy+Math.sin(na)*R;
+  k.beginPath();k.moveTo(cx+Math.cos(na)*R*.15,cy+Math.sin(na)*R*.15);
+  k.lineTo(nx,ny);
+  k.strokeStyle=`rgba(255,255,255,.18)`;k.lineWidth=1;k.stroke();
+  k.beginPath();k.arc(nx,ny,2.5,0,Math.PI*2);
+  k.fillStyle='rgba(255,255,255,.3)';k.fill();
+}
+
+// Turntable interaction
+['wheel-a','wheel-b'].forEach(id=>{
+  const cv=document.getElementById(id);
+  if(!cv)return;
+  const deck=id==='wheel-a'?deckA:deckB;
+  let dragging2=false,lastY=0;
+  cv.addEventListener('mousedown',e=>{dragging2=true;lastY=e.clientY;e.preventDefault();});
+  cv.addEventListener('mousemove',e=>{if(!dragging2)return;const dy=e.clientY-lastY;deck.angle+=dy*.05;lastY=e.clientY;});
+  cv.addEventListener('mouseup',()=>dragging2=false);
+  cv.addEventListener('touchstart',e=>{e.preventDefault();dragging2=true;lastY=e.touches[0].clientY;},{passive:false});
+  cv.addEventListener('touchmove',e=>{e.preventDefault();if(!dragging2)return;const dy=e.touches[0].clientY-lastY;deck.angle+=dy*.05;lastY=e.touches[0].clientY;},{passive:false});
+  cv.addEventListener('touchend',()=>dragging2=false);
+});
+
+// ═══════════════════════════════════════════════════════
+// MINI WAVEFORMS
+// ═══════════════════════════════════════════════════════
+function drawMiniWave(id,deck,color){
+  const cv=document.getElementById(id);
+  if(!cv)return;
+  const k=cv.getContext('2d');
+  const W=cv.clientWidth||200,H=cv.clientHeight||32;
+  cv.width=W*2;cv.height=H*2;
+  k.fillStyle='#060402';k.fillRect(0,0,W*2,H*2);
+  if(!deck.track)return;
+  const t=Date.now()/1000;
+  const bpm=deck.bpm||124;
+  const beatS=60/bpm;
+  const mid=H;
+  k.strokeStyle=color;k.lineWidth=1.5;
+  k.globalAlpha=deck.playing?.85:.3;
+  k.beginPath();
+  for(let x=0;x<W*2;x++){
+    const xT=t+(x-W)/(W)*3;
+    const b=Math.sin(xT*(2*Math.PI/beatS));
+    const h=(Math.abs(b)+Math.sin(xT*4.2+1.1)*.3+Math.sin(xT*8.7+0.5)*.15)*(H*.8);
+    if(x===0)k.moveTo(x,mid-h);else k.lineTo(x,mid-h);
+  }
+  k.stroke();
+  k.beginPath();
+  for(let x=0;x<W*2;x++){
+    const xT=t+(x-W)/(W)*3;
+    const b=Math.sin(xT*(2*Math.PI/beatS));
+    const h=(Math.abs(b)+Math.sin(xT*4.2+1.1)*.3+Math.sin(xT*8.7+0.5)*.15)*(H*.8);
+    if(x===0)k.moveTo(x,mid+h);else k.lineTo(x,mid+h);
+  }
+  k.stroke();
+  k.globalAlpha=1;
+  // Beat lines
+  k.strokeStyle='rgba(255,255,255,.1)';k.lineWidth=1;
+  for(let b=0;b<20;b++){
+    const bx=((b-10)*beatS/3*W*2+W)%( W*2);
+    k.beginPath();k.moveTo(bx,0);k.lineTo(bx,H*2);k.stroke();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+// EQ KNOBS (right nav)
+// ═══════════════════════════════════════════════════════
+function drawKnob(id,val){
+  const cv=document.getElementById(id);
+  if(!cv)return;
+  const k=cv.getContext('2d');
+  const W=32,H=32,cx=16,cy=16,r=13,sw=4;
+  k.clearRect(0,0,W,H);
   const minA=-140*Math.PI/180-Math.PI/2;
   const maxA=140*Math.PI/180-Math.PI/2;
   const a=minA+(val/100)*(maxA-minA);
   const ix=cx+r*Math.cos(a),iy=cy+r*Math.sin(a);
-  // Track
-  k.beginPath();k.arc(cx,cy,r,minA,maxA);
-  k.strokeStyle='#1e1408';k.lineWidth=sw;k.lineCap='round';k.stroke();
-  // Fill
-  k.beginPath();k.arc(cx,cy,r,minA,a);
-  k.strokeStyle='#f57e20';k.lineWidth=sw;k.lineCap='round';k.stroke();
-  // Face
-  k.beginPath();k.arc(cx,cy,r-sw-1,0,Math.PI*2);k.fillStyle='#0e0a06';k.fill();
-  // Indicator
-  k.beginPath();k.moveTo(cx,cy);k.lineTo(ix,iy);
-  k.strokeStyle='#f57e20';k.lineWidth=2;k.lineCap='round';k.stroke();
+  const arc=(a0,a1)=>{k.beginPath();k.arc(cx,cy,r,a0,a1);};
+  arc(minA,maxA);k.strokeStyle='#1a1208';k.lineWidth=sw;k.lineCap='round';k.stroke();
+  arc(minA,a);k.strokeStyle='#f57e20';k.lineWidth=sw;k.lineCap='round';k.stroke();
+  k.beginPath();k.arc(cx,cy,r-sw-1,0,Math.PI*2);k.fillStyle='#0c0804';k.fill();
+  k.beginPath();k.moveTo(cx,cy);k.lineTo(ix,iy);k.strokeStyle='#f57e20';k.lineWidth=2;k.lineCap='round';k.stroke();
 }
-
-const RNAV_KNOBS=[{id:'rnav-hi',val:75},{id:'rnav-mid',val:75},{id:'rnav-low',val:75},{id:'rnav-vol',val:80}];
-RNAV_KNOBS.forEach(({id,val})=>{
-  drawKnobCanvas(id,val);
-  const el=document.getElementById(id);
-  if(!el)return;
-  let v=val,sy=0,sv=0;
-  const move=cy2=>{v=Math.max(0,Math.min(100,sv+(sy-cy2)/1.4));drawKnobCanvas(id,v);};
-  el.addEventListener('mousedown',e=>{sy=e.clientY;sv=v;const mm=e2=>move(e2.clientY);const mu=()=>{window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);};window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);e.preventDefault();});
-  el.addEventListener('touchstart',e=>{e.preventDefault();sy=e.touches[0].clientY;sv=v;},{passive:false});
-  el.addEventListener('touchmove',e=>{e.preventDefault();move(e.touches[0].clientY);},{passive:false});
+const EQ_IDS=['eq-hi','eq-mid','eq-low','eq-vol'];
+const EQ_VALS={};
+EQ_IDS.forEach(id=>{
+  const cv=document.getElementById(id);
+  if(!cv)return;
+  let v=parseInt(cv.dataset.val||'75');EQ_VALS[id]=v;
+  drawKnob(id,v);
+  let sy=0,sv=0;
+  const move=cy2=>{v=Math.max(0,Math.min(100,sv+(sy-cy2)/1.4));EQ_VALS[id]=v;drawKnob(id,v);};
+  cv.addEventListener('mousedown',e=>{sy=e.clientY;sv=v;const mm=e2=>move(e2.clientY);const mu=()=>{window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);};window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);e.preventDefault();});
+  cv.addEventListener('touchstart',e=>{e.preventDefault();sy=e.touches[0].clientY;sv=v;},{passive:false});
+  cv.addEventListener('touchmove',e=>{e.preventDefault();move(e.touches[0].clientY);},{passive:false});
 });
 
 // ═══════════════════════════════════════════════════════
@@ -1003,70 +1158,38 @@ document.getElementById('glist').innerHTML=GUESTS.map(g=>`
     <div class="gemoji">${g.e}</div>
     <div class="gname">${g.n}</div>
     <div class="gdist">${g.d}</div>
-    <span class="gbadge ${g.s==='here'?'here':'coming'}">${g.s==='here'?'HERE':'COMING'}</span>
+    <span class="gbadge ${g.s}">${g.s==='here'?'HERE':'COMING'}</span>
   </div>`).join('');
 
 // ═══════════════════════════════════════════════════════
-// EQ MIXER (mini)
+// VU METER
 // ═══════════════════════════════════════════════════════
-function buildMixerEQ(gridId,col){
-  const el=document.getElementById(gridId);
-  if(!el)return;
-  ['HI','MID','LOW'].forEach(band=>{
-    const d=document.createElement('div');
-    d.className='eq-col';
-    d.innerHTML=`<canvas width="28" height="28" id="${gridId}-${band}" data-val="75" style="cursor:ns-resize;"></canvas><div class="eq-knob-label">${band}</div>`;
-    el.appendChild(d);
-    setTimeout(()=>{
-      const cv=document.getElementById(`${gridId}-${band}`);
-      if(!cv)return;
-      let v=75,sy=0,sv=0;
-      const draw=(val)=>{
-        const k=cv.getContext('2d');
-        const W=28,H=28,cx=14,cy=14,r=10,sw=3.5;
-        k.clearRect(0,0,W,H);
-        const minA=-140*Math.PI/180-Math.PI/2,maxA=140*Math.PI/180-Math.PI/2;
-        const a=minA+(val/100)*(maxA-minA);
-        const ix=cx+r*Math.cos(a),iy=cy+r*Math.sin(a);
-        k.beginPath();k.arc(cx,cy,r,minA,maxA);k.strokeStyle='#1e1408';k.lineWidth=sw;k.lineCap='round';k.stroke();
-        k.beginPath();k.arc(cx,cy,r,minA,a);k.strokeStyle=col;k.lineWidth=sw;k.lineCap='round';k.stroke();
-        k.beginPath();k.arc(cx,cy,r-sw-1,0,Math.PI*2);k.fillStyle='#0e0a06';k.fill();
-        k.beginPath();k.moveTo(cx,cy);k.lineTo(ix,iy);k.strokeStyle=col;k.lineWidth=1.5;k.lineCap='round';k.stroke();
-      };
-      draw(v);
-      const move=cy2=>{v=Math.max(0,Math.min(100,sv+(sy-cy2)/1.2));draw(v);};
-      cv.addEventListener('mousedown',e=>{sy=e.clientY;sv=v;const mm=e2=>move(e2.clientY);const mu=()=>{window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);};window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);e.preventDefault();});
-      cv.addEventListener('touchstart',e=>{e.preventDefault();sy=e.touches[0].clientY;sv=v;},{passive:false});
-      cv.addEventListener('touchmove',e=>{e.preventDefault();move(e.touches[0].clientY);},{passive:false});
-    },100);
-  });
-}
-buildMixerEQ('eq-a-grid','#f57e20');
-buildMixerEQ('eq-b-grid','#00cc99');
-
-// ═══════════════════════════════════════════════════════
-// CRATES
-// ═══════════════════════════════════════════════════════
-document.querySelectorAll('.crate').forEach(c=>{
-  c.addEventListener('click',()=>{
-    document.querySelectorAll('.crate').forEach(x=>x.classList.remove('active'));
-    c.classList.add('active');
-  });
-});
+let vuV=50,vuDir=1;
+setInterval(()=>{
+  vuV+=vuDir*(2+Math.random()*5);
+  if(vuV>88||vuV<12)vuDir*=-1;
+  vuV=Math.max(12,Math.min(90,vuV));
+  const el=document.getElementById('vu-fill');
+  if(el)el.style.height=vuV+'%';
+},90);
 
 // ═══════════════════════════════════════════════════════
 // CONTROLS
 // ═══════════════════════════════════════════════════════
-function switchView(v,btn){
-  document.querySelectorAll('.panel-view').forEach(p=>p.classList.remove('active'));
-  document.getElementById('view-'+v)?.classList.add('active');
-  document.querySelectorAll('.rnav-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  setTimeout(resizeSG,50);
-}
 function setMode(m,btn){
   gridMode=m;
   document.querySelectorAll('.mbutton').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function switchView(v,btn){
+  document.querySelectorAll('.view').forEach(p=>p.classList.remove('active'));
+  document.getElementById('view-'+v)?.classList.add('active');
+  document.querySelectorAll('.vtab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+}
+function switchNav(v,btn){
+  switchView(v,document.querySelector(`.vtab`));
+  document.querySelectorAll('.rnbtn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
 }
 function doScatter(){
@@ -1093,9 +1216,9 @@ function toggleLive(){
   b.textContent=b.classList.contains('on')?'■ On Air':'⚡ Go Live';
 }
 function setLight(btn,col){
-  document.querySelectorAll('.lbtn').forEach(b=>{b.classList.remove('active');b.style.background='';});
-  btn.classList.add('active');
-  if(col!=='strobe'&&col!=='pulse') btn.style.background=col+'33';
+  document.querySelectorAll('.lbtn').forEach(b=>{b.classList.remove('on');b.style.background='';});
+  btn.classList.add('on');
+  if(col!=='strobe'&&col!=='pulse')btn.style.background=col+'22';
 }
 function onTouch(e){
   e.preventDefault();
@@ -1106,27 +1229,14 @@ function onMouse(e){
   const r=sg.getBoundingClientRect();
   rippleBurst(e.clientX-r.left,e.clientY-r.top,2);
 }
-sg.addEventListener('dragover',e=>e.preventDefault());
-sg.addEventListener('drop',e=>{
+function onDrop(e){
   e.preventDefault();
   const id=e.dataTransfer.getData('track-id')||dragging;
   if(!id)return;
   quickSlot(id);
   const r=sg.getBoundingClientRect();
   rippleBurst(e.clientX-r.left,e.clientY-r.top,3);
-});
-
-// ═══════════════════════════════════════════════════════
-// VU METER
-// ═══════════════════════════════════════════════════════
-let vuV=50,vuDir=1;
-setInterval(()=>{
-  vuV+=vuDir*(2+Math.random()*5);
-  if(vuV>88||vuV<14)vuDir*=-1;
-  vuV=Math.max(14,Math.min(90,vuV));
-  const el=document.getElementById('vu-v');
-  if(el)el.style.height=vuV+'%';
-},90);
+}
 
 // ═══════════════════════════════════════════════════════
 // MAIN LOOP
@@ -1135,16 +1245,17 @@ function loop(){
   requestAnimationFrame(loop);
   frame++;
   if(sg.width>0) drawSG();
-  // Waveforms
-  if(document.getElementById('view-deck')?.classList.contains('active')||true){
-    drawWaveform('wv-a','#f57e20',deckA,0);
-    drawWaveform('wv-b','#00cc99',deckB,0.5);
-    drawWaveform('bwv-a','#f57e20',deckA,0);
-    drawWaveform('bwv-b','#00cc99',deckB,0.5);
-  }
+  drawWheel('wheel-a',deckA,'#f57e20');
+  drawWheel('wheel-b',deckB,'#00cc99');
+  drawMiniWave('mwv-a',deckA,'#f57e20');
+  drawMiniWave('mwv-b',deckB,'#00cc99');
 }
 loop();
-setTimeout(()=>{resizeSG();RNAV_KNOBS.forEach(k=>drawKnobCanvas(k.id,k.val));},200);
+
+setTimeout(()=>{
+  resizeSG();
+  EQ_IDS.forEach(id=>drawKnob(id,EQ_VALS[id]||75));
+},200);
 </script>
 </body>
 </html>
