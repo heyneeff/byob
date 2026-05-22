@@ -412,7 +412,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 
 /* ── PLAYER CARD ── */
 .player-card{border:2px solid var(--teal);border-radius:12px;padding:16px 14px 14px;background:var(--surface2);margin-bottom:10px;position:relative;overflow:hidden;}
-.viz-wrap{width:100%;height:160px;border-radius:8px;overflow:hidden;position:relative;background:#000;cursor:pointer;}
+.viz-wrap{width:100%;height:160px;overflow:hidden;position:relative;background:#000;}
 #viz-canvas{display:block;width:100%;height:100%;}
 
 .play-btn{
@@ -681,13 +681,7 @@ audio{display:none;}
         <div class="progress-wrap" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
         <div class="time-row"><span id="time-cur">0:00</span><span id="time-dur">0:00</span></div>
         <div class="track-name-row" id="track-name">—</div>
-                <div class="cal-row">
-          <button class="cal-btn" onclick="nudge(-0.5)">«</button>
-          <button class="cal-btn" onclick="nudge(-0.1)">‹</button>
-          <span class="cal-label" id="cal-label">0 ms</span>
-          <button class="cal-btn" onclick="nudge(0.1)">›</button>
-          <button class="cal-btn" onclick="nudge(0.5)">»</button>
-        </div>
+             
         <div class="sync-status" id="sync-status"></div>
       </div>
 
@@ -2738,22 +2732,30 @@ function buildVisualizer() {
   // ── Audio analysis setup ──────────────────────────
   let analyser = null, freqData = null;
 
-  function connectAnalyser() {
-    if (analyser) return;
-    try {
-      const actx = getSfxCtx();
-      analyser = actx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.8;
-      freqData = new Uint8Array(analyser.frequencyBinCount);
-      // Connect audio element
-      const src = actx.createMediaElementSource(audio);
-      src.connect(analyser);
-      analyser.connect(actx.destination);
-    } catch(e) { analyser = null; }
+function connectAnalyser() {
+  if (analyser) return;
+  try {
+    const actx = getSfxCtx();
+    analyser = actx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    // Use cached source if already created
+    if (!window._audioSrc) {
+      window._audioSrc = actx.createMediaElementSource(audio);
+    }
+    window._audioSrc.connect(analyser);
+    analyser.connect(actx.destination);
+  } catch(e) {
+    console.warn('Analyser:', e.message);
+    analyser = null;
   }
+}
 
-  audio.addEventListener('playing', connectAnalyser, { once: true });
+ audio.addEventListener('playing', connectAnalyser, { once: true });
+// Also try immediately in case already playing
+if (!audio.paused) connectAnalyser();
+
 
   function getFreqBands() {
     if (!analyser) return { bass: 0, mid: 0, treble: 0 };
