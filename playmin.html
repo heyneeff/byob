@@ -59,7 +59,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 /* DECK */
 .deck-panel{flex:1;display:grid;grid-template-rows:1fr auto minmax(160px,30vh);overflow:hidden;}
 .deck-top{display:grid;grid-template-columns:1fr 118px 1fr;overflow:hidden;border-bottom:1px solid var(--rim);}
-.dhalf{display:flex;flex-direction:column;background:var(--card);overflow:hidden;}
+.dhalf{display:flex;flex-direction:column;background:var(--card);overflow:hidden;min-height:0;}
+.dhalf .deck-info-col{flex:1;min-height:0;overflow:hidden;}
+.dhalf .platter-col{flex-shrink:0;}
 .dhalf-b{flex-direction:column;}
 .dhalf:first-child{border-right:1px solid var(--rim);}.dhalf:last-child{border-left:1px solid var(--rim);}
 .platter-col{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px;background:var(--bg);border-top:1px solid var(--rim);flex-shrink:0;}
@@ -403,7 +405,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="content">
 
 <!-- SPATIAL -->
-<div class="panel active" id="panel-spatial">
+<div class="panel" id="panel-spatial">
 <div class="spatial-panel">
   <div class="sp-tools">
     <div class="sp-label">Mode</div>
@@ -604,7 +606,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 </div>
 
 <!-- SETUP -->
-<div class="panel" id="panel-setup">
+<div class="panel active" id="panel-setup">
 <div class="setup-panel">
   <div class="map-search-wrap">
     <div class="map-frame" style="position:relative;"><div id="map"></div><div class="btn-find-me" onclick="centerOnUser()" title="Find me">◎</div></div>
@@ -648,7 +650,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <!-- RIGHT NAV -->
 <div class="rightnav">
   <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
-    <button class="rnbtn active" data-panel="spatial" onclick="switchPanel('spatial',this)">🗺</button>
+    <button class="rnbtn" data-panel="spatial" onclick="switchPanel('spatial',this)">🗺</button>
     <div class="rnlabel">Spatial</div>
   </div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
@@ -661,7 +663,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   </div>
   <div class="rnsep"></div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
-    <button class="rnbtn" data-panel="setup" onclick="switchPanel('setup',this)">⚙️</button>
+    <button class="rnbtn active" data-panel="setup"
+ onclick="switchPanel('setup',this)">⚙️</button>
     <div class="rnlabel">Setup</div>
   </div>
   <div class="rnsep"></div>
@@ -1673,19 +1676,39 @@ function syncBPM(){
 function loadDeck(d,id){
   const t=TRACKS.find(t=>t.id===id);if(!t)return;
   if(d==='a'){
-    deckA={...deckA,track:t,bpm:t.bpm,playing:true};
+    deckA={...deckA,track:t,bpm:parseInt(t.bpm)||124,playing:true};
     document.getElementById('da-name').textContent=t.name;
     document.getElementById('da-artist').textContent=t.artist;
     document.getElementById('da-bpm').textContent=t.bpm;
     document.getElementById('da-play').textContent='⏸ PAUSE';
-    document.getElementById('tb-bpm').textContent=t.bpm;
-  } else {
-    deckB={...deckB,track:t,bpm:t.bpm,playing:true};
-    document.getElementById('db-name').textContent=t.name;
-    document.getElementById('db-artist').textContent=t.artist;
-    document.getElementById('db-bpm').textContent=t.bpm;
-    document.getElementById('db-play').textContent='⏸ PAUSE';
-  }
+    document.getElementById('btn-play').textContent='⏸';
+    document.getElementById('btn-play').classList.add('playing');
+    document.getElementById('track-name').textContent=t.name;
+    document.getElementById('tb-trackname').textContent=t.name;
+    if(t.bpm!=='—') document.getElementById('tb-bpm').textContent=t.bpm;
+    // Broadcast to listeners via Supabase
+    if(activeZone && t.url){
+      const startedAt=new Date().toISOString();
+      db.from('zones').update({
+        current_track_url:t.url,
+        track_name:t.name,
+        playback_started_at:startedAt,
+        play_at:Date.now()+1500,
+        play_from_s:0
+      }).eq('id',activeZone.id).then(()=>{
+        window._currentZone={playback_started_at:startedAt};
+        if(window._djSyncChannel){
+          setTimeout(()=>{
+            window._djSyncChannel.send({
+              type:'broadcast',event:'hard_sync',
+              payload:{resyncAt:Date.now()+1000,playback_started_at:startedAt,resetOffsets:false}
+            });
+          },1600);
+        }
+        showToast('📡 Broadcasting: '+t.name);
+      });
+    }
+
   buildLibs();
 }
 function startDrag(ev,id){dragging=id;ev.dataTransfer.setData('track-id',id);}
