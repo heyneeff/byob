@@ -1233,372 +1233,40 @@ async function killStream(){
   showToast('Stream killed 💀');
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//  SIGNAL ORGANISM — buildVisualizer() replacement for BYOB / playmin.html
-//  Drop this in place of the existing buildVisualizer() function.
-//
-//  Reads from globals already in playmin.html:
-//    analyser          — AnalyserNode (set by connectAnalyser())
-//    freqData          — Uint8Array(128)
-//    _isMuted          — bool
-//    _webAudioPlaying  — bool
-//
-//  The canvas is created inside #visualizer (id="viz-canvas") as before.
-//  The #visualizer div itself is NOT repositioned here — handle placement
-//  in CSS. Minimum recommended size: 240×240px. Square looks best.
-//  To show it, remove opacity:0 and set your width/height:
-//    #visualizer { width:300px; height:300px; opacity:1; border-radius:50%; }
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function buildVisualizer() {
-
-  // ── Canvas Setup ─────────────────────────────────────────────────────────────
-  const container = document.getElementById('visualizer');
-
-  let cv = document.getElementById('viz-canvas');
-  if (!cv) {
-    cv = document.createElement('canvas');
-    cv.id = 'viz-canvas';
-    container.appendChild(cv);
-  }
-
-  const RES = 512;                          // internal render resolution
-  cv.width  = cv.height = RES;
-  cv.style.cssText = 'width:100%;height:100%;display:block;image-rendering:pixelated;';
-
-  const ctx = cv.getContext('2d', { alpha: false });
-
-  // ── Grid ─────────────────────────────────────────────────────────────────────
-  const G  = 80;                            // cells per side  (80×80 = 6400 cells)
-  const CS = RES / G;                       // cell size ≈ 6.4px — Codeology scale
-
-  // Triple-buffer diffusion — no per-frame allocation, no GC pressure
-  const _A = new Float32Array(G * G);
-  const _B = new Float32Array(G * G);
-  const _C = new Float32Array(G * G);
-  let cur = _A, prv = _B, nxt = _C;
-
-  // Separate wave field for water-displacement on top of diffusion
-  const _WA = new Float32Array(G * G);
-  const _WB = new Float32Array(G * G);
-  const _WC = new Float32Array(G * G);
-  let wcur = _WA, wprv = _WB, wnxt = _WC;
-
-  // Per-cell color index (0–4, indexed into PALETTE)
-  const colr = new Uint8Array(G * G);
-
-  // ── Simulation Constants ──────────────────────────────────────────────────────
-  const DIFFUSE   = 0.18;   // fraction of neighbor energy absorbed each tick
-  const DECAY     = 0.963;  // energy decay per tick (tune: higher = longer trails)
-  const WAVE_SPD  = 0.42;   // wave propagation speed (0.45 is stability ceiling)
-  const WAVE_DMP  = 0.938;  // wave field damping
-  const ALIVE_THR = 0.07;   // below this energy, cell is invisible
-
-  // ── Palette ────────────────────────────────────────────────────────────────
-  // Band → color: red=bass, yellow=lo-mid, green=mid, blue=hi-mid, white=high
-  const PALETTE = [
-    { fill: '#ff2200', stroke: '#cc1500', dot: '#3a0700' }, // 0 bass
-    { fill: '#ffd000', stroke: '#ccaa00', dot: '#3f3000' }, // 1 lo-mid
-    { fill: '#00cc44', stroke: '#009933', dot: '#003314' }, // 2 mid
-    { fill: '#0088ff', stroke: '#0066cc', dot: '#001840' }, // 3 hi-mid
-    { fill: '#ccccff', stroke: '#9999cc', dot: '#24243a' }, // 4 high
-  ];
-
-  // ── Pre-baked Background Dot Field ─────────────────────────────────────────
-  // Rendered once → drawImage() each frame instead of scatter-filling 2000 rects
-  const bgCv = document.createElement('canvas');
-  bgCv.width = bgCv.height = RES;
-  const bgCtx = bgCv.getContext('2d');
-  bgCtx.fillStyle = '#00000a';
-  bgCtx.fillRect(0, 0, RES, RES);
-  // Scatter tiny ambient dots — the Codeology "dark field"
-  bgCtx.fillStyle = 'rgba(70,70,100,0.75)';
-  for (let i = 0; i < 2400; i++) {
-    bgCtx.fillRect(Math.random() * RES | 0, Math.random() * RES | 0, 1, 1);
-  }
-
-  // ── Geometry ───────────────────────────────────────────────────────────────
-  const cx     = RES * 0.5;
-  const cy     = RES * 0.5;
-  const RADIUS = RES * 0.46;   // circular clip radius
-
-  // ── Torsion State ──────────────────────────────────────────────────────────
-  let torsion  = 0;   // accumulated rotation angle (radians)
-  let torsionV = 0;   // angular velocity — driven by audio energy
-
-  // ── Helpers ────────────────────────────────────────────────────────────────
-  function ij(x, y) { return y * G + x; }
-
-  // ── Audio Bands ─────────────────────────────────────────────────────────────
-  // fftSize=256 → 128 bins at ~44.1 kHz, bin width ≈ 172 Hz
-  // Segments chosen for musical relevance (not linear)
-  const BAND_SEGS = [[0,2],[3,8],[9,22],[23,48],[49,88]];
-
-  function getBands() {
-    if (!analyser || !freqData) return [0, 0, 0, 0, 0];
-    analyser.getByteFrequencyData(freqData);
-    return BAND_SEGS.map(([a, b]) => {
-      let s = 0;
-      for (let i = a; i <= b; i++) s += freqData[i];
-      return s / ((b - a + 1) * 255);
-    });
-  }
-
-  // ── Seed ──────────────────────────────────────────────────────────────────
-  // Lower bands seed close to center (tight bass cluster).
-  // Higher bands scatter outward (treble spray at periphery).
-  const SEED_RADIUS = [5, 8, 13, 19, 26];   // cells from center per band
-  const SEED_COUNT  = [10, 9, 8, 7, 6];     // max seeds per tick per band
-
-  function seedGrid(bands) {
-    const half = G >> 1;
-    for (let b = 0; b < 5; b++) {
-      const lv = bands[b];
-      if (lv < 0.04) continue;
-
-      const n = Math.ceil(lv * SEED_COUNT[b]);
-      for (let s = 0; s < n; s++) {
-        const ang = Math.random() * Math.PI * 2;
-        const r   = Math.random() * SEED_RADIUS[b];
-        const gx  = (half + Math.cos(ang) * r + 0.5) | 0;
-        const gy  = (half + Math.sin(ang) * r + 0.5) | 0;
-        if (gx < 1 || gx >= G - 1 || gy < 1 || gy >= G - 1) continue;
-
-        const ii = ij(gx, gy);
-        cur[ii]  = Math.min(1.0, cur[ii] + lv * 2.0);
-        colr[ii] = b;
-
-        // Strong spikes inject a wave pulse (creates "hit" ripple effect)
-        if (lv > 0.52) {
-          wcur[ii] = Math.min(1.0, wcur[ii] + lv * 0.65);
-        }
+function buildVisualizer(){
+  const wrap=document.getElementById('visualizer');
+  if(!wrap)return;
+  wrap.innerHTML='';
+  const cv=document.createElement('canvas');
+  cv.id='viz-canvas';cv.style.cssText='width:100%;height:100%;cursor:pointer;';
+  // fullscreen removed
+  wrap.appendChild(cv);
+  const ctx=cv.getContext('2d');
+  let analyser=null,freqData=null;
+  function connectAnalyser(){
+    if(analyser)return;
+    // Don't use createMediaElementSource — it silently kills audio output
+    // if AudioContext is suspended. Use AnalyserNode via stream capture instead.
+    try{
+      const actx=getSfxCtx();
+      if(actx.state==='suspended') actx.resume().catch(()=>{});
+      analyser=actx.createAnalyser();
+      analyser.fftSize=256;
+      analyser.smoothingTimeConstant=0.8;
+      freqData=new Uint8Array(analyser.frequencyBinCount);
+      // Capture audio element output WITHOUT disconnecting it from speakers
+      if(audio.captureStream){
+        const stream=audio.captureStream();
+        const src=actx.createMediaStreamSource(stream);
+        src.connect(analyser);
+        // analyser does NOT connect to destination — audio plays natively to speakers
       }
+      // Fallback: analyser will show zeros but audio still plays
+    }catch(e){
+      analyser=null;
+      console.warn('[Viz] analyser skipped:',e.message);
     }
   }
-
-  // ── Idle Seed ─────────────────────────────────────────────────────────────
-  // When no audio: slow rotating five-petal pattern so the organism breathes
-  function seedIdle(frame) {
-    if ((frame & 0x1F) !== 0) return;   // every 32 frames ≈ 0.5s at 60fps
-    const ang = (frame / 300) * Math.PI * 2;
-    const half = G >> 1;
-    for (let b = 0; b < 5; b++) {
-      const a  = ang + b * 1.2566;     // 2π/5
-      const r  = 5 + b * 2.5;
-      const gx = (half + Math.cos(a) * r + 0.5) | 0;
-      const gy = (half + Math.sin(a) * r + 0.5) | 0;
-      if (gx < 1 || gx >= G - 1 || gy < 1 || gy >= G - 1) continue;
-      const ii = ij(gx, gy);
-      cur[ii]  = Math.max(cur[ii], 0.32);
-      colr[ii] = b;
-    }
-  }
-
-  // ── Diffusion Step ────────────────────────────────────────────────────────
-  // Positive-only energy spreading — no oscillation, just growth and decay.
-  // Color propagates from high-energy cells into newly born cells.
-  function stepDiffusion() {
-    for (let y = 1; y < G - 1; y++) {
-      for (let x = 1; x < G - 1; x++) {
-        const i = ij(x, y);
-        const neighborSum =
-          cur[ij(x-1,y)] + cur[ij(x+1,y)] +
-          cur[ij(x,y-1)] + cur[ij(x,y+1)];
-
-        nxt[i] = (cur[i] + neighborSum * DIFFUSE) * DECAY;
-        if (nxt[i] < 0) nxt[i] = 0;
-
-        // Newborn cell (just crossed alive threshold) inherits dominant neighbor color
-        if (nxt[i] > 0.12 && cur[i] < 0.07) {
-          let bestE = -1, bestC = colr[i];
-          const n0 = ij(x-1,y), n1 = ij(x+1,y), n2 = ij(x,y-1), n3 = ij(x,y+1);
-          if (cur[n0] > bestE) { bestE = cur[n0]; bestC = colr[n0]; }
-          if (cur[n1] > bestE) { bestE = cur[n1]; bestC = colr[n1]; }
-          if (cur[n2] > bestE) { bestE = cur[n2]; bestC = colr[n2]; }
-          if (cur[n3] > bestE) { bestE = cur[n3]; bestC = colr[n3]; }
-          colr[i] = bestC;
-        }
-      }
-    }
-    // Rotate triple buffer — no allocation
-    const tmp = prv; prv = cur; cur = nxt; nxt = tmp;
-  }
-
-  // ── Wave Step ─────────────────────────────────────────────────────────────
-  // Standard 2D wave equation: creates the water-ripple displacement field.
-  // Injected by audio spikes via seedGrid(); propagates and damps on its own.
-  function stepWave() {
-    for (let y = 1; y < G - 1; y++) {
-      for (let x = 1; x < G - 1; x++) {
-        const i   = ij(x, y);
-        const lap = wcur[ij(x-1,y)] + wcur[ij(x+1,y)] +
-                    wcur[ij(x,y-1)] + wcur[ij(x,y+1)] - 4 * wcur[i];
-        wnxt[i] = (2 * wcur[i] - wprv[i] + WAVE_SPD * lap) * WAVE_DMP;
-        if (wnxt[i] >  1) wnxt[i] =  1;
-        if (wnxt[i] < -1) wnxt[i] = -1;
-      }
-    }
-    const tmp = wprv; wprv = wcur; wcur = wnxt; wnxt = tmp;
-  }
-
-  // ── Render ────────────────────────────────────────────────────────────────
-  function render(bands) {
-
-    // Static dot field (zero per-frame overdraw)
-    ctx.drawImage(bgCv, 0, 0);
-
-    // Drive torsion from overall audio energy
-    const avgE = (bands[0]+bands[1]+bands[2]+bands[3]+bands[4]) * 0.2;
-    torsionV  += (avgE * 0.007 - torsionV) * 0.10;
-    torsion   += torsionV;
-
-    // Clip to circle for the "Codeology medallion" shape
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(cx, cy, RADIUS, 0, Math.PI * 2);
-    ctx.clip();
-
-    for (let y = 0; y < G; y++) {
-      for (let x = 0; x < G; x++) {
-        const ii = ij(x, y);
-        const e  = cur[ii];
-        if (e < ALIVE_THR) continue;
-
-        // Cell center in canvas space
-        const px = x * CS + CS * 0.5;
-        const py = y * CS + CS * 0.5;
-
-        // Water displacement: wave field nudges the render position radially
-        const wDisp = wcur[ii] * CS * 0.55;
-
-        // Torsion: twist angle scales with distance from center
-        const dx   = px - cx;
-        const dy   = py - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const ta   = torsion * (dist / RADIUS);
-        const cosT = Math.cos(ta);
-        const sinT = Math.sin(ta);
-
-        const ddx  = dx + wDisp;
-        const ddy  = dy + wDisp;
-        const rx   = cx + ddx * cosT - ddy * sinT;
-        const ry   = cy + ddx * sinT + ddy * cosT;
-
-        const pal   = PALETTE[colr[ii]];
-        const alpha = Math.min(1, e * 1.9);
-        ctx.globalAlpha = alpha;
-
-        // Cell size proportional to energy — snaps near CS for dense clusters
-        const sz = Math.max(2, CS * Math.min(0.88, e * 1.15));
-        const h  = sz * 0.5;
-
-        if (e > 0.58) {
-          // ■ Filled square — cluster core
-          ctx.fillStyle = pal.fill;
-          ctx.fillRect(rx - h, ry - h, sz, sz);
-
-        } else if (e > 0.26) {
-          // □ Outlined square — cluster fringe
-          ctx.strokeStyle = pal.stroke;
-          ctx.lineWidth = 0.7;
-          ctx.strokeRect(rx - h, ry - h, sz, sz);
-
-        } else {
-          // · Dot — ambient ghost / decay trail
-          ctx.fillStyle = pal.dot;
-          ctx.fillRect(rx - 1, ry - 1, 2, 2);
-        }
-
-        // ─ Circuit connector lines between adjacent high-energy same-color cells
-        if (e > 0.58) {
-          ctx.lineWidth = 0.55;
-          ctx.globalAlpha = alpha * 0.38;
-
-          const drawConnector = (nx, ny) => {
-            const ni = ij(nx, ny);
-            if (cur[ni] <= 0.58 || colr[ni] !== colr[ii]) return;
-
-            const px2  = nx * CS + CS * 0.5;
-            const py2  = ny * CS + CS * 0.5;
-            const dx2  = px2 - cx;
-            const dy2  = py2 - cy;
-            const d2   = Math.sqrt(dx2 * dx2 + dy2 * dy2);
-            const ta2  = torsion * (d2 / RADIUS);
-            const wD2  = wcur[ni] * CS * 0.55;
-            const ddx2 = dx2 + wD2;
-            const ddy2 = dy2 + wD2;
-            const rx2  = cx + ddx2 * Math.cos(ta2) - ddy2 * Math.sin(ta2);
-            const ry2  = cy + ddx2 * Math.sin(ta2) + ddy2 * Math.cos(ta2);
-
-            ctx.strokeStyle = pal.fill;
-            ctx.beginPath();
-            ctx.moveTo(rx, ry);
-            ctx.lineTo(rx2, ry2);
-            ctx.stroke();
-          };
-
-          if (x < G - 1) drawConnector(x + 1, y);
-          if (y < G - 1) drawConnector(x,     y + 1);
-        }
-      }
-    }
-
-    ctx.restore();
-    ctx.globalAlpha = 1;
-  }
-
-  // ── Main Loop ─────────────────────────────────────────────────────────────
-  let frame = 0;
-
-  function loop() {
-    frame++;
-    const bands = getBands();
-
-    if (!_isMuted && _webAudioPlaying) {
-      seedGrid(bands);
-    } else {
-      seedIdle(frame);
-    }
-
-    stepDiffusion();
-    stepWave();
-    render(bands);
-
-    window._vizRafId = requestAnimationFrame(loop);
-  }
-
-  // Kill any pre-existing loop before starting
-  if (window._vizRafId) {
-    cancelAnimationFrame(window._vizRafId);
-    window._vizRafId = null;
-  }
-
-  loop();
-
-  // Return a teardown function (optional — call if you ever remove the element)
-  return function destroy() {
-    if (window._vizRafId) {
-      cancelAnimationFrame(window._vizRafId);
-      window._vizRafId = null;
-    }
-  };
-}
-
-// ── CSS note ───────────────────────────────────────────────────────────────────
-// To make the visualizer visible, update #visualizer in your stylesheet:
-//
-//  #visualizer{
-  position:absolute;
-  width:220px;height:220px;
-  opacity:1;
-  pointer-events:none;
-  overflow:hidden;
-  border-radius:50%;
-  bottom:8px;right:8px;
-  z-index:10;
-  box-shadow:0 0 40px rgba(0,0,0,.8);
-}
-
 
   // Resume AudioContext on first user gesture (iOS requirement)
   document.addEventListener('touchstart',()=>{
@@ -1902,10 +1570,6 @@ function fmt(s){if(!s||isNaN(s))return'0:00';const m=Math.floor(s/60),sec=Math.f
 let _sfxCtx=null;
 function getSfxCtx(){if(!_sfxCtx)_sfxCtx=new AudioContext();return _sfxCtx;}
 let _webAudioPlaying=false,_isMuted=false;
-audio.addEventListener('playing',()=>{_webAudioPlaying=true;});
-audio.addEventListener('pause',()=>{_webAudioPlaying=false;});
-audio.addEventListener('ended',()=>{_webAudioPlaying=false;});
-
 
 // openGrid / closeGrid
 function openGrid(){
