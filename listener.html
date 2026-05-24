@@ -1538,7 +1538,7 @@ let _babbleUrls = null;
 
 function playBabble() {
   try {
-    const ctx = getSfxCtx ? getSfxCtx() : (window._sfxCtx = window._sfxCtx || new AudioContext());
+    const ctx = typeof getSfxCtx === 'function' ? getSfxCtx() : (window._sfxCtx = window._sfxCtx || new AudioContext());
     if (ctx.state === 'suspended') ctx.resume();
     const buf = ctx.createBuffer(1, ctx.sampleRate * 0.055, ctx.sampleRate);
     const data = buf.getChannelData(0);
