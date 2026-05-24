@@ -1011,7 +1011,8 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
       const playAt=Date.now()+bufferMs;
       const playFromS=audio.currentTime+(bufferMs/1000);
       const startedAt=playbackStartedAt||new Date().toISOString();
-      await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_started_at:startedAt,play_at:playAt,play_from_s:playFromS}).eq('id',activeZone.id);
+      await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_started_at:startedAt,play_at:playAt,play_from_s:playFromS,active:true}).eq('id',activeZone.id);
+window._lastPublicUrl = urlData.publicUrl;
       window._currentZone={playback_started_at:startedAt};
     }
     statusEl.textContent='● live';statusEl.style.color='var(--teal)';
@@ -1115,15 +1116,31 @@ async function toggleLive(){
     return;
   }
   if(!activeZone){showToast('Create a zone first');return;}
-  if(audio.src&&audio.src!==''&&!liveStream){
+ if(audio.src&&audio.src!==''&&!liveStream){
     btn.classList.add('active');btn.textContent='■ Stop Live';
     if(btnLive){btnLive.classList.add('active');btnLive.textContent='■ Live';}
     document.getElementById('track-name').textContent='📡 LIVE — '+activeZone.name;
     audio.play().catch(()=>{});
-    await db.from('zones').update({current_track_url:audio.src,track_name:document.getElementById('track-name').textContent,playback_started_at:new Date().toISOString(),active:true}).eq('id',activeZone.id);
+    const publicUrl = window._lastPublicUrl || audio.src;
+    const startedAt = new Date(Date.now()-audio.currentTime*1000).toISOString();
+    await db.from('zones').update({
+      current_track_url: publicUrl,
+      track_name: document.getElementById('track-name').textContent,
+      playback_started_at: startedAt,
+      play_at: Date.now()+1500,
+      play_from_s: audio.currentTime,
+      active: true
+    }).eq('id',activeZone.id);
+    if(window._djSyncChannel){
+      setTimeout(()=>window._djSyncChannel.send({
+        type:'broadcast',event:'hard_sync',
+        payload:{resyncAt:Date.now()+1000,playback_started_at:startedAt,resetOffsets:false}
+      }),1600);
+    }
     showToast('Broadcasting track ⚡');
     return;
   }
+
   if(!liveStream){showToast('Choose an audio source first ↑');return;}
   const deviceId=document.getElementById('device-select').value;
   const constraints={audio:deviceId?{deviceId:{exact:deviceId},echoCancellation:false,noiseSuppression:false,sampleRate:48000}:{echoCancellation:false,noiseSuppression:false}};
@@ -1752,7 +1769,7 @@ function syncBPM(){
   deckB.bpm=deckA.bpm;document.getElementById('db-bpm').textContent=deckA.bpm;
 }
 function loadDeck(d,id){
-  const t=TRACKS.find(t=>t.id===id);if(!t)return;
+  const t=(_realTracks||[]).find(t=>t.id===id)||TRACKS.find(t=>t.id===id);if(!t)return;
   if(d==='a'){
     deckA={...deckA,track:t,bpm:t.bpm,playing:true};
     document.getElementById('da-name').textContent=t.name;
@@ -1764,8 +1781,33 @@ function loadDeck(d,id){
     document.getElementById('tb-trackname').textContent=t.name;
     document.getElementById('btn-play').textContent='⏸';
     document.getElementById('btn-play').classList.add('playing');
-    if(t.url){audio.src=t.url;audio.loop=true;audio.play().catch(()=>{});isPlaying=true;}
+    if(t.url){
+      audio.src=t.url;audio.loop=true;audio.play().catch(()=>{});isPlaying=true;
+      window._lastPublicUrl=t.url;
+      // Auto-broadcast to listeners if zone is active
+      if(activeZone){
+        const startedAt=new Date().toISOString();
+        const playAt=Date.now()+1500;
+        db.from('zones').update({
+          current_track_url:t.url,
+          track_name:t.name,
+          playback_started_at:startedAt,
+          play_at:playAt,
+          play_from_s:0,
+          active:true
+        }).eq('id',activeZone.id).then(()=>{
+          if(window._djSyncChannel){
+            setTimeout(()=>window._djSyncChannel.send({
+              type:'broadcast',event:'hard_sync',
+              payload:{resyncAt:Date.now()+1000,playback_started_at:startedAt,resetOffsets:false}
+            }),1600);
+          }
+          showToast('📡 Broadcasting: '+t.name);
+        });
+      }
+    }
   } else {
+
     deckB={...deckB,track:t,bpm:t.bpm,playing:true};
     document.getElementById('db-name').textContent=t.name;
     document.getElementById('db-artist').textContent=t.artist;
