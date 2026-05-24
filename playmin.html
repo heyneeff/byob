@@ -454,7 +454,17 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button class="sact sact-scatter" onclick="scatterSpeakers()">♪ SCATTER</button>
       <button class="sact sact-snap" onclick="snapSpeakers()">⚡ SNAP</button>
       <button onclick="triggerResync()" style="padding:9px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">🔄 Sync All Speakers</button>
-      <button onclick="openGrid()" style="padding:9px;background:#111;color:var(--orange);border:1px solid var(--orange);border-radius:9px;font-family:'Roboto Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">🗺 Spatial Grid</button>
+            <button onclick="openGrid()" style="padding:9px;background:#111;color:var(--orange);border:1px solid var(--orange);border-radius:9px;font-family:'Roboto Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">🗺 Spatial Grid</button>
+
+    <div class="sp-label" style="margin-top:6px;">Circular Sweep</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+      <button onclick="startCircularSweep(2,1)"  style="padding:8px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↻ 2 RPM</button>
+      <button onclick="startCircularSweep(4,1)"  style="padding:8px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↻ 4 RPM</button>
+      <button onclick="startCircularSweep(8,1)"  style="padding:8px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↻ 8 RPM</button>
+      <button onclick="startCircularSweep(4,-1)" style="padding:8px;background:var(--card2);color:var(--orange);border:1px solid var(--orange);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↺ Reverse</button>
+    </div>
+    <button onclick="stopCircularSweep()" style="width:100%;padding:8px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">◼ Stop Sweep</button>
+
     </div>
   </div>
   <div class="sp-radar"><canvas id="sg" ontouchstart="onSGTouch(event)" onmousedown="onSGMouse(event)" ondragover="event.preventDefault()" ondrop="onSGDrop(event)"></canvas></div>
@@ -1467,10 +1477,94 @@ function muteZone(event,zone){event.stopPropagation();showToast('Zone '+zone+' m
 async function broadcastAllZones(){
   if(!activeZone){showToast('Create a zone first');return;}
   if(!Object.keys(zoneTracks).length){showToast('Assign tracks to zones first');return;}
-  const payload={};Object.entries(zoneTracks).forEach(([z,t])=>{payload[z]=t.url;});
-  await db.from('zones').update({zone_tracks:payload,playback_started_at:new Date().toISOString(),active:true}).eq('id',activeZone.id);
-  if(zoneTracks['C'])await db.from('zones').update({current_track_url:zoneTracks['C'].url,track_name:zoneTracks['C'].name}).eq('id',activeZone.id);
-  showToast('⚡ All zones broadcasting');
+
+  const startedAt = new Date().toISOString();
+  const payload={};
+  Object.entries(zoneTracks).forEach(([z,t])=>{payload[z]=t.url;});
+
+  // Save to Supabase — listeners read zone_tracks + their slot assignment
+  await db.from('zones').update({
+    zone_tracks: payload,
+    playback_started_at: startedAt,
+    active: true
+  }).eq('id', activeZone.id);
+
+  // Center track = fallback for listeners without a slot
+  if(zoneTracks['C']) await db.from('zones').update({
+    current_track_url: zoneTracks['C'].url,
+    track_name: zoneTracks['C'].name
+  }).eq('id', activeZone.id);
+
+  // Broadcast spatial config to all listeners via realtime
+  if(window._djSyncChannel){
+    window._djSyncChannel.send({
+      type:'broadcast', event:'spatial_config',
+      payload:{
+        zone_tracks: payload,
+        playback_started_at: startedAt,
+        voices: parseInt(document.getElementById('scatter-voices')?.value||4),
+        zone_lat: activeZone.lat,
+        zone_lng: activeZone.lng,
+        zone_radius_m: activeZone.radius_m
+      }
+    });
+  }
+  showToast('⚡ Spatial broadcast — '+Object.keys(payload).length+' slots');
+}
+
+// ── CIRCULAR SWEEP ────────────────────────────────────────
+// DJ drags finger on radar to set sweep direction + speed
+let _sweepActive = false;
+let _sweepAngle  = 0;   // current beam angle degrees
+let _sweepRpm    = 4;   // rotations per minute
+let _sweepDir    = 1;   // 1=clockwise, -1=counter
+let _sweepRaf    = null;
+
+function startCircularSweep(rpm=4, dir=1){
+  _sweepActive = true;
+  _sweepRpm    = rpm;
+  _sweepDir    = dir;
+  _sweepAngle  = 0;
+
+  if(!window._djSyncChannel){showToast('No active zone');return;}
+
+  // Broadcast sweep start — listeners self-calculate their delay
+  const startedAt = activeZone?.playback_started_at;
+  window._djSyncChannel.send({
+    type:'broadcast', event:'sweep_start',
+    payload:{
+      startAngle: 0,
+      rpm,
+      dir,
+      startedAt: new Date().toISOString(),
+      playback_started_at: startedAt
+    }
+  });
+
+  // Animate beam on DJ radar
+  let last = performance.now();
+  function tick(now){
+    if(!_sweepActive){ drawSG(); return; }
+    const dt = (now - last) / 1000;
+    last = now;
+    _sweepAngle = (_sweepAngle + _sweepDir * (rpm/60) * 360 * dt + 360) % 360;
+    drawSG();
+    _sweepRaf = requestAnimationFrame(tick);
+  }
+  if(_sweepRaf) cancelAnimationFrame(_sweepRaf);
+  _sweepRaf = requestAnimationFrame(tick);
+  showToast('◎ Sweep: '+rpm+' RPM '+(dir>0?'↻':'↺'));
+}
+
+function stopCircularSweep(){
+  _sweepActive = false;
+  if(_sweepRaf){ cancelAnimationFrame(_sweepRaf); _sweepRaf=null; }
+  if(window._djSyncChannel){
+    window._djSyncChannel.send({
+      type:'broadcast', event:'sweep_stop', payload:{}
+    });
+  }
+  showToast('◎ Sweep stopped');
 }
 
 // ── EVENTS ────────────────────────────────────────────────
