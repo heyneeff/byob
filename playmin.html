@@ -1697,9 +1697,8 @@ function switchPanel(name,btn){
   document.querySelectorAll('.rnbtn').forEach(b=>b.classList.remove('active'));
   (btn||document.querySelector('[data-panel="'+name+'"]'))?.classList.add('active');
   window.scrollTo(0,0);
-  if(name==='setup'){
+   if(name==='setup'){
     if(!window._mapInited && currentUser){
-      // Lazy init: first time setup is shown
       window._mapInited=true;
       setTimeout(()=>{
         initMap(DENVER[0],DENVER[1]);
@@ -1707,11 +1706,11 @@ function switchPanel(name,btn){
         loadEvents().catch(()=>{});
       },120);
     } else if(window.leafletMap){
-      // Already inited — just refresh tile layout
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
   if(name==='spatial') initOrchestra();
+
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
 }
 
