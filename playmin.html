@@ -1684,7 +1684,11 @@ function loadDeck(d,id){
     document.getElementById('da-artist').textContent=t.artist;
     document.getElementById('da-bpm').textContent=t.bpm;
     document.getElementById('da-play').textContent='⏸ PAUSE';
-        document.getElementById('tb-bpm').textContent=t.bpm;
+            document.getElementById('tb-bpm').textContent=t.bpm;
+    document.getElementById('track-name').textContent=t.name;
+    if(t.url){audio.src=t.url;audio.loop=true;audio.play().catch(()=>{});}
+  } else {
+
     document.getElementById('btn-play').textContent='⏸';
     document.getElementById('btn-play').classList.add('playing');
     document.getElementById('track-name').textContent=t.name;
