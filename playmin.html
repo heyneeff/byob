@@ -651,11 +651,9 @@ window.addEventListener('DOMContentLoaded', async()=>{
     const {data:{session}}=await db.auth.getSession();
     if(session){
       currentUser=session.user;
-      window._mapInited=true;
+      window._mapInited=false;  // will lazy-init on first Setup panel visit
       document.getElementById('dj-auth').style.display='none';
       document.getElementById('dj-app').style.display='block';
-      initMap(DENVER[0],DENVER[1]);
-      loadZones();
       loadDemoMode();
     }
   } catch(e) {}
@@ -677,7 +675,9 @@ async function handleDJAuth(){
     currentUser=data.user||data.session?.user;
     document.getElementById('dj-auth').style.display='none';
     document.getElementById('dj-app').style.display='block';
-    if(!window._mapInited){window._mapInited=true;initMap(DENVER[0],DENVER[1]);loadZones();loadDemoMode();}
+    window._mapInited=false;  // lazy-init on setup panel
+    loadDemoMode();
+    loadEvents().catch(()=>{});
     setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
     showToast('Welcome DJ '+currentUser.email.split('@')[0]+' 🎛️');
   } catch(e) {
@@ -851,6 +851,7 @@ async function confirmZone(){
     document.getElementById('btn-create-zone').textContent='✓ '+name;
     document.getElementById('btn-create-zone').classList.add('has-zone');
     startListenerTracking(data.id);
+    startDJPresenceBroadcast(data);
     showToast('Zone "'+name+'" created 📡');
   }catch(err){showToast('Error: '+err.message,true);console.error(err);}
 }
@@ -869,7 +870,7 @@ async function loadZones(){
   data.forEach(z=>{
     if(zoneCircles[z.id])return;
     zoneCircles[z.id]=L.circle([z.lat,z.lng],{radius:z.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.06,weight:1.5}).addTo(leafletMap);
-    if(!activeZone){activeZone=z;document.getElementById('btn-create-zone').textContent='✓ '+z.name;document.getElementById('btn-create-zone').classList.add('has-zone');startListenerTracking(z.id);}
+    if(!activeZone){activeZone=z;document.getElementById('btn-create-zone').textContent='✓ '+z.name;document.getElementById('btn-create-zone').classList.add('has-zone');startListenerTracking(z.id);startDJPresenceBroadcast(z);}
   });
 }
 
@@ -932,6 +933,16 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     }
     statusEl.textContent='● live';statusEl.style.color='var(--teal)';
     showToast('Broadcasting 📡');
+    // Immediately hard-sync all subscribed listeners
+    if(window._djSyncChannel && audio.duration){
+      const freshAt=new Date(Date.now()-audio.currentTime*1000).toISOString();
+      setTimeout(()=>{
+        window._djSyncChannel.send({
+          type:'broadcast',event:'hard_sync',
+          payload:{resyncAt:Date.now()+1000,playback_started_at:freshAt,resetOffsets:false}
+        });
+      },1500);
+    }
     if(window._autoResyncInterval)clearInterval(window._autoResyncInterval);
     window._autoResyncInterval=setInterval(()=>{
       if(activeZone&&audio.src&&!audio.paused&&!liveStream){triggerResync();}
@@ -1152,6 +1163,8 @@ async function killStream(){
   document.getElementById('stat-approaching').textContent='0';
   document.getElementById('stat-speakers').textContent='0';
   document.getElementById('guest-list').innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
+  if (_djPresenceInterval) { clearInterval(_djPresenceInterval); _djPresenceInterval=null; }
+  if (window._djPresenceChannel) { window._djPresenceChannel.unsubscribe(); window._djPresenceChannel=null; }
   showToast('Stream killed 💀');
 }
 
@@ -1173,8 +1186,22 @@ function buildVisualizer(){
       freqData=new Uint8Array(analyser.frequencyBinCount);
       const src=actx.createMediaElementSource(audio);
       src.connect(analyser);analyser.connect(actx.destination);
-    }catch(e){analyser=null;}
+      // Resume if suspended (iOS / strict autoplay policy)
+      if(actx.state==='suspended') actx.resume().catch(()=>{});
+    }catch(e){
+      analyser=null;
+      console.warn('[Viz] AudioContext connect failed:',e.message,'— audio still plays natively');
+    }
   }
+  // Resume AudioContext on first user gesture (iOS requirement)
+  document.addEventListener('touchstart',()=>{
+    const actx=_sfxCtx;
+    if(actx&&actx.state==='suspended')actx.resume().catch(()=>{});
+  },{once:true,passive:true});
+  document.addEventListener('click',()=>{
+    const actx=_sfxCtx;
+    if(actx&&actx.state==='suspended')actx.resume().catch(()=>{});
+  },{once:true});
   audio.addEventListener('playing',connectAnalyser,{once:true});
   function getFreqBands(){
     if(!analyser)return{bass:0,mid:0,treble:0};
@@ -1430,6 +1457,42 @@ function showToast(msg,isError=false){
   t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),isError?5000:3000);
 }
 
+// ── DJ PRESENCE BROADCAST ────────────────────────────────
+// Broadcast DJ position on presence channel so listeners know zone is active
+// and can compute their own geofence status
+let _djPresenceInterval = null;
+function startDJPresenceBroadcast(zone) {
+  if (_djPresenceInterval) clearInterval(_djPresenceInterval);
+  const presenceCh = db.channel('presence_' + zone.id);
+  presenceCh.subscribe(status => {
+    if (status !== 'SUBSCRIBED') return;
+    function broadcast() {
+      if (!currentUser) return;
+      const lat = userLat || zone.lat;
+      const lng = userLng || zone.lng;
+      // Compute dist from zone center in miles
+      const dist = lat && zone.lat
+        ? Math.sqrt(Math.pow((lat-zone.lat)*69,2)+Math.pow((lng-zone.lng)*69*Math.cos(zone.lat*Math.PI/180),2))
+        : 0;
+      presenceCh.send({
+        type: 'broadcast', event: 'proximity',
+        payload: {
+          id:      currentUser.id,
+          name:    'DJ ★ ' + (currentUser.email?.split('@')[0] || 'Host'),
+          emoji:   '🎛️',
+          dist,
+          bearing: 0,
+          phone:   '',
+          isDJ:    true
+        }
+      });
+    }
+    broadcast();
+    _djPresenceInterval = setInterval(broadcast, 8000);
+  });
+  window._djPresenceChannel = presenceCh;
+}
+
 // =========================================================
 //  BRIDGE — play.html wiring (overrides / additions)
 // =========================================================
@@ -1467,11 +1530,21 @@ function switchPanel(name,btn){
   document.querySelectorAll('.rnbtn').forEach(b=>b.classList.remove('active'));
   (btn||document.querySelector('[data-panel="'+name+'"]'))?.classList.add('active');
   window.scrollTo(0,0);
-  // Leaflet needs size hint when setup panel becomes visible
-  if(name==='setup'&&window.leafletMap)setTimeout(()=>leafletMap.invalidateSize(),100);
-  // Resize radar canvas
+  if(name==='setup'){
+    if(!window._mapInited && currentUser){
+      // Lazy init: first time setup is shown
+      window._mapInited=true;
+      setTimeout(()=>{
+        initMap(DENVER[0],DENVER[1]);
+        loadZones();
+        loadEvents().catch(()=>{});
+      },120);
+    } else if(window.leafletMap){
+      // Already inited — just refresh tile layout
+      [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
+    }
+  }
   if(name==='spatial')setTimeout(resizeSG,60);
-  // Resize visualizer canvas
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
 }
 
