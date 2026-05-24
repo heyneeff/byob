@@ -1684,37 +1684,12 @@ function loadDeck(d,id){
     document.getElementById('da-artist').textContent=t.artist;
     document.getElementById('da-bpm').textContent=t.bpm;
     document.getElementById('da-play').textContent='⏸ PAUSE';
-            document.getElementById('tb-bpm').textContent=t.bpm;
-    document.getElementById('track-name').textContent=t.name;
-    if(t.url){audio.src=t.url;audio.loop=true;audio.play().catch(()=>{});}
-  } else {
-
-    document.getElementById('btn-play').textContent='⏸';
-    document.getElementById('btn-play').classList.add('playing');
+    document.getElementById('tb-bpm').textContent=t.bpm;
     document.getElementById('track-name').textContent=t.name;
     document.getElementById('tb-trackname').textContent=t.name;
-    if(t.url){
-      audio.src=t.url;audio.loop=true;audio.play().catch(()=>{});
-      isPlaying=true;
-      if(activeZone){
-        const startedAt=new Date().toISOString();
-        db.from('zones').update({
-          current_track_url:t.url,track_name:t.name,
-          playback_started_at:startedAt,play_at:Date.now()+1500,play_from_s:0
-        }).eq('id',activeZone.id).then(()=>{
-          window._currentZone={playback_started_at:startedAt};
-          if(window._djSyncChannel){
-            setTimeout(()=>window._djSyncChannel.send({
-              type:'broadcast',event:'hard_sync',
-              payload:{resyncAt:Date.now()+1000,playback_started_at:startedAt,resetOffsets:false}
-            }),1600);
-          }
-          showToast('📡 Broadcasting: '+t.name);
-        });
-      }
-    }
-
-
+    document.getElementById('btn-play').textContent='⏸';
+    document.getElementById('btn-play').classList.add('playing');
+    if(t.url){audio.src=t.url;audio.loop=true;audio.play().catch(()=>{});isPlaying=true;}
   } else {
     deckB={...deckB,track:t,bpm:t.bpm,playing:true};
     document.getElementById('db-name').textContent=t.name;
