@@ -2663,7 +2663,26 @@ async function activateZone(z) {
       showToast('🔄 Synced by DJ');
     }, delay);
   })
-  .on('broadcast', { event: 'scatter' }, ({ payload }) => {
+   .on('broadcast', { event: 'spatial_config' }, ({ payload }) => {
+    // Store spatial config — used for slot assignment
+    window._spatialConfig = payload;
+    const mySlot = getSpatialSlot(payload);
+    const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
+    if(trackUrl && trackUrl !== audio.src){
+      loadTrack(trackUrl, 'Zone '+mySlot, payload.playback_started_at);
+      showToast('🔊 Slot '+mySlot+' — '+mySlot);
+    }
+  })
+  .on('broadcast', { event: 'sweep_start' }, ({ payload }) => {
+    window._sweepConfig = payload;
+    applySweepOffset(payload);
+  })
+  .on('broadcast', { event: 'sweep_stop' }, () => {
+    window._sweepConfig = null;
+    _scatterOffsetMs = 0;
+  })
+
+    .on('broadcast', { event: 'scatter' }, ({ payload }) => {
     const maxMs  = payload.maxMs  || 1000;
     const voices = payload.voices || 4;
     const slot   = simpleHash(listenerId) % voices;
@@ -3970,6 +3989,80 @@ function ensureZoneSubscription() {
     }).subscribe();
 }
 setInterval(ensureZoneSubscription, 5000);
+
+  // ── SPATIAL CLUSTER ASSIGNMENT ────────────────────────────
+// Deterministic — every listener runs the same algo on the same data
+// Result: self-organizing clusters with no server round-trip
+
+function getSpatialSlot(config){
+  if(!userLat || !config?.zone_lat) return 'C';
+
+  const voices   = config.voices || 4;
+  const zoneLat  = config.zone_lat;
+  const zoneLng  = config.zone_lng;
+  const radiusM  = config.zone_radius_m || 200;
+
+  // My distance from zone center
+  const myDist = distM(userLat, userLng, zoneLat, zoneLng);
+  const myBearing = getBearing(zoneLat, zoneLng, userLat, userLng);
+
+  // Get all listener positions from liveGuests
+  const allListeners = Object.values(liveGuests || {});
+
+  if(!allListeners.length) return 'C'; // solo = center
+
+  // Find listeners within 30m of me = my cluster
+  const myCluster = allListeners.filter(l => {
+    if(!l.dist) return false;
+    // Approximate position from dist+bearing
+    const lDist = l.dist * 1609.34; // miles to meters
+    return Math.abs(lDist - myDist) < 30; // within 30m radial distance
+  });
+
+  // Cluster center = average bearing of my cluster
+  const clusterBearing = myCluster.length
+    ? myCluster.reduce((sum,l) => sum + (l.bearing||0), myBearing) / (myCluster.length+1)
+    : myBearing;
+
+  // Assign slot by bearing quadrant
+  const slotKeys = Object.keys(config.zone_tracks || {}).filter(k=>k!=='C');
+  if(!slotKeys.length) return 'C';
+
+  // Distribute slots evenly around 360°
+  const slotCount = Math.min(slotKeys.length, voices);
+  const sector    = 360 / slotCount;
+  const slotIdx   = Math.floor(((clusterBearing % 360) + sector/2) % 360 / sector) % slotCount;
+
+  return slotKeys[slotIdx] || 'C';
+}
+
+// ── CIRCULAR SWEEP RESPONSE ───────────────────────────────
+// Each listener delays based on when the sweep beam hits their bearing
+
+function applySweepOffset(sweep){
+  if(!userLat || !activeZone?.lat) return;
+
+  const myBearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
+  const rpm       = sweep.rpm || 4;
+  const dir       = sweep.dir || 1;
+  const msPerRev  = (60 / rpm) * 1000;
+
+  // How many ms until the beam reaches my bearing
+  const startAngle = sweep.startAngle || 0;
+  let   angleDiff  = ((myBearing - startAngle) * dir + 360) % 360;
+  const delayMs    = (angleDiff / 360) * msPerRev;
+
+  _scatterOffsetMs = delayMs;
+
+  // Apply seek offset when beam hits us
+  setTimeout(()=>{
+    if(!audio.duration || !activeZone?.playback_started_at) return;
+    const elapsed = (Date.now() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+    seekPreservingBT(((elapsed + _calOffset - _deviceLatencyMs/1000) % audio.duration));
+    showToast('◎ Sweep hit — '+Math.round(delayMs)+'ms');
+  }, delayMs);
+}
+
 
 </script>
 </body>
