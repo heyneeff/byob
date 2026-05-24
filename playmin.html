@@ -1180,19 +1180,29 @@ function buildVisualizer(){
   let analyser=null,freqData=null;
   function connectAnalyser(){
     if(analyser)return;
+    // Don't use createMediaElementSource — it silently kills audio output
+    // if AudioContext is suspended. Use AnalyserNode via stream capture instead.
     try{
       const actx=getSfxCtx();
-      analyser=actx.createAnalyser();analyser.fftSize=256;analyser.smoothingTimeConstant=0.8;
-      freqData=new Uint8Array(analyser.frequencyBinCount);
-      const src=actx.createMediaElementSource(audio);
-      src.connect(analyser);analyser.connect(actx.destination);
-      // Resume if suspended (iOS / strict autoplay policy)
       if(actx.state==='suspended') actx.resume().catch(()=>{});
+      analyser=actx.createAnalyser();
+      analyser.fftSize=256;
+      analyser.smoothingTimeConstant=0.8;
+      freqData=new Uint8Array(analyser.frequencyBinCount);
+      // Capture audio element output WITHOUT disconnecting it from speakers
+      if(audio.captureStream){
+        const stream=audio.captureStream();
+        const src=actx.createMediaStreamSource(stream);
+        src.connect(analyser);
+        // analyser does NOT connect to destination — audio plays natively to speakers
+      }
+      // Fallback: analyser will show zeros but audio still plays
     }catch(e){
       analyser=null;
-      console.warn('[Viz] AudioContext connect failed:',e.message,'— audio still plays natively');
+      console.warn('[Viz] analyser skipped:',e.message);
     }
   }
+
   // Resume AudioContext on first user gesture (iOS requirement)
   document.addEventListener('touchstart',()=>{
     const actx=_sfxCtx;
