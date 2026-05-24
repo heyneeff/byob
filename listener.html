@@ -1800,7 +1800,8 @@ function toggleSignUp() {
   // Role tabs only relevant for sign-up
   document.querySelector('.role-tabs').style.display = isSignUp ? 'grid' : 'none';
 }
-function handleGuestLogin() {
+async function handleGuestLogin() {
+
   // Generate a random guest identity — no auth needed
   const names  = ['Wanderer','Catalyst','Witness','Oracle','Tender','Dancer','Instigator','Architect'];
   const emojis = ['🎧','🌀','🔮','🦊','⚡','🌊','🎭','🔥','👁','🌙'];
