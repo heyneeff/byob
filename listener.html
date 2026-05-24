@@ -1538,14 +1538,49 @@ let _babbleUrls = null;
 
 function playBabble() {
   try {
-    if (!_babbleUrls) _babbleUrls = _BABBLE_PITCHES.map(f => makeBabbleWav(f));
-    const a = new Audio(_babbleUrls[_babbleChar % _babbleUrls.length]);
+    const ctx = getSfxCtx ? getSfxCtx() : (window._sfxCtx = window._sfxCtx || new AudioContext());
+    if (ctx.state === 'suspended') ctx.resume();
+    const buf = ctx.createBuffer(1, ctx.sampleRate * 0.055, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    const sr = ctx.sampleRate;
+    const len = data.length;
+
+    // Randomize each babble: pitch + noise blend = airy vinyl texture
+    const freq  = 180 + Math.random() * 340;          // wide freq range, not scale-locked
+    const noise = 0.35 + Math.random() * 0.45;         // noise amount — more = scratchier
+    const pitch = 1 - noise;
+    const decay = 0.82 + Math.random() * 0.14;         // envelope decay speed
+
+    for (let i = 0; i < len; i++) {
+      const t   = i / sr;
+      const env = Math.pow(1 - i / len, decay * 3);   // fast attack, quick tail
+      const sin = Math.sin(2 * Math.PI * freq * t);
+      const wnd = (Math.random() * 2 - 1);             // white noise
+      data[i]   = env * (sin * pitch + wnd * noise) * 0.28;
+    }
+
+    // Occasional pitch flutter — the "scratch wobble"
+    if (Math.random() < 0.3) {
+      const flutter = 0.008 + Math.random() * 0.016;
+      for (let i = 0; i < len; i++) {
+        data[i] *= 1 + Math.sin(i * flutter * Math.PI) * 0.4;
+      }
+    }
+
+    const src  = ctx.createBufferSource();
+    src.buffer = buf;
+
+    // Small random detune ±200 cents — keeps it from feeling mechanical
+    src.detune.value = (Math.random() - 0.5) * 400;
+
+    const gain = ctx.createGain();
+    gain.gain.value = 0.22 + Math.random() * 0.12;
+    src.connect(gain);
+    gain.connect(ctx.destination);
+    src.start();
     _babbleChar++;
-    a.volume = 0.25;
-    a.play().catch(()=>{});
   } catch(e) {}
 }
-
 // ── WARP ENTRY SOUND — wet womp ─────────────────────────
 function playWarpSound() {
   try {
