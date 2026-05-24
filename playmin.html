@@ -1463,7 +1463,8 @@ function dropOnZone(event,zone){
 function assignTrackToZone(zone,url,name){
   zoneTracks[zone]={url,name};
   const slot=document.getElementById('slot-'+zone);
-  const nameEl=document.getElementById('slot-'+zone+'-cf
+    const nameEl=document.getElementById('slot-'+zone+'-name');
+
   const controls=document.getElementById('slot-'+zone+'-controls');
   if(nameEl)nameEl.textContent=name||url.split('/').pop();
   if(slot)slot.classList.add('loaded');
