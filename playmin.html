@@ -692,6 +692,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
 
 <script>
+window.onerror = (m,s,l) => { document.body.style.cssText='background:#000;color:red;padding:20px;font-size:16px;'; document.body.innerHTML='<pre>LINE '+l+':\n'+m+'</pre>'; return true; };
+
+  
 /* =========================================================
    dj.html ENGINE — verbatim, do not edit
    play.html bridge follows at bottom of this script block
@@ -2408,6 +2411,7 @@ window.addEventListener('DOMContentLoaded',()=>{
 </script>
 
 <script>
+  
 // ── IMAGE ASSET LOADER ────────────────────────────────────
 // Tries to load images from dj.html's base64 constants.
 // If dj.html is on same server, fetches and extracts them.
