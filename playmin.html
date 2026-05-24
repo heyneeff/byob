@@ -1463,7 +1463,7 @@ function dropOnZone(event,zone){
 function assignTrackToZone(zone,url,name){
   zoneTracks[zone]={url,name};
   const slot=document.getElementById('slot-'+zone);
-  const nameEl=document.getElementById('slot-'+zone+'-name');
+  const nameEl=document.getElementById('slot-'+zone+'-cf
   const controls=document.getElementById('slot-'+zone+'-controls');
   if(nameEl)nameEl.textContent=name||url.split('/').pop();
   if(slot)slot.classList.add('loaded');
@@ -1536,33 +1536,6 @@ function stopCircularSweep(){
   if(_orchestra) _orchestra.stopSweep();
 }
 
-  // Broadcast sweep start — listeners self-calculate their delay
-  const startedAt = activeZone?.playback_started_at;
-  window._djSyncChannel.send({
-    type:'broadcast', event:'sweep_start',
-    payload:{
-      startAngle: 0,
-      rpm,
-      dir,
-      startedAt: new Date().toISOString(),
-      playback_started_at: startedAt
-    }
-  });
-
-  // Animate beam on DJ radar
-  let last = performance.now();
-  function tick(now){
-    if(!_sweepActive){ drawSG(); return; }
-    const dt = (now - last) / 1000;
-    last = now;
-    _sweepAngle = (_sweepAngle + _sweepDir * (rpm/60) * 360 * dt + 360) % 360;
-    drawSG();
-    _sweepRaf = requestAnimationFrame(tick);
-  }
-  if(_sweepRaf) cancelAnimationFrame(_sweepRaf);
-  _sweepRaf = requestAnimationFrame(tick);
-  showToast('◎ Sweep: '+rpm+' RPM '+(dir>0?'↻':'↺'));
-}
 
 function stopCircularSweep(){
   _sweepActive = false;
