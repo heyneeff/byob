@@ -10,12 +10,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;0,900;1,700&family=DM+Mono:wght@300;400;500&family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
 <style>
 :root{
-  --bg:#080808;--card:#111;--card2:#161616;--rim:#222;
-  --orange:#FFD600;--red:#FF1515;--teal:#1A6BFF;
-  --muted:#444;--muted2:#666;--white:#f5f5f5;
-  --dark-teal:#001A40;--surface:#0d0d0d;--surface2:#141414;
-  --border:#222;--cream:#f5f5f5;--offwhite:#eeeeee;
-  --da:#FFD600;--db:#1A6BFF;
+  --bg:#050302;--card:#0c0804;--card2:#141008;--rim:#1c1408;
+  --orange:#f57e20;--red:#ef3c23;--teal:#00cc99;
+  --muted:#4a3820;--muted2:#6a5535;--white:#f0ebe0;
+  --dark-teal:#003333;--surface:#0a0a0a;--surface2:#141008;
+  --border:#1c1408;--cream:#f0ebe0;--offwhite:#e8e4dc;
+  --da:#f57e20;--db:#00cc99;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--white);font-family:'Roboto',sans-serif;}
@@ -59,9 +59,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 /* DECK */
 .deck-panel{flex:1;display:grid;grid-template-rows:1fr auto minmax(160px,30vh);overflow:hidden;}
 .deck-top{display:grid;grid-template-columns:1fr 118px 1fr;overflow:hidden;border-bottom:1px solid var(--rim);}
-.dhalf{display:flex;flex-direction:column;background:var(--card);overflow:hidden;min-height:0;}
-.dhalf .deck-info-col{flex:1;min-height:0;overflow:hidden;}
-.dhalf .platter-col{flex-shrink:0;}
+.dhalf{display:flex;flex-direction:column;background:var(--card);overflow:hidden;}
 .dhalf-b{flex-direction:column;}
 .dhalf:first-child{border-right:1px solid var(--rim);}.dhalf:last-child{border-left:1px solid var(--rim);}
 .platter-col{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px;background:var(--bg);border-top:1px solid var(--rim);flex-shrink:0;}
@@ -405,7 +403,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="content">
 
 <!-- SPATIAL -->
-<div class="panel" id="panel-spatial">
+<div class="panel active" id="panel-spatial">
 <div class="spatial-panel">
   <div class="sp-tools">
     <div class="sp-label">Mode</div>
@@ -606,7 +604,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 </div>
 
 <!-- SETUP -->
-<div class="panel active" id="panel-setup">
+<div class="panel" id="panel-setup">
 <div class="setup-panel">
   <div class="map-search-wrap">
     <div class="map-frame" style="position:relative;"><div id="map"></div><div class="btn-find-me" onclick="centerOnUser()" title="Find me">◎</div></div>
@@ -650,7 +648,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <!-- RIGHT NAV -->
 <div class="rightnav">
   <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
-    <button class="rnbtn" data-panel="spatial" onclick="switchPanel('spatial',this)">🗺</button>
+    <button class="rnbtn active" data-panel="spatial" onclick="switchPanel('spatial',this)">🗺</button>
     <div class="rnlabel">Spatial</div>
   </div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
@@ -663,8 +661,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   </div>
   <div class="rnsep"></div>
   <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
-    <button class="rnbtn active" data-panel="setup"
- onclick="switchPanel('setup',this)">⚙️</button>
+    <button class="rnbtn" data-panel="setup" onclick="switchPanel('setup',this)">⚙️</button>
     <div class="rnlabel">Setup</div>
   </div>
   <div class="rnsep"></div>
@@ -1676,39 +1673,19 @@ function syncBPM(){
 function loadDeck(d,id){
   const t=TRACKS.find(t=>t.id===id);if(!t)return;
   if(d==='a'){
-    deckA={...deckA,track:t,bpm:parseInt(t.bpm)||124,playing:true};
+    deckA={...deckA,track:t,bpm:t.bpm,playing:true};
     document.getElementById('da-name').textContent=t.name;
     document.getElementById('da-artist').textContent=t.artist;
     document.getElementById('da-bpm').textContent=t.bpm;
     document.getElementById('da-play').textContent='⏸ PAUSE';
-    document.getElementById('btn-play').textContent='⏸';
-    document.getElementById('btn-play').classList.add('playing');
-    document.getElementById('track-name').textContent=t.name;
-    document.getElementById('tb-trackname').textContent=t.name;
-    if(t.bpm!=='—') document.getElementById('tb-bpm').textContent=t.bpm;
-    // Broadcast to listeners via Supabase
-    if(activeZone && t.url){
-      const startedAt=new Date().toISOString();
-      db.from('zones').update({
-        current_track_url:t.url,
-        track_name:t.name,
-        playback_started_at:startedAt,
-        play_at:Date.now()+1500,
-        play_from_s:0
-      }).eq('id',activeZone.id).then(()=>{
-        window._currentZone={playback_started_at:startedAt};
-        if(window._djSyncChannel){
-          setTimeout(()=>{
-            window._djSyncChannel.send({
-              type:'broadcast',event:'hard_sync',
-              payload:{resyncAt:Date.now()+1000,playback_started_at:startedAt,resetOffsets:false}
-            });
-          },1600);
-        }
-        showToast('📡 Broadcasting: '+t.name);
-      });
-    }
-
+    document.getElementById('tb-bpm').textContent=t.bpm;
+  } else {
+    deckB={...deckB,track:t,bpm:t.bpm,playing:true};
+    document.getElementById('db-name').textContent=t.name;
+    document.getElementById('db-artist').textContent=t.artist;
+    document.getElementById('db-bpm').textContent=t.bpm;
+    document.getElementById('db-play').textContent='⏸ PAUSE';
+  }
   buildLibs();
 }
 function startDrag(ev,id){dragging=id;ev.dataTransfer.setData('track-id',id);}
