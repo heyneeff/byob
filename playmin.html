@@ -57,13 +57,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 #sg{touch-action:none;cursor:crosshair;}
 .sp-library{grid-column:1/3;grid-row:2;background:var(--card);border-top:1px solid var(--rim);display:flex;flex-direction:column;overflow:hidden;}
 /* DECK */
-.deck-panel{flex:1;display:grid;grid-template-rows:1fr auto 1fr;overflow:hidden;}
+.deck-panel{flex:1;display:grid;grid-template-rows:1fr auto minmax(160px,30vh);overflow:hidden;}
 .deck-top{display:grid;grid-template-columns:1fr 118px 1fr;overflow:hidden;border-bottom:1px solid var(--rim);}
 .dhalf{display:flex;flex-direction:column;background:var(--card);overflow:hidden;}
-.dhalf-b{grid-template-columns:1fr auto;}
+.dhalf-b{flex-direction:column;}
 .dhalf:first-child{border-right:1px solid var(--rim);}.dhalf:last-child{border-left:1px solid var(--rim);}
-.platter-col{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;background:var(--bg);border-right:1px solid var(--rim);}
-.dhalf-b .platter-col{border-right:none;border-left:1px solid var(--rim);}
+.platter-col{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px;background:var(--bg);border-top:1px solid var(--rim);flex-shrink:0;}
+.dhalf-b .platter-col{border-top:1px solid var(--rim);}
 canvas.platter{cursor:grab;border-radius:50%;flex-shrink:0;}.platter-label{font-size:7px;letter-spacing:.14em;text-transform:uppercase;margin-top:5px;font-weight:900;font-family:'Barlow Condensed',sans-serif;}
 .deck-info-col{display:flex;flex-direction:column;padding:8px;gap:5px;overflow:hidden;min-width:0;}
 .dk-head{display:flex;align-items:flex-start;justify-content:space-between;gap:5px;flex-shrink:0;}
@@ -465,25 +465,39 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <!-- DECK -->
 <div class="panel" id="panel-deck">
 <div class="deck-panel">
+
   <div class="deck-top">
 
-    <!-- DECK A — controls top, platter bottom -->
+    <!-- DECK A: controls top, platter bottom -->
     <div class="dhalf" ondragover="event.preventDefault()" ondrop="dropDeck(event,'a')">
       <div class="deck-info-col">
         <div class="dk-head">
           <div class="dk-badge da-badge">A</div>
-          <div class="dk-track"><div class="dk-name" id="da-name">— Load Track —</div><div class="dk-artist" id="da-artist">drag from library or click A</div></div>
+          <div class="dk-track">
+            <div class="dk-name" id="da-name">— Load Track —</div>
+            <div class="dk-artist" id="da-artist">drag from library · click A</div>
+          </div>
           <div class="dk-bpm"><div class="dk-bpm-v" style="color:var(--da);" id="da-bpm">—</div><div class="dk-bpm-l">BPM</div></div>
         </div>
         <div class="dk-wave"><canvas id="wv-a"></canvas></div>
-        <div class="dk-time-row"><span class="dk-elapsed" id="da-time">0:00</span><span class="dk-remain" id="da-remain">—</span><input type="range" class="dk-pitch" min="-8" max="8" value="0" step="0.1" title="Pitch"/></div>
+        <div class="dk-time-row">
+          <span class="dk-elapsed" id="da-time">0:00</span>
+          <span class="dk-remain" id="da-remain">—</span>
+          <input type="range" class="dk-pitch" min="-8" max="8" value="0" step="0.1" title="Pitch"/>
+        </div>
         <div class="dk-controls">
           <button class="dkbtn on" id="da-play" onclick="toggleDeck('a')">▶ PLAY</button>
-          <button class="dkbtn">CUE</button><button class="dkbtn">LOOP</button><button class="dkbtn">IN</button><button class="dkbtn">OUT</button>
+          <button class="dkbtn">CUE</button>
+          <button class="dkbtn">LOOP</button>
+          <button class="dkbtn">IN</button>
+          <button class="dkbtn">OUT</button>
         </div>
-        <div class="dk-cues"><button class="hcue">1</button><button class="hcue">2</button><button class="hcue">3</button><button class="hcue">4</button></div>
+        <div class="dk-cues">
+          <button class="hcue">1</button><button class="hcue">2</button>
+          <button class="hcue">3</button><button class="hcue">4</button>
+        </div>
       </div>
-      <div class="platter-col" style="border-top:1px solid var(--rim);border-right:none;">
+      <div class="platter-col">
         <canvas class="platter" id="platter-a" width="160" height="160"></canvas>
         <div class="platter-label" style="color:var(--da);">DECK A</div>
       </div>
@@ -493,35 +507,54 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div class="mixer-col">
       <div class="mx-labels"><span style="color:var(--da);">A</span><span style="color:var(--db);">B</span></div>
       <div class="mx-eq-block" id="mx-eq-block"></div>
-      <div class="mx-xf"><div class="mx-xf-label">FADER</div><input type="range" class="xfader" min="0" max="100" value="50"/><div class="xf-ends"><span style="color:var(--da);">A</span><span style="color:var(--db);">B</span></div></div>
+      <div class="mx-xf">
+        <div class="mx-xf-label">FADER</div>
+        <input type="range" class="xfader" min="0" max="100" value="50"/>
+        <div class="xf-ends"><span style="color:var(--da);">A</span><span style="color:var(--db);">B</span></div>
+      </div>
       <button class="mx-sync" onclick="syncBPM()">⟳ SYNC</button>
     </div>
 
-    <!-- DECK B — controls top, platter bottom -->
+    <!-- DECK B: controls top, platter bottom -->
     <div class="dhalf dhalf-b" ondragover="event.preventDefault()" ondrop="dropDeck(event,'b')">
       <div class="deck-info-col">
         <div class="dk-head">
           <div class="dk-bpm"><div class="dk-bpm-v" style="color:var(--db);" id="db-bpm">—</div><div class="dk-bpm-l">BPM</div></div>
-          <div class="dk-track" style="text-align:right;"><div class="dk-name" id="db-name">— Load Track —</div><div class="dk-artist" id="db-artist">drag from library or click B</div></div>
+          <div class="dk-track" style="text-align:right;">
+            <div class="dk-name" id="db-name">— Load Track —</div>
+            <div class="dk-artist" id="db-artist">drag from library · click B</div>
+          </div>
           <div class="dk-badge db-badge">B</div>
         </div>
         <div class="dk-wave"><canvas id="wv-b"></canvas></div>
-        <div class="dk-time-row"><input type="range" class="dk-pitch" min="-8" max="8" value="0" step="0.1" title="Pitch"/><span class="dk-remain" id="db-remain">—</span><span class="dk-elapsed" id="db-time" style="text-align:right;">0:00</span></div>
+        <div class="dk-time-row">
+          <input type="range" class="dk-pitch" min="-8" max="8" value="0" step="0.1" title="Pitch"/>
+          <span class="dk-remain" id="db-remain">—</span>
+          <span class="dk-elapsed" id="db-time" style="text-align:right;">0:00</span>
+        </div>
         <div class="dk-controls">
-          <button class="dkbtn">OUT</button><button class="dkbtn">IN</button><button class="dkbtn">LOOP</button><button class="dkbtn">CUE</button>
+          <button class="dkbtn">OUT</button>
+          <button class="dkbtn">IN</button>
+          <button class="dkbtn">LOOP</button>
+          <button class="dkbtn">CUE</button>
           <button class="dkbtn on-b" id="db-play" onclick="toggleDeck('b')">▶ PLAY</button>
         </div>
-        <div class="dk-cues"><button class="hcue">1</button><button class="hcue">2</button><button class="hcue">3</button><button class="hcue">4</button></div>
+        <div class="dk-cues">
+          <button class="hcue">1</button><button class="hcue">2</button>
+          <button class="hcue">3</button><button class="hcue">4</button>
+        </div>
       </div>
-      <div class="platter-col" style="border-top:1px solid var(--rim);border-left:none;">
+      <div class="platter-col">
         <canvas class="platter" id="platter-b" width="160" height="160"></canvas>
         <div class="platter-label" style="color:var(--db);">DECK B</div>
       </div>
     </div>
-  </div>
 
+  </div><!-- /deck-top -->
+
+  <!-- Transport strip -->
   <div class="deck-player">
-    <div class="play-center" id="btn-play" onclick="togglePlay()">&#9654;</div>
+    <div class="play-center" id="btn-play" onclick="togglePlay()">▶</div>
     <div class="deck-player-center">
       <div class="track-name-row" id="track-name">No track loaded</div>
       <div class="progress-wrap" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
@@ -532,10 +565,15 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <div class="volume-row"><span class="vol-label">VOL</span><input type="range" class="vol" id="volume" min="0" max="100" value="80"/></div>
     </div>
   </div>
-  <div id="visualizer" style="flex:1;background:var(--bg);overflow:hidden;min-height:80px;"></div>
+
+  <!-- Library -->
   <div class="deck-library" id="deck-lib"></div>
+
 </div>
 </div>
+
+<!-- Visualizer hidden — still powers audio analysis -->
+<div id="visualizer" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;"></div>
 
 <!-- CROWD -->
 <div class="panel" id="panel-crowd">
