@@ -1770,18 +1770,30 @@ function handleGuestLogin() {
   const name   = names[Math.floor(Math.random() * names.length)];
   const emoji  = emojis[Math.floor(Math.random() * emojis.length)];
 
-  currentUser = {
-    id: 'guest_' + Math.random().toString(36).substr(2, 9),
-    email: 'guest@byob.local',
-    user_metadata: { display_name: name, emoji, role: 'listener' }
-  };
-  userRole  = 'listener';
+   // Try anonymous Supabase auth for a real UUID — fall back to local ID if it fails
+  try {
+    const {data:anonData} = await db.auth.signInAnonymously();
+    currentUser = {
+      id: anonData?.user?.id || 'guest_' + Math.random().toString(36).substr(2, 9),
+      email: 'guest@byob.local',
+      user_metadata: { display_name: name, emoji, role: 'listener' }
+    };
+  } catch(e) {
+    currentUser = {
+      id: 'guest_' + Math.random().toString(36).substr(2, 9),
+      email: 'guest@byob.local',
+      user_metadata: { display_name: name, emoji, role: 'listener' }
+    };
+  }
+ userRole  = 'listener';
   loginRole = 'listener';
 
   enterApp();
 }
 
 async function handleLogin() {
+  // Listeners never need a real account — guest flow avoids session conflicts with DJ
+  if (loginRole === 'listener') { handleGuestLogin(); return; }
   const email    = document.getElementById('login-email').value.trim();
   const password = document.getElementById('login-password').value;
   const errEl    = document.getElementById('login-err');
@@ -2515,7 +2527,7 @@ async function activateZone(z) {
     await joinWebRTCStream(z.id);
     showToast('Connecting to live stream… 🎛️');
   } else if (z.current_track_url) {
-    loadTrack(z.current_track_url, z.track_name, z.playback_started_at);
+    loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
   }
 
   // Subscribe to zone updates — unsubscribe first to avoid duplicates
