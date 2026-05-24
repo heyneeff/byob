@@ -613,145 +613,993 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div id="eq-popup"><div class="eq-close" onclick="toggleEQ()">✕ close</div><div class="eq-row" id="eq-row"></div></div>
 <audio id="audio-player" loop></audio>
 
-<!-- ═══════════════════════════════════════════════════════════
-     ENGINE: dj.html <script> block goes here (verbatim)
-     
-     Copy everything between <script> and </script> from dj.html
-     (the CDN scripts are already loaded above via <script src=...>)
-     
-     SKIP: the 5 base64 const lines (LOGO_B64 etc) and the 6 img.src lines
-     since images are loaded externally.
-     
-     Everything else pastes verbatim — no edits needed.
-═══════════════════════════════════════════════════════════ -->
-<script>
-// ── PASTE dj.html ENGINE HERE ──
-// Start from: const SUPABASE_URL = ...
-// End at the last closing brace before </script>
-</script>
 
 <script>
-// ═══════════════════════════════════════════════════════════
-// BRIDGE: v6 right-nav ↔ dj.html engine
-// ═══════════════════════════════════════════════════════════
+/* =========================================================
+   dj.html ENGINE — verbatim, do not edit
+   play.html bridge follows at bottom of this script block
+   ========================================================= */
 
-// 1. Missing globals dj.html calls but doesn't define
-const VOICE_COLORS = ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6','#34d399','#60a5fa','#fbbf24'];
+const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-function fmt(s){
-  if(!s||isNaN(s))return'0:00';
-  const m=Math.floor(s/60),sec=Math.floor(s%60);
-  return m+':'+(sec<10?'0':'')+sec;
-}
-let _sfxCtx=null;
-function getSfxCtx(){if(!_sfxCtx)_sfxCtx=new(window.AudioContext||window.webkitAudioContext)();return _sfxCtx;}
-let _webAudioPlaying=false,_isMuted=false;
+const DENVER=[39.7392,-104.9903];
+let leafletMap=null,userMarker=null,draftCircle=null,draftMarker=null,zoneCircles={};
+let activeZone=null,currentUser=null;
+let userLat=null,userLng=null;
+let draftCenter=null,draftRadius=200,drawMode=false;
+let isPlaying=false,liveStream=null,audioCtx=null,analyserNode=null,meterRAF=null;
+let msgTarget='all',djIsSignUp=false;
+const audio=document.getElementById('audio-player');
 
-function openGrid(){const p=document.getElementById('spatial-grid-panel');if(p){p.style.display='flex';drawGrid();}}
-function closeGrid(){const p=document.getElementById('spatial-grid-panel');if(p)p.style.display='none';}
+const DEMO_GUESTS=[
+  {name:'Aavi Y.',  email:'aavi@byob.local',  phone:'720-555-0101',status:'present'},
+  {name:'Lewis M.', email:'lewis@byob.local', phone:'303-555-0182',status:'present'},
+  {name:'Rosa K.',  email:'rosa@byob.local',  phone:'720-555-0234',status:'approaching'},
+  {name:'DJ Smoke', email:'smoke@byob.local', phone:'720-555-0311',status:'present'},
+  {name:'Cleo B.',  email:'cleo@byob.local',  phone:'303-555-0445',status:'approaching'},
+  {name:'Max T.',   email:'max@byob.local',   phone:'720-555-0567',status:'present'},
+  {name:'Nina P.',  email:'nina@byob.local',  phone:'303-555-0628',status:'present'},
+  {name:'Orion J.', email:'orion@byob.local', phone:'720-555-0791',status:'approaching'},
+];
 
-function setLight(btn,col){
-  document.querySelectorAll('.lbtn').forEach(b=>{b.classList.remove('on');b.style.background='';});
-  if(btn){btn.classList.add('on');if(col!=='strobe'&&col!=='pulse')btn.style.background=col;}
-  if(window._djSyncChannel)window._djSyncChannel.send({type:'broadcast',event:'lighting',payload:{color:col}});
-  showToast('Lighting: '+col);
-}
-
-// 2. switchPanel — override dj.html's .dj-panel/.dj-tab with v6's .panel/.rnbtn
-function switchPanel(name, btn){
-  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-  document.querySelectorAll('.rnbtn').forEach(b=>b.classList.remove('active'));
-  const panel=document.getElementById('panel-'+name);
-  if(panel)panel.classList.add('active');
-  const navBtn=btn||document.querySelector('.rnbtn[data-panel="'+name+'"]');
-  if(navBtn)navBtn.classList.add('active');
-  window.scrollTo(0,0);
-  if(name==='setup'&&window.leafletMap)setTimeout(()=>leafletMap.invalidateSize(),100);
-  if(name==='spatial')setTimeout(resizeSG,60);
-}
-
-// 3. Mirror btn-go-live active state → btn-live topbar
-function _syncLiveBtn(){
-  const src=document.getElementById('btn-go-live');
-  const dst=document.getElementById('btn-live');
-  if(!src||!dst)return;
-  const on=src.classList.contains('active');
-  dst.classList.toggle('active',on);
-  dst.textContent=on?'■ LIVE':'⚡ Go Live';
-}
-document.addEventListener('DOMContentLoaded',()=>{
-  const gl=document.getElementById('btn-go-live');
-  if(gl)new MutationObserver(_syncLiveBtn).observe(gl,{attributes:true,attributeFilter:['class']});
+window.addEventListener('DOMContentLoaded', async()=>{
+  buildVisualizer();
+  try {
+    const {data:{session}}=await db.auth.getSession();
+    if(session){
+      currentUser=session.user;
+      window._mapInited=true;
+      document.getElementById('dj-auth').style.display='none';
+      document.getElementById('dj-app').style.display='block';
+      initMap(DENVER[0],DENVER[1]);
+      loadZones();
+      loadDemoMode();
+    }
+  } catch(e) {}
 });
 
-// 4. Radar canvas
-function onSGTouch(e){e.preventDefault();}
-function onSGMouse(e){}
-function onSGDrop(e){e.preventDefault();}
-function resizeSG(){
-  const cv=document.getElementById('sg');
-  if(!cv)return;
-  const wrap=cv.parentElement;
-  const s=Math.max(Math.min(wrap.offsetWidth,wrap.offsetHeight)-16,160);
-  cv.width=cv.height=s;
-  drawRadar();
-}
-function drawRadar(){
-  const cv=document.getElementById('sg');if(!cv)return;
-  const ctx=cv.getContext('2d'),W=cv.width,H=cv.height,cx=W/2,cy=H/2,r=W/2-8;
-  ctx.clearRect(0,0,W,H);
-  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#050505';ctx.fill();
-  [.25,.5,.75,1].forEach(rt=>{ctx.beginPath();ctx.arc(cx,cy,r*rt,0,Math.PI*2);ctx.strokeStyle='rgba(0,204,153,0.1)';ctx.lineWidth=1;ctx.stroke();});
-  ctx.strokeStyle='rgba(0,204,153,0.12)';ctx.lineWidth=1;
-  [[cx,cy-r,cx,cy+r],[cx-r,cy,cx+r,cy]].forEach(([x1,y1,x2,y2])=>{ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();});
-  const voices=parseInt(document.getElementById('scatter-voices')?.value||4);
-  const sec=(Math.PI*2)/voices;
-  for(let i=0;i<voices;i++){
-    const a=-Math.PI/2+i*sec;
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,a,a+sec);ctx.closePath();
-    ctx.fillStyle=VOICE_COLORS[i]+'10';ctx.fill();ctx.strokeStyle=VOICE_COLORS[i]+'30';ctx.lineWidth=1;ctx.stroke();
+// ── DJ AUTH ───────────────────────────────────────────────
+async function handleDJAuth(){
+  const email=document.getElementById('dj-email').value.trim();
+  const password=document.getElementById('dj-password').value;
+  const errEl=document.getElementById('dj-auth-err');
+  errEl.style.display='none';
+  if(!email||!password){errEl.textContent='Email and password required.';errEl.style.display='block';return;}
+  document.getElementById('dj-auth-btn').textContent='Signing in…';
+  try {
+    const {data,error}=djIsSignUp
+      ? await db.auth.signUp({email,password})
+      : await db.auth.signInWithPassword({email,password});
+    if(error){errEl.textContent=error.message;errEl.style.display='block';document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';return;}
+    currentUser=data.user||data.session?.user;
+    document.getElementById('dj-auth').style.display='none';
+    document.getElementById('dj-app').style.display='block';
+    if(!window._mapInited){window._mapInited=true;initMap(DENVER[0],DENVER[1]);loadZones();loadDemoMode();}
+    setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
+    showToast('Welcome DJ '+currentUser.email.split('@')[0]+' 🎛️');
+  } catch(e) {
+    errEl.textContent='Connection failed — check if Supabase project is paused.';
+    errEl.style.display='block';
+    document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';
   }
-  ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);ctx.fillStyle='#f57e20';ctx.fill();
-  const zoneR=(typeof activeZone!=='undefined'&&activeZone?.radius_m)||200;
-  const ll=(typeof liveListeners!=='undefined')?liveListeners:{};
-  Object.values(ll).forEach(l=>{
-    const slot=Math.floor(((((l.bearing||0)%360)+360)%360)/(360/voices))%voices;
-    const color=VOICE_COLORS[slot%VOICE_COLORS.length];
-    const dm=((l.dist||0)*1609.34),dr=Math.min(dm/zoneR,.95);
-    const ang=(l.bearing||0)*Math.PI/180;
-    const x=cx+Math.sin(ang)*dr*r,y=cy-Math.cos(ang)*dr*r;
-    ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.stroke();
+}
+function toggleDJMenu(){document.getElementById('boom-menu').classList.toggle('open');}
+async function djLogout(){
+  document.getElementById('boom-menu').classList.remove('open');
+  await db.auth.signOut();
+  currentUser=null;
+  if(typeof activeZone!=='undefined')activeZone=null;
+  document.getElementById('dj-auth').style.display='flex';
+  document.getElementById('dj-app').style.display='none';
+  document.getElementById('dj-email').value='';
+  document.getElementById('dj-password').value='';
+  document.getElementById('dj-auth-err').style.display='none';
+  document.getElementById('dj-auth-btn').textContent='Sign In';
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest('#boom-menu')&&!e.target.closest('#boom-img'))
+    document.getElementById('boom-menu')?.classList.remove('open');
+});
+function toggleDJSignUp(){
+  djIsSignUp=!djIsSignUp;
+  document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';
+  document.getElementById('dj-auth-toggle').innerHTML=djIsSignUp?'Have an account? <span>Sign in</span>':'No account? <span>Sign up</span>';
+}
+function updateScatterLabel(){
+  const ms=parseInt(document.getElementById('scatter-ms').value);
+  const s=(ms/1000).toFixed(ms<1000?1:1);
+  document.getElementById('scatter-label').textContent=s+'s spread';
+}
+function scatterSpeakers(){
+  const maxMs=parseInt(document.getElementById('scatter-ms').value);
+  const voices=parseInt(document.getElementById('scatter-voices').value);
+  if(!window._djSyncChannel){showToast('No active zone');return;}
+  window._djSyncChannel.send({type:'broadcast',event:'scatter',payload:{maxMs,voices}});
+  showToast('♪ '+voices+' voices · '+(maxMs/1000).toFixed(1)+'s spread');
+}
+function snapSpeakers(){
+  if(!window._djSyncChannel){showToast('No active zone');return;}
+  const resyncAt=Date.now()+1500;
+  window._djSyncChannel.send({type:'broadcast',event:'hard_sync',payload:{resyncAt,playback_started_at:window._currentZone?.playback_started_at,resetOffsets:true}});
+  showToast('⚡ SNAP in 1.5s…');
+}
+
+// ── DEMO MODE ─────────────────────────────────────────────
+function loadDemoMode(){
+  document.getElementById('stat-present').textContent='0';
+  document.getElementById('stat-approaching').textContent='0';
+  document.getElementById('stat-speakers').textContent='0';
+  document.getElementById('guest-list').innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
+  document.getElementById('track-name').textContent='No track loaded';
+}
+
+// ── MAP ───────────────────────────────────────────────────
+function initMap(lat,lng){
+  leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(leafletMap);
+  L.control.zoom({position:'bottomleft'}).addTo(leafletMap);
+  [100,300,600].forEach(ms=>setTimeout(()=>leafletMap.invalidateSize(),ms));
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+    placeUserMarker(userLat,userLng);
+    leafletMap.setView([userLat,userLng],16);
+    updateMapHint(userLat,userLng);
+  },()=>{updateMapHint(lat,lng);},{enableHighAccuracy:true,timeout:10000,maximumAge:0});
+  navigator.geolocation.watchPosition(pos=>{
+    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+    if(!userMarker)placeUserMarker(userLat,userLng);
+    else userMarker.setLatLng([userLat,userLng]);
+  },null,{enableHighAccuracy:true,maximumAge:3000});
+}
+function placeUserMarker(lat,lng){
+  if(userMarker)userMarker.remove();
+  userMarker=L.marker([lat,lng],{
+    icon:L.divIcon({html:'<div class="user-dot-wrap"><div class="user-dot-ring"></div><div class="user-dot"></div></div>',iconSize:[16,16],iconAnchor:[8,8],className:''}),
+    zIndexOffset:1000
+  }).addTo(leafletMap);
+}
+function centerOnUser(){
+  if(userLat&&leafletMap){leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});return;}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+    if(!userMarker)placeUserMarker(userLat,userLng);
+    else userMarker.setLatLng([userLat,userLng]);
+    leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});
+  },()=>showToast('Location not available'),{enableHighAccuracy:true,timeout:8000});
+}
+function updateMapHint(lat,lng){document.getElementById('map-coords').textContent='Center: '+lat.toFixed(5)+', '+lng.toFixed(5);}
+async function searchMap(){
+  const q=document.getElementById('map-search-input').value.trim();
+  if(!q)return;
+  const btn=document.querySelector('.btn-map-search');
+  btn.textContent='...';
+  try{
+    const res=await fetch('https://photon.komoot.io/api/?q='+encodeURIComponent(q)+'&limit=4');
+    const json=await res.json();
+    const container=document.getElementById('search-results');
+    if(!json.features?.length){container.style.display='none';showToast('No results');btn.textContent='Go';return;}
+    container.innerHTML='';container.style.display='block';
+    json.features.forEach(f=>{
+      const [lng,lat]=f.geometry.coordinates;
+      const p=f.properties;
+      const label=[p.name,p.city||p.town||p.village,p.country].filter(Boolean).join(', ');
+      const item=document.createElement('div');item.className='search-result-item';item.textContent=label;
+      item.addEventListener('click',()=>{
+        leafletMap.setView([lat,lng],15);updateMapHint(lat,lng);
+        userLat=lat;userLng=lng;
+        if(userMarker)userMarker.setLatLng([lat,lng]);
+        container.style.display='none';
+        document.getElementById('map-search-input').value=p.name||label;
+        if(drawMode)placeDraft(L.latLng(lat,lng));
+      });
+      container.appendChild(item);
+    });
+  }catch(e){showToast('Search failed — check connection');}
+  btn.textContent='Go';
+}
+document.addEventListener('click',e=>{if(!e.target.closest('.map-search-wrap'))document.getElementById('search-results').style.display='none';});
+
+// ── ZONE CREATE ───────────────────────────────────────────
+function onCreateZone(){
+  if(activeZone){showToast('Zone active — kill stream first');return;}
+  drawMode=true;document.getElementById('map').classList.add('map-draw-mode');
+  document.getElementById('zone-draw-panel').classList.add('open');
+  placeDraft(L.latLng(userLat||DENVER[0],userLng||DENVER[1]));
+  leafletMap.on('click',onMapClick);
+}
+function onMapClick(e){if(drawMode)placeDraft(e.latlng);}
+function placeDraft(latlng){
+  draftCenter=latlng;
+  if(draftCircle){draftCircle.remove();draftCircle=null;}
+  if(draftMarker){draftMarker.remove();draftMarker=null;}
+  draftCircle=L.circle(latlng,{radius:draftRadius,color:'#f57e20',fillColor:'#f57e20',fillOpacity:.1,weight:2,dashArray:'6 4'}).addTo(leafletMap);
+  const icon=L.divIcon({html:'<div style="width:14px;height:14px;border-radius:50%;background:#f57e20;border:2px solid #000;box-shadow:0 0 0 3px rgba(245,126,32,.4),0 0 16px #f57e20;"></div>',iconSize:[14,14],iconAnchor:[7,7],className:''});
+  draftMarker=L.marker(latlng,{icon,draggable:true}).addTo(leafletMap);
+  draftMarker.on('drag',e=>{draftCenter=e.latlng;draftCircle.setLatLng(e.latlng);updateMapHint(e.latlng.lat,e.latlng.lng);});
+  document.getElementById('zdp-hint').textContent=latlng.lat.toFixed(5)+', '+latlng.lng.toFixed(5)+' — drag pin to adjust';
+  updateMapHint(latlng.lat,latlng.lng);
+}
+function onRadiusSlider(val){
+  draftRadius=parseInt(val);
+  const label=draftRadius>=1000?(draftRadius/1000).toFixed(1)+'km':draftRadius+'m';
+  document.getElementById('zdp-radius-val').textContent=label;
+  document.getElementById('main-radius-val').textContent=label;
+  document.getElementById('main-radius').value=val;
+  if(draftCircle)draftCircle.setRadius(draftRadius);
+}
+function onMainRadius(val){
+  draftRadius=parseInt(val);
+  document.getElementById('main-radius-val').textContent=draftRadius>=1000?(draftRadius/1000).toFixed(1)+'km':draftRadius+'m';
+  if(draftCircle)draftCircle.setRadius(draftRadius);
+}
+async function confirmZone(){
+  if(!draftCenter){showToast('Tap map to place center');return;}
+  if(!currentUser){showToast('Sign in first');document.getElementById('dj-auth').style.display='flex';return;}
+  const name=document.getElementById('zdp-name').value.trim()||'Unnamed Zone';
+  const tipUrl=document.getElementById('zdp-tip-url').value.trim()||null;
+  try{
+    const {data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0,tip_url:tipUrl}).select().single();
+    if(error)throw error;
+    activeZone=data;
+    window._djSyncChannel=db.channel('sync_'+data.id).subscribe();
+    window._currentZone={playback_started_at:data.playback_started_at};
+    cancelZoneDraw();
+    zoneCircles[data.id]=L.circle([data.lat,data.lng],{radius:data.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.07,weight:1.5}).addTo(leafletMap);
+    document.getElementById('btn-create-zone').textContent='✓ '+name;
+    document.getElementById('btn-create-zone').classList.add('has-zone');
+    startListenerTracking(data.id);
+    showToast('Zone "'+name+'" created 📡');
+  }catch(err){showToast('Error: '+err.message,true);console.error(err);}
+}
+function cancelZoneDraw(){
+  drawMode=false;leafletMap.off('click',onMapClick);
+  document.getElementById('zone-draw-panel').classList.remove('open');
+  document.getElementById('map').classList.remove('map-draw-mode');
+  document.getElementById('zdp-name').value='';
+  if(draftCircle){draftCircle.remove();draftCircle=null;}
+  if(draftMarker){draftMarker.remove();draftMarker=null;}
+  draftCenter=null;
+}
+async function loadZones(){
+  const {data}=await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(5);
+  if(!data?.length)return;
+  data.forEach(z=>{
+    if(zoneCircles[z.id])return;
+    zoneCircles[z.id]=L.circle([z.lat,z.lng],{radius:z.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.06,weight:1.5}).addTo(leafletMap);
+    if(!activeZone){activeZone=z;document.getElementById('btn-create-zone').textContent='✓ '+z.name;document.getElementById('btn-create-zone').classList.add('has-zone');startListenerTracking(z.id);}
   });
 }
 
-// 5. Deck stubs (visual only — dj.html engine handles real audio)
-function toggleDeck(deck){}
-function dropDeck(e,deck){e.preventDefault();}
-function syncBPM(){}
-function toggleEQ(){document.getElementById('eq-popup')?.classList.toggle('open');}
-
-// 6. VU meter mirror
-setInterval(()=>{
-  const mf=document.getElementById('meter-fill');
-  const vf=document.getElementById('vu-fill');
-  if(mf&&vf)vf.style.height=(parseFloat(mf.style.width)||20)+'%';
-},80);
-
-// 7. Topbar track name + listener count mirrors
-setInterval(()=>{
+// ── PLAYER ────────────────────────────────────────────────
+function togglePlay(){
+  isPlaying=!isPlaying;
+  const btn=document.getElementById('btn-play');
+  btn.textContent=isPlaying?'⏸':'▶';
+  btn.classList.toggle('playing',isPlaying);
+  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
+  if(isPlaying){audio.play().catch(()=>{});}else{audio.pause();}
+}
+audio.addEventListener('ended',()=>{
+  audio.currentTime=0;audio.play().catch(()=>{});
+  document.getElementById('progress-fill').style.width='0%';
+});
+audio.addEventListener('timeupdate',()=>{
+  if(!audio.duration)return;
+  document.getElementById('progress-fill').style.width=(audio.currentTime/audio.duration*100)+'%';
+  document.getElementById('time-cur').textContent=fmt(audio.currentTime);
+  document.getElementById('time-dur').textContent=fmt(audio.duration);
+  // Sync topbar track name
   const tn=document.getElementById('track-name');
   const tb=document.getElementById('tb-trackname');
-  if(tn&&tb&&tn.textContent!==tb.textContent)tb.textContent=tn.textContent;
-  const sp=document.getElementById('stat-present');
-  const tl=document.getElementById('tb-live');
-  if(sp&&tl)tl.textContent=sp.textContent;
-},500);
+  if(tn&&tb)tb.textContent=tn.textContent;
+});
+document.getElementById('progress-bar').addEventListener('click',e=>{
+  const r=e.currentTarget.getBoundingClientRect();
+  if(audio.duration)audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration;
+});
+document.getElementById('volume').addEventListener('input',e=>audio.volume=e.target.value/100);
 
-// 8. Radar on load + resize
-window.addEventListener('load',()=>setTimeout(resizeSG,200));
+document.getElementById('file-input').addEventListener('change',async(e)=>{
+  const file=e.target.files[0];if(!file)return;
+  const statusEl=document.getElementById('upload-status');
+  let playbackStartedAt=null;
+  audio.addEventListener('playing',()=>{if(!playbackStartedAt)playbackStartedAt=new Date().toISOString();},{once:true});
+  audio.src=URL.createObjectURL(file);
+  audio.loop=true;
+  audio.play().catch(()=>{});
+  isPlaying=true;
+  document.getElementById('btn-play').textContent='⏸';
+  document.getElementById('btn-play').classList.add('playing');
+  document.getElementById('track-name').textContent=file.name.replace(/\.[^/.]+$/,'');
+  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
+  statusEl.textContent='Uploading…';statusEl.style.color='var(--teal)';
+  try{
+    const path='tracks/'+(currentUser?.id||'anon')+'/'+Date.now()+'_'+file.name;
+    const {error:upErr}=await db.storage.from('boombox').upload(path,file);
+    if(upErr)throw upErr;
+    const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
+    await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
+    if(activeZone){
+      const bufferMs=2000;
+      const playAt=Date.now()+bufferMs;
+      const playFromS=audio.currentTime+(bufferMs/1000);
+      const startedAt=playbackStartedAt||new Date().toISOString();
+      await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_started_at:startedAt,play_at:playAt,play_from_s:playFromS}).eq('id',activeZone.id);
+      window._currentZone={playback_started_at:startedAt};
+    }
+    statusEl.textContent='● live';statusEl.style.color='var(--teal)';
+    showToast('Broadcasting 📡');
+    if(window._autoResyncInterval)clearInterval(window._autoResyncInterval);
+    window._autoResyncInterval=setInterval(()=>{
+      if(activeZone&&audio.src&&!audio.paused&&!liveStream){triggerResync();}
+    },5*60*1000);
+  }catch(err){
+    console.error('Upload error:',err);
+    statusEl.textContent='⚠ '+err.message;
+    statusEl.style.color='var(--red)';
+  }
+  e.target.value='';
+});
+
+// ── WEBRTC BROADCAST ─────────────────────────────────────
+let _rtcConfigCache=null;
+async function getRTCConfig(){
+  if(_rtcConfigCache)return _rtcConfigCache;
+  try{const r=await fetch('https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7');const iceServers=await r.json();_rtcConfigCache={iceServers};}
+  catch(e){_rtcConfigCache={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};}
+  return _rtcConfigCache;
+}
+let peerConnections={};
+let signalingChannel=null;
+let localStream=null;
+async function startWebRTCBroadcast(stream){
+  localStream=stream;
+  if(!activeZone)return;
+  signalingChannel=db.channel('webrtc_'+activeZone.id)
+    .on('broadcast',{event:'listener-joined'},async({payload})=>{await createOfferFor(payload.listenerId);})
+    .on('broadcast',{event:'answer'},async({payload})=>{const pc=peerConnections[payload.from];if(pc){await pc.setRemoteDescription({type:'answer',sdp:payload.sdp});}})
+    .on('broadcast',{event:'ice-dj'},async({payload})=>{const pc=peerConnections[payload.from];if(pc&&payload.candidate){await pc.addIceCandidate(payload.candidate).catch(()=>{});}})
+    .subscribe(status=>{if(status==='SUBSCRIBED')showToast('WebRTC signaling ready 📡');});
+}
+async function createOfferFor(listenerId){
+  if(!localStream)return;
+  const rtcCfg=await getRTCConfig();
+  const pc=new RTCPeerConnection(rtcCfg);
+  peerConnections[listenerId]=pc;
+  localStream.getAudioTracks().forEach(track=>pc.addTrack(track,localStream));
+  pc.onicecandidate=({candidate})=>{if(candidate&&signalingChannel){signalingChannel.send({type:'broadcast',event:'ice-listener',payload:{to:listenerId,from:'dj',candidate}});}};
+  pc.onconnectionstatechange=()=>{
+    if(pc.connectionState==='connected')showToast('Listener connected 🎧');
+    if(pc.connectionState==='failed'||pc.connectionState==='disconnected'){pc.close();delete peerConnections[listenerId];}
+  };
+  const offer=await pc.createOffer({offerToReceiveAudio:false});
+  await pc.setLocalDescription(offer);
+  signalingChannel.send({type:'broadcast',event:'offer',payload:{to:listenerId,sdp:offer.sdp}});
+}
+function stopWebRTCBroadcast(){
+  Object.values(peerConnections).forEach(pc=>pc.close());
+  peerConnections={};
+  if(signalingChannel){signalingChannel.unsubscribe();signalingChannel=null;}
+  localStream=null;
+}
+async function scanDevices(){
+  try{
+    const devices=await navigator.mediaDevices.enumerateDevices();
+    const inputs=devices.filter(d=>d.kind==='audioinput');
+    if(inputs.length&&inputs[0].label){
+      document.getElementById('device-select').innerHTML=inputs.map(d=>'<option value="'+d.deviceId+'">'+(d.label||'Input '+d.deviceId.slice(0,8))+'</option>').join('');
+      showToast(inputs.length+' input(s) found');
+    }else{
+      document.getElementById('device-select').innerHTML='<option value="">Default microphone</option>';
+      showToast('Mic permission will be requested when you start streaming');
+    }
+  }catch(e){showToast('Could not list devices');}
+}
+function startLiveStream(){
+  if(liveStream){toggleLive();return;}
+  document.getElementById('device-row').style.display='flex';
+  scanDevices();
+  const streamBtn=document.querySelector('.btn-live-stream');
+  if(streamBtn){streamBtn.textContent='🔴 Confirm Stream';streamBtn.onclick=()=>{toggleLive();};}
+}
+async function toggleLive(){
+  const btn=document.getElementById('btn-go-live');
+  // Sync topbar btn-live state
+  const btnLive=document.getElementById('btn-live');
+  if(liveStream){
+    liveStream.getTracks().forEach(t=>t.stop());liveStream=null;
+    if(meterRAF)cancelAnimationFrame(meterRAF);
+    document.getElementById('meter-fill').style.width='0%';
+    btn.classList.remove('active');btn.textContent='Go Live';
+    if(btnLive){btnLive.classList.remove('active');btnLive.textContent='⚡ Go Live';}
+    stopWebRTCBroadcast();
+    if(activeZone)await db.from('zones').update({current_track_url:null,track_name:null}).eq('id',activeZone.id);
+    showToast('Live ended');
+    return;
+  }
+  if(!activeZone){showToast('Create a zone first');return;}
+  if(audio.src&&audio.src!==''&&!liveStream){
+    btn.classList.add('active');btn.textContent='■ Stop Live';
+    if(btnLive){btnLive.classList.add('active');btnLive.textContent='■ Live';}
+    document.getElementById('track-name').textContent='📡 LIVE — '+activeZone.name;
+    audio.play().catch(()=>{});
+    await db.from('zones').update({current_track_url:audio.src,track_name:document.getElementById('track-name').textContent,playback_started_at:new Date().toISOString(),active:true}).eq('id',activeZone.id);
+    showToast('Broadcasting track ⚡');
+    return;
+  }
+  if(!liveStream){showToast('Choose an audio source first ↑');return;}
+  const deviceId=document.getElementById('device-select').value;
+  const constraints={audio:deviceId?{deviceId:{exact:deviceId},echoCancellation:false,noiseSuppression:false,sampleRate:48000}:{echoCancellation:false,noiseSuppression:false}};
+  try{
+    liveStream=await navigator.mediaDevices.getUserMedia(constraints);
+    audioCtx=new AudioContext();
+    analyserNode=audioCtx.createAnalyser();analyserNode.fftSize=256;
+    audioCtx.createMediaStreamSource(liveStream).connect(analyserNode);
+    const meterData=new Uint8Array(analyserNode.frequencyBinCount);
+    const tick=()=>{analyserNode.getByteFrequencyData(meterData);const avg=meterData.reduce((a,b)=>a+b,0)/meterData.length;document.getElementById('meter-fill').style.width=Math.min(avg*2,100)+'%';meterRAF=requestAnimationFrame(tick);};
+    tick();
+    btn.classList.add('active');btn.textContent='■ Stop Live';
+    if(btnLive){btnLive.classList.add('active');btnLive.textContent='■ Live';}
+    document.getElementById('track-name').textContent='🔴 LIVE — '+activeZone.name;
+    document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
+    await startWebRTCBroadcast(liveStream);
+    await db.from('zones').update({current_track_url:'webrtc-live',track_name:'🔴 LIVE — '+activeZone.name,playback_started_at:new Date().toISOString()}).eq('id',activeZone.id);
+    showToast('You are LIVE — listeners connecting 🎛️');
+  }catch(e){showToast('Cannot access input: '+e.message);}
+}
+function openVisuals(){window.open('mandalforge_sync.html?zone='+(activeZone?.id||'demo')+'&role=dj','_blank');}
+function openMsgModal(){updateMsgSub();document.getElementById('msg-modal').classList.add('open');}
+function closeMsgModal(e){if(e.target===document.getElementById('msg-modal'))document.getElementById('msg-modal').classList.remove('open');}
+function setTarget(t){msgTarget=t;['all','present','approaching'].forEach(k=>document.getElementById('target-'+k).classList.toggle('selected',k===t));updateMsgSub();}
+function updateMsgSub(){const counts={all:DEMO_GUESTS.length,present:DEMO_GUESTS.filter(g=>g.status==='present').length,approaching:DEMO_GUESTS.filter(g=>g.status==='approaching').length};document.getElementById('msg-sub').textContent='Sending to '+counts[msgTarget]+' guest'+(counts[msgTarget]!==1?'s':'');}
+async function sendMessage(){
+  const text=document.getElementById('msg-text').value.trim();
+  if(!text){showToast('Type a message first');return;}
+  const targets=msgTarget==='all'?DEMO_GUESTS:DEMO_GUESTS.filter(g=>g.status===msgTarget);
+  if(activeZone)await db.from('zones').update({last_message:text,last_message_at:new Date().toISOString()}).eq('id',activeZone.id);
+  document.getElementById('msg-modal').classList.remove('open');
+  document.getElementById('msg-text').value='';
+  showToast('✓ Sent to '+targets.length+' guest'+(targets.length!==1?'s':''));
+}
+
+// ── REAL LISTENER TRACKING ───────────────────────────────
+let liveListeners={};
+let presenceChannel=null;
+function startListenerTracking(zoneId){
+  if(presenceChannel)presenceChannel.unsubscribe();
+  liveListeners={};
+  presenceChannel=db.channel('presence_'+zoneId)
+    .on('broadcast',{event:'proximity'},({payload})=>{
+      const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
+      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
+      renderLiveGuestList();
+    })
+    .subscribe();
+  setInterval(()=>{
+    const now=Date.now();let changed=false;
+    Object.keys(liveListeners).forEach(id=>{if(now-liveListeners[id].updated>30000){delete liveListeners[id];changed=true;}});
+    if(changed)renderLiveGuestList();
+  },10000);
+}
+function renderLiveGuestList(){
+  const el=document.getElementById('guest-list');
+  const listeners=Object.values(liveListeners);
+  if(!listeners.length){
+    el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet</div>';
+    document.getElementById('stat-present').textContent='0';
+    document.getElementById('stat-approaching').textContent='0';
+    return;
+  }
+  const present=listeners.filter(l=>l.status==='present').length;
+  const approaching=listeners.filter(l=>l.status==='approaching').length;
+  document.getElementById('stat-present').textContent=present;
+  document.getElementById('stat-approaching').textContent=approaching;
+  document.getElementById('stat-speakers').textContent=1;
+  // Topbar live count
+  const tb=document.getElementById('tb-live');
+  if(tb)tb.textContent=listeners.length;
+  el.innerHTML='';
+  listeners.sort((a,b)=>a.status==='present'?-1:1);
+  listeners.forEach(l=>{
+    const distStr=l.dist<0.1?Math.round(l.dist*5280)+' ft':l.dist.toFixed(2)+' mi';
+    const phone=l.phone?'<span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+l.phone+'</span>':'';
+    const row=document.createElement('div');row.className='guest-row';
+    row.innerHTML='<span style="font-size:16px;margin-right:4px">'+l.emoji+'</span><span class="guest-name">'+l.name+'</span><span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+distStr+' away</span>'+phone+'<span class="guest-status '+l.status+'">'+l.status+'</span>';
+    el.appendChild(row);
+  });
+  if(document.getElementById('spatial-grid-panel')?.style.display!=='none')drawGrid();
+}
+async function triggerResync(){
+  if(!activeZone)return showToast('No active zone');
+  if(!audio.src||!audio.duration)return showToast('No track loaded');
+  const resyncAt=Date.now()+4000;
+  const freshStartedAt=new Date(Date.now()-audio.currentTime*1000).toISOString();
+  const ch=db.channel('sync_'+activeZone.id);
+  ch.subscribe(status=>{
+    if(status!=='SUBSCRIBED')return;
+    ch.send({type:'broadcast',event:'hard_sync',payload:{resyncAt,playback_started_at:freshStartedAt,resetOffsets:true}});
+    showToast('🔄 Hard sync in 4s — locking all speakers…');
+  });
+}
+async function killStream(){
+  if(!confirm('Kill the stream and deactivate zone?'))return;
+  audio.pause();audio.src='';audio.load();
+  if(liveStream){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;}
+  stopWebRTCBroadcast();
+  if(window._autoResyncInterval){clearInterval(window._autoResyncInterval);window._autoResyncInterval=null;}
+  const btn=document.getElementById('btn-go-live');
+  const btnLive=document.getElementById('btn-live');
+  btn.classList.remove('active');btn.textContent='Go Live';
+  if(btnLive){btnLive.classList.remove('active');btnLive.textContent='⚡ Go Live';}
+  document.getElementById('meter-fill').style.width='0%';
+  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='paused');
+  document.getElementById('btn-play').textContent='▶';
+  document.getElementById('btn-play').classList.remove('playing');
+  document.getElementById('track-name').textContent='No track loaded';
+  document.getElementById('upload-status').textContent='—';
+  if(activeZone){
+    await db.from('zones').update({active:false,current_track_url:null,track_name:null,playback_started_at:null}).eq('id',activeZone.id);
+    if(zoneCircles[activeZone.id]){zoneCircles[activeZone.id].remove();delete zoneCircles[activeZone.id];}
+    if(presenceChannel){presenceChannel.unsubscribe();presenceChannel=null;}
+    activeZone=null;
+  }
+  document.getElementById('btn-create-zone').textContent='Create Zone';
+  document.getElementById('btn-create-zone').classList.remove('has-zone');
+  document.getElementById('stat-present').textContent='0';
+  document.getElementById('stat-approaching').textContent='0';
+  document.getElementById('stat-speakers').textContent='0';
+  document.getElementById('guest-list').innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
+  showToast('Stream killed 💀');
+}
+
+function buildVisualizer(){
+  const wrap=document.getElementById('visualizer');
+  if(!wrap)return;
+  wrap.innerHTML='';
+  const cv=document.createElement('canvas');
+  cv.id='viz-canvas';cv.style.cssText='width:100%;height:100%;cursor:pointer;';
+  cv.addEventListener('click',toggleVizFullscreen);
+  wrap.appendChild(cv);
+  const ctx=cv.getContext('2d');
+  let analyser=null,freqData=null;
+  function connectAnalyser(){
+    if(analyser)return;
+    try{
+      const actx=getSfxCtx();
+      analyser=actx.createAnalyser();analyser.fftSize=256;analyser.smoothingTimeConstant=0.8;
+      freqData=new Uint8Array(analyser.frequencyBinCount);
+      const src=actx.createMediaElementSource(audio);
+      src.connect(analyser);analyser.connect(actx.destination);
+    }catch(e){analyser=null;}
+  }
+  audio.addEventListener('playing',connectAnalyser,{once:true});
+  function getFreqBands(){
+    if(!analyser)return{bass:0,mid:0,treble:0};
+    analyser.getByteFrequencyData(freqData);
+    const len=freqData.length;let bass=0,mid=0,treble=0;
+    const bassEnd=Math.floor(len*0.10),midEnd=Math.floor(len*0.45);
+    for(let i=0;i<bassEnd;i++)bass+=freqData[i];
+    for(let i=bassEnd;i<midEnd;i++)mid+=freqData[i];
+    for(let i=midEnd;i<len;i++)treble+=freqData[i];
+    return{bass:bass/(bassEnd*255),mid:mid/((midEnd-bassEnd)*255),treble:treble/((len-midEnd)*255)};
+  }
+  const COLS=28,ROWS=14;
+  const COLORS={bass:[239,60,35],mid:[245,126,32],treble:[0,204,153],idle:[30,30,30]};
+  const cells=[];
+  for(let r=0;r<ROWS;r++)for(let c=0;c<COLS;c++)cells.push({c,r,phase:(c/COLS)*Math.PI*4+(r/ROWS)*Math.PI*2,band:r<ROWS*0.35?'bass':r<ROWS*0.7?'mid':'treble',bright:0,size:1});
+  let W,H,cellW,cellH,pixSize;
+  function sizeCanvas(){W=cv.width=wrap.offsetWidth||300;H=cv.height=wrap.offsetHeight||120;cellW=W/COLS;cellH=H/ROWS;pixSize=Math.max(2,Math.floor(Math.min(cellW,cellH)*0.55));}
+  sizeCanvas();window.addEventListener('resize',sizeCanvas);
+  let frame=0,energy=0;
+  function draw(){
+    requestAnimationFrame(draw);
+    if(!W||!H){sizeCanvas();return;}
+    frame++;const t=frame*0.03;
+    const{bass,mid,treble}=getFreqBands();
+    const rawEnergy=bass*0.5+mid*0.3+treble*0.2;
+    energy+=(((_webAudioPlaying&&!_isMuted)?rawEnergy:0)-energy)*0.08;
+    ctx.fillStyle='#000';ctx.fillRect(0,0,W,H);
+    for(const cell of cells){
+      const bv=cell.band==='bass'?bass:cell.band==='mid'?mid:treble;
+      const wave=Math.sin(t*2.5+cell.phase)*0.5+0.5;
+      const wave2=Math.sin(t*1.3+cell.phase*0.7+Math.PI)*0.3+0.3;
+      const target=energy>0.02?Math.pow(wave*bv+wave2*energy,0.7):wave*0.06;
+      cell.bright+=(target-cell.bright)*(energy>0.05?0.25:0.08);
+      const targetSize=1+(cell.band==='bass'?bass*1.8:cell.band==='mid'?mid*1.2:treble*0.8)*energy;
+      cell.size+=(targetSize-cell.size)*0.15;
+      const col=COLORS[cell.band],idle=COLORS.idle,b=Math.min(1,cell.bright);
+      const r2=Math.round(idle[0]+(col[0]-idle[0])*b);
+      const g=Math.round(idle[1]+(col[1]-idle[1])*b);
+      const bv2=Math.round(idle[2]+(col[2]-idle[2])*b);
+      const px=Math.round(cell.c*cellW+cellW/2),py=Math.round(cell.r*cellH+cellH/2);
+      const ps=Math.round(pixSize*cell.size);
+      ctx.fillStyle='rgb('+r2+','+g+','+bv2+')';
+      ctx.fillRect(px-Math.floor(ps/2),py-Math.floor(ps/2),ps,ps);
+      if(b>0.7){ctx.fillStyle='rgba(255,255,255,'+(b-0.7)*0.8+')';const hs=Math.max(1,Math.floor(ps*0.3));ctx.fillRect(px-Math.floor(hs/2),py-Math.floor(hs/2),hs,hs);}
+    }
+    ctx.fillStyle='rgba(0,0,0,0.18)';
+    for(let y=0;y<H;y+=2)ctx.fillRect(0,y,W,1);
+    const vg=ctx.createRadialGradient(W/2,H/2,H*0.3,W/2,H/2,H*0.85);
+    vg.addColorStop(0,'rgba(0,0,0,0)');vg.addColorStop(1,'rgba(0,0,0,0.45)');
+    ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+  }
+  draw();
+}
+let _vizFullscreen=false;
+function toggleVizFullscreen(){
+  const wrap=document.getElementById('visualizer');if(!wrap)return;
+  _vizFullscreen=!_vizFullscreen;
+  if(_vizFullscreen){wrap.style.cssText='position:fixed;inset:0;z-index:999;width:100vw;height:100vh;border-radius:0;border:none;';}
+  else{wrap.style.cssText='';}
+  setTimeout(()=>{const cv=document.getElementById('viz-canvas');if(cv){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},50);
+}
+function getVoiceSlot(bearing,voices){const sectorSize=360/voices;return Math.floor(((bearing%360)+sectorSize/2)%360/sectorSize)%voices;}
+function bearingToXY(bearing,distRatio,cx,cy,r){const angle=bearing*Math.PI/180;return{x:cx+Math.sin(angle)*distRatio*r,y:cy-Math.cos(angle)*distRatio*r};}
+function drawGrid(){
+  const canvas=document.getElementById('grid-canvas');if(!canvas)return;
+  const ctx=canvas.getContext('2d');const W=canvas.width,H=canvas.height;const cx=W/2,cy=H/2,r=W/2-14;
+  ctx.clearRect(0,0,W,H);
+  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#050505';ctx.fill();
+  [0.25,0.5,0.75,1].forEach(ratio=>{ctx.beginPath();ctx.arc(cx,cy,r*ratio,0,Math.PI*2);ctx.strokeStyle='rgba(0,204,153,0.1)';ctx.lineWidth=1;ctx.stroke();});
+  ctx.strokeStyle='rgba(0,204,153,0.12)';ctx.lineWidth=1;
+  [[cx,cy-r,cx,cy+r],[cx-r,cy,cx+r,cy]].forEach(([x1,y1,x2,y2])=>{ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();});
+  ctx.font='700 10px Roboto';ctx.fillStyle='rgba(0,204,153,0.35)';ctx.textAlign='center';
+  [['N',cx,cy-r+13],['S',cx,cy+r-5],['E',cx+r-8,cy+4],['W',cx-r+8,cy+4]].forEach(([t,x,y])=>{ctx.fillText(t,x,y);});
+  const voices=parseInt(document.getElementById('scatter-voices')?.value||4);
+  const sectorSize=(Math.PI*2)/voices;
+  for(let i=0;i<voices;i++){
+    const startAngle=-Math.PI/2+i*sectorSize;
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,startAngle,startAngle+sectorSize);ctx.closePath();
+    ctx.fillStyle=VOICE_COLORS[i]+'08';ctx.fill();
+    ctx.strokeStyle=VOICE_COLORS[i]+'22';ctx.lineWidth=1;ctx.stroke();
+  }
+  [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dy])=>{ctx.beginPath();ctx.arc(cx+dx,cy+dy,5,0,Math.PI*2);ctx.fillStyle='#f57e20';ctx.fill();ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.stroke();});
+  const listeners=Object.values(liveListeners);
+  const zoneRadius=activeZone?.radius_m||200;
+  listeners.forEach(l=>{
+    const slot=getVoiceSlot(l.bearing||0,voices);
+    const color=VOICE_COLORS[slot%VOICE_COLORS.length];
+    const distMeters=(l.dist||0)*1609.34;
+    const distRatio=Math.min(distMeters/zoneRadius,0.95);
+    const{x,y}=bearingToXY(l.bearing||0,distRatio,cx,cy,r);
+    if(l.status==='approaching'){ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.fillStyle=color+'22';ctx.fill();}
+    ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.stroke();
+  });
+  const countEl=document.getElementById('grid-count');
+  if(countEl)countEl.textContent=listeners.length+' listener'+(listeners.length!==1?'s':'');
+}
+function sweepGrid(pattern){
+  const maxMs=parseInt(document.getElementById('scatter-ms')?.value||2000);
+  const voices=parseInt(document.getElementById('scatter-voices')?.value||4);
+  if(!window._djSyncChannel){showToast('No active zone');return;}
+  const listeners=Object.values(liveListeners);
+  let sorted=[...listeners];
+  switch(pattern){
+    case 'lr':sorted.sort((a,b)=>Math.sin((a.bearing||0)*Math.PI/180)-Math.sin((b.bearing||0)*Math.PI/180));break;
+    case 'rl':sorted.sort((a,b)=>Math.sin((b.bearing||0)*Math.PI/180)-Math.sin((a.bearing||0)*Math.PI/180));break;
+    case 'ring':sorted.sort((a,b)=>(a.dist||0)-(b.dist||0));break;
+    case 'inward':sorted.sort((a,b)=>(b.dist||0)-(a.dist||0));break;
+    case 'diag':sorted.sort((a,b)=>{const score=l=>Math.sin((l.bearing||0)*Math.PI/180)-Math.cos((l.bearing||0)*Math.PI/180);return score(a)-score(b);});break;
+    case 'snake':sorted.sort((a,b)=>{const aE=Math.sin((a.bearing||0)*Math.PI/180)>0,bE=Math.sin((b.bearing||0)*Math.PI/180)>0;if(aE!==bE)return aE?1:-1;const aC=Math.cos((a.bearing||0)*Math.PI/180),bC=Math.cos((b.bearing||0)*Math.PI/180);return aE?bC-aC:aC-bC;});break;
+    case 'chaos':sorted.sort(()=>Math.random()-.5);break;
+  }
+  window._djSyncChannel.send({type:'broadcast',event:'scatter',payload:{maxMs,voices,pattern,orderedIds:sorted.map(l=>l.id)}});
+  document.querySelectorAll('.btn-sweep').forEach(b=>b.classList.remove('active'));
+  event?.target?.classList.add('active');
+  setTimeout(()=>document.querySelectorAll('.btn-sweep').forEach(b=>b.classList.remove('active')),800);
+  showToast('⟋ '+pattern+' sweep · '+sorted.length+' speakers');
+  drawGrid();
+}
+
+// ── TRACK LIBRARY ─────────────────────────────────────────
+async function openLibrary(){
+  const modal=document.getElementById('library-modal');
+  const list=document.getElementById('library-list');
+  const status=document.getElementById('library-status');
+  modal.style.display='flex';
+  list.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0;">Loading…</div>';
+  const{data,error}=await db.storage.from('tracks').list('boombox',{limit:50,offset:0,sortBy:{column:'created_at',order:'desc'}});
+  if(error){list.innerHTML='<div style="color:var(--red);font-size:13px;">'+error.message+'</div>';return;}
+  if(!data?.length){list.innerHTML='<div style="color:var(--muted);font-size:13px;">No tracks yet — upload one above.</div>';return;}
+  status.textContent=data.length+' track'+(data.length!==1?'s':'')+' in library';
+  list.innerHTML=data.map(f=>{
+    const sizeMB=(f.metadata?.size/1024/1024).toFixed(1);
+    const safeName=f.name.replace(/'/g,"\\'");
+    return '<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border-radius:10px;margin-bottom:8px;">'
+      +'<div style="flex:1;min-width:0;">'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+f.name+'</div>'
+      +'<div style="font-size:10px;color:var(--muted);margin-top:2px;">'+sizeMB+' MB</div>'
+      +'</div>'
+      +'<button onclick="loadFromLibrary(\''+safeName+'\')" style="padding:10px 16px;background:var(--orange);color:#000;border:none;border-radius:8px;font-family:sans-serif;font-size:14px;font-weight:900;cursor:pointer;flex-shrink:0;">Load</button>'
+      +'</div>';
+  }).join('');
+}
+async function loadFromLibrary(filename){
+  const{data}=db.storage.from('tracks').getPublicUrl('boombox/'+filename);
+  if(!data?.publicUrl){showToast('Could not load track');return;}
+  const url=data.publicUrl,name=filename.replace(/\.[^/.]+$/,'');
+  if(selectedSlot){assignTrackToZone(selectedSlot,url,name);document.getElementById('library-modal').style.display='none';return;}
+  audio.src=url;audio.load();
+  document.getElementById('track-name').textContent=name;
+  document.getElementById('library-modal').style.display='none';
+  showToast('Track loaded — select a zone slot or Go Live ⚡');
+}
+
+// ── ZONE SLOT SYSTEM ──────────────────────────────────────
+let zoneMode='zone',zoneTracks={},selectedSlot=null,_draggingTrack=null;
+function setZoneMode(mode,btn){
+  zoneMode=mode;
+  document.querySelectorAll('.zone-mode-btn,.mbutton').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  showToast('Mode: '+mode.charAt(0).toUpperCase()+mode.slice(1));
+}
+function selectZoneSlot(zone){
+  selectedSlot=zone;
+  document.querySelectorAll('.zone-slot').forEach(s=>s.classList.remove('selected'));
+  document.getElementById('slot-'+zone)?.classList.add('selected');
+}
+function dropOnZone(event,zone){
+  event.preventDefault();
+  const url=event.dataTransfer.getData('track-url')||_draggingTrack?.url;
+  const name=event.dataTransfer.getData('track-name')||_draggingTrack?.name;
+  if(!url)return;
+  assignTrackToZone(zone,url,name);
+}
+function assignTrackToZone(zone,url,name){
+  zoneTracks[zone]={url,name};
+  const slot=document.getElementById('slot-'+zone);
+  const nameEl=document.getElementById('slot-'+zone+'-name');
+  const controls=document.getElementById('slot-'+zone+'-controls');
+  if(nameEl)nameEl.textContent=name||url.split('/').pop();
+  if(slot)slot.classList.add('loaded');
+  if(controls)controls.style.display='flex';
+  showToast('Zone '+zone+' → '+(name||'track loaded'));
+}
+function clearZoneSlot(event,zone){
+  event.stopPropagation();delete zoneTracks[zone];
+  const slot=document.getElementById('slot-'+zone);
+  const nameEl=document.getElementById('slot-'+zone+'-name');
+  const controls=document.getElementById('slot-'+zone+'-controls');
+  const defaults={C:'Center — drop track',N:'North — drop track',E:'East — drop track',S:'South — drop track',W:'West — drop track'};
+  if(nameEl)nameEl.textContent=defaults[zone];
+  if(slot)slot.classList.remove('loaded','selected');
+  if(controls)controls.style.display='none';
+}
+function playZone(event,zone){event.stopPropagation();const t=zoneTracks[zone];if(!t)return;audio.src=t.url;audio.play().catch(()=>{});document.getElementById('track-name').textContent=t.name;showToast('Playing Zone '+zone+': '+t.name);}
+function muteZone(event,zone){event.stopPropagation();showToast('Zone '+zone+' muted');}
+async function broadcastAllZones(){
+  if(!activeZone){showToast('Create a zone first');return;}
+  if(!Object.keys(zoneTracks).length){showToast('Assign tracks to zones first');return;}
+  const payload={};Object.entries(zoneTracks).forEach(([z,t])=>{payload[z]=t.url;});
+  await db.from('zones').update({zone_tracks:payload,playback_started_at:new Date().toISOString(),active:true}).eq('id',activeZone.id);
+  if(zoneTracks['C'])await db.from('zones').update({current_track_url:zoneTracks['C'].url,track_name:zoneTracks['C'].name}).eq('id',activeZone.id);
+  showToast('⚡ All zones broadcasting');
+}
+
+// ── EVENTS ────────────────────────────────────────────────
+function openEventPanel(){
+  const now=new Date();now.setMinutes(now.getMinutes()+60);
+  document.getElementById('evt-start').value=toLocalInput(now);
+  const reveal=new Date(now);reveal.setMinutes(reveal.getMinutes()-30);
+  document.getElementById('evt-reveal').value=toLocalInput(reveal);
+  document.getElementById('event-panel').style.transform='translateY(0)';
+}
+function closeEventPanel(){
+  document.getElementById('event-panel').style.transform='translateY(100%)';
+  ['evt-name','evt-artists','evt-desc'].forEach(id=>document.getElementById(id).value='');
+}
+function toLocalInput(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+async function confirmEvent(){
+  const name=document.getElementById('evt-name').value.trim();
+  const artists=document.getElementById('evt-artists').value.split(',').map(a=>a.trim()).filter(Boolean);
+  const desc=document.getElementById('evt-desc').value.trim();
+  const start=document.getElementById('evt-start').value;
+  const reveal=document.getElementById('evt-reveal').value;
+  if(!name){showToast('Event needs a name');return;}
+  if(!start){showToast('Set an event start time');return;}
+  if(!reveal){showToast('Set a reveal time');return;}
+  const lat=activeZone?.lat||draftCenter?.lat||userLat;
+  const lng=activeZone?.lng||draftCenter?.lng||userLng;
+  if(!lat){showToast('Set a zone location first');return;}
+  try{
+    const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at:new Date(reveal).toISOString(),lat,lng,radius_m:activeZone?.radius_m||draftRadius||200,zone_id:activeZone?.id||null,created_by:currentUser.id});
+    if(error)throw error;
+    closeEventPanel();showToast('"'+name+'" scheduled 📅');loadEvents();
+  }catch(e){showToast('Error: '+e.message);}
+}
+async function loadEvents(){
+  const{data}=await db.from('events').select('*').eq('created_by',currentUser.id).order('event_start',{ascending:true}).limit(10);
+  const el=document.getElementById('event-list');
+  if(!data?.length){el.innerHTML='';return;}
+  el.innerHTML=data.map(e=>{
+    const start=new Date(e.event_start).toLocaleString();
+    const reveal=new Date(e.location_reveal_at).toLocaleString();
+    const artists=e.artists?.join(', ')||'—';
+    return '<div style="background:var(--surface2);border:1px solid #222;border-left:3px solid var(--red);border-radius:4px;padding:10px 12px;margin-bottom:8px;"><div style="font-weight:700;color:var(--cream);font-size:13px;">'+e.name+'</div><div style="font-size:10px;color:var(--muted);margin-top:3px;">'+artists+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">📅 '+start+'</div><div style="font-size:10px;color:var(--orange);margin-top:2px;">📍 Reveals: '+reveal+'</div></div>';
+  }).join('');
+}
+
+function toggleLiveMenu(){}  // no-op in play.html
+
+let toastTimer;
+function showToast(msg,isError=false){
+  const t=document.getElementById('toast');t.textContent=msg;t.style.borderColor=isError?'var(--red)':'var(--teal)';
+  t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),isError?5000:3000);
+}
+
+// =========================================================
+//  BRIDGE — play.html wiring (overrides / additions)
+// =========================================================
+
+// Required globals dj.html calls but doesn't define
+const VOICE_COLORS=['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6','#34d399','#60a5fa','#fbbf24'];
+function fmt(s){if(!s||isNaN(s))return'0:00';const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+(sec<10?'0':'')+sec;}
+let _sfxCtx=null;
+function getSfxCtx(){if(!_sfxCtx)_sfxCtx=new AudioContext();return _sfxCtx;}
+let _webAudioPlaying=false,_isMuted=false;
+
+// openGrid / closeGrid
+function openGrid(){
+  const p=document.getElementById('spatial-grid-panel');
+  if(p){p.style.display='flex';drawGrid();}
+}
+function closeGrid(){
+  const p=document.getElementById('spatial-grid-panel');
+  if(p)p.style.display='none';
+}
+
+// setLight — lighting buttons (crowd panel)
+function setLight(btn,col){
+  document.querySelectorAll('.lbtn').forEach(b=>{b.classList.remove('on');b.style.background='';b.style.color='';});
+  btn.classList.add('on');
+  if(col!=='strobe'&&col!=='pulse'){btn.style.background=col;btn.style.color=col==='#ffffff'?'#000':'#fff';}
+  else{btn.style.background='var(--orange)';btn.style.color='#000';}
+  showToast('Lighting: '+btn.textContent.trim());
+}
+
+// ── OVERRIDE switchPanel for v6 right nav ──────────────
+function switchPanel(name,btn){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+name)?.classList.add('active');
+  document.querySelectorAll('.rnbtn').forEach(b=>b.classList.remove('active'));
+  (btn||document.querySelector('[data-panel="'+name+'"]'))?.classList.add('active');
+  window.scrollTo(0,0);
+  // Leaflet needs size hint when setup panel becomes visible
+  if(name==='setup'&&window.leafletMap)setTimeout(()=>leafletMap.invalidateSize(),100);
+  // Resize radar canvas
+  if(name==='spatial')setTimeout(resizeSG,60);
+  // Resize visualizer canvas
+  if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
+}
+
+// ── Mirror #btn-go-live → #btn-live in topbar ──────────
+(function(){
+  const goLive=document.getElementById('btn-go-live');
+  const btnLive=document.getElementById('btn-live');
+  if(!goLive||!btnLive)return;
+  function syncLiveBtn(){
+    const active=goLive.classList.contains('active');
+    if(active){btnLive.classList.add('active');btnLive.textContent='■ Live';}
+    else{btnLive.classList.remove('active');btnLive.textContent='⚡ Go Live';}
+  }
+  new MutationObserver(syncLiveBtn).observe(goLive,{attributes:true,attributeFilter:['class']});
+})();
+
+// ── Radar canvas (sg) sizing ───────────────────────────
+function resizeSG(){
+  const sg=document.getElementById('sg');if(!sg)return;
+  const wrap=sg.parentElement;if(!wrap)return;
+  const size=Math.min(wrap.offsetWidth,wrap.offsetHeight)-16;
+  sg.width=size;sg.height=size;
+}
 window.addEventListener('resize',resizeSG);
+setTimeout(resizeSG,200);
 
-console.log('[BYOB play.html] Bridge loaded v1.0');
+// ── Stub deck functions v6 shell references ────────────
+function toggleDeck(d){const btn=document.getElementById('d'+d+'-play');if(btn)btn.classList.toggle('on');}
+function syncBPM(){showToast('BPM sync — coming soon');}
+function dropDeck(e,d){e.preventDefault();}
+function onSGTouch(e){}
+function onSGMouse(e){}
+function onSGDrop(e){e.preventDefault();}
+function toggleEQ(){document.getElementById('eq-popup')?.classList.toggle('open');}
+
+// ── VU meter animation (right nav) ────────────────────
+(function vuMeter(){
+  const fill=document.getElementById('vu-fill');if(!fill)return;
+  setInterval(()=>{
+    if(isPlaying&&!audio.paused){
+      const h=Math.random()*60+20;
+      fill.style.height=h+'%';
+      fill.style.opacity='1';
+    }else{fill.style.height='5%';fill.style.opacity='0.3';}
+  },100);
+})();
+
+// ── Set image assets from embedded base64 (same as dj.html) ──
+// Images loaded inline via data URIs set at parse time in dj.html
+// play.html loads them the same way — IDs match exactly
+// (logo-img, boom-img, lips-img, kill-img, eye-img, auth-logo)
+// The base64 strings below are identical to dj.html's constants
+
+window.addEventListener('DOMContentLoaded',()=>{
+  // Images are set by the LOGO_B64 etc. constants at the top of this script.
+  // If this is play.html standalone (no dj.html inline), fetch from dj.html or
+  // use a fallback text logo.
+  const logoEl=document.getElementById('logo-img');
+  const boomEl=document.getElementById('boom-img');
+  const authLogo=document.getElementById('auth-logo');
+  // Fallback: text if images missing
+  if(logoEl&&!logoEl.src){logoEl.style.cssText='font-family:Barlow Condensed,sans-serif;font-size:22px;font-weight:900;color:#f57e20;letter-spacing:.1em;';}
+  if(boomEl&&!boomEl.src){boomEl.style.display='none';}
+  // Build EQ block for mixer
+  const eqBlock=document.getElementById('mx-eq-block');
+  if(eqBlock){
+    ['HI','MID','LO'].forEach(band=>{
+      const row=document.createElement('div');row.className='mx-eq-row';
+      row.innerHTML='<div class="mx-band-label" style="color:var(--da);">'+band+'</div>'
+        +'<input type="range" min="-12" max="12" value="0" style="-webkit-appearance:slider-vertical;width:10px;height:50px;accent-color:var(--da);" />'
+        +'<input type="range" min="-12" max="12" value="0" style="-webkit-appearance:slider-vertical;width:10px;height:50px;accent-color:var(--db);" />'
+        +'<div class="mx-band-label" style="color:var(--db);">'+band+'</div>';
+      eqBlock.appendChild(row);
+    });
+  }
+});
+
 </script>
+
+<script>
+// ── IMAGE ASSET LOADER ────────────────────────────────────
+// Tries to load images from dj.html's base64 constants.
+// If dj.html is on same server, fetches and extracts them.
+// Falls back to SVG placeholders so the app still looks good.
+
+(async function loadAssets(){
+  // SVG fallback assets (tiny, look good)
+  const svgLogo = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 40'%3E%3Ctext x='4' y='30' font-family='sans-serif' font-weight='900' font-size='28' fill='%23f57e20' letter-spacing='2'%3EBYOB%3C/text%3E%3C/svg%3E";
+  const svgBoom = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 60 60'%3E%3Ccircle cx='30' cy='30' r='26' stroke='%23f57e20' stroke-width='3' fill='none'/%3E%3Ccircle cx='30' cy='30' r='12' fill='%23f57e20'/%3E%3Ccircle cx='30' cy='30' r='4' fill='%23000'/%3E%3C/svg%3E";
+  const svgEye  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 50'%3E%3Cellipse cx='40' cy='25' rx='36' ry='20' stroke='%23f57e20' stroke-width='3' fill='none'/%3E%3Ccircle cx='40' cy='25' r='10' fill='%23f57e20'/%3E%3Ccircle cx='40' cy='25' r='4' fill='%23000'/%3E%3C/svg%3E";
+  const svgLips = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 60'%3E%3Cpath d='M10,20 Q30,5 50,20 Q70,5 90,20 Q70,50 50,40 Q30,50 10,20Z' fill='%23ef3c23'/%3E%3C/svg%3E";
+  const svgKill = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 80 90'%3E%3Ccircle cx='40' cy='35' r='28' stroke='%23fff' stroke-width='3' fill='none'/%3E%3Crect x='28' y='62' width='8' height='16' rx='2' fill='%23fff'/%3E%3Crect x='44' y='62' width='8' height='16' rx='2' fill='%23fff'/%3E%3Crect x='22' y='75' width='36' height='6' rx='3' fill='%23fff'/%3E%3Ccircle cx='28' cy='30' r='5' fill='%23fff'/%3E%3Ccircle cx='52' cy='30' r='5' fill='%23fff'/%3E%3C/svg%3E";
+
+  function setImg(id, src){ const el=document.getElementById(id); if(el) el.src=src; }
+
+  // Try fetching dj.html from same server to extract real base64
+  try {
+    const res = await fetch('dj.html', {signal: AbortSignal.timeout(3000)});
+    if(res.ok){
+      const txt = await res.text();
+      const extract = (varName) => {
+        const m = txt.match(new RegExp('const '+varName+'\s*=\s*"(data:image[^"]+)"'));
+        return m ? m[1] : null;
+      };
+      const logo = extract('LOGO_B64');
+      const boom = extract('BOOM_B64');
+      const lips = extract('LIPS_B64');
+      const kill = extract('KILL_B64');
+      const eye  = extract('EYE_B64');
+      if(logo){ setImg('logo-img',logo); setImg('auth-logo',logo); }
+      if(boom) setImg('boom-img',boom);
+      if(lips) setImg('lips-img',lips);
+      if(kill) setImg('kill-img',kill);
+      if(eye)  setImg('eye-img',eye);
+      console.log('[BYOB] Assets loaded from dj.html');
+      return;
+    }
+  } catch(e){ console.log('[BYOB] dj.html not found, using SVG placeholders'); }
+
+  // Fallback SVGs
+  setImg('logo-img', svgLogo);
+  setImg('auth-logo', svgLogo);
+  setImg('boom-img', svgBoom);
+  setImg('lips-img', svgLips);
+  setImg('kill-img', svgKill);
+  setImg('eye-img',  svgEye);
+})();
+</script>
+
 </body>
 </html>
