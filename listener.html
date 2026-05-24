@@ -1958,7 +1958,8 @@ function launchApp() {
   initMap();
   loadZones(false);
   // Keep Supabase awake — ping every 2 minutes
-  const keepAlive = () => db.from('zones').select('id').limit(1).catch(()=>{});
+  const keepAlive = async () => { try { await db.from('zones').select('id').limit(1); } catch(e) {} };
+
   keepAlive(); // immediate ping on launch
   setInterval(keepAlive, 2*60*1000);
 }
