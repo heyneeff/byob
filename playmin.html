@@ -59,7 +59,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 /* DECK */
 .deck-panel{flex:1;display:grid;grid-template-rows:1fr auto 1fr;overflow:hidden;}
 .deck-top{display:grid;grid-template-columns:1fr 118px 1fr;overflow:hidden;border-bottom:1px solid var(--rim);}
-.dhalf{display:grid;grid-template-columns:auto 1fr;background:var(--card);overflow:hidden;}
+.dhalf{display:flex;flex-direction:column;background:var(--card);overflow:hidden;}
 .dhalf-b{grid-template-columns:1fr auto;}
 .dhalf:first-child{border-right:1px solid var(--rim);}.dhalf:last-child{border-left:1px solid var(--rim);}
 .platter-col{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:10px;background:var(--bg);border-right:1px solid var(--rim);}
@@ -1681,13 +1681,135 @@ function libHTML(filter=''){
       </div>`).join('')}
     </div>`;
 }
-function buildLibs(f=''){
-  const sl=document.getElementById('sp-lib');if(sl)sl.innerHTML=libHTML(f);
-  const dl=document.getElementById('deck-lib');if(dl)dl.innerHTML=libHTML(f);
+// Real library — fetches from Supabase tracks table, falls back to demo TRACKS
+let _realTracks = [];  // cache
+
+async function fetchRealTracks() {
+  if(!currentUser) return [];
+  try {
+    const { data } = await db.from('tracks')
+      .select('id,title,public_url,file_path,created_at')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data?.length) {
+      return data.map((t,i) => ({
+        id: 'R'+i,
+        name: t.title || t.file_path?.split('/').pop() || 'Track',
+        artist: currentUser.email?.split('@')[0] || 'You',
+        bpm: '—', key: '—', dur: '—',
+        col: ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'][i%5],
+        url: t.public_url
+      }));
+    }
+  } catch(e) { console.warn('Library fetch:', e.message); }
+  return [];
 }
-function filterLib(v){buildLibs(v);}
-function crateActive(el){el.closest('.crates').querySelectorAll('.crate').forEach(c=>c.classList.remove('active'));el.classList.add('active');}
-buildLibs();
+
+function libHTML(tracks, filter='') {
+  const list = tracks.filter(t =>
+    t.name.toLowerCase().includes(filter.toLowerCase()) ||
+    t.artist.toLowerCase().includes(filter.toLowerCase())
+  );
+  if (!list.length) return `
+    <div class="lib-bar"><div class="crates">
+      <button class="crate active" onclick="crateActive(this)">All</button>
+      <button class="crate" onclick="crateActive(this)">★ Favs</button>
+    </div>
+    <input class="lib-search" placeholder="🔍 Search…" oninput="filterLib(this.value)"/>
+    <button class="lib-upload" onclick="document.getElementById('file-input').click()">+ Upload</button>
+    </div>
+    <div style="padding:12px;font-size:11px;color:var(--muted);">No tracks yet — upload one in Setup ↓</div>`;
+
+  return `<div class="lib-bar"><div class="crates">
+      <button class="crate active" onclick="crateActive(this)">All</button>
+      <button class="crate" onclick="crateActive(this)">★ Favs</button>
+    </div>
+    <input class="lib-search" placeholder="🔍 Search…" oninput="filterLib(this.value)"/>
+    <button class="lib-upload" onclick="document.getElementById('file-input').click()">+ Upload</button>
+    </div>
+    <div class="lib-cols">
+      <div class="lc">Title / Artist</div><div class="lc">BPM</div>
+      <div class="lc">Key</div><div class="lc">Time</div>
+      <div class="lc" style="text-align:right;">Load</div>
+    </div>
+    <div class="lib-rows">${list.map(t=>`
+      <div class="trow ${deckA.track?.id===t.id?'loaded-a':deckB.track?.id===t.id?'loaded-b':''}"
+        draggable="true" ondragstart="startDrag(event,'${t.id}')">
+        <div class="tr-name">
+          <div class="tr-col" style="background:${t.col};"></div>
+          <div class="tr-txt"><div class="tr-title">${t.name}</div><div class="tr-artist">${t.artist}</div></div>
+        </div>
+        <div class="tr-bpm">${t.bpm}</div>
+        <div class="tr-key">${t.key}</div>
+        <div class="tr-dur">${t.dur}</div>
+        <div class="tr-acts">
+          <button class="tr-btn" onclick="loadDeck('a','${t.id}')">A</button>
+          <button class="tr-btn b" onclick="loadDeck('b','${t.id}')">B</button>
+          <button class="tr-btn" onclick="quickSlot('${t.id}')">+</button>
+        </div>
+      </div>`).join('')}
+    </div>`;
+}
+
+async function buildLibs(filter='') {
+  // Use cached real tracks, or fetch fresh
+  if (!_realTracks.length) {
+    const real = await fetchRealTracks();
+    _realTracks = real.length ? real : TRACKS;  // fall back to demo
+  }
+  const html = libHTML(_realTracks, filter);
+  const sl = document.getElementById('sp-lib'); if(sl) sl.innerHTML = html;
+  const dl = document.getElementById('deck-lib'); if(dl) dl.innerHTML = html;
+}
+
+function filterLib(v){ buildLibs(v); }
+function crateActive(el){
+  el.closest('.crates').querySelectorAll('.crate').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// Also update loadDeck to support real URL tracks
+const _origLoadDeck = loadDeck;
+function loadDeck(d, id) {
+  const t = _realTracks.find(t=>t.id===id) || TRACKS.find(t=>t.id===id);
+  if (!t) return;
+  if (t.url) {
+    // Real uploaded track — load into main audio player too
+    audio.src = t.url; audio.loop = true;
+    audio.play().catch(()=>{});
+    isPlaying = true;
+    document.getElementById('btn-play').textContent = '⏸';
+    document.getElementById('btn-play').classList.add('playing');
+    document.getElementById('track-name').textContent = t.name;
+    document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
+  }
+  if(d==='a'){
+    deckA={...deckA,track:t,bpm:parseInt(t.bpm)||124,playing:true};
+    document.getElementById('da-name').textContent=t.name;
+    document.getElementById('da-artist').textContent=t.artist;
+    document.getElementById('da-bpm').textContent=t.bpm;
+    document.getElementById('da-play').textContent='⏸ PAUSE';
+    if(t.bpm!=='—') document.getElementById('tb-bpm').textContent=t.bpm;
+  } else {
+    deckB={...deckB,track:t,bpm:parseInt(t.bpm)||124,playing:true};
+    document.getElementById('db-name').textContent=t.name;
+    document.getElementById('db-artist').textContent=t.artist;
+    document.getElementById('db-bpm').textContent=t.bpm;
+    document.getElementById('db-play').textContent='⏸ PAUSE';
+  }
+  buildLibs();
+}
+
+// Refresh library when a track is uploaded
+const _origFileInput = document.getElementById('file-input');
+if(_origFileInput){
+  _origFileInput.addEventListener('change', ()=>{
+    setTimeout(()=>{ _realTracks=[]; buildLibs(); }, 3000); // refresh after upload
+  });
+}
+
+// Initial load — deferred so currentUser is set
+setTimeout(()=>buildLibs(), 800);
 
 // Mixer EQ knobs
 const MX_BANDS=['HI','MID','LOW'];
