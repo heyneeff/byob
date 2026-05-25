@@ -2006,15 +2006,19 @@ function onZoneBtn() {
   // Pre-authorize the main audio element right now while we have the gesture
   audio.muted = true;
   audio.src = audio.src || 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAA==';
-  audio.play().then(() => {
-    audio.pause();
-    audio.muted = false;
-    audio.src = '';
-    window._audioUnlocked = true;
-  }).catch(() => {});
+     audio.play().then(() => {
+      audio.pause();
+      audio.muted = false;
+      // Don't clear src — keep element in played state so iOS stays unlocked
+      window._audioUnlocked = true;
+    }).catch(() => { audio.muted = false; });
 
   // Already in an active zone — scroll to music
+  // Already in an active zone — try to play directly
   if (activeZone) {
+    if (audio.src && audio.paused) {
+      audio.play().catch(()=>{});
+    }
     document.getElementById('music-lockable')?.scrollIntoView({behavior:'smooth', block:'center'});
     return;
   }
