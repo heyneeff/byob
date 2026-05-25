@@ -1578,10 +1578,13 @@ function makeBabbleWav(freq) {
 const _BABBLE_PITCHES = [110,130,98,120,146,110,87,130];
 let _babbleUrls = null;
 
-function playBabble() {
+  function playBabble() {
   try {
-    const ctx = typeof getSfxCtx === 'function' ? getSfxCtx() : (window._sfxCtx = window._sfxCtx || new AudioContext());
-    if (ctx.state === 'suspended') ctx.resume();
+    if (!window._sfxCtx) window._sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = window._sfxCtx;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(()=>{});
+
 
     const now = ctx.currentTime;
 
