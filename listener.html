@@ -1100,7 +1100,6 @@ function onBoomyTap(){
   }catch(e){}
 
   _isMuted = false; setMuteBtn(false);
-
   const startFadedPlay = () => {
     audio.muted = false;
     audio.volume = 0;
@@ -1114,6 +1113,24 @@ function onBoomyTap(){
       }).catch(e=>showToast('Play failed: ' + e.message));
     }
   };
+
+  // Handle pending seek from blocked autoplay
+  if(window._pendingSeek){
+    seekToSync(window._pendingSeek.startedAt, window._pendingSeek.playAt, window._pendingSeek.playFromS);
+    window._pendingSeek = null;
+  }
+
+  if(audio.src && audio.src !== ''){
+    startFadedPlay();
+  } else if(activeZone?.current_track_url){
+    audio.src = activeZone.current_track_url;
+    audio.loop = true;
+    audio.load();
+    audio.addEventListener('loadedmetadata', ()=>{
+      seekToSync(activeZone.playback_started_at, activeZone.play_at, activeZone.play_from_s);
+      startFadedPlay();
+    }, { once: true });
+  }
 
   if(typeof _pendingStream !== 'undefined' && _pendingStream){
     audio.srcObject = _pendingStream;
