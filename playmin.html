@@ -1223,18 +1223,22 @@ function renderLiveGuestList(){
   });
   if(document.getElementById('spatial-grid-panel')?.style.display!=='none')drawGrid();
 }
-async function triggerResync(){
-  if(!activeZone)return showToast('No active zone');
-  if(!audio.src||!audio.duration)return showToast('No track loaded');
-  const resyncAt=Date.now()+4000;
-  const freshStartedAt=new Date(Date.now()-audio.currentTime*1000).toISOString();
-  const ch=db.channel('sync_'+activeZone.id);
-  ch.subscribe(status=>{
-    if(status!=='SUBSCRIBED')return;
-    ch.send({type:'broadcast',event:'hard_sync',payload:{resyncAt,playback_started_at:freshStartedAt,resetOffsets:true}});
-    showToast('🔄 Hard sync in 4s — locking all speakers…');
+async function triggerResync() {
+  if (!activeZone) return showToast('No active zone');
+  if (!audio.src || !audio.duration) return showToast('No track loaded');
+
+  const resyncAt = Date.now() + 3000;
+  const freshStartedAt = new Date(Date.now() - audio.currentTime * 1000).toISOString();
+
+  // Use existing channel — never fails due to subscribe timing
+  const ch = window._djSyncChannel || db.channel('sync_' + activeZone.id);
+  ch.send({
+    type: 'broadcast', event: 'hard_sync',
+    payload: { resyncAt, playback_started_at: freshStartedAt, resetOffsets: false }
   });
+  showToast('🔄 Sync in 3s — locking all speakers…');
 }
+
 async function killStream(){
   if(!confirm('Kill the stream and deactivate zone?'))return;
   audio.pause();audio.src='';audio.load();
