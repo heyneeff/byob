@@ -1160,6 +1160,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
   // Connect audio element to GainNode (first time only)
   // Set source and seek on load
+    alert('loadTrack called\nURL: ' + (url ? url.slice(0,60) : 'EMPTY') + '\nstartedAt: ' + startedAt);
   audio.src = url;
   audio.loop = true;
 
