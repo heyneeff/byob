@@ -1200,12 +1200,20 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
         navigator.mediaSession.setActionHandler('pause', () => { audio.muted = true; setMuteBtn(true); });
       }
     }, { once: true });
-
-    audio.play().catch((e) => {
+    audio.volume = 0;
+    audio.play().then(() => {
+      _webAudioPlaying = true;
+      fadeAudioIn(8000);
+    }).catch((e) => {
       console.warn('Play blocked:', e.message);
-      // Show toast — Boomy will handle it
-      showToast('Tap the zone button to start music 🎧');
+      // Fallback — any tap on body starts it
+      document.body.addEventListener('click', () => {
+        audio.volume = 0;
+        audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(8000); });
+      }, { once: true });
+      showToast('Tap anywhere to start music 🎧');
     });
+
 
   }, { once: true });
 
@@ -2446,10 +2454,7 @@ function triggerBoomyHeroEntry(){
   // Play the warp sound + start audio + fade in
   playWarpSound();
 
-  // Start audio playing (faded to 0, then 8-second fade-in)
-  setTimeout(() => {
-    startMusicWithFade();
-  }, 400);
+  // loadTrack handles playback — no separate startMusicWithFade needed
 
     // Wall-clock sync handles drift — no mic needed
   setSyncIndicator('locked');
