@@ -1578,81 +1578,99 @@ function makeBabbleWav(freq) {
 const _BABBLE_PITCHES = [110,130,98,120,146,110,87,130];
 let _babbleUrls = null;
 
-  function playBabble() {
+function playBabble() {
   try {
     if (!window._sfxCtx) window._sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = window._sfxCtx;
     if (!ctx) return;
     if (ctx.state === 'suspended') ctx.resume().catch(()=>{});
 
-
     const now = ctx.currentTime;
+    const dur = 0.12 + Math.random() * 0.10; // slower — more resonant thump
 
-    // Boomy's "voice" = speaker cone resonance
-    // Warm fundamental + fuzzy overtones + cabinet rattle
-        const rootFreq = 90 + Math.random() * 80; // 90–170hz — deeper chest voice
-    const dur      = 0.08 + Math.random() * 0.09; // 80–170ms — slower, warmer syllables
+    // ── Layer 1: Deep drum body — thumpy sine sweep ──
+    const drum = ctx.createOscillator();
+    drum.type = 'sine';
+    drum.frequency.setValueAtTime(80 + Math.random() * 40, now);      // 80–120hz start
+    drum.frequency.exponentialRampToValueAtTime(28 + Math.random() * 14, now + dur); // drops like a kick
 
+    const drumEnv = ctx.createGain();
+    drumEnv.gain.setValueAtTime(0, now);
+    drumEnv.gain.linearRampToValueAtTime(0.55 + Math.random() * 0.2, now + 0.008);
+    drumEnv.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
-    // ── Layer 1: Warm fundamental (the speaker cone) ──
-    const osc1 = ctx.createOscillator();
-    osc1.type = 'sawtooth'; // rich harmonics like a speaker
-    osc1.frequency.setValueAtTime(rootFreq, now);
-    // Slight pitch wobble — like a small speaker struggling with resonance
-    osc1.frequency.linearRampToValueAtTime(rootFreq * (0.92 + Math.random() * 0.16), now + dur);
+    // ── Layer 2: Underwater resonance — bandpass noise ──
+    const noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const nd = noise.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1);
+    const noiseSrc = ctx.createBufferSource();
+    noiseSrc.buffer = noise;
 
-    // ── Layer 2: Formant filter — gives it a vowel-like quality ──
-    const formant = ctx.createBiquadFilter();
-    formant.type = 'bandpass';
-    // Vowel-ish formants: 'uh' ~800hz, 'oh' ~500hz, 'ee' ~2200hz
-       const vowels = [300, 450, 600, 750, 900, 1100];
-    formant.frequency.value = vowels[Math.floor(Math.random() * vowels.length)];
-    formant.Q.value = 1.5 + Math.random() * 2.5;
+    // Two bandpass filters stacked = narrow underwater resonance
+    const bp1 = ctx.createBiquadFilter();
+    bp1.type = 'bandpass';
+    bp1.frequency.value = 120 + Math.random() * 180; // 120–300hz — underwater thud range
+    bp1.Q.value = 8 + Math.random() * 8;             // tight = more resonant
 
-    // ── Layer 3: Cabinet rattle — tiny bit of noise underneath ──
-    const rattle = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const bp2 = ctx.createBiquadFilter();
+    bp2.type = 'bandpass';
+    bp2.frequency.value = bp1.frequency.value * (1.2 + Math.random() * 0.4);
+    bp2.Q.value = 5 + Math.random() * 5;
+
+    const noiseEnv = ctx.createGain();
+    noiseEnv.gain.setValueAtTime(0.18, now);
+    noiseEnv.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.8);
+
+    // ── Layer 3: Subtle membrane rattle — very low highpass ──
+    const rattle = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur * 0.4), ctx.sampleRate);
     const rd = rattle.getChannelData(0);
-    for (let i = 0; i < rd.length; i++) rd[i] = (Math.random() * 2 - 1) * 0.15;
+    for (let i = 0; i < rd.length; i++) rd[i] = (Math.random() * 2 - 1);
     const rattleSrc = ctx.createBufferSource();
     rattleSrc.buffer = rattle;
 
-    const rattleFilter = ctx.createBiquadFilter();
-    rattleFilter.type = 'highpass';
-    rattleFilter.frequency.value = 800;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'bandpass';
+    hp.frequency.value = 400 + Math.random() * 300; // kept low — no harsh highs
+    hp.Q.value = 2;
 
-    // ── Waveshaper: soft speaker distortion ──
+    const rattleEnv = ctx.createGain();
+    rattleEnv.gain.setValueAtTime(0.06, now);
+    rattleEnv.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.3);
+
+    // ── Soft limiter — keeps it from clipping ──
     const shaper = ctx.createWaveShaper();
     const curve = new Float32Array(256);
     for (let i = 0; i < 256; i++) {
       const x = (i * 2) / 256 - 1;
-      // Soft clip — speaker cone hitting its limits gently
-      curve[i] = Math.tanh(x * 2.5) * 0.7;
+      curve[i] = Math.tanh(x * 1.8) * 0.75; // softer clip = warmer
     }
     shaper.curve = curve;
-    shaper.oversample = '2x';
 
-    // ── Envelope: punchy attack, quick tail ──
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0, now);
-    env.gain.linearRampToValueAtTime(0.28 + Math.random() * 0.18, now + 0.008); // fast attack
-    env.gain.setValueAtTime(0.28 + Math.random() * 0.18, now + dur * 0.4);
-    env.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    const master = ctx.createGain();
+    master.gain.value = 0.7;
 
-    // ── Wire it up ──
-    osc1.connect(formant);
-    formant.connect(shaper);
-    rattleSrc.connect(rattleFilter);
-    rattleFilter.connect(shaper);
-    shaper.connect(env);
-    env.connect(ctx.destination);
+    // Wire it up
+    drum.connect(drumEnv);
+    drumEnv.connect(shaper);
 
-    osc1.start(now);
-    osc1.stop(now + dur + 0.02);
-    rattleSrc.start(now);
-    rattleSrc.stop(now + dur);
+    noiseSrc.connect(bp1);
+    bp1.connect(bp2);
+    bp2.connect(noiseEnv);
+    noiseEnv.connect(shaper);
+
+    rattleSrc.connect(hp);
+    hp.connect(rattleEnv);
+    rattleEnv.connect(shaper);
+
+    shaper.connect(master);
+    master.connect(ctx.destination);
+
+    drum.start(now); drum.stop(now + dur + 0.05);
+    noiseSrc.start(now); noiseSrc.stop(now + dur);
+    rattleSrc.start(now); rattleSrc.stop(now + dur * 0.4);
 
     _babbleChar++;
-  } catch(e) {}
+  } catch(e) { console.warn('babble:', e.message); }
 }
 
 // ── WARP ENTRY SOUND — wet womp ─────────────────────────
