@@ -1590,8 +1590,9 @@ let _babbleUrls = null;
 
     // Boomy's "voice" = speaker cone resonance
     // Warm fundamental + fuzzy overtones + cabinet rattle
-    const rootFreq = 180 + Math.random() * 160; // 180–340hz — chest voice range
-    const dur      = 0.06 + Math.random() * 0.07; // 60–130ms — syllable length
+        const rootFreq = 90 + Math.random() * 80; // 90–170hz — deeper chest voice
+    const dur      = 0.08 + Math.random() * 0.09; // 80–170ms — slower, warmer syllables
+
 
     // ── Layer 1: Warm fundamental (the speaker cone) ──
     const osc1 = ctx.createOscillator();
