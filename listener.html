@@ -2872,19 +2872,23 @@ function connectAnalyser() {
   if (analyser) return;
   try {
     const actx = getSfxCtx();
+    if (actx.state === 'suspended') actx.resume().catch(()=>{});
     analyser = actx.createAnalyser();
     analyser.fftSize = 256;
     analyser.smoothingTimeConstant = 0.8;
     freqData = new Uint8Array(analyser.frequencyBinCount);
-    // Use cached source if already created
-    if (!window._audioSrc) {
-      window._audioSrc = actx.createMediaElementSource(audio);
+    // captureStream reads audio WITHOUT rerouting it through Web Audio
+    // createMediaElementSource silences output if AudioContext is suspended
+    if (audio.captureStream) {
+      const stream = audio.captureStream();
+      const src = actx.createMediaStreamSource(stream);
+      src.connect(analyser);
+      // analyser does NOT connect to destination — audio plays natively
     }
-    window._audioSrc.connect(analyser);
-    analyser.connect(actx.destination);
+    // Safari fallback: no captureStream, analyser shows zeros, audio plays normally
   } catch(e) {
-    console.warn('Analyser:', e.message);
     analyser = null;
+    console.warn('[Analyser] skipped:', e.message);
   }
 }
 
