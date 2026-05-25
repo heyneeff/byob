@@ -1182,9 +1182,12 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       }
     }, { once: true });
 
-    audio.play().catch(() => {
-      showTapBanner();
+    audio.play().catch((e) => {
+      console.warn('Play blocked:', e.message);
+      // Show toast — Boomy will handle it
+      showToast('Tap the zone button to start music 🎧');
     });
+
   }, { once: true });
 
   audio.load();
@@ -1994,14 +1997,21 @@ function launchApp() {
 
 
 // boombox click
-
-// party button
 function onZoneBtn() {
-  // This is the iOS audio unlock moment — any user tap here authorizes audio
+  // iOS audio unlock — must happen during real user gesture
   if (!_sfxCtx) _sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
   _sfxCtx.resume();
   unlockSfxForIOS();
   startAudioHeartbeat();
+  // Pre-authorize the main audio element right now while we have the gesture
+  audio.muted = true;
+  audio.src = audio.src || 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAA==';
+  audio.play().then(() => {
+    audio.pause();
+    audio.muted = false;
+    audio.src = '';
+    window._audioUnlocked = true;
+  }).catch(() => {});
 
   // Already in an active zone — scroll to music
   if (activeZone) {
