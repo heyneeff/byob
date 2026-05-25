@@ -1070,7 +1070,17 @@ function onTapBanner(){
 
 function onBoomyTap(){
   const wrap = document.getElementById('boom-popup-wrap');
-  // if(!wrap || !wrap.classList.contains('tappable')) return;
+
+  // If music is already playing — tap Boomy to re-sync
+  if(wrap && !wrap.classList.contains('tappable') && _webAudioPlaying && activeZone){
+    seekToSync(activeZone.playback_started_at, activeZone.play_at, activeZone.play_from_s);
+    spawnBoomyBurst();
+    playWarpSound();
+    boomSay('🔄 Synced!', 1800, false, 'regular');
+    return;
+  }
+
+  if(!wrap || !wrap.classList.contains('tappable')) return;
 
 
   hideTapBanner();
