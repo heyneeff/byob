@@ -1586,90 +1586,128 @@ function playBabble() {
     if (ctx.state === 'suspended') ctx.resume().catch(()=>{});
 
     const now = ctx.currentTime;
-    const dur = 0.055 + Math.random() * 0.035; // 55–90ms — short, punchy
 
-    // ── Musical pitch system — stays in gaps above the music ──
-    // Base around 480hz, moves in musical intervals (minor 3rd, 4th, 5th)
-    // Avoids bass (60-120hz) and harsh mids (2k+)
+    // ── Drumlike cadence — short/long pattern like a snare+kick rhythm ──
+    // Every character is either a SHORT pop or a LONG tone
+    // Creates a rhythmic babble that feels like drumming
+    _babbleChar++;
+    const isDrumHit = (_babbleChar % 3 === 0); // every 3rd = accent hit
+    const isLong    = (_babbleChar % 7 === 0); // every 7th = longer held note
+    const dur = isDrumHit ? 0.04 + Math.random() * 0.02   // short pop
+              : isLong    ? 0.14 + Math.random() * 0.06   // long tone
+              :             0.06 + Math.random() * 0.03;  // normal syllable
+
+    // ── Musical pitch — R2D2 intervals ──
     const BASE = 480;
     const INTERVALS = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0];
     const rootFreq = BASE * INTERVALS[Math.floor(Math.random() * INTERVALS.length)];
 
-    // ── Main voice — sine with slight vibrato (R2D2 signature) ──
+    // ── Main voice ──
     const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(rootFreq, now);
-
-    // Pitch wobble — slight rise then settle, like an exclamation
+    osc.type = isDrumHit ? 'triangle' : 'sine'; // triangle = punchier on accent
+    osc.frequency.setValueAtTime(isDrumHit ? rootFreq * 0.75 : rootFreq, now);
     const wobble = Math.random() < 0.5 ? 1 : -1;
     osc.frequency.linearRampToValueAtTime(
-      rootFreq * (1 + wobble * 0.08),
+      rootFreq * (1 + wobble * (isDrumHit ? 0.15 : 0.07)),
       now + dur * 0.3
     );
     osc.frequency.linearRampToValueAtTime(rootFreq, now + dur);
 
-    // ── Harmonic layer — one octave up, very quiet ──
-    // Gives it speaker-cone character without harshness
+    // ── Octave harmonic ──
     const osc2 = ctx.createOscillator();
     osc2.type = 'sine';
     osc2.frequency.value = rootFreq * 2;
     const osc2Gain = ctx.createGain();
-    osc2Gain.gain.value = 0.08; // very subtle
+    osc2Gain.gain.value = isDrumHit ? 0.04 : 0.08;
 
-    // ── Bandpass — narrows to boombox speaker sweet spot ──
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = rootFreq * 1.1;
-    bp.Q.value = 2.5; // loose enough to sound warm not ringy
+    // ── Occasional static burst — radio crackle ──
+    // Fires randomly ~25% of the time, more often on accent hits
+    const doStatic = Math.random() < (isDrumHit ? 0.55 : 0.22);
+    let staticSrc = null;
+    let staticGain = null;
+    if (doStatic) {
+      const sBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur * 0.6), ctx.sampleRate);
+      const sd = sBuf.getChannelData(0);
+      // Sparse noise — not continuous, burst-like
+      for (let i = 0; i < sd.length; i++) {
+        sd[i] = Math.random() < 0.3 ? (Math.random() * 2 - 1) * 0.9 : 0;
+      }
+      staticSrc = ctx.createBufferSource();
+      staticSrc.buffer = sBuf;
 
-    // ── Tiny bit of noise — speaker membrane texture ──
+      const sf = ctx.createBiquadFilter();
+      sf.type = 'bandpass';
+      sf.frequency.value = 1200 + Math.random() * 800;
+      sf.Q.value = 1.5;
+
+      staticGain = ctx.createGain();
+      staticGain.gain.setValueAtTime(0.12 + Math.random() * 0.1, now);
+      staticGain.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.5);
+
+      staticSrc.connect(sf);
+      sf.connect(staticGain);
+    }
+
+    // ── Membrane noise (always, subtle) ──
     const nBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
     const nd = nBuf.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1);
     const nSrc = ctx.createBufferSource();
     nSrc.buffer = nBuf;
-
     const noiseFilter = ctx.createBiquadFilter();
     noiseFilter.type = 'bandpass';
     noiseFilter.frequency.value = rootFreq;
-    noiseFilter.Q.value = 12; // tight — just a whisper of texture
-
+    noiseFilter.Q.value = 12;
     const noiseGain = ctx.createGain();
-    noiseGain.gain.value = 0.04; // barely there
+    noiseGain.gain.value = 0.03;
+    nSrc.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
 
-    // ── Envelope — fast attack, clean exponential decay ──
+    // ── Bandpass ──
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = rootFreq * 1.1;
+    bp.Q.value = isDrumHit ? 1.8 : 2.5;
+
+    // ── Envelope — drum hits get snappier attack ──
     const env = ctx.createGain();
     env.gain.setValueAtTime(0, now);
-    env.gain.linearRampToValueAtTime(0.28, now + 0.002); // 2ms attack — punchy not clicky
-    env.gain.setValueAtTime(0.28, now + dur * 0.35);
-    env.gain.exponentialRampToValueAtTime(0.001, now + dur); // clean tail
+    env.gain.linearRampToValueAtTime(
+      isDrumHit ? 0.38 : 0.26,
+      now + (isDrumHit ? 0.001 : 0.003)
+    );
+    env.gain.setValueAtTime(isDrumHit ? 0.38 : 0.26, now + dur * 0.2);
+    env.gain.exponentialRampToValueAtTime(0.001, now + dur);
 
-    // ── High cut — removes anything harsh above 3khz ──
+    // ── High cut — nothing harsh ──
     const hicut = ctx.createBiquadFilter();
     hicut.type = 'lowpass';
     hicut.frequency.value = 2800;
     hicut.Q.value = 0.7;
 
-    // ── Master gain — sits quietly above the music ──
+    // ── Master ──
     const master = ctx.createGain();
-    master.gain.value = 0.18; // polite — doesn't fight the track
+    master.gain.value = 0.18;
 
     // Wire
     osc.connect(bp);
     osc2.connect(osc2Gain); osc2Gain.connect(bp);
-    nSrc.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(bp);
+    noiseGain.connect(bp);
     bp.connect(env);
     env.connect(hicut);
     hicut.connect(master);
     master.connect(ctx.destination);
+    if (staticGain) staticGain.connect(master);
 
+    // Start
     osc.start(now);  osc.stop(now + dur + 0.01);
     osc2.start(now); osc2.stop(now + dur + 0.01);
     nSrc.start(now); nSrc.stop(now + dur);
+    if (staticSrc) { staticSrc.start(now); staticSrc.stop(now + dur); }
 
-    _babbleChar++;
   } catch(e) { console.warn('babble:', e.message); }
 }
+
 
 
 // ── WARP ENTRY SOUND — wet womp ─────────────────────────
