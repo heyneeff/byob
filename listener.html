@@ -1586,92 +1586,91 @@ function playBabble() {
     if (ctx.state === 'suspended') ctx.resume().catch(()=>{});
 
     const now = ctx.currentTime;
-    const dur = 0.12 + Math.random() * 0.10; // slower — more resonant thump
+    const dur = 0.055 + Math.random() * 0.035; // 55–90ms — short, punchy
 
-    // ── Layer 1: Deep drum body — thumpy sine sweep ──
-    const drum = ctx.createOscillator();
-    drum.type = 'sine';
-    drum.frequency.setValueAtTime(80 + Math.random() * 40, now);      // 80–120hz start
-    drum.frequency.exponentialRampToValueAtTime(28 + Math.random() * 14, now + dur); // drops like a kick
+    // ── Musical pitch system — stays in gaps above the music ──
+    // Base around 480hz, moves in musical intervals (minor 3rd, 4th, 5th)
+    // Avoids bass (60-120hz) and harsh mids (2k+)
+    const BASE = 480;
+    const INTERVALS = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0];
+    const rootFreq = BASE * INTERVALS[Math.floor(Math.random() * INTERVALS.length)];
 
-    const drumEnv = ctx.createGain();
-    drumEnv.gain.setValueAtTime(0, now);
-    drumEnv.gain.linearRampToValueAtTime(0.55 + Math.random() * 0.2, now + 0.008);
-    drumEnv.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    // ── Main voice — sine with slight vibrato (R2D2 signature) ──
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(rootFreq, now);
 
-    // ── Layer 2: Underwater resonance — bandpass noise ──
-    const noise = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
-    const nd = noise.getChannelData(0);
+    // Pitch wobble — slight rise then settle, like an exclamation
+    const wobble = Math.random() < 0.5 ? 1 : -1;
+    osc.frequency.linearRampToValueAtTime(
+      rootFreq * (1 + wobble * 0.08),
+      now + dur * 0.3
+    );
+    osc.frequency.linearRampToValueAtTime(rootFreq, now + dur);
+
+    // ── Harmonic layer — one octave up, very quiet ──
+    // Gives it speaker-cone character without harshness
+    const osc2 = ctx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = rootFreq * 2;
+    const osc2Gain = ctx.createGain();
+    osc2Gain.gain.value = 0.08; // very subtle
+
+    // ── Bandpass — narrows to boombox speaker sweet spot ──
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = rootFreq * 1.1;
+    bp.Q.value = 2.5; // loose enough to sound warm not ringy
+
+    // ── Tiny bit of noise — speaker membrane texture ──
+    const nBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+    const nd = nBuf.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1);
-    const noiseSrc = ctx.createBufferSource();
-    noiseSrc.buffer = noise;
+    const nSrc = ctx.createBufferSource();
+    nSrc.buffer = nBuf;
 
-    // Two bandpass filters stacked = narrow underwater resonance
-    const bp1 = ctx.createBiquadFilter();
-    bp1.type = 'bandpass';
-    bp1.frequency.value = 120 + Math.random() * 180; // 120–300hz — underwater thud range
-    bp1.Q.value = 8 + Math.random() * 8;             // tight = more resonant
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.value = rootFreq;
+    noiseFilter.Q.value = 12; // tight — just a whisper of texture
 
-    const bp2 = ctx.createBiquadFilter();
-    bp2.type = 'bandpass';
-    bp2.frequency.value = bp1.frequency.value * (1.2 + Math.random() * 0.4);
-    bp2.Q.value = 5 + Math.random() * 5;
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.value = 0.04; // barely there
 
-    const noiseEnv = ctx.createGain();
-    noiseEnv.gain.setValueAtTime(0.18, now);
-    noiseEnv.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.8);
+    // ── Envelope — fast attack, clean exponential decay ──
+    const env = ctx.createGain();
+    env.gain.setValueAtTime(0, now);
+    env.gain.linearRampToValueAtTime(0.28, now + 0.002); // 2ms attack — punchy not clicky
+    env.gain.setValueAtTime(0.28, now + dur * 0.35);
+    env.gain.exponentialRampToValueAtTime(0.001, now + dur); // clean tail
 
-    // ── Layer 3: Subtle membrane rattle — very low highpass ──
-    const rattle = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur * 0.4), ctx.sampleRate);
-    const rd = rattle.getChannelData(0);
-    for (let i = 0; i < rd.length; i++) rd[i] = (Math.random() * 2 - 1);
-    const rattleSrc = ctx.createBufferSource();
-    rattleSrc.buffer = rattle;
+    // ── High cut — removes anything harsh above 3khz ──
+    const hicut = ctx.createBiquadFilter();
+    hicut.type = 'lowpass';
+    hicut.frequency.value = 2800;
+    hicut.Q.value = 0.7;
 
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'bandpass';
-    hp.frequency.value = 400 + Math.random() * 300; // kept low — no harsh highs
-    hp.Q.value = 2;
-
-    const rattleEnv = ctx.createGain();
-    rattleEnv.gain.setValueAtTime(0.06, now);
-    rattleEnv.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.3);
-
-    // ── Soft limiter — keeps it from clipping ──
-    const shaper = ctx.createWaveShaper();
-    const curve = new Float32Array(256);
-    for (let i = 0; i < 256; i++) {
-      const x = (i * 2) / 256 - 1;
-      curve[i] = Math.tanh(x * 1.8) * 0.75; // softer clip = warmer
-    }
-    shaper.curve = curve;
-
+    // ── Master gain — sits quietly above the music ──
     const master = ctx.createGain();
-    master.gain.value = 0.7;
+    master.gain.value = 0.18; // polite — doesn't fight the track
 
-    // Wire it up
-    drum.connect(drumEnv);
-    drumEnv.connect(shaper);
-
-    noiseSrc.connect(bp1);
-    bp1.connect(bp2);
-    bp2.connect(noiseEnv);
-    noiseEnv.connect(shaper);
-
-    rattleSrc.connect(hp);
-    hp.connect(rattleEnv);
-    rattleEnv.connect(shaper);
-
-    shaper.connect(master);
+    // Wire
+    osc.connect(bp);
+    osc2.connect(osc2Gain); osc2Gain.connect(bp);
+    nSrc.connect(noiseFilter); noiseFilter.connect(noiseGain); noiseGain.connect(bp);
+    bp.connect(env);
+    env.connect(hicut);
+    hicut.connect(master);
     master.connect(ctx.destination);
 
-    drum.start(now); drum.stop(now + dur + 0.05);
-    noiseSrc.start(now); noiseSrc.stop(now + dur);
-    rattleSrc.start(now); rattleSrc.stop(now + dur * 0.4);
+    osc.start(now);  osc.stop(now + dur + 0.01);
+    osc2.start(now); osc2.stop(now + dur + 0.01);
+    nSrc.start(now); nSrc.stop(now + dur);
 
     _babbleChar++;
   } catch(e) { console.warn('babble:', e.message); }
 }
+
 
 // ── WARP ENTRY SOUND — wet womp ─────────────────────────
 function playWarpSound() {
