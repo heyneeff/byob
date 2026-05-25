@@ -1557,6 +1557,18 @@ const ZONE_EXIT_LINES = [
 
 // ── BABBLE SOUND — WAV blobs via Audio element (reliable on iOS) ─────────────
 let _babbleChar = 0;
+let _babbleBeat = 0;
+const _KICK  = 0;
+const _SNARE = 1;
+const _HAT   = 2;
+// 16-step beatbox pattern — Boomy's signature groove
+const _BEATBOX_PATTERN = [
+  _KICK, _HAT, _SNARE, _HAT,
+  _KICK, _KICK, _SNARE, _HAT,
+  _KICK, _HAT, _SNARE, _HAT,
+  _HAT,  _KICK, _SNARE, _HAT,
+];
+
 
 function makeBabbleWav(freq) {
   const sr = 22050, n = Math.floor(sr * 0.1);
@@ -1586,127 +1598,130 @@ function playBabble() {
     if (ctx.state === 'suspended') ctx.resume().catch(()=>{});
 
     const now = ctx.currentTime;
-
-    // ── Drumlike cadence — short/long pattern like a snare+kick rhythm ──
-    // Every character is either a SHORT pop or a LONG tone
-    // Creates a rhythmic babble that feels like drumming
     _babbleChar++;
-    const isDrumHit = (_babbleChar % 3 === 0); // every 3rd = accent hit
-    const isLong    = (_babbleChar % 7 === 0); // every 7th = longer held note
-    const dur = isDrumHit ? 0.04 + Math.random() * 0.02   // short pop
-              : isLong    ? 0.14 + Math.random() * 0.06   // long tone
-              :             0.06 + Math.random() * 0.03;  // normal syllable
 
-    // ── Musical pitch — R2D2 intervals ──
-    const BASE = 480;
-    const INTERVALS = [1, 1.125, 1.25, 1.333, 1.5, 1.667, 1.875, 2.0];
-    const rootFreq = BASE * INTERVALS[Math.floor(Math.random() * INTERVALS.length)];
+    // ── Read position in beatbox pattern ──
+    const beat = _BEATBOX_PATTERN[_babbleBeat % _BEATBOX_PATTERN.length];
+    _babbleBeat++;
 
-    // ── Main voice ──
-    const osc = ctx.createOscillator();
-    osc.type = isDrumHit ? 'triangle' : 'sine'; // triangle = punchier on accent
-    osc.frequency.setValueAtTime(isDrumHit ? rootFreq * 0.75 : rootFreq, now);
-    const wobble = Math.random() < 0.5 ? 1 : -1;
-    osc.frequency.linearRampToValueAtTime(
-      rootFreq * (1 + wobble * (isDrumHit ? 0.15 : 0.07)),
-      now + dur * 0.3
-    );
-    osc.frequency.linearRampToValueAtTime(rootFreq, now + dur);
+    // ── Per-sound parameters ──
+    const isKick  = beat === _KICK;
+    const isSnare = beat === _SNARE;
+    const isHat   = beat === _HAT;
 
-    // ── Octave harmonic ──
-    const osc2 = ctx.createOscillator();
-    osc2.type = 'sine';
-    osc2.frequency.value = rootFreq * 2;
-    const osc2Gain = ctx.createGain();
-    osc2Gain.gain.value = isDrumHit ? 0.04 : 0.08;
+    // Occasional static on snare hits
+    const doStatic = isSnare && Math.random() < 0.65;
 
-    // ── Occasional static burst — radio crackle ──
-    // Fires randomly ~25% of the time, more often on accent hits
-    const doStatic = Math.random() < (isDrumHit ? 0.55 : 0.22);
-    let staticSrc = null;
-    let staticGain = null;
-    if (doStatic) {
-      const sBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur * 0.6), ctx.sampleRate);
-      const sd = sBuf.getChannelData(0);
-      // Sparse noise — not continuous, burst-like
-      for (let i = 0; i < sd.length; i++) {
-        sd[i] = Math.random() < 0.3 ? (Math.random() * 2 - 1) * 0.9 : 0;
+    // Duration — kick longest, hat shortest
+    const dur = isKick  ? 0.10 + Math.random() * 0.04
+              : isSnare ? 0.06 + Math.random() * 0.02
+              :           0.025 + Math.random() * 0.015;
+
+    // ── KICK — deep sine pitch drop, punchy ──
+    let osc = null;
+    if (isKick || isSnare) {
+      osc = ctx.createOscillator();
+      osc.type = isKick ? 'sine' : 'triangle';
+
+      if (isKick) {
+        osc.frequency.setValueAtTime(180, now);
+        osc.frequency.exponentialRampToValueAtTime(55, now + dur * 0.6);
+      } else {
+        // Snare tone — mid crunch
+        const snareFreqs = [320, 380, 420, 480];
+        osc.frequency.value = snareFreqs[Math.floor(Math.random() * snareFreqs.length)];
+        osc.frequency.linearRampToValueAtTime(osc.frequency.value * 0.85, now + dur);
       }
-      staticSrc = ctx.createBufferSource();
-      staticSrc.buffer = sBuf;
-
-      const sf = ctx.createBiquadFilter();
-      sf.type = 'bandpass';
-      sf.frequency.value = 1200 + Math.random() * 800;
-      sf.Q.value = 1.5;
-
-      staticGain = ctx.createGain();
-      staticGain.gain.setValueAtTime(0.12 + Math.random() * 0.1, now);
-      staticGain.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.5);
-
-      staticSrc.connect(sf);
-      sf.connect(staticGain);
     }
 
-    // ── Membrane noise (always, subtle) ──
-    const nBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
-    const nd = nBuf.getChannelData(0);
-    for (let i = 0; i < nd.length; i++) nd[i] = (Math.random() * 2 - 1);
+    // ── NOISE layer — snare body + hat ──
+    const nDur = isHat ? dur : dur * 0.8;
+    const nBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * nDur), ctx.sampleRate);
+    const nd   = nBuf.getChannelData(0);
+    if (isHat) {
+      // Sparse — ts ts ts
+      for (let i = 0; i < nd.length; i++)
+        nd[i] = Math.random() < 0.5 ? (Math.random() * 2 - 1) : 0;
+    } else {
+      // Full noise for snare body
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    }
     const nSrc = ctx.createBufferSource();
     nSrc.buffer = nBuf;
-    const noiseFilter = ctx.createBiquadFilter();
-    noiseFilter.type = 'bandpass';
-    noiseFilter.frequency.value = rootFreq;
-    noiseFilter.Q.value = 12;
+
+    // Noise filter — hat lives high, snare mid, kick gets barely any
+    const nf = ctx.createBiquadFilter();
+    nf.type = 'bandpass';
+    nf.frequency.value = isHat   ? 3500 + Math.random() * 1500
+                       : isSnare ? 800  + Math.random() * 400
+                       :           300;
+    nf.Q.value = isHat ? 0.8 : isSnare ? 1.5 : 3;
+
     const noiseGain = ctx.createGain();
-    noiseGain.gain.value = 0.03;
-    nSrc.connect(noiseFilter);
-    noiseFilter.connect(noiseGain);
+    noiseGain.gain.value = isHat   ? 0.35
+                         : isSnare ? 0.28
+                         :           0.05; // kick barely any noise
 
-    // ── Bandpass ──
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = rootFreq * 1.1;
-    bp.Q.value = isDrumHit ? 1.8 : 2.5;
+    // ── Static burst on snare ──
+    let staticSrc = null, staticGain = null;
+    if (doStatic) {
+      const sBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur * 0.4), ctx.sampleRate);
+      const sd = sBuf.getChannelData(0);
+      for (let i = 0; i < sd.length; i++)
+        sd[i] = Math.random() < 0.35 ? (Math.random() * 2 - 1) : 0;
+      staticSrc = ctx.createBufferSource();
+      staticSrc.buffer = sBuf;
+      const sf = ctx.createBiquadFilter();
+      sf.type = 'bandpass';
+      sf.frequency.value = 1400 + Math.random() * 600;
+      sf.Q.value = 1.2;
+      staticGain = ctx.createGain();
+      staticGain.gain.setValueAtTime(0.14, now);
+      staticGain.gain.exponentialRampToValueAtTime(0.001, now + dur * 0.4);
+      staticSrc.connect(sf); sf.connect(staticGain);
+    }
 
-    // ── Envelope — drum hits get snappier attack ──
-    const env = ctx.createGain();
-    env.gain.setValueAtTime(0, now);
-    env.gain.linearRampToValueAtTime(
-      isDrumHit ? 0.38 : 0.26,
-      now + (isDrumHit ? 0.001 : 0.003)
-    );
-    env.gain.setValueAtTime(isDrumHit ? 0.38 : 0.26, now + dur * 0.2);
-    env.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    // ── Envelopes ──
+    const oscEnv = ctx.createGain();
+    if (osc) {
+      oscEnv.gain.setValueAtTime(0, now);
+      oscEnv.gain.linearRampToValueAtTime(
+        isKick ? 0.55 : 0.32,
+        now + (isKick ? 0.003 : 0.001)
+      );
+      oscEnv.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    }
 
-    // ── High cut — nothing harsh ──
+    const noiseEnv = ctx.createGain();
+    noiseEnv.gain.setValueAtTime(0, now);
+    noiseEnv.gain.linearRampToValueAtTime(noiseGain.gain.value, now + 0.001);
+    noiseEnv.gain.exponentialRampToValueAtTime(0.001, now + nDur * (isHat ? 0.6 : 0.9));
+
+    // ── High cut — keeps it musical not harsh ──
     const hicut = ctx.createBiquadFilter();
     hicut.type = 'lowpass';
-    hicut.frequency.value = 2800;
+    hicut.frequency.value = isHat ? 9000 : 3200;
     hicut.Q.value = 0.7;
 
-    // ── Master ──
+    // ── Master — kick hits harder ──
     const master = ctx.createGain();
-    master.gain.value = 0.18;
+    master.gain.value = isKick ? 0.22 : isSnare ? 0.18 : 0.12;
 
     // Wire
-    osc.connect(bp);
-    osc2.connect(osc2Gain); osc2Gain.connect(bp);
-    noiseGain.connect(bp);
-    bp.connect(env);
-    env.connect(hicut);
+    if (osc) { osc.connect(oscEnv); oscEnv.connect(hicut); }
+    nSrc.connect(nf); nf.connect(noiseEnv); noiseEnv.connect(hicut);
     hicut.connect(master);
     master.connect(ctx.destination);
     if (staticGain) staticGain.connect(master);
 
     // Start
-    osc.start(now);  osc.stop(now + dur + 0.01);
-    osc2.start(now); osc2.stop(now + dur + 0.01);
-    nSrc.start(now); nSrc.stop(now + dur);
-    if (staticSrc) { staticSrc.start(now); staticSrc.stop(now + dur); }
+    if (osc) { osc.start(now); osc.stop(now + dur + 0.02); }
+    nSrc.start(now); nSrc.stop(now + nDur);
+    if (staticSrc) { staticSrc.start(now); staticSrc.stop(now + dur * 0.4); }
 
   } catch(e) { console.warn('babble:', e.message); }
 }
+
 
 
 
