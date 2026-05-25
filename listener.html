@@ -1562,14 +1562,14 @@ const _KICK    = 0;
 const _KICK2   = 1; // deeper boom
 const _SNARE   = 2;
 const _HAT     = 3;
-const _MELODY  = 4; // R2D2 voice — sits between percussion
+const _MELODY  = 4;
+const _STATIC  = 5; // punctuated radio crackle
 
-// Full beatbox song — percussion punctuates, melody fills gaps
 const _BEATBOX_PATTERN = [
-  _KICK,   _HAT,    _SNARE,  _MELODY,
-  _KICK,   _HAT,    _SNARE,  _MELODY,
-  _KICK,   _KICK2,  _SNARE,  _MELODY,
-  _HAT,    _MELODY, _SNARE,  _MELODY,
+  _KICK,   _HAT,    _SNARE,   _MELODY,
+  _KICK,   _HAT,    _SNARE,   _STATIC,
+  _KICK,   _KICK2,  _SNARE,   _MELODY,
+  _HAT,    _STATIC, _SNARE,   _MELODY,
 ];
 
 function playBabble() {
@@ -1589,14 +1589,18 @@ function playBabble() {
     const isSnare  = beat === _SNARE;
     const isHat    = beat === _HAT;
     const isMelody = beat === _MELODY;
+        const isStatic  = beat === _STATIC;
     const isAnyKick = isKick || isKick2;
 
-    // ── Duration per sound type ──
-    const dur = isKick   ? 0.07 + Math.random() * 0.03   // tight punch
-              : isKick2  ? 0.11 + Math.random() * 0.04   // deep boom
-              : isSnare  ? 0.05 + Math.random() * 0.02   // sharp snap
-              : isHat    ? 0.018 + Math.random() * 0.01  // ultra short ts
-              :            0.09 + Math.random() * 0.06;  // melody — held
+
+    // ── Duration per sound type ── 
+    const dur = isKick   ? 0.07 + Math.random() * 0.03
+              : isKick2  ? 0.11 + Math.random() * 0.04
+              : isSnare  ? 0.05 + Math.random() * 0.02
+              : isHat    ? 0.018 + Math.random() * 0.01
+              : isStatic ? 0.03 + Math.random() * 0.05  // sharp crackle burst
+              :            0.09 + Math.random() * 0.06;
+
 
     const master = ctx.createGain();
     master.gain.value = isKick2  ? 0.24
