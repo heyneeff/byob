@@ -1934,61 +1934,6 @@ function playWarpSound() {
   } catch(e) {}
 }
 
-  try {
-    const ctx = getSfxCtx();
-    if (!ctx) return;
-    ctx.resume().then(() => {
-      const now = ctx.currentTime;
-      const dur = 1.8;
-
-      // Main sweep — sawtooth into lowpass for wet/muddy body
-      const osc1 = ctx.createOscillator();
-      osc1.type = 'sawtooth';
-      osc1.frequency.setValueAtTime(280, now);
-      osc1.frequency.exponentialRampToValueAtTime(38, now + 0.6);  // slower drop
-
-      const lp = ctx.createBiquadFilter();
-      lp.type = 'lowpass';
-      lp.frequency.setValueAtTime(900, now);
-      lp.frequency.exponentialRampToValueAtTime(80, now + 0.7);    // filter closes = gets muddier
-      lp.Q.value = 6;
-
-      const gain1 = ctx.createGain();
-      gain1.gain.setValueAtTime(0, now);
-      gain1.gain.linearRampToValueAtTime(0.55, now + 0.05);
-      gain1.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-      // Sub sine — deep wet thud underneath
-      const osc2 = ctx.createOscillator();
-      osc2.type = 'sine';
-      osc2.frequency.setValueAtTime(120, now);
-      osc2.frequency.exponentialRampToValueAtTime(28, now + 0.8);
-
-      const gain2 = ctx.createGain();
-      gain2.gain.setValueAtTime(0.5, now);
-      gain2.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-      // Delay node — short slapback gives wetness
-      const delay = ctx.createDelay(0.5);
-      delay.delayTime.value = 0.18;
-      const delayGain = ctx.createGain();
-      delayGain.gain.value = 0.35;
-      // feedback loop
-      delayGain.connect(delay);
-      delay.connect(delayGain);
-
-      osc1.connect(lp); lp.connect(gain1);
-      gain1.connect(ctx.destination);
-      gain1.connect(delay); delay.connect(ctx.destination);
-
-      osc2.connect(gain2);
-      gain2.connect(ctx.destination);
-
-      osc1.start(now); osc1.stop(now + dur);
-      osc2.start(now); osc2.stop(now + dur);
-    });
-  } catch(e) {}
-}
 
 function stopEverything() {
   audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
