@@ -1602,12 +1602,14 @@ function playBabble() {
               :            0.09 + Math.random() * 0.06;
 
 
-    const master = ctx.createGain();
+    const master = ctx.createGain();  
     master.gain.value = isKick2  ? 0.24
                       : isKick   ? 0.20
                       : isSnare  ? 0.16
                       : isHat    ? 0.10
-                      :            0.18; // melody sits just under kicks
+                      : isStatic ? 0.22
+                      :            0.18;
+ // melody sits just under kicks
     master.connect(ctx.destination);
 
     // ══ KICK — tight sine pitch drop ══
@@ -1698,6 +1700,35 @@ function playBabble() {
       hSrc.start(now); hSrc.stop(now + dur);
     }
 
+    // ══ STATIC — punctuated radio crackle burst ══
+    if (isStatic) {
+      // Two layers — low crunch + high fizz = full radio static texture
+      [
+        { freq: 400  + Math.random() * 300, q: 1.2, vol: 0.7, sparse: 0.5  }, // low crunch
+        { freq: 2200 + Math.random() * 800, q: 0.8, vol: 0.4, sparse: 0.3  }, // high fizz
+      ].forEach(({ freq, q, vol, sparse }) => {
+        const sBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
+        const sd = sBuf.getChannelData(0);
+        // Sparse bursts — not continuous, punchy crackle
+        let inBurst = false;
+        for (let i = 0; i < sd.length; i++) {
+          if (Math.random() < 0.08) inBurst = !inBurst; // toggle burst on/off
+          sd[i] = inBurst ? (Math.random() * 2 - 1) : 0;
+        }
+        const sSrc = ctx.createBufferSource();
+        sSrc.buffer = sBuf;
+        const sf = ctx.createBiquadFilter();
+        sf.type = 'bandpass'; sf.frequency.value = freq; sf.Q.value = q;
+        const sEnv = ctx.createGain();
+        sEnv.gain.setValueAtTime(vol, now);
+        sEnv.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        sSrc.connect(sf); sf.connect(sEnv); sEnv.connect(master);
+        sSrc.start(now); sSrc.stop(now + dur);
+      });
+    }
+
+
+    
     // ══ MELODY — R2D2 character voice, sits between percussion ══
     if (isMelody) {
       // Musical intervals — stays harmonic
