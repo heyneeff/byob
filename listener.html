@@ -1605,9 +1605,9 @@ let _babbleUrls = null;
     const formant = ctx.createBiquadFilter();
     formant.type = 'bandpass';
     // Vowel-ish formants: 'uh' ~800hz, 'oh' ~500hz, 'ee' ~2200hz
-    const vowels = [500, 700, 900, 1100, 1400, 2000];
+       const vowels = [300, 450, 600, 750, 900, 1100];
     formant.frequency.value = vowels[Math.floor(Math.random() * vowels.length)];
-    formant.Q.value = 3 + Math.random() * 5; // tighter = more nasal, looser = more open
+    formant.Q.value = 1.5 + Math.random() * 2.5;
 
     // ── Layer 3: Cabinet rattle — tiny bit of noise underneath ──
     const rattle = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate);
