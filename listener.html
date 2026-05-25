@@ -1618,7 +1618,7 @@ let _babbleUrls = null;
 
     const rattleFilter = ctx.createBiquadFilter();
     rattleFilter.type = 'highpass';
-    rattleFilter.frequency.value = 2000; // only the buzzy top end
+    rattleFilter.frequency.value = 800;
 
     // ── Waveshaper: soft speaker distortion ──
     const shaper = ctx.createWaveShaper();
