@@ -878,19 +878,16 @@ function renderSpatialDots(spMap){
 
   Object.values(liveListeners||{}).forEach(l => {
     if(!l.bearing && !l.dist) return;
-    // Convert bearing+dist to lat/lng
     const distM = (l.dist||0) * 1609.34;
     const bearingRad = (l.bearing||0) * Math.PI / 180;
     const lat = activeZone.lat + (distM/111320) * Math.cos(bearingRad);
     const lng = activeZone.lng + (distM/(111320*Math.cos(activeZone.lat*Math.PI/180))) * Math.sin(bearingRad);
     const slot = Math.floor(((l.bearing||0) % 360) / (360/voices)) % voices;
     const color = SLOT_COLORS[slot];
-
     const marker = L.circleMarker([lat, lng],{
       radius:8, color:'#000', weight:1.5,
       fillColor:color, fillOpacity:0.85
     }).addTo(spMap);
-
     marker.bindTooltip(l.name||'Listener', {permanent:false});
     window._spDotLayer.push(marker);
   });
