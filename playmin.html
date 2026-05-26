@@ -1243,10 +1243,10 @@ function startListenerTracking(zoneId){
       if(window._spMap) renderSpatialDots(window._spMap);
     })
     .subscribe();
-  setInterval(()=>{
+    setInterval(()=>{
     const now=Date.now();let changed=false;
-    Object.keys(liveListeners).forEach(id=>{if(now-liveListeners[id].updated>30000){delete liveListeners[id];changed=true;}});
-    if(changed)renderLiveGuestList();
+    Object.keys(liveListeners).forEach(id=>{if(now-liveListeners[id].updated>45000){delete liveListeners[id];changed=true;}});
+    if(changed){renderLiveGuestList();if(window._spMap)renderSpatialDots(window._spMap);}
   },10000);
 }
 function renderLiveGuestList(){
