@@ -1303,15 +1303,42 @@ function startListenerTracking(zoneId){
   },10000);
 }
 function renderLiveGuestList(){
-  const el=document.getElementById('guest-list');
-  const listeners=Object.values(liveListeners);
+  const el = document.getElementById('guest-list');
+  const listeners = Object.values(liveListeners);
+  
+  const _sp = document.getElementById('stat-present');
+  const _sa = document.getElementById('stat-approaching');
+  const _ss = document.getElementById('stat-speakers');
+  const _tb = document.getElementById('tb-live');
+
   if(!listeners.length){
-    if(el) el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet</div>';
-    const _sp=document.getElementById('stat-present'); if(_sp)_sp.textContent='0';
-    const _sa=document.getElementById('stat-approaching'); if(_sa)_sa.textContent='0';
+    if(el) el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
+    if(_sp) _sp.textContent='0';
+    if(_sa) _sa.textContent='0';
+    if(_tb) _tb.textContent='0';
     return;
   }
+
+  const present    = listeners.filter(l=>l.status==='present').length;
+  const approaching = listeners.filter(l=>l.status==='approaching').length;
+  if(_sp) _sp.textContent=present;
+  if(_sa) _sa.textContent=approaching;
+  if(_ss) _ss.textContent=1;
+  if(_tb) _tb.textContent=listeners.length;
+
   if(!el) return;
+  el.innerHTML='';
+  listeners.sort((a,b)=>a.status==='present'?-1:1);
+  listeners.forEach(l=>{
+    const distStr=l.dist<0.1?Math.round(l.dist*5280)+' ft':l.dist.toFixed(2)+' mi';
+    const phone=l.phone?'<span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+l.phone+'</span>':'';
+    const row=document.createElement('div');row.className='guest-row';
+    row.innerHTML='<span style="font-size:16px;margin-right:4px">'+l.emoji+'</span><span class="guest-name">'+l.name+'</span><span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+distStr+' away</span>'+phone+'<span class="guest-status '+l.status+'">'+l.status+'</span>';
+    el.appendChild(row);
+  });
+}
+  if(!el){ if(window._spMap) renderSpatialDots(window._spMap); return; }
+  el.innerHTML='';
 
   const present=listeners.filter(l=>l.status==='present').length;
   const approaching=listeners.filter(l=>l.status==='approaching').length;
