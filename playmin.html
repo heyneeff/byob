@@ -1287,7 +1287,14 @@ function startListenerTracking(zoneId){
   setInterval(()=>{
 
     const now=Date.now();let changed=false;
-    Object.keys(liveListeners).forEach(id=>{if(now-liveListeners[id].updated>45000){delete liveListeners[id];changed=true;}});
+        Object.keys(liveListeners).forEach(id=>{
+      const age = now - liveListeners[id].updated;
+      if(age>45000){
+        showToast('🗑️ pruned '+liveListeners[id].name+' age:'+Math.round(age/1000)+'s');
+        delete liveListeners[id];changed=true;
+      }
+    });
+
     if(changed){renderLiveGuestList();if(window._spMap)renderSpatialDots(window._spMap);}
   },10000);
 }
