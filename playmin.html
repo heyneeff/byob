@@ -841,7 +841,7 @@ function loadDemoMode(){
   // Render listeners as colored dots by slot
   renderSpatialDots(spMap);
   // Refresh dots every 5s
-   window._spDotInterval = setInterval(()=>renderSpatialDots(window._spMap), 2000);
+  window._spDotInterval = setInterval(()=>renderSpatialDots(spMap), 5000);
 }
 
 function renderSpatialDots(spMap){
