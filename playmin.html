@@ -817,13 +817,16 @@ function loadDemoMode(){
   function initSpatialMap(){
   const el = document.getElementById('sp-spatial-map');
   if(!el) return;
-  // Allow re-init so dots refresh when switching back to tab
   if(el._mapInited){
-    renderSpatialDots(window._spMap);
+    // Already inited — just refresh dots and re-center on zone
+    if(activeZone && window._spMap){
+      window._spMap.setView([activeZone.lat, activeZone.lng], 17);
+      renderSpatialDots(window._spMap);
+    }
     return;
   }
+  if(!activeZone && !userLat){ showToast('Create a zone first'); return; }
   el._mapInited = true;
-
   const center = activeZone ? [activeZone.lat, activeZone.lng] : [userLat||39.7392, userLng||-104.9903];
   const spMap = L.map(el, {zoomControl:false, attributionControl:false}).setView(center, 17);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(spMap);
