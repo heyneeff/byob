@@ -1272,7 +1272,9 @@ function startListenerTracking(zoneId){
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-                               if(payload.isDJ) return; // don't add DJ to listener list
+                                           if(payload.isDJ) return;
+              if(payload.id === currentUser?.id) return;
+
       liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
 
       console.log('PING received:',payload.name,'keys in liveListeners:',Object.keys(liveListeners).length);
