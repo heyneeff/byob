@@ -816,8 +816,14 @@ function loadDemoMode(){
 // ── MAP ───────────────────────────────────────────────────
   function initSpatialMap(){
   const el = document.getElementById('sp-spatial-map');
-  if(!el || el._mapInited) return;
+  if(!el) return;
+  // Allow re-init so dots refresh when switching back to tab
+  if(el._mapInited){
+    renderSpatialDots(window._spMap);
+    return;
+  }
   el._mapInited = true;
+
   const center = activeZone ? [activeZone.lat, activeZone.lng] : [userLat||39.7392, userLng||-104.9903];
   const spMap = L.map(el, {zoomControl:false, attributionControl:false}).setView(center, 17);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(spMap);
@@ -1233,7 +1239,8 @@ function startListenerTracking(zoneId){
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
       liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
-      renderLiveGuestList();
+            renderLiveGuestList();
+      if(window._spMap) renderSpatialDots(window._spMap);
     })
     .subscribe();
   setInterval(()=>{
