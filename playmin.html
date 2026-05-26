@@ -1309,6 +1309,48 @@ function startListenerTracking(zoneId){
 
 
     if(changed){renderLiveGuestList();if(window._spMap)renderSpatialDots(window._spMap);}
+  },20000);
+}
+function renderLiveGuestList(){
+  const el = document.getElementById('guest-list');
+  const listeners = Object.values(liveListeners);
+  
+  const _sp = document.getElementById('stat-present');
+  const _sa = document.getElementById('stat-approaching');
+  const _ss = document.getElementById('stat-speakers');
+  const _tb = document.getElementById('tb-live');
+            renderLiveGuestList();
+      if(window._spMap) renderSpatialDots(window._spMap);
+    })
+    .subscribe((status, err) => {
+      console.log('[Presence] status:', status, err||'');
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        showToast('⚠️ Presence reconnecting…');
+        setTimeout(() => {
+          if(presenceChannel) presenceChannel.unsubscribe();
+          presenceChannel = db.channel('presence_'+zoneId)
+            .on('broadcast',{event:'proximity'},({payload})=>{
+              const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
+                    liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
+      document.title = 'L:'+Object.keys(liveListeners).length+' '+Date.now();
+
+              renderLiveGuestList();
+              if(window._spMap) renderSpatialDots(window._spMap);
+            }).subscribe();
+        }, 2000);
+      }
+    });
+  setInterval(()=>{
+
+    const now=Date.now();let changed=false;
+           Object.keys(liveListeners).forEach(id=>{
+      const age = now - liveListeners[id].updated;
+      console.log('listener age check:',liveListeners[id].name, Math.round(age/1000)+'s');
+      if(age>45000){delete liveListeners[id];changed=true;}
+    });
+
+
+    if(changed){renderLiveGuestList();if(window._spMap)renderSpatialDots(window._spMap);}
   },10000);
 }
 function renderLiveGuestList(){
@@ -1319,6 +1361,7 @@ function renderLiveGuestList(){
   const _sa = document.getElementById('stat-approaching');
   const _ss = document.getElementById('stat-speakers');
   const _tb = document.getElementById('tb-live');
+
 
   if(!listeners.length){
     if(el) el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
