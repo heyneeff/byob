@@ -2571,12 +2571,10 @@ function initGuestListChannel(zoneId) {
     .subscribe(status => {
       if (status === 'SUBSCRIBED') {
         // Broadcast our presence so other phones can see us
-              const sendPresence = () => {
-          if (!activeZone) return;
-          if (!userLat) {
-            setTimeout(sendPresence, 2000); // GPS not ready — retry
-            return;
-          }
+                     const sendPresence = () => {
+          if (!activeZone) { showToast('❌ no zone'); return; }
+          if (!userLat) { showToast('❌ no GPS'); setTimeout(sendPresence, 2000); return; }
+
           const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
           const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
           const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
