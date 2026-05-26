@@ -695,7 +695,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
 <script>
 
-
   
 /* =========================================================
    dj.html ENGINE — verbatim, do not edit
@@ -2503,7 +2502,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(res.ok){
       const txt = await res.text();
       const extract = (varName) => {
-        const m = txt.match(new RegExp('const '+varName+'\s*=\s*"(data:image[^"]+)"'));
+                const m = txt.match(new RegExp('const '+varName+'\\s*=\\s*"(data:image[^"]+)"'));
         return m ? m[1] : null;
       };
       const logo = extract('LOGO_B64');
