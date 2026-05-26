@@ -2588,7 +2588,8 @@ function initGuestListChannel(zoneId) {
         };
         setTimeout(sendPresence, 1500); // first ping after GPS has a moment to lock
         setTimeout(sendPresence, 4000); // second ping as backup
-        window._guestBroadcastInterval = setInterval(sendPresence, 4000);
+                window._guestBroadcastInterval = setInterval(sendPresence, 3000);
+
 }
     });
 }
