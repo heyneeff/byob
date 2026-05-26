@@ -837,12 +837,6 @@ function loadDemoMode(){
   window._spDotInterval = setInterval(()=>renderSpatialDots(window._spMap), 2000);
 }
 
-  // Render listeners as colored dots by slot
-  renderSpatialDots(spMap);
-  // Refresh dots every 5s
-    window._spDotInterval = setInterval(()=>renderSpatialDots(window._spMap), 2000);
-}
-
 function renderSpatialDots(spMap){
   if(!spMap || !activeZone) return;
   const listeners = Object.values(liveListeners||{});
