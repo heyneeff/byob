@@ -892,14 +892,17 @@ function renderSpatialDots(spMap){
     }
   });
 
-  // Remove markers for listeners who left
-  Object.keys(window._spDotMarkers).forEach(id => {
-    if(!seen.has(id)){
-      window._spDotMarkers[id].remove();
-      delete window._spDotMarkers[id];
-    }
-  });
-}
+   // Only remove markers if we have fresh data — don't prune on empty renders
+  console.log('seen:', [...seen], 'markers:', Object.keys(window._spDotMarkers||{}));
+  if(seen.size > 0){
+    Object.keys(window._spDotMarkers).forEach(id => {
+      if(!seen.has(id)){
+        window._spDotMarkers[id].remove();
+        delete window._spDotMarkers[id];
+      }
+    });
+  }
+
 
 
 function initMap(lat,lng){
@@ -1305,7 +1308,7 @@ function startListenerTracking(zoneId){
            Object.keys(liveListeners).forEach(id=>{
       const age = now - liveListeners[id].updated;
       console.log('listener age check:',liveListeners[id].name, Math.round(age/1000)+'s');
-      if(age>45000){delete liveListeners[id];changed=true;}
+          if(age>120000){delete liveListeners[id];changed=true;}
     });
 
 
