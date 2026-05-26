@@ -2571,8 +2571,12 @@ function initGuestListChannel(zoneId) {
     .subscribe(status => {
       if (status === 'SUBSCRIBED') {
         // Broadcast our presence so other phones can see us
-        const sendPresence = () => {
-          if (!activeZone || !userLat) return;
+              const sendPresence = () => {
+          if (!activeZone) return;
+          if (!userLat) {
+            setTimeout(sendPresence, 2000); // GPS not ready — retry
+            return;
+          }
           const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
           const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
           const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
@@ -2582,9 +2586,10 @@ function initGuestListChannel(zoneId) {
             payload: { id: listenerId, dist, bearing, name, emoji }
           });
         };
-        sendPresence();  // immediate first ping
+        setTimeout(sendPresence, 1500); // first ping after GPS has a moment to lock
+        setTimeout(sendPresence, 4000); // second ping as backup
         window._guestBroadcastInterval = setInterval(sendPresence, 4000);
-      }
+}
     });
 }
 
