@@ -901,24 +901,22 @@ function renderSpatialDots(spMap){
   });
 }
 
-
 function initMap(lat,lng){
   leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(leafletMap);
   L.control.zoom({position:'bottomleft'}).addTo(leafletMap);
   [100,300,600].forEach(ms=>setTimeout(()=>leafletMap.invalidateSize(),ms));
-  navigator.geolocation.getCurrentPosition(pos=>{
-    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
-    placeUserMarker(userLat,userLng);
-    leafletMap.setView([userLat,userLng],16);
-    updateMapHint(userLat,userLng);
-  },()=>{updateMapHint(lat,lng);},{enableHighAccuracy:true,maximumAge:0});
 
   navigator.geolocation.watchPosition(pos=>{
     userLat=pos.coords.latitude;userLng=pos.coords.longitude;
-    if(!userMarker)placeUserMarker(userLat,userLng);
-    else userMarker.setLatLng([userLat,userLng]);
-  },null,{enableHighAccuracy:true,maximumAge:3000});
+    if(!userMarker){
+      placeUserMarker(userLat,userLng);
+      leafletMap.setView([userLat,userLng],16);
+    } else {
+      userMarker.setLatLng([userLat,userLng]);
+    }
+    updateMapHint(userLat,userLng);
+  },()=>{updateMapHint(lat,lng);},{enableHighAccuracy:true,maximumAge:0});
 }
 function placeUserMarker(lat,lng){
   if(userMarker)userMarker.remove();
