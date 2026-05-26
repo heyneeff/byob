@@ -1275,7 +1275,9 @@ function startListenerTracking(zoneId){
                                            if(payload.isDJ) return;
               if(payload.id === currentUser?.id) return;
 
-      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
+            const ts = Date.now();
+      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:ts};
+      document.title='U:'+Math.round(ts/1000)%10000+' K:'+Object.keys(liveListeners).length;
 
       console.log('PING received:',payload.name,'keys in liveListeners:',Object.keys(liveListeners).length);
 
