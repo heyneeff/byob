@@ -1234,7 +1234,7 @@ let liveListeners={};
 let presenceChannel=null;
 function startListenerTracking(zoneId){
   if(presenceChannel)presenceChannel.unsubscribe();
-  liveListeners={};
+  liveListeners={};  
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
