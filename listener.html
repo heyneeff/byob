@@ -2569,29 +2569,29 @@ function initGuestListChannel(zoneId) {
       if (liveGuests[payload.id].status === null) delete liveGuests[payload.id];
       updateGuestList();
     })
-   .subscribe(status => {
-      if (status === 'SUBSCRIBED') {
-        if (window._guestBroadcastInterval) {
-          clearInterval(window._guestBroadcastInterval);
-          window._guestBroadcastInterval = null;
-        }
-        const sendPresence = () => {
-          if (!activeZone || !userLat) return;
-          const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
-          const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
-          const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
-          const emoji   = currentUser?.user_metadata?.emoji || '🎧';
-          const phone   = currentUser?.user_metadata?.phone || '';
-          window._guestChannel.send({
-            type: 'broadcast', event: 'proximity',
-            payload: { id: listenerId, dist, bearing, name, emoji, phone }
-          });
-        };
-        sendPresence();
-        window._guestBroadcastInterval = setInterval(sendPresence, 3000);
-      }
+  .subscribe();
+
+  // Broadcast loop runs independently — not tied to channel status
+  if (window._guestBroadcastInterval) {
+    clearInterval(window._guestBroadcastInterval);
+    window._guestBroadcastInterval = null;
+  }
+  const sendPresence = () => {
+    if (!activeZone || !userLat || !window._guestChannel) return;
+    const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
+    const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
+    const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
+    const emoji   = currentUser?.user_metadata?.emoji || '🎧';
+    const phone   = currentUser?.user_metadata?.phone || '';
+    window._guestChannel.send({
+      type: 'broadcast', event: 'proximity',
+      payload: { id: listenerId, dist, bearing, name, emoji, phone }
     });
+  };
+  setTimeout(sendPresence, 1500);
+  window._guestBroadcastInterval = setInterval(sendPresence, 3000);
 }
+
 
 // Prune stale guests every 35s
 setInterval(() => {
