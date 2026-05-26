@@ -1309,9 +1309,12 @@ function renderLiveGuestList(){
   }
   const present=listeners.filter(l=>l.status==='present').length;
   const approaching=listeners.filter(l=>l.status==='approaching').length;
-  document.getElementById('stat-present').textContent=present;
-  document.getElementById('stat-approaching').textContent=approaching;
-  document.getElementById('stat-speakers').textContent=1;
+    const spEl = document.getElementById('stat-present');
+  const saEl = document.getElementById('stat-approaching');
+  if(spEl) spEl.textContent=present;
+  if(saEl) saEl.textContent=approaching;
+  const ssEl = document.getElementById('stat-speakers');
+  if(ssEl) ssEl.textContent=1;
   // Topbar live count
   const tb=document.getElementById('tb-live');
   if(tb)tb.textContent=listeners.length;
