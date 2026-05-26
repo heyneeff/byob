@@ -846,32 +846,61 @@ function loadDemoMode(){
 
 function renderSpatialDots(spMap){
   if(!spMap || !activeZone) return;
-  // Clear old dots
-  if(window._spDotLayer) window._spDotLayer.forEach(m=>m.remove());
-  window._spDotLayer = [];
+  const listeners = Object.values(liveListeners||{});
+  if(!listeners.length){
+    if(window._spDotLayer) window._spDotLayer.forEach(m=>m.remove());
+    window._spDotLayer = [];
+    return;
+  }
+  // Update existing markers instead of clearing all
+  if(!window._spDotLayer) window._spDotLayer = [];
+  if(!window._spDotMarkers) window._spDotMarkers = {};
+
 
   const voices = parseInt(document.getElementById('scatter-voices')?.value||4);
   const SLOT_COLORS = ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'];
 
-  Object.values(liveListeners||{}).forEach(l => {
+   const voices = parseInt(document.getElementById('scatter-voices')?.value||4);
+  const SLOT_COLORS = ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'];
+
+  // Track which IDs we've seen this render
+  const seen = new Set();
+
+  listeners.forEach(l => {
     if(!l.bearing && !l.dist) return;
-    // Convert bearing+dist to lat/lng
     const distM = (l.dist||0) * 1609.34;
     const bearingRad = (l.bearing||0) * Math.PI / 180;
     const lat = activeZone.lat + (distM/111320) * Math.cos(bearingRad);
     const lng = activeZone.lng + (distM/(111320*Math.cos(activeZone.lat*Math.PI/180))) * Math.sin(bearingRad);
     const slot = Math.floor(((l.bearing||0) % 360) / (360/voices)) % voices;
     const color = SLOT_COLORS[slot];
+    seen.add(l.id||l.name);
 
-    const marker = L.circleMarker([lat, lng],{
-      radius:8, color:'#000', weight:1.5,
-      fillColor:color, fillOpacity:0.85
-    }).addTo(spMap);
+    if(window._spDotMarkers[l.id||l.name]){
+      // Update existing marker position
+      window._spDotMarkers[l.id||l.name].setLatLng([lat, lng]);
+      window._spDotMarkers[l.id||l.name].setStyle({fillColor: color});
+    } else {
+      // Create new marker
+      const marker = L.circleMarker([lat, lng],{
+        radius:9, color:'#000', weight:1.5,
+        fillColor:color, fillOpacity:0.9
+      }).addTo(spMap);
+      marker.bindTooltip(l.name||'Listener', {permanent:true, direction:'top', offset:[0,-10]});
+      window._spDotMarkers[l.id||l.name] = marker;
+      window._spDotLayer.push(marker);
+    }
+  });
 
-    marker.bindTooltip(l.name||'Listener', {permanent:false});
-    window._spDotLayer.push(marker);
+  // Remove markers for listeners who left
+  Object.keys(window._spDotMarkers).forEach(id => {
+    if(!seen.has(id)){
+      window._spDotMarkers[id].remove();
+      delete window._spDotMarkers[id];
+    }
   });
 }
+
 
 function initMap(lat,lng){
   leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
