@@ -1269,7 +1269,9 @@ function startListenerTracking(zoneId){
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-                   liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
+                         liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
+      console.log('PING received:',payload.name,'keys in liveListeners:',Object.keys(liveListeners).length);
+
             renderLiveGuestList();
       if(window._spMap) renderSpatialDots(window._spMap);
     })
