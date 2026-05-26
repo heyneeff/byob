@@ -2569,27 +2569,27 @@ function initGuestListChannel(zoneId) {
       if (liveGuests[payload.id].status === null) delete liveGuests[payload.id];
       updateGuestList();
     })
-    .subscribe(status => {
+   .subscribe(status => {
       if (status === 'SUBSCRIBED') {
-        // Broadcast our presence so other phones can see us
-                     const sendPresence = () => {
-          if (!activeZone) { showToast('❌ no zone'); return; }
-          if (!userLat) { showToast('❌ no GPS'); setTimeout(sendPresence, 2000); return; }
-
+        if (window._guestBroadcastInterval) {
+          clearInterval(window._guestBroadcastInterval);
+          window._guestBroadcastInterval = null;
+        }
+        const sendPresence = () => {
+          if (!activeZone || !userLat) return;
           const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
           const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
           const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
           const emoji   = currentUser?.user_metadata?.emoji || '🎧';
+          const phone   = currentUser?.user_metadata?.phone || '';
           window._guestChannel.send({
             type: 'broadcast', event: 'proximity',
-            payload: { id: listenerId, dist, bearing, name, emoji }
+            payload: { id: listenerId, dist, bearing, name, emoji, phone }
           });
         };
-        setTimeout(sendPresence, 1500); // first ping after GPS has a moment to lock
-        setTimeout(sendPresence, 4000); // second ping as backup
-                window._guestBroadcastInterval = setInterval(sendPresence, 3000);
-
-}
+        sendPresence();
+        window._guestBroadcastInterval = setInterval(sendPresence, 3000);
+      }
     });
 }
 
