@@ -1341,9 +1341,7 @@ function renderLiveGuestList(){
     el.appendChild(row);
   });
 }
-  
-
-  const present=listeners.filter(l=>l.status==='present').length;
+    const present=listeners.filter(l=>l.status==='present').length;
   const approaching=listeners.filter(l=>l.status==='approaching').length;
     const spEl = document.getElementById('stat-present');
   const saEl = document.getElementById('stat-approaching');
@@ -1365,6 +1363,7 @@ function renderLiveGuestList(){
   });
   if(document.getElementById('spatial-grid-panel')?.style.display!=='none')drawGrid();
 }
+
 async function triggerResync() {
   if (!activeZone) return showToast('No active zone');
   if (!audio.src || !audio.duration) return showToast('No track loaded');
