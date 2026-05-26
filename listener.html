@@ -4347,6 +4347,43 @@ function applySweepOffset(sweep){
   }, delayMs);
 }
 
+// ── DEBUG BROADCAST ──────────────────────────────────────
+function broadcastDebug() {
+  const ch = window._debugChannel = window._debugChannel ||
+    db.channel('byob_debug').subscribe();
+
+  const hasZone   = !!activeZone;
+  const hasGPS    = !!userLat;
+  const hasChannel = !!window._guestChannel;
+  const interval  = !!window._guestBroadcastInterval;
+
+  ch.send({
+    type: 'broadcast', event: 'hud_data',
+    payload: {
+      deviceId:   'listener_' + (listenerId || 'unknown').slice(0,6),
+      zone:       activeZone?.name || 'none',
+      elapsed:    userLat ? distM(userLat, userLng, activeZone?.lat||0, activeZone?.lng||0).toFixed(1) : '—',
+      currentTime: Date.now(),
+      expectedPos: hasGPS ? userLat.toFixed(5) + ',' + userLng.toFixed(5) : 'no GPS',
+      driftMs:    hasZone && hasGPS
+        ? (distM(userLat, userLng, activeZone.lat, activeZone.lng) * 1609.34).toFixed(0)
+        : null,
+      deviceLatencyMs: interval ? 1 : 0,
+      calOffset:  hasChannel ? 1 : 0,
+      syncState:  [
+        hasZone    ? '✓ zone'    : '✗ zone',
+        hasGPS     ? '✓ GPS'     : '✗ GPS',
+        hasChannel ? '✓ channel' : '✗ channel',
+        interval   ? '✓ interval': '✗ interval',
+      ].join(' · '),
+      src: hasZone ? `bearing:${getBearing(activeZone.lat,activeZone.lng,userLat||0,userLng||0).toFixed(0)}°` : '—'
+    }
+  });
+}
+
+setInterval(broadcastDebug, 2000);
+
+  
 
 </script>
 </body>
