@@ -814,32 +814,28 @@ function loadDemoMode(){
 }
 
 // ── MAP ───────────────────────────────────────────────────
-  function initSpatialMap(){
+ function initSpatialMap(){
   const el = document.getElementById('sp-spatial-map');
   if(!el) return;
   if(el._mapInited){
-    // Already inited — just refresh dots and re-center on zone
-    if(activeZone && window._spMap){
-      window._spMap.setView([activeZone.lat, activeZone.lng], 17);
-      renderSpatialDots(window._spMap);
-    }
+    renderSpatialDots(window._spMap);
     return;
   }
-  if(!activeZone && !userLat){ showToast('Create a zone first'); return; }
   el._mapInited = true;
   const center = activeZone ? [activeZone.lat, activeZone.lng] : [userLat||39.7392, userLng||-104.9903];
   const spMap = L.map(el, {zoomControl:false, attributionControl:false}).setView(center, 17);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(spMap);
   window._spMap = spMap;
   setTimeout(()=>spMap.invalidateSize(), 100);
-
-  // Draw zone circle
   if(activeZone){
     L.circle([activeZone.lat, activeZone.lng],{
       radius: activeZone.radius_m, color:'#f57e20',
       fillColor:'#f57e20', fillOpacity:0.06, weight:1.5
     }).addTo(spMap);
   }
+  renderSpatialDots(spMap);
+  window._spDotInterval = setInterval(()=>renderSpatialDots(window._spMap), 2000);
+}
 
   // Render listeners as colored dots by slot
   renderSpatialDots(spMap);
