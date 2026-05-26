@@ -1326,10 +1326,6 @@ function renderLiveGuestList(){
   const _sa = document.getElementById('stat-approaching');
   const _ss = document.getElementById('stat-speakers');
   const _tb = document.getElementById('tb-live');
-            renderLiveGuestList();
-      if(window._spMap) renderSpatialDots(window._spMap);
-    })
-    .subscribe((status, err) => {
       console.log('[Presence] status:', status, err||'');
             if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         showToast('⚠️ Presence reconnecting…');
