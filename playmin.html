@@ -874,19 +874,17 @@ function renderSpatialDots(spMap){
     const color = SLOT_COLORS[slot];
     seen.add(l.id||l.name);
 
-    if(window._spDotMarkers[l.id||l.name]){
-      // Update existing marker position
-      window._spDotMarkers[l.id||l.name].setLatLng([lat, lng]);
-      window._spDotMarkers[l.id||l.name].setStyle({fillColor: color});
+        if(window._spDotMarkers[dotKey]){
+      window._spDotMarkers[dotKey].setLatLng([lat, lng]);
+      window._spDotMarkers[dotKey].setStyle({fillColor: color});
     } else {
-      // Create new marker
       const marker = L.circleMarker([lat, lng],{
         radius:9, color:'#000', weight:1.5,
         fillColor:color, fillOpacity:0.9
       }).addTo(spMap);
       marker.bindTooltip(l.name||'Listener', {permanent:true, direction:'top', offset:[0,-10]});
-      window._spDotMarkers[l.id||l.name] = marker;
-      window._spDotLayer.push(marker);
+      window._spDotMarkers[dotKey] = marker;
+
     }
   });
 
@@ -1261,7 +1259,8 @@ let liveListeners={};
 let presenceChannel=null;
 function startListenerTracking(zoneId){
   if(presenceChannel)presenceChannel.unsubscribe();
-  liveListeners={};  
+  // Don't wipe liveListeners here — reconnects would clear the map
+  if(!liveListeners) liveListeners={};
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
