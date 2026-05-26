@@ -884,7 +884,7 @@ function renderSpatialDots(spMap){
 
    // Only remove markers if we have fresh data — don't prune on empty renders
   console.log('seen:', [...seen], 'markers:', Object.keys(window._spDotMarkers||{}));
-  if(seen.size > 0){
+   if(seen.size > 0){
     Object.keys(window._spDotMarkers).forEach(id => {
       if(!seen.has(id)){
         window._spDotMarkers[id].remove();
@@ -892,8 +892,7 @@ function renderSpatialDots(spMap){
       }
     });
   }
-
-
+}
 
 function initMap(lat,lng){
   leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
