@@ -389,6 +389,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
 <div id="toast"></div>
 
+<!-- DEBUG BAR -->
+<div id="debug-bar" style="position:fixed;top:0;left:0;right:0;z-index:9999;background:rgba(0,0,0,.85);color:#0f0;font-family:monospace;font-size:11px;padding:4px 8px;display:none;">
+  <span id="dbg-listeners">L:0</span> | 
+  <span id="dbg-markers">M:0</span> | 
+  <span id="dbg-channel">CH:?</span> |
+  <span id="dbg-age">AGE:?</span>
+</div>
 <!-- MAIN APP -->
 <div id="dj-app" style="display:none">
 <div class="dj-inner">
