@@ -1302,7 +1302,7 @@ function startListenerTracking(zoneId){
            Object.keys(liveListeners).forEach(id=>{
       const age = now - liveListeners[id].updated;
       console.log('listener age check:',liveListeners[id].name, Math.round(age/1000)+'s');
-      if(age>45000){delete liveListeners[id];changed=true;}
+      if(age>90000){delete liveListeners[id];changed=true;}
     });
 
 
