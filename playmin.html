@@ -1341,28 +1341,7 @@ function renderLiveGuestList(){
     el.appendChild(row);
   });
 }
-    const present=listeners.filter(l=>l.status==='present').length;
-  const approaching=listeners.filter(l=>l.status==='approaching').length;
-    const spEl = document.getElementById('stat-present');
-  const saEl = document.getElementById('stat-approaching');
-  if(spEl) spEl.textContent=present;
-  if(saEl) saEl.textContent=approaching;
-  const ssEl = document.getElementById('stat-speakers');
-  if(ssEl) ssEl.textContent=1;
-  // Topbar live count
-  const tb=document.getElementById('tb-live');
-  if(tb)tb.textContent=listeners.length;
-  el.innerHTML='';
-  listeners.sort((a,b)=>a.status==='present'?-1:1);
-  listeners.forEach(l=>{
-    const distStr=l.dist<0.1?Math.round(l.dist*5280)+' ft':l.dist.toFixed(2)+' mi';
-    const phone=l.phone?'<span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+l.phone+'</span>':'';
-    const row=document.createElement('div');row.className='guest-row';
-    row.innerHTML='<span style="font-size:16px;margin-right:4px">'+l.emoji+'</span><span class="guest-name">'+l.name+'</span><span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+distStr+' away</span>'+phone+'<span class="guest-status '+l.status+'">'+l.status+'</span>';
-    el.appendChild(row);
-  });
-  if(document.getElementById('spatial-grid-panel')?.style.display!=='none')drawGrid();
-}
+ 
 
 async function triggerResync() {
   if (!activeZone) return showToast('No active zone');
