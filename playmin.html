@@ -868,7 +868,8 @@ function renderSpatialDots(spMap){
   const seen = new Set();
 
     listeners.forEach(l => {
-    if(!l.bearing && !l.dist) return;
+    if(l.dist == null) return;
+
     const dotKey = l.id || l.name || 'unknown';
     seen.add(dotKey);
     const distM = (l.dist||0) * 1609.34;
@@ -1386,8 +1387,9 @@ async function killStream(){
   }
   document.getElementById('btn-create-zone').textContent='Create Zone';
   document.getElementById('btn-create-zone').classList.remove('has-zone');
-    const _sp=document.getElementById('stat-present'); if(_sp)_sp.textContent=present;
-  const _sa=document.getElementById('stat-approaching'); if(_sa)_sa.textContent=approaching;
+   const _sp=document.getElementById('stat-present'); if(_sp)_sp.textContent='0';
+const _sa=document.getElementById('stat-approaching'); if(_sa)_sa.textContent='0';
+
   const _ss=document.getElementById('stat-speakers'); if(_ss)_ss.textContent=1;
   document.getElementById('guest-list').innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
   if (_djPresenceInterval) { clearInterval(_djPresenceInterval); _djPresenceInterval=null; }
@@ -1678,9 +1680,7 @@ function startCircularSweep(rpm,dir){
   if(_orchestra) _orchestra.startSweep(rpm,dir);
   else showToast('Open Spatial panel first');
 }
-function stopCircularSweep(){
-  if(_orchestra) _orchestra.stopSweep();
-}
+
 
 
 function stopCircularSweep(){
