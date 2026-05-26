@@ -1307,11 +1307,13 @@ function renderLiveGuestList(){
   const el=document.getElementById('guest-list');
   const listeners=Object.values(liveListeners);
   if(!listeners.length){
-    el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet</div>';
-    document.getElementById('stat-present').textContent='0';
-    document.getElementById('stat-approaching').textContent='0';
+    if(el) el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet</div>';
+    const _sp=document.getElementById('stat-present'); if(_sp)_sp.textContent='0';
+    const _sa=document.getElementById('stat-approaching'); if(_sa)_sa.textContent='0';
     return;
   }
+  if(!el) return;
+
   const present=listeners.filter(l=>l.status==='present').length;
   const approaching=listeners.filter(l=>l.status==='approaching').length;
     const spEl = document.getElementById('stat-present');
