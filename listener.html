@@ -2360,7 +2360,8 @@ function initMap() {
     // Don't let watch die silently — log and show toast on permission errors
     if (err.code === 1) showToast('📍 Location permission denied — enable in Settings');
     console.warn('GPS watch error:', err.message);
-  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+    }, { enableHighAccuracy: true, maximumAge: 0 });
+
 }
 
 function placeUserMarker(lat, lng) {
