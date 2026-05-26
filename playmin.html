@@ -864,15 +864,16 @@ function renderSpatialDots(spMap){
   // Track which IDs we've seen this render
   const seen = new Set();
 
-  listeners.forEach(l => {
+    listeners.forEach(l => {
     if(!l.bearing && !l.dist) return;
+    const dotKey = l.id || l.name || 'unknown';
+    seen.add(dotKey);
     const distM = (l.dist||0) * 1609.34;
     const bearingRad = (l.bearing||0) * Math.PI / 180;
     const lat = activeZone.lat + (distM/111320) * Math.cos(bearingRad);
     const lng = activeZone.lng + (distM/(111320*Math.cos(activeZone.lat*Math.PI/180))) * Math.sin(bearingRad);
     const slot = Math.floor(((l.bearing||0) % 360) / (360/voices)) % voices;
     const color = SLOT_COLORS[slot];
-    seen.add(l.id||l.name);
 
         if(window._spDotMarkers[dotKey]){
       window._spDotMarkers[dotKey].setLatLng([lat, lng]);
