@@ -814,27 +814,37 @@ function loadDemoMode(){
 }
 
 // ── MAP ───────────────────────────────────────────────────
- function initSpatialMap(){
+  function initSpatialMap(){
   const el = document.getElementById('sp-spatial-map');
   if(!el) return;
   if(el._mapInited){
-    renderSpatialDots(window._spMap);
+    // Already inited — just refresh dots and re-center on zone
+    if(activeZone && window._spMap){
+      window._spMap.setView([activeZone.lat, activeZone.lng], 17);
+      renderSpatialDots(window._spMap);
+    }
     return;
   }
+  if(!activeZone && !userLat){ showToast('Create a zone first'); return; }
   el._mapInited = true;
   const center = activeZone ? [activeZone.lat, activeZone.lng] : [userLat||39.7392, userLng||-104.9903];
   const spMap = L.map(el, {zoomControl:false, attributionControl:false}).setView(center, 17);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(spMap);
   window._spMap = spMap;
   setTimeout(()=>spMap.invalidateSize(), 100);
+
+  // Draw zone circle
   if(activeZone){
     L.circle([activeZone.lat, activeZone.lng],{
       radius: activeZone.radius_m, color:'#f57e20',
       fillColor:'#f57e20', fillOpacity:0.06, weight:1.5
     }).addTo(spMap);
   }
+
+  // Render listeners as colored dots by slot
   renderSpatialDots(spMap);
-  window._spDotInterval = setInterval(()=>renderSpatialDots(window._spMap), 2000);
+  // Refresh dots every 5s
+    window._spDotInterval = setInterval(()=>renderSpatialDots(window._spMap), 2000);
 }
 
 function renderSpatialDots(spMap){
@@ -882,17 +892,15 @@ function renderSpatialDots(spMap){
     }
   });
 
-   // Only remove markers if we have fresh data — don't prune on empty renders
-  console.log('seen:', [...seen], 'markers:', Object.keys(window._spDotMarkers||{}));
-   if(seen.size > 0){
-    Object.keys(window._spDotMarkers).forEach(id => {
-      if(!seen.has(id)){
-        window._spDotMarkers[id].remove();
-        delete window._spDotMarkers[id];
-      }
-    });
-  }
+  // Remove markers for listeners who left
+  Object.keys(window._spDotMarkers).forEach(id => {
+    if(!seen.has(id)){
+      window._spDotMarkers[id].remove();
+      delete window._spDotMarkers[id];
+    }
+  });
 }
+
 
 function initMap(lat,lng){
   leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
@@ -1264,9 +1272,8 @@ function startListenerTracking(zoneId){
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-                               const ts = Date.now();
-      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:ts};
-      document.title='U:'+Math.round(ts/1000)%10000+' K:'+Object.keys(liveListeners).length;
+                               if(payload.isDJ) return; // don't add DJ to listener list
+      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
 
       console.log('PING received:',payload.name,'keys in liveListeners:',Object.keys(liveListeners).length);
 
@@ -1297,7 +1304,49 @@ function startListenerTracking(zoneId){
            Object.keys(liveListeners).forEach(id=>{
       const age = now - liveListeners[id].updated;
       console.log('listener age check:',liveListeners[id].name, Math.round(age/1000)+'s');
-          if(age>120000){delete liveListeners[id];changed=true;}
+      if(age>45000){delete liveListeners[id];changed=true;}
+    });
+
+
+    if(changed){renderLiveGuestList();if(window._spMap)renderSpatialDots(window._spMap);}
+  },20000);
+}
+function renderLiveGuestList(){
+  const el = document.getElementById('guest-list');
+  const listeners = Object.values(liveListeners);
+  
+  const _sp = document.getElementById('stat-present');
+  const _sa = document.getElementById('stat-approaching');
+  const _ss = document.getElementById('stat-speakers');
+  const _tb = document.getElementById('tb-live');
+            renderLiveGuestList();
+      if(window._spMap) renderSpatialDots(window._spMap);
+    })
+    .subscribe((status, err) => {
+      console.log('[Presence] status:', status, err||'');
+            if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+        showToast('⚠️ Presence reconnecting…');
+        setTimeout(() => {
+          if(presenceChannel) presenceChannel.unsubscribe();
+          presenceChannel = db.channel('presence_'+zoneId)
+            .on('broadcast',{event:'proximity'},({payload})=>{
+              const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
+                    liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
+      document.title = 'L:'+Object.keys(liveListeners).length+' '+Date.now();
+
+              renderLiveGuestList();
+              if(window._spMap) renderSpatialDots(window._spMap);
+            }).subscribe();
+        }, 2000);
+      }
+    });
+  setInterval(()=>{
+
+    const now=Date.now();let changed=false;
+           Object.keys(liveListeners).forEach(id=>{
+      const age = now - liveListeners[id].updated;
+      console.log('listener age check:',liveListeners[id].name, Math.round(age/1000)+'s');
+      if(age>45000){delete liveListeners[id];changed=true;}
     });
 
 
@@ -1312,6 +1361,7 @@ function renderLiveGuestList(){
   const _sa = document.getElementById('stat-approaching');
   const _ss = document.getElementById('stat-speakers');
   const _tb = document.getElementById('tb-live');
+
 
   if(!listeners.length){
     if(el) el.innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
