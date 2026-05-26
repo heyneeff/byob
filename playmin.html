@@ -912,7 +912,8 @@ function initMap(lat,lng){
     placeUserMarker(userLat,userLng);
     leafletMap.setView([userLat,userLng],16);
     updateMapHint(userLat,userLng);
-  },()=>{updateMapHint(lat,lng);},{enableHighAccuracy:true,timeout:10000,maximumAge:0});
+  },()=>{updateMapHint(lat,lng);},{enableHighAccuracy:true,maximumAge:0});
+
   navigator.geolocation.watchPosition(pos=>{
     userLat=pos.coords.latitude;userLng=pos.coords.longitude;
     if(!userMarker)placeUserMarker(userLat,userLng);
@@ -1306,8 +1307,9 @@ function startListenerTracking(zoneId){
     });
 
 
-    if(changed){renderLiveGuestList();if(window._spMap)renderSpatialDots(window._spMap);}
-  },10000);
+        if(changed){renderLiveGuestList();if(window._spMap)renderSpatialDots(window._spMap);}
+  },30000);
+
 }
 function renderLiveGuestList(){
   const el = document.getElementById('guest-list');
