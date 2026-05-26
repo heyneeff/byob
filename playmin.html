@@ -1339,8 +1339,7 @@ function renderLiveGuestList(){
     el.appendChild(row);
   });
 }
-  if(!el){ if(window._spMap) renderSpatialDots(window._spMap); return; }
-  el.innerHTML='';
+  
 
   const present=listeners.filter(l=>l.status==='present').length;
   const approaching=listeners.filter(l=>l.status==='approaching').length;
