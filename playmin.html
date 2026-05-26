@@ -411,57 +411,50 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="panel active" id="panel-spatial">
 <div class="spatial-panel">
   <div class="sp-tools">
-    <div class="sp-label">Mode</div>
-    <div class="mode-grid">
-      <button class="mbutton active" id="zmode-zone"    onclick="setZoneMode('zone',this)">⊕ Zone</button>
-      <button class="mbutton"        id="zmode-cluster" onclick="setZoneMode('cluster',this)">⬡ Cluster</button>
-      <button class="mbutton"        id="zmode-orbit"   onclick="setZoneMode('orbit',this)">◎ Orbit</button>
-      <button class="mbutton"        id="zmode-wander"  onclick="setZoneMode('wander',this)">〜 Wander</button>
-      <button class="mbutton"        id="zmode-point"   onclick="setZoneMode('point',this)">⊙ Point</button>
-      <button class="mbutton"        id="zmode-layer"   onclick="setZoneMode('layer',this)">≋ Layer</button>
-    </div>
     <div class="sp-label">Zone Tracks</div>
     <div id="zone-slots">
-      <div class="zone-slot" id="slot-C" data-zone="C" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'C')" onclick="selectZoneSlot('C')">
+      <div class="zone-slot" id="slot-C" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'C')" onclick="selectZoneSlot('C')">
         <div class="zslot-badge" style="background:var(--orange);">C</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-C-name">Center — drop track</div><div class="zslot-sub" id="slot-C-sub">All speakers</div></div>
-        <div class="zslot-controls" id="slot-C-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'C')">&#9654;</button><button class="zslot-btn" onclick="muteZone(event,'C')">M</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'C')">×</button></div>
+        <div class="zslot-info"><div class="zslot-name" id="slot-C-name">Center — drop track</div><div class="zslot-sub">All speakers</div></div>
+        <div class="zslot-controls" id="slot-C-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'C')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'C')">×</button></div>
       </div>
-      <div class="zone-slot" id="slot-N" data-zone="N" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'N')" onclick="selectZoneSlot('N')">
-        <div class="zslot-badge" style="background:var(--teal);">N</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-N-name">North — drop track</div><div class="zslot-sub" id="slot-N-sub">↑ speakers</div></div>
-        <div class="zslot-controls" id="slot-N-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'N')">&#9654;</button><button class="zslot-btn" onclick="muteZone(event,'N')">M</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'N')">×</button></div>
+      <div class="zone-slot" id="slot-1" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'1')" onclick="selectZoneSlot('1')">
+        <div class="zslot-badge" style="background:var(--teal);">1</div>
+        <div class="zslot-info"><div class="zslot-name" id="slot-1-name">Slot 1 — drop track</div><div class="zslot-sub">Cluster 1</div></div>
+        <div class="zslot-controls" id="slot-1-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'1')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'1')">×</button></div>
       </div>
-      <div class="zone-slot" id="slot-E" data-zone="E" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'E')" onclick="selectZoneSlot('E')">
-        <div class="zslot-badge" style="background:var(--red);">E</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-E-name">East — drop track</div><div class="zslot-sub" id="slot-E-sub">→ speakers</div></div>
-        <div class="zslot-controls" id="slot-E-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'E')">&#9654;</button><button class="zslot-btn" onclick="muteZone(event,'E')">M</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'E')">×</button></div>
+      <div class="zone-slot" id="slot-2" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'2')" onclick="selectZoneSlot('2')">
+        <div class="zslot-badge" style="background:var(--red);">2</div>
+        <div class="zslot-info"><div class="zslot-name" id="slot-2-name">Slot 2 — drop track</div><div class="zslot-sub">Cluster 2</div></div>
+        <div class="zslot-controls" id="slot-2-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'2')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'2')">×</button></div>
       </div>
-      <div class="zone-slot" id="slot-S" data-zone="S" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'S')" onclick="selectZoneSlot('S')">
-        <div class="zslot-badge" style="background:#a78bfa;">S</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-S-name">South — drop track</div><div class="zslot-sub" id="slot-S-sub">↓ speakers</div></div>
-        <div class="zslot-controls" id="slot-S-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'S')">&#9654;</button><button class="zslot-btn" onclick="muteZone(event,'S')">M</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'S')">×</button></div>
+      <div class="zone-slot" id="slot-3" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'3')" onclick="selectZoneSlot('3')">
+        <div class="zslot-badge" style="background:#a78bfa;">3</div>
+        <div class="zslot-info"><div class="zslot-name" id="slot-3-name">Slot 3 — drop track</div><div class="zslot-sub">Cluster 3</div></div>
+        <div class="zslot-controls" id="slot-3-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'3')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'3')">×</button></div>
       </div>
-      <div class="zone-slot" id="slot-W" data-zone="W" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'W')" onclick="selectZoneSlot('W')">
-        <div class="zslot-badge" style="background:#f472b6;">W</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-W-name">West — drop track</div><div class="zslot-sub" id="slot-W-sub">← speakers</div></div>
-        <div class="zslot-controls" id="slot-W-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'W')">&#9654;</button><button class="zslot-btn" onclick="muteZone(event,'W')">M</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'W')">×</button></div>
+      <div class="zone-slot" id="slot-4" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'4')" onclick="selectZoneSlot('4')">
+        <div class="zslot-badge" style="background:#f472b6;">4</div>
+        <div class="zslot-info"><div class="zslot-name" id="slot-4-name">Slot 4 — drop track</div><div class="zslot-sub">Cluster 4</div></div>
+        <div class="zslot-controls" id="slot-4-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'4')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'4')">×</button></div>
       </div>
     </div>
-    <button onclick="broadcastAllZones()" style="width:100%;padding:10px;background:var(--card2);color:var(--orange);border:1px solid var(--orange);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;margin-top:2px;">⚡ Broadcast All Zones</button>
-    <div class="sp-label" style="margin-top:6px;">Scatter Spread</div>
-    <input type="range" id="scatter-ms" min="0" max="30000" step="250" value="2000" style="width:100%;accent-color:var(--red);margin-bottom:4px;" oninput="updateScatterLabel()"/>
+
+    <button onclick="broadcastAllZones()" style="width:100%;padding:10px;background:var(--card2);color:var(--orange);border:1px solid var(--orange);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;margin-top:6px;">⚡ Broadcast All Zones</button>
+
+    <div class="sp-label" style="margin-top:8px;">Scatter</div>
+    <input type="range" id="scatter-ms" min="0" max="30000" step="250" value="2000" style="width:100%;accent-color:var(--red);" oninput="updateScatterLabel()"/>
     <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px;"><span>0s</span><span id="scatter-label" style="color:var(--white);font-weight:700;">2.0s spread</span><span>30s</span></div>
     <select id="scatter-voices" class="scatter-voices-sel">
       <option value="2">2 voices</option><option value="3">3 voices</option><option value="4" selected>4 voices</option><option value="6">6 voices</option><option value="8">8 voices</option>
     </select>
     <div class="sact-col">
       <button class="sact sact-scatter" onclick="scatterSpeakers()">♪ SCATTER</button>
-      <button class="sact sact-snap" onclick="snapSpeakers()">⚡ SNAP</button>
-      <button onclick="triggerResync()" style="padding:9px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">🔄 Sync All Speakers</button>
-            <button onclick="openGrid()" style="padding:9px;background:#111;color:var(--orange);border:1px solid var(--orange);border-radius:9px;font-family:'Roboto Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">🗺 Spatial Grid</button>
+      <button class="sact sact-snap"    onclick="snapSpeakers()">⚡ SNAP</button>
+      <button onclick="triggerResync()" style="width:100%;padding:9px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">🔄 Sync All Speakers</button>
+    </div>
 
-    <div class="sp-label" style="margin-top:6px;">Circular Sweep</div>
+    <div class="sp-label" style="margin-top:8px;">Circular Sweep</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
       <button onclick="startCircularSweep(2,1)"  style="padding:8px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↻ 2 RPM</button>
       <button onclick="startCircularSweep(4,1)"  style="padding:8px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↻ 4 RPM</button>
@@ -469,13 +462,14 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button onclick="startCircularSweep(4,-1)" style="padding:8px;background:var(--card2);color:var(--orange);border:1px solid var(--orange);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↺ Reverse</button>
     </div>
     <button onclick="stopCircularSweep()" style="width:100%;padding:8px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">◼ Stop Sweep</button>
-
-    </div>
   </div>
-  <div class="sp-radar" id="sp-radar" style="display:flex;align-items:center;justify-content:center;background:var(--bg);border-radius:50%;overflow:hidden;"></div>
+
+  <!-- MAP as spatial interface — listeners shown as colored dots by slot -->
+  <div class="sp-radar" id="sp-spatial-map" style="background:var(--bg);overflow:hidden;border-radius:12px;"></div>
   <div class="sp-library" id="sp-lib"></div>
 </div>
 </div>
+
 
 <!-- DECK -->
 <div class="panel" id="panel-deck">
@@ -820,6 +814,59 @@ function loadDemoMode(){
 }
 
 // ── MAP ───────────────────────────────────────────────────
+  function initSpatialMap(){
+  const el = document.getElementById('sp-spatial-map');
+  if(!el || el._mapInited) return;
+  el._mapInited = true;
+  const center = activeZone ? [activeZone.lat, activeZone.lng] : [userLat||39.7392, userLng||-104.9903];
+  const spMap = L.map(el, {zoomControl:false, attributionControl:false}).setView(center, 17);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(spMap);
+  window._spMap = spMap;
+  setTimeout(()=>spMap.invalidateSize(), 100);
+
+  // Draw zone circle
+  if(activeZone){
+    L.circle([activeZone.lat, activeZone.lng],{
+      radius: activeZone.radius_m, color:'#f57e20',
+      fillColor:'#f57e20', fillOpacity:0.06, weight:1.5
+    }).addTo(spMap);
+  }
+
+  // Render listeners as colored dots by slot
+  renderSpatialDots(spMap);
+  // Refresh dots every 5s
+  window._spDotInterval = setInterval(()=>renderSpatialDots(spMap), 5000);
+}
+
+function renderSpatialDots(spMap){
+  if(!spMap || !activeZone) return;
+  // Clear old dots
+  if(window._spDotLayer) window._spDotLayer.forEach(m=>m.remove());
+  window._spDotLayer = [];
+
+  const voices = parseInt(document.getElementById('scatter-voices')?.value||4);
+  const SLOT_COLORS = ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'];
+
+  Object.values(liveListeners||{}).forEach(l => {
+    if(!l.bearing && !l.dist) return;
+    // Convert bearing+dist to lat/lng
+    const distM = (l.dist||0) * 1609.34;
+    const bearingRad = (l.bearing||0) * Math.PI / 180;
+    const lat = activeZone.lat + (distM/111320) * Math.cos(bearingRad);
+    const lng = activeZone.lng + (distM/(111320*Math.cos(activeZone.lat*Math.PI/180))) * Math.sin(bearingRad);
+    const slot = Math.floor(((l.bearing||0) % 360) / (360/voices)) % voices;
+    const color = SLOT_COLORS[slot];
+
+    const marker = L.circleMarker([lat, lng],{
+      radius:8, color:'#000', weight:1.5,
+      fillColor:color, fillOpacity:0.85
+    }).addTo(spMap);
+
+    marker.bindTooltip(l.name||'Listener', {permanent:false});
+    window._spDotLayer.push(marker);
+  });
+}
+
 function initMap(lat,lng){
   leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(leafletMap);
@@ -1497,7 +1544,8 @@ function clearZoneSlot(event,zone){
   const slot=document.getElementById('slot-'+zone);
   const nameEl=document.getElementById('slot-'+zone+'-name');
   const controls=document.getElementById('slot-'+zone+'-controls');
-  const defaults={C:'Center — drop track',N:'North — drop track',E:'East — drop track',S:'South — drop track',W:'West — drop track'};
+  const defaults={C:'Center — drop track',1:'Slot 1 — drop track',2:'Slot 2 — drop track',3:'Slot 3 — drop track',4:'Slot 4 — drop track'};
+
   if(nameEl)nameEl.textContent=defaults[zone];
   if(slot)slot.classList.remove('loaded','selected');
   if(controls)controls.style.display='none';
@@ -1712,7 +1760,8 @@ function switchPanel(name,btn){
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
-  if(name==='spatial') initOrchestra();
+    if(name==='spatial') initSpatialMap();
+
 
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
 }
