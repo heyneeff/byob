@@ -961,7 +961,11 @@ async function searchMap(){
   }catch(e){showToast('Search failed — check connection');}
   btn.textContent='Go';
 }
-document.addEventListener('click',e=>{if(!e.target.closest('.map-search-wrap'))document.getElementById('search-results').style.display='none';});
+document.addEventListener('click',e=>{
+  if(!e.target.closest('.map-search-wrap')){
+    const _sr=document.getElementById('search-results'); if(_sr)_sr.style.display='none';
+  }
+});
 
 // ── ZONE CREATE ───────────────────────────────────────────
 function onCreateZone(){
@@ -1369,9 +1373,9 @@ async function killStream(){
   }
   document.getElementById('btn-create-zone').textContent='Create Zone';
   document.getElementById('btn-create-zone').classList.remove('has-zone');
-  document.getElementById('stat-present').textContent='0';
-  document.getElementById('stat-approaching').textContent='0';
-  document.getElementById('stat-speakers').textContent='0';
+    const _sp=document.getElementById('stat-present'); if(_sp)_sp.textContent=present;
+  const _sa=document.getElementById('stat-approaching'); if(_sa)_sa.textContent=approaching;
+  const _ss=document.getElementById('stat-speakers'); if(_ss)_ss.textContent=1;
   document.getElementById('guest-list').innerHTML='<div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div>';
   if (_djPresenceInterval) { clearInterval(_djPresenceInterval); _djPresenceInterval=null; }
   if (window._djPresenceChannel) { window._djPresenceChannel.unsubscribe(); window._djPresenceChannel=null; }
