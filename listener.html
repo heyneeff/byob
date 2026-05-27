@@ -412,8 +412,9 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 
 /* ── PLAYER CARD ── */
 .player-card{border:2px solid var(--teal);border-radius:12px;padding:16px 14px 14px;background:var(--surface2);margin-bottom:10px;position:relative;overflow:hidden;}
-.viz-wrap{width:100%;height:160px;overflow:hidden;position:relative;background:#000;}
+.viz-wrap{width:100%;height:160px;overflow:hidden;position:relative;background:#000;}    
 #viz-canvas{display:block;width:100%;height:100%;}
+#organism-canvas{width:100%;height:160px;display:block;border-radius:6px;image-rendering:pixelated;}
 
 .play-btn{
   position:absolute;left:50%;top:46%;transform:translate(-50%,-50%);
@@ -4399,119 +4400,267 @@ function broadcastDebug() {
 
 setInterval(broadcastDebug, 2000);
 
-  // ── SIGNAL ORGANISM ──────────────────────────────────────
-const ORG_COUNT = 22;
-const ORG_CELLS = [];
-let orgCanvas, orgCtx, orgAnalyser, orgAnim, orgReady = false;
+ // ── SIGNAL ORGANISM (v2 — diffusion engine) ──────────────
+const _ORG_RES = 512;
+const _ORG_G   = 80;
+const _ORG_CS  = _ORG_RES / _ORG_G;
+const _ORG_CX  = _ORG_RES * 0.5, _ORG_CY = _ORG_RES * 0.5;
+const _ORG_RAD = _ORG_RES * 0.46;
 
-function initOrganism() {
-  orgCanvas = document.getElementById('organism-canvas');
-  if (!orgCanvas || orgReady) return;
-  orgCtx = orgCanvas.getContext('2d');
+const _A = new Float32Array(_ORG_G*_ORG_G), _B = new Float32Array(_ORG_G*_ORG_G), _C = new Float32Array(_ORG_G*_ORG_G);
+let _cur=_A,_prv=_B,_nxt=_C;
+const _WA=new Float32Array(_ORG_G*_ORG_G),_WB=new Float32Array(_ORG_G*_ORG_G),_WC=new Float32Array(_ORG_G*_ORG_G);
+let _wcur=_WA,_wprv=_WB,_wnxt=_WC;
+const _colr=new Uint8Array(_ORG_G*_ORG_G);
 
-  // Build audio analyser off existing audio element
-  try {
-    const actx = new (window.AudioContext || window.webkitAudioContext)();
-    const analyser = actx.createAnalyser();
-    analyser.fftSize = 256;
-    analyser.smoothingTimeConstant = 0.8;
+const _DIFFUSE=0.18,_DECAY=0.963,_WAVE_SPD=0.42,_WAVE_DMP=0.938,_ALIVE_THR=0.07;
 
-    if (audio.captureStream) {
-      const stream = audio.captureStream();
-      const src = actx.createMediaStreamSource(stream);
-      src.connect(analyser);
+const _PALETTE=[
+  {fill:'#ff2200',stroke:'#cc1500',dot:'#3a0700'},
+  {fill:'#ffd000',stroke:'#ccaa00',dot:'#3f3000'},
+  {fill:'#00cc44',stroke:'#009933',dot:'#003314'},
+  {fill:'#0088ff',stroke:'#0066cc',dot:'#001840'},
+  {fill:'#ccccff',stroke:'#9999cc',dot:'#24243a'},
+];
+
+const _SEED_RADIUS=[5,8,13,19,26];
+const _SEED_COUNT=[10,9,8,7,6];
+
+let orgCanvas=null, orgCtx=null, orgAnalyser=null, orgAnim=null, orgReady=false;
+let _orgTorsion=0,_orgTorsionV=0,_orgBroadcastPulse=0,_orgPulseRings=[],_orgLastBass=0,_orgFrame=0;
+
+// Background dot field — built once
+let _orgBgCv=null;
+function _buildOrgBg(){
+  _orgBgCv=document.createElement('canvas');
+  _orgBgCv.width=_orgBgCv.height=_ORG_RES;
+  const c=_orgBgCv.getContext('2d');
+  c.fillStyle='#00000a'; c.fillRect(0,0,_ORG_RES,_ORG_RES);
+  c.fillStyle='rgba(40,50,60,0.6)';
+  for(let i=0;i<2400;i++) c.fillRect(Math.random()*_ORG_RES|0,Math.random()*_ORG_RES|0,1,1);
+}
+
+function _orgIJ(x,y){return y*_ORG_G+x;}
+
+function _orgSeedGrid(bands){
+  const half=_ORG_G>>1;
+  for(let b=0;b<5;b++){
+    const lv=bands[b]; if(lv<0.04)continue;
+    const n=Math.ceil(lv*_SEED_COUNT[b]);
+    for(let s=0;s<n;s++){
+      const ang=Math.random()*Math.PI*2;
+      const r=Math.random()*_SEED_RADIUS[b];
+      const gx=(half+Math.cos(ang)*r+0.5)|0;
+      const gy=(half+Math.sin(ang)*r+0.5)|0;
+      if(gx<1||gx>=_ORG_G-1||gy<1||gy>=_ORG_G-1)continue;
+      const ii=_orgIJ(gx,gy);
+      _cur[ii]=Math.min(1.0,_cur[ii]+lv*2.0);
+      _colr[ii]=b;
+      if(lv>0.52)_wcur[ii]=Math.min(1.0,_wcur[ii]+lv*0.65);
     }
-    orgAnalyser = analyser;
-  } catch(e) {
-    console.warn('[Organism] analyser failed:', e.message);
+  }
+}
+
+function _orgSeedIdle(f){
+  if((f&0x1F)!==0)return;
+  const ang=(f/300)*Math.PI*2, half=_ORG_G>>1;
+  for(let b=0;b<5;b++){
+    const a=ang+b*1.2566, r=5+b*2.5;
+    const gx=(half+Math.cos(a)*r+0.5)|0;
+    const gy=(half+Math.sin(a)*r+0.5)|0;
+    if(gx<1||gx>=_ORG_G-1||gy<1||gy>=_ORG_G-1)continue;
+    const ii=_orgIJ(gx,gy);
+    _cur[ii]=Math.max(_cur[ii],0.32); _colr[ii]=b;
+  }
+}
+
+function _orgStepDiffusion(){
+  for(let y=1;y<_ORG_G-1;y++){
+    for(let x=1;x<_ORG_G-1;x++){
+      const i=_orgIJ(x,y);
+      const ns=_cur[_orgIJ(x-1,y)]+_cur[_orgIJ(x+1,y)]+_cur[_orgIJ(x,y-1)]+_cur[_orgIJ(x,y+1)];
+      _nxt[i]=(_cur[i]+ns*_DIFFUSE)*_DECAY;
+      if(_nxt[i]<0)_nxt[i]=0;
+      if(_nxt[i]>0.12&&_cur[i]<0.07){
+        let bestE=-1,bestC=_colr[i];
+        const n0=_orgIJ(x-1,y),n1=_orgIJ(x+1,y),n2=_orgIJ(x,y-1),n3=_orgIJ(x,y+1);
+        if(_cur[n0]>bestE){bestE=_cur[n0];bestC=_colr[n0];}
+        if(_cur[n1]>bestE){bestE=_cur[n1];bestC=_colr[n1];}
+        if(_cur[n2]>bestE){bestE=_cur[n2];bestC=_colr[n2];}
+        if(_cur[n3]>bestE){bestE=_cur[n3];bestC=_colr[n3];}
+        _colr[i]=bestC;
+      }
+    }
+  }
+  const tmp=_prv;_prv=_cur;_cur=_nxt;_nxt=tmp;
+}
+
+function _orgStepWave(){
+  for(let y=1;y<_ORG_G-1;y++){
+    for(let x=1;x<_ORG_G-1;x++){
+      const i=_orgIJ(x,y);
+      const lap=_wcur[_orgIJ(x-1,y)]+_wcur[_orgIJ(x+1,y)]+_wcur[_orgIJ(x,y-1)]+_wcur[_orgIJ(x,y+1)]-4*_wcur[i];
+      _wnxt[i]=(2*_wcur[i]-_wprv[i]+_WAVE_SPD*lap)*_WAVE_DMP;
+      if(_wnxt[i]>1)_wnxt[i]=1; if(_wnxt[i]<-1)_wnxt[i]=-1;
+    }
+  }
+  const tmp=_wprv;_wprv=_wcur;_wcur=_wnxt;_wnxt=tmp;
+}
+
+function _orgCheckBeat(bands){
+  const bass=bands[0];
+  if(bass>0.28&&_orgLastBass<=0.28){
+    _orgPulseRings.push({r:4,alpha:0.85});
+    _orgBroadcastPulse=1.0;
+  }
+  _orgLastBass=bass;
+  _orgBroadcastPulse*=0.91;
+}
+
+function _orgDrawBroadcastDot(bands){
+  const glowR=14+_orgBroadcastPulse*12;
+  const grd=orgCtx.createRadialGradient(_ORG_CX,_ORG_CY,0,_ORG_CX,_ORG_CY,glowR);
+  grd.addColorStop(0,`rgba(255,255,255,${0.35+_orgBroadcastPulse*0.4})`);
+  grd.addColorStop(0.4,`rgba(180,255,220,${0.18+_orgBroadcastPulse*0.2})`);
+  grd.addColorStop(1,'rgba(0,255,80,0)');
+  orgCtx.fillStyle=grd;
+  orgCtx.beginPath();orgCtx.arc(_ORG_CX,_ORG_CY,glowR,0,Math.PI*2);orgCtx.fill();
+
+  for(let i=_orgPulseRings.length-1;i>=0;i--){
+    const p=_orgPulseRings[i];
+    p.r+=2.8; p.alpha-=0.024;
+    if(p.alpha<=0){_orgPulseRings.splice(i,1);continue;}
+    orgCtx.save();orgCtx.globalAlpha=p.alpha;
+    orgCtx.strokeStyle='#ffd000';orgCtx.lineWidth=1.2;
+    orgCtx.beginPath();orgCtx.arc(_ORG_CX,_ORG_CY,p.r*_ORG_CS*0.5,0,Math.PI*2);orgCtx.stroke();
+    orgCtx.globalAlpha=p.alpha*0.25;orgCtx.lineWidth=4;orgCtx.stroke();
+    orgCtx.restore();
   }
 
-  // Seed cells
-  const HUES = [0, 24, 165];
-  for (let i = 0; i < ORG_COUNT; i++) {
-    ORG_CELLS.push({
-      x:    Math.random(),
-      y:    Math.random(),
-      r:    4 + Math.random() * 7,
-      vx:   (Math.random() - 0.5) * 0.003,
-      vy:   (Math.random() - 0.5) * 0.003,
-      band: Math.floor(Math.random() * 10),
-      hue:  HUES[Math.floor(Math.random() * HUES.length)]
-    });
-  }
-
-  orgReady = true;
-  renderOrganism();
+  const coreR=4+_orgBroadcastPulse*3;
+  orgCtx.save();orgCtx.globalAlpha=1;
+  orgCtx.fillStyle='#ffffff';
+  orgCtx.beginPath();orgCtx.arc(_ORG_CX,_ORG_CY,coreR,0,Math.PI*2);orgCtx.fill();
+  orgCtx.strokeStyle='#ffd000';orgCtx.lineWidth=1.5;
+  orgCtx.beginPath();orgCtx.arc(_ORG_CX,_ORG_CY,coreR+3,0,Math.PI*2);orgCtx.stroke();
+  orgCtx.strokeStyle='rgba(255,208,0,0.5)';orgCtx.lineWidth=0.5;
+  orgCtx.beginPath();
+  orgCtx.moveTo(_ORG_CX-10,_ORG_CY);orgCtx.lineTo(_ORG_CX+10,_ORG_CY);
+  orgCtx.moveTo(_ORG_CX,_ORG_CY-10);orgCtx.lineTo(_ORG_CX,_ORG_CY+10);
+  orgCtx.stroke();orgCtx.restore();
 }
 
-function renderOrganism() {
-  orgAnim = requestAnimationFrame(renderOrganism);
+function _orgRender(bands){
+  orgCtx.drawImage(_orgBgCv,0,0);
+  const avgE=(bands[0]+bands[1]+bands[2]+bands[3]+bands[4])*0.2;
+  _orgTorsionV+=( avgE*0.007 - _orgTorsionV)*0.10;
+  _orgTorsion+=_orgTorsionV;
 
-  const W = orgCanvas.width  = orgCanvas.offsetWidth  * (window.devicePixelRatio || 1);
-  const H = orgCanvas.height = orgCanvas.offsetHeight * (window.devicePixelRatio || 1);
+  orgCtx.save();
+  orgCtx.beginPath();orgCtx.arc(_ORG_CX,_ORG_CY,_ORG_RAD,0,Math.PI*2);orgCtx.clip();
+  _orgDrawBroadcastDot(bands);
 
-  const freq = new Uint8Array(orgAnalyser ? orgAnalyser.frequencyBinCount : 128);
-  if (orgAnalyser) orgAnalyser.getByteFrequencyData(freq);
-
-  // Fade trail
-  orgCtx.fillStyle = 'rgba(0,0,0,0.18)';
-  orgCtx.fillRect(0, 0, W, H);
-
-  const COLORS = {
-    0:   'rgba(239,60,35,',
-    24:  'rgba(245,126,32,',
-    165: 'rgba(0,204,153,'
-  };
-
-  ORG_CELLS.forEach((c, i) => {
-    const amp = freq[c.band * 4] / 255;
-    const r   = (c.r + amp * 16) * (W / 380);
-
-    c.x += c.vx * (1 + amp * 3);
-    c.y += c.vy * (1 + amp * 2);
-    if (c.x < 0 || c.x > 1) { c.vx *= -1; c.x = Math.max(0, Math.min(1, c.x)); }
-    if (c.y < 0 || c.y > 1) { c.vy *= -1; c.y = Math.max(0, Math.min(1, c.y)); }
-
-    const cx = c.x * W, cy = c.y * H;
-    const col = COLORS[c.hue];
-
-    // Glow
-    const g = orgCtx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.8);
-    g.addColorStop(0, col + (0.28 + amp * 0.55) + ')');
-    g.addColorStop(1, col + '0)');
-    orgCtx.beginPath();
-    orgCtx.arc(cx, cy, r * 2.8, 0, Math.PI * 2);
-    orgCtx.fillStyle = g;
-    orgCtx.fill();
-
-    // Core
-    orgCtx.beginPath();
-    orgCtx.arc(cx, cy, r * (0.35 + amp * 0.65), 0, Math.PI * 2);
-    orgCtx.fillStyle = col + (0.65 + amp * 0.35) + ')';
-    orgCtx.fill();
-
-    // Connections at high amplitude
-    if (amp > 0.45) {
-      ORG_CELLS.forEach((o, j) => {
-        if (j <= i) return;
-        const dx = (c.x - o.x) * W, dy = (c.y - o.y) * H;
-        const d  = Math.hypot(dx, dy);
-        if (d < 75 * (W / 380)) {
-          orgCtx.beginPath();
-          orgCtx.moveTo(cx, cy);
-          orgCtx.lineTo(o.x * W, o.y * H);
-          orgCtx.strokeStyle = `rgba(255,255,255,${(1 - d / (75 * W / 380)) * amp * 0.25})`;
-          orgCtx.lineWidth = 0.8;
-          orgCtx.stroke();
-        }
-      });
+  for(let y=0;y<_ORG_G;y++){
+    for(let x=0;x<_ORG_G;x++){
+      const ii=_orgIJ(x,y); const e=_cur[ii];
+      if(e<_ALIVE_THR)continue;
+      const px=x*_ORG_CS+_ORG_CS*0.5, py=y*_ORG_CS+_ORG_CS*0.5;
+      const wDisp=_wcur[ii]*_ORG_CS*0.55;
+      const dx=px-_ORG_CX, dy=py-_ORG_CY;
+      const dist=Math.sqrt(dx*dx+dy*dy);
+      const ta=_orgTorsion*(dist/_ORG_RAD);
+      const cosT=Math.cos(ta),sinT=Math.sin(ta);
+      const ddx=dx+wDisp,ddy=dy+wDisp;
+      const rx=_ORG_CX+ddx*cosT-ddy*sinT;
+      const ry=_ORG_CY+ddx*sinT+ddy*cosT;
+      const pal=_PALETTE[_colr[ii]];
+      const alpha=Math.min(1,e*1.9);
+      orgCtx.globalAlpha=alpha;
+      const sz=Math.max(2,_ORG_CS*Math.min(0.88,e*1.15)), h=sz*0.5;
+      if(e>0.58){orgCtx.fillStyle=pal.fill;orgCtx.fillRect(rx-h,ry-h,sz,sz);}
+      else if(e>0.26){orgCtx.strokeStyle=pal.stroke;orgCtx.lineWidth=0.7;orgCtx.strokeRect(rx-h,ry-h,sz,sz);}
+      else{orgCtx.fillStyle=pal.dot;orgCtx.fillRect(rx-1,ry-1,2,2);}
+      if(e>0.58){
+        orgCtx.lineWidth=0.55;orgCtx.globalAlpha=alpha*0.38;
+        const drawC=(nx,ny)=>{
+          const ni=_orgIJ(nx,ny);
+          if(_cur[ni]<=0.58||_colr[ni]!==_colr[ii])return;
+          const px2=nx*_ORG_CS+_ORG_CS*0.5,py2=ny*_ORG_CS+_ORG_CS*0.5;
+          const dx2=px2-_ORG_CX,dy2=py2-_ORG_CY;
+          const d2=Math.sqrt(dx2*dx2+dy2*dy2);
+          const ta2=_orgTorsion*(d2/_ORG_RAD);
+          const wD2=_wcur[ni]*_ORG_CS*0.55;
+          const ddx2=dx2+wD2,ddy2=dy2+wD2;
+          const rx2=_ORG_CX+ddx2*Math.cos(ta2)-ddy2*Math.sin(ta2);
+          const ry2=_ORG_CY+ddx2*Math.sin(ta2)+ddy2*Math.cos(ta2);
+          orgCtx.strokeStyle=pal.fill;
+          orgCtx.beginPath();orgCtx.moveTo(rx,ry);orgCtx.lineTo(rx2,ry2);orgCtx.stroke();
+        };
+        if(x<_ORG_G-1)drawC(x+1,y);
+        if(y<_ORG_G-1)drawC(x,y+1);
+      }
     }
-  });
+  }
+  orgCtx.restore();orgCtx.globalAlpha=1;
 }
 
-function stopOrganism() {
-  if (orgAnim) { cancelAnimationFrame(orgAnim); orgAnim = null; }
+function _orgGetBands(){
+  if(!orgAnalyser) return [0.04,0.05,0.04,0.03,0.02];
+  const freq=new Uint8Array(orgAnalyser.frequencyBinCount);
+  orgAnalyser.getByteFrequencyData(freq);
+  const len=freq.length;
+  const b0=freq.slice(0,Math.floor(len*0.08));
+  const b1=freq.slice(Math.floor(len*0.08),Math.floor(len*0.20));
+  const b2=freq.slice(Math.floor(len*0.20),Math.floor(len*0.45));
+  const b3=freq.slice(Math.floor(len*0.45),Math.floor(len*0.75));
+  const b4=freq.slice(Math.floor(len*0.75));
+  const avg=arr=>arr.reduce((a,b)=>a+b,0)/(arr.length*255);
+  return [avg(b0),avg(b1),avg(b2),avg(b3),avg(b4)];
 }
+
+function initOrganism(){
+  orgCanvas=document.getElementById('organism-canvas');
+  if(!orgCanvas||orgReady)return;
+  orgCanvas.width=orgCanvas.height=_ORG_RES;
+  orgCtx=orgCanvas.getContext('2d',{alpha:false});
+  _buildOrgBg();
+
+  try{
+    const actx=new(window.AudioContext||window.webkitAudioContext)();
+    const analyser=actx.createAnalyser();
+    analyser.fftSize=512;
+    analyser.smoothingTimeConstant=0.8;
+    if(audio.captureStream){
+      const stream=audio.captureStream();
+      actx.createMediaStreamSource(stream).connect(analyser);
+    }
+    orgAnalyser=analyser;
+  }catch(e){console.warn('[Organism]',e.message);}
+
+  orgReady=true;
+  _orgLoop();
+}
+
+function _orgLoop(){
+  orgAnim=requestAnimationFrame(_orgLoop);
+  _orgFrame++;
+  const bands=_orgGetBands();
+  const isPlaying=!audio.paused&&!audio.muted&&audio.volume>0;
+  if(isPlaying){
+    _orgSeedGrid(bands);
+  } else {
+    _orgSeedIdle(_orgFrame);
+  }
+  _orgCheckBeat(bands);
+  _orgStepDiffusion();
+  _orgStepWave();
+  _orgRender(bands);
+}
+
+function stopOrganism(){
+  if(orgAnim){cancelAnimationFrame(orgAnim);orgAnim=null;}
+}
+
 
   
 
