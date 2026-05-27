@@ -39,7 +39,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .panel{display:none;flex:1;flex-direction:column;overflow:hidden;}
 .panel.active{display:flex;}
 /* SPATIAL */
-.spatial-panel{flex:1;display:grid;grid-template-columns:220px 1fr;grid-template-rows:1fr 190px;overflow:hidden;}
+.spatial-panel{flex:1;display:grid;grid-template-columns:220px 1fr;grid-template-rows:1fr minmax(220px,40vh);overflow:hidden;}
+
 .sp-tools{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:5px;padding:8px;border-right:1px solid var(--rim);background:var(--card);overflow-y:auto;}
 .sp-tools::-webkit-scrollbar{width:2px;}.sp-tools::-webkit-scrollbar-thumb{background:var(--rim);}
 .sp-label{font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);flex-shrink:0;margin-top:4px;font-family:'Barlow Condensed',sans-serif;}
