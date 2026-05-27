@@ -1189,7 +1189,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
   // Connect audio element to GainNode (first time only)
   // Set source and seek on load
-    // debug off alert('loadTrack called\nURL: ' + (url ? url.slice(0,60) : 'EMPTY') + '\nstartedAt: ' + startedAt);
+    alert('loadTrack called\nURL: ' + (url ? url.slice(0,60) : 'EMPTY') + '\nstartedAt: ' + startedAt);
   audio.src = url;
   audio.loop = true;
 
@@ -2718,14 +2718,13 @@ function triggerBoomyHeroEntry(){
       const line  = lines[Math.floor(Math.random() * lines.length)];
       boomSay(line, 4000, true, useDevious ? 'devious' : 'regular');
 
-       setTimeout(() => {
+      setTimeout(() => {
         const t = ZONE_THIRD_LINES[Math.floor(Math.random() * ZONE_THIRD_LINES.length)];
         boomSay(t.text, 4000, false, t.mood);
       }, line.length * 55 + 1200);
     }, 600);
   }, 4500);
 }
-
 
 function startMusicWithFade(){
   if (!audio.src && !audio.srcObject) return;
