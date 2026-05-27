@@ -677,7 +677,8 @@ audio{display:none;}
     <div class="section-label"><span>Music</span> — <span id="music-artist" style="color:var(--muted);font-weight:400;font-size:13px;text-transform:none;letter-spacing:0">—</span></div>
     <div class="lockable locked" id="music-lockable">
       <div class="player-card">
-        <div class="viz-wrap" id="visualizer"></div>
+                <canvas id="organism-canvas" style="width:100%;height:160px;display:block;border-radius:6px;background:#000;"></canvas>
+
         <div class="progress-wrap" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
         <div class="time-row"><span id="time-cur">0:00</span><span id="time-dur">0:00</span></div>
         <div class="track-name-row" id="track-name">—</div>
@@ -685,13 +686,12 @@ audio{display:none;}
         <div class="sync-status" id="sync-status"></div>
       </div>
 
-    <!-- VISUALS — no lock icon -->
-    <div class="section-label" style="margin-top:12px"><span>Visuals</span></div>
-    <div class="lockable locked" id="visuals-lockable">
-      <div class="visuals-card" onclick="openVisuals()">
-        <img class="eye-icon" id="eye-img" alt="Open Visuals"/>
+        <div style="display:flex;justify-content:flex-end;margin-top:6px;">
+      <div class="visuals-card" onclick="openVisuals()" style="width:44px;height:44px;border-radius:8px;">
+        <img class="eye-icon" id="eye-img" alt="Open Visuals" style="height:24px;"/>
       </div>
     </div>
+
 
     <!-- GUEST LIST -->
     <div style="margin-top:14px" id="guest-list-section">
