@@ -1122,7 +1122,7 @@ function onBoomyTap(){
         audio.volume = 0;
         _webAudioPlaying = true;
         fadeAudioIn();
-      }).catch(e=>{       console.warn('Play failed:', e.message);       // iOS sometimes needs a tiny delay after a seek before play works       setTimeout(()=>{         audio.play().catch(()=>{});       }, 300);     });
+      }).catch(e=>showToast('Play failed: ' + e.message));
     }
   };
 
