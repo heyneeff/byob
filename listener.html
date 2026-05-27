@@ -1211,10 +1211,11 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       }
     }, { once: true });
     audio.volume = 0;
-    audio.play().then(() => {
+        audio.play().then(() => {
       _webAudioPlaying = true;
       fadeAudioIn(8000);
-    }).catch((e) => {
+      if (!orgReady) initOrganism();
+    }) .catch((e) => {
       console.warn('Play blocked:', e.message);
       // Fallback — any tap on body starts it
       document.body.addEventListener('click', () => {
