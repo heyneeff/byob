@@ -1733,10 +1733,14 @@ async function loadEvents(){
     const start=new Date(e.event_start).toLocaleString();
     const reveal=new Date(e.location_reveal_at).toLocaleString();
     const artists=e.artists?.join(', ')||'—';
-    return '<div style="background:var(--surface2);border:1px solid #222;border-left:3px solid var(--red);border-radius:4px;padding:10px 12px;margin-bottom:8px;"><div style="font-weight:700;color:var(--cream);font-size:13px;">'+e.name+'</div><div style="font-size:10px;color:var(--muted);margin-top:3px;">'+artists+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">📅 '+start+'</div><div style="font-size:10px;color:var(--orange);margin-top:2px;">📍 Reveals: '+reveal+'</div></div>';
+         return '<div style="background:var(--surface2);border:1px solid #222;border-left:3px solid var(--red);border-radius:4px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;"><div style="flex:1;min-width:0;"><div style="font-weight:700;color:var(--cream);font-size:13px;">'+e.name+'</div><div style="font-size:10px;color:var(--muted);margin-top:3px;">'+artists+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">📅 '+start+'</div><div style="font-size:10px;color:var(--orange);margin-top:2px;">📍 Reveals: '+reveal+'</div></div><button onclick="deleteEvent(\''+e.id+'\')" style="flex-shrink:0;background:transparent;border:1px solid #333;border-radius:4px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;">✕</button></div>';
+
+
   }).join('');
 }
 
+
+  
 function toggleLiveMenu(){}  // no-op in play.html
 
 let toastTimer;
@@ -1745,6 +1749,14 @@ function showToast(msg,isError=false){
   t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),isError?5000:3000);
 }
 
+async function deleteEvent(id){
+  if(!confirm('Delete this event?'))return;
+  await db.from('events').delete().eq('id',id);
+  loadEvents();
+  showToast('Event deleted');
+}
+
+  
 // ── DJ PRESENCE BROADCAST ────────────────────────────────
 // Broadcast DJ position on presence channel so listeners know zone is active
 // and can compute their own geofence status
