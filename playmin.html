@@ -1781,7 +1781,8 @@ function startDJPresenceBroadcast(zone) {
           name:    'DJ ★ ' + (currentUser.email?.split('@')[0] || 'Host'),
           emoji:   '🎛️',
           dist,
-          bearing: 0,
+          bearing: lat && zone.lat ? getBearing(zone.lat, zone.lng, lat, lng) : 0,
+
           phone:   '',
           isDJ:    true
         }
