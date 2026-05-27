@@ -1312,15 +1312,10 @@ function boomSay(text, autoDismissMs = 4000, vibrate = false, mood = 'regular') 
   popup.style.pointerEvents = 'none';
   setTimeout(() => { popup.style.pointerEvents = ''; }, 600);
 
-  const wrap = document.getElementById('boom-popup-wrap');
-  if(wrap){
-    const audioStarted = _webAudioPlaying || (audio.srcObject && !audio.paused);
-    if(!audioStarted && activeZone){
-      wrap.classList.add('tappable');
-    } else {
-      wrap.classList.remove('tappable');
-    }
-  }
+const wrap = document.getElementById('boom-popup-wrap');
+if(wrap){
+  wrap.classList.remove('tappable');
+}
 
 
   if (vibrate && navigator.vibrate) navigator.vibrate([80, 40, 80, 40, 120]);
