@@ -3822,10 +3822,21 @@ function applyDriftCorrection(lagMs) {
 }
 
 
-  function seekPreservingBT(newTime) {
-  audio.muted = true;
-  audio.currentTime = Math.max(0, newTime);
-  setTimeout(() => { if (!_isMuted) audio.muted = false; }, 120);
+function seekPreservingBT(newTime) {
+  const safeTime = Math.max(0, Math.min(newTime, (audio.duration || 9999) - 0.1));
+  const vol = audio.volume;
+  audio.volume = 0;
+  audio.currentTime = safeTime;
+  // Ramp volume back up over 200ms — more reliable than mute/unmute on iOS
+  let t = 0;
+  const ramp = setInterval(() => {
+    t += 40;
+    audio.volume = Math.min(vol, vol * (t / 200));
+    if (t >= 200) {
+      audio.volume = vol;
+      clearInterval(ramp);
+    }
+  }, 40);
 }
 
 async function _runLockingPass(){
