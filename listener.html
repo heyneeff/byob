@@ -1961,7 +1961,8 @@ let _syncInterval = null;
 async function syncZoneAudio() {
   if (!activeZone) return;
   try {
-    const { data: z } = await db.from('zones').select('id,active,lat,lng,radius_m,current_track_url,playback_started_at,play_at,play_from_s').eq('id', activeZone.id).single();
+    const { data: z } = await db.from('zones').select('id,active,lat,lng,radius_m,zone_tracks,current_track_url,playback_started_at,play_at,play_from_s').eq('id', activeZone.id).single();
+
 
     if (!z) return;
     activeZone = z;
