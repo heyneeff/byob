@@ -2678,24 +2678,50 @@ function onEnterZone(z) {
     frame.style.boxShadow   = '0 0 0 3px rgba(0,204,153,.4)';
     setTimeout(() => { frame.style.borderColor=''; frame.style.boxShadow=''; }, 2000);
   }
+
+  activateZone(z);
+  triggerBoomyHeroEntry();
+}
+
 function triggerBoomyHeroEntry(){
   const hero = document.getElementById('boomy-hero');
   const heroImg = document.getElementById('boomy-hero-img');
   if (!hero || !heroImg) return;
 
+  // Show the big hero animation
   if (typeof BOOM_B64 !== 'undefined') heroImg.src = BOOM_B64;
   hero.classList.remove('show');
-  void hero.offsetWidth;
+  void hero.offsetWidth; // force reflow to restart animation
   hero.classList.add('show');
 
+  // Spawn music notes flying out from center
   spawnHeroNotes();
+
+  // Play the warp sound + start audio + fade in
   playWarpSound();
+
+  // loadTrack handles playback — no separate startMusicWithFade needed
+
+    // Wall-clock sync handles drift — no mic needed
   setSyncIndicator('locked');
 
+
+
+  // Hide hero element after animation completes, then start Boomy chatting
   setTimeout(() => {
     hero.classList.remove('show');
+
+    // Now Boomy comes in for normal popup chat
     setTimeout(() => {
-      boomSay("Thanks for coming! Connect your Bluetooth speaker for the full experience 🔊", 5000, true, 'regular');
+      const useDevious = Math.random() < 0.45;
+      const lines = useDevious ? BOOMY_HYPE_DEVIOUS : BOOMY_HYPE_LINES;
+      const line  = lines[Math.floor(Math.random() * lines.length)];
+      boomSay(line, 4000, true, useDevious ? 'devious' : 'regular');
+
+      setTimeout(() => {
+        const t = ZONE_THIRD_LINES[Math.floor(Math.random() * ZONE_THIRD_LINES.length)];
+        boomSay(t.text, 4000, false, t.mood);
+      }, line.length * 55 + 1200);
     }, 600);
   }, 4500);
 }
