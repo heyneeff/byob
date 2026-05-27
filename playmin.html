@@ -1612,6 +1612,38 @@ function assignTrackToZone(zone,url,name){
   zoneTracks[zone]={url,name};
   const slot=document.getElementById('slot-'+zone);
     const nameEl=document.getElementById('slot-'+zone+'-name');
+function tapAssignTrack(id){
+  const t=(_realTracks||[]).find(t=>t.id===id)||TRACKS.find(t=>t.id===id);
+  if(!t){showToast('Track not found');return;}
+  if(!selectedSlot){
+    // No slot selected — show slot picker
+    showSlotPicker(id);
+    return;
+  }
+  assignTrackToZone(selectedSlot,t.url||t.id,t.name);
+}
+
+function showSlotPicker(id){
+  const t=(_realTracks||[]).find(t=>t.id===id)||TRACKS.find(t=>t.id===id);
+  if(!t)return;
+  // Remove any existing picker
+  document.getElementById('slot-picker')?.remove();
+  const picker=document.createElement('div');
+  picker.id='slot-picker';
+  picker.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:var(--surface2);border-top:3px solid var(--orange);padding:16px 18px 40px;';
+  picker.innerHTML=`
+    <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--orange);margin-bottom:12px;">Assign "${t.name}" to slot</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+      <button onclick="assignTrackToZone('C','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:var(--orange);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">C</button>
+      <button onclick="assignTrackToZone('1','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:var(--teal);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">1</button>
+      <button onclick="assignTrackToZone('2','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">2</button>
+      <button onclick="assignTrackToZone('3','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:#a78bfa;color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">3</button>
+      <button onclick="assignTrackToZone('4','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:#f472b6;color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">4</button>
+      <button onclick="document.getElementById('slot-picker').remove();" style="padding:14px;background:transparent;color:var(--muted);border:1px solid #333;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;cursor:pointer;">✕</button>
+    </div>
+  `;
+  document.body.appendChild(picker);
+}
 
   const controls=document.getElementById('slot-'+zone+'-controls');
   if(nameEl)nameEl.textContent=name||url.split('/').pop();
@@ -1960,7 +1992,15 @@ function loadDeck(d,id){
   }
   buildLibs();
 }
-function startDrag(ev,id){dragging=id;ev.dataTransfer.setData('track-id',id);}
+function startDrag(ev,id){
+  const t=(_realTracks||[]).find(t=>t.id===id)||TRACKS.find(t=>t.id===id);
+  if(!t)return;
+  dragging=id;
+  _draggingTrack={url:t.url||t.id,name:t.name};
+  ev.dataTransfer.setData('track-url',t.url||'');
+  ev.dataTransfer.setData('track-name',t.name||'');
+}
+
 function quickSlot(id){
   const t=TRACKS.find(t=>t.id===id);if(!t)return;
   assignTrackToZone(selectedSlot||'C', t.id, t.name);
