@@ -1,0 +1,231 @@
+# BYOB + Carnival Society — Roadmap
+
+> Last updated: May 26 2026  
+> Repo: <https://github.com/heyneeff/byob>  
+> Supabase project: ohacvuwzvuifpyqckise.supabase.co
+
+-----
+
+## The Vision
+
+Fellowship technology that removes every barrier to throwing a party.  
+All you need is phones and optional Bluetooth speakers — no equipment, no venue infrastructure.  
+BYOB is the street-level entry point. Carnival Society is the back room.
+
+```
+BYOB (public, free)
+  ↓  attend events, follow DJs, buy tickets
+  ↓  unlimited Bluetooth speaker sync solved ✅
+  ↓  spatial audio — geofence IS the ticket
+Carnival Society / The Circle (paid membership)
+  ↓  chapter-based: Denver · Boulder · Los Angeles
+  ↓  monthly dues via Stripe
+  ↓  Roster · Calendar · Letters
+        ↘                ↙
+         One Supabase backend
+         One auth system
+         One profiles table
+```
+
+-----
+
+## Files
+
+|File           |Role                                                |
+|---------------|----------------------------------------------------|
+|`listener.html`|Listener-facing app — GPS, audio, geofence, presence|
+|`playmin.html` |DJ engine — zones, sync, spatial, broadcasting      |
+|`dj.html`      |Legacy engine (absorbed into playmin — do not edit) |
+|`ROADMAP.md`   |This file                                           |
+
+-----
+
+## ✅ Solved — Session 3 (May 26 2026)
+
+- **Listener dot disappearing** — root cause: `syncZoneAudio()` was overwriting `activeZone` with a Supabase select that excluded `lat`, `lng`, `radius_m`. Every sync cycle stripped the coordinates, making bearing and dist return `NaN`. Fix: added `lat,lng,radius_m` to the select query.
+- **`!l.bearing` guard bug** — `bearing: 0` (due north) evaluated as falsy, skipping valid listeners. Fixed to `if (l.dist == null) return`.
+- **Duplicate `watchPosition`** — listener.html had two competing geo loops. Consolidated to one clean `watchPosition` with `{ enableHighAccuracy: true, maximumAge: 0 }`.
+- **Stacking broadcast intervals** — `setInterval(sendPresence)` was recreating on every channel reconnect. Fixed by moving broadcast loop outside subscription callback.
+- **`killStream` crash** — referenced undefined `present` / `approaching` variables. Fixed to hardcoded `'0'`.
+- **Duplicate `stopCircularSweep`** — defined twice, first one silently overwritten. Removed dead copy.
+- **Sync dashboard** — `sync-dashboard.html` built and working. Broadcasts `hud_data` from listener every 2s showing: GPS coords, zone, bearing, dist, channel/interval health.
+
+-----
+
+## 🔧 Open Bugs
+
+- [ ] **Event delete** — no way to delete scheduled events from playmin UI
+- [ ] **`libHTML` defined twice** in dj.html — dead code, no active harm but needs cleanup
+- [ ] **DJ dot bearing hardcoded to 0** in `startDJPresenceBroadcast` — DJ always appears due north on spatial map regardless of actual position
+
+-----
+
+## 📋 BYOB Features — Queued
+
+These were scoped in Session 3 but not yet built. Take them in order.
+
+### 1. Slot Routing 1/2/3/4 (Listener side)
+
+Listener selects which zone slot they want to hear (1–4). Pan position tied to slot. Already have DJ-side slot assignment working.
+
+- HTML: slot row buttons above Music section in listener.html
+- JS: `selectSlot(n)` updates presence payload with `slot` field
+- CSS: slot button styles
+
+### 2. 3D Sweep (Listener receive)
+
+DJ broadcasts sweep events. Listener calculates their angular position relative to sweep front and pans accordingly.
+
+- `applySweepEvent({ angle, intensity, duration })` in listener.html
+- Hooks into existing `_panNode` / `_audioCtx`
+
+### 3. Signal Organism Visualizer
+
+Replace static bar visualizer with living organism — 22 cells that pulse, drift, and connect based on frequency bands. Audio-reactive using Web Audio analyser.
+
+- Replace `<div class="viz-wrap" id="visualizer">` with `<canvas id="organism-canvas">`
+- `initOrganism()` called on first play
+- `renderOrganism()` RAF loop
+
+### 4. Color Palette Expansion
+
+Add `--gold`, `--violet`, `--hot-pink` to `:root` in listener.html for richer slot/zone color coding.
+
+### 5. Fix Event Delete
+
+Add delete button to event cards in playmin setup panel. Supabase `delete().eq('id', e.id)` then reload list.
+
+-----
+
+## 🎟 Ticketing System
+
+**The model:**
+
+- DJ sets ticket price per event (can be $0 for free events)
+- Platform takes % fee at Stripe processing
+- Ticket purchase unlocks zone audio at entry time
+- Geofence = ticket validation — if you’re inside the zone and have a ticket, audio plays
+
+**What needs to be built:**
+
+### Stripe Setup
+
+- [ ] Stripe Connect — DJs create their own payout accounts
+- [ ] Platform fee configured as Stripe application fee
+- [ ] Monthly dues for Carnival Society membership (recurring subscription)
+- [ ] Ticket purchase flow (one-time payment per event)
+
+### Database — New Tables Needed
+
+```sql
+tickets
+  id, event_id, user_id, price_paid, 
+  stripe_payment_id, status, created_at
+
+profiles (extend existing)
+  society_member boolean
+  society_chapter (denver | boulder | la)
+  society_role (member | organizer | dj)
+  stripe_account_id
+  stripe_customer_id
+  bio, avatar_emoji, instagram
+
+follows
+  follower_id, following_id, type (dj | group)
+
+groups
+  id, name, bio, chapter, created_by, members[]
+```
+
+### Zone Entry Ticket Check
+
+When listener enters geofence → check `tickets` table for valid ticket → if found, unlock audio. If not, show purchase flow.
+
+-----
+
+## 🗺 Front Page — Public Event Discovery
+
+Design reference: bold card layout, region-sorted, artist prominent (see image on file).  
+Tech: standalone `index.html` — reads from `events` table, no auth required to browse.
+
+**Each event card shows:**
+
+- Event name + DJ/host name
+- City + date + time
+- Ticket price or FREE
+- Tickets remaining
+- One-tap buy button
+
+**Filters:** All · Denver · Boulder · Los Angeles · This Weekend
+
+**Pulls from:** same `events` table used by The Circle calendar
+
+-----
+
+## 🎪 Carnival Society / The Circle Integration
+
+**The Circle** is a chapter-based membership organization (Denver · Boulder · LA).  
+Monthly dues. Has existing website + basic backend (not yet on Supabase).
+
+**Integration plan:**
+
+1. Move The Circle backend onto same Supabase instance as BYOB
+1. Single `profiles` table — everyone starts as a BYOB user
+1. Dues payment flips `society_member: true` + assigns `society_chapter`
+1. Society DJs get verified badge on BYOB profile
+1. BYOB events automatically appear in The Circle calendar
+1. The Circle `Letters` system stays members-only
+
+**The Circle UI** (already designed — `the-circle.html`):
+
+- Roster tab — member cards with CSI / DG badges
+- Calendar tab — shared with BYOB events
+- Letters tab — slow member-to-member correspondence, no read receipts
+
+**Chapters active:** Denver · Boulder · Los Angeles  
+**Dues model:** Monthly subscription via Stripe
+
+-----
+
+## 🔔 Push Notifications
+
+- Web Push API — works on iOS 16.4+ as PWA
+- Trigger on: DJ goes live near you · Event starts in 1hr · New letter received
+- Requires: `push_subscriptions` table + service worker
+
+-----
+
+## 📐 Architecture Notes
+
+- All three apps (BYOB, The Circle, future) share one Supabase project
+- Auth is shared — one login works everywhere
+- Realtime channels naming convention: `presence_{zone_id}`, `sync_{zone_id}`, `zone_{zone_id}`
+- Bluetooth sync solved — unlimited speakers, no extra hardware needed
+- Multiple DJs can run simultaneous zones under different accounts right now
+
+-----
+
+## 🗓 Suggested Build Order
+
+|Phase|What                          |Why                             |
+|-----|------------------------------|--------------------------------|
+|1    |Event delete + open bugs      |Clean house first               |
+|2    |Slot routing + Signal Organism|Complete the listener experience|
+|3    |Profiles + follow system      |Foundation for everything social|
+|4    |Front page discovery          |Public face of the platform     |
+|5    |Stripe Connect + ticketing    |Revenue                         |
+|6    |The Circle on Supabase        |Unified backend                 |
+|7    |Push notifications            |Retention                       |
+|8    |Carnival Society dues flow    |Full membership loop            |
+
+-----
+
+## Session Log
+
+|Date       |Session |Key outcomes                                                                                                                            |
+|-----------|--------|----------------------------------------------------------------------------------------------------------------------------------------|
+|May 26 2026|Thread 3|Fixed dot disappear (syncZoneAudio lat/lng), fixed bearing NaN, consolidated geo loop, built sync dashboard, scoped full product roadmap|
+
+-----
+
+*Paste this file at the start of each session so Claude has full context.*
