@@ -4398,6 +4398,120 @@ function broadcastDebug() {
 
 setInterval(broadcastDebug, 2000);
 
+  // ── SIGNAL ORGANISM ──────────────────────────────────────
+const ORG_COUNT = 22;
+const ORG_CELLS = [];
+let orgCanvas, orgCtx, orgAnalyser, orgAnim, orgReady = false;
+
+function initOrganism() {
+  orgCanvas = document.getElementById('organism-canvas');
+  if (!orgCanvas || orgReady) return;
+  orgCtx = orgCanvas.getContext('2d');
+
+  // Build audio analyser off existing audio element
+  try {
+    const actx = new (window.AudioContext || window.webkitAudioContext)();
+    const analyser = actx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+
+    if (audio.captureStream) {
+      const stream = audio.captureStream();
+      const src = actx.createMediaStreamSource(stream);
+      src.connect(analyser);
+    }
+    orgAnalyser = analyser;
+  } catch(e) {
+    console.warn('[Organism] analyser failed:', e.message);
+  }
+
+  // Seed cells
+  const HUES = [0, 24, 165];
+  for (let i = 0; i < ORG_COUNT; i++) {
+    ORG_CELLS.push({
+      x:    Math.random(),
+      y:    Math.random(),
+      r:    4 + Math.random() * 7,
+      vx:   (Math.random() - 0.5) * 0.003,
+      vy:   (Math.random() - 0.5) * 0.003,
+      band: Math.floor(Math.random() * 10),
+      hue:  HUES[Math.floor(Math.random() * HUES.length)]
+    });
+  }
+
+  orgReady = true;
+  renderOrganism();
+}
+
+function renderOrganism() {
+  orgAnim = requestAnimationFrame(renderOrganism);
+
+  const W = orgCanvas.width  = orgCanvas.offsetWidth  * (window.devicePixelRatio || 1);
+  const H = orgCanvas.height = orgCanvas.offsetHeight * (window.devicePixelRatio || 1);
+
+  const freq = new Uint8Array(orgAnalyser ? orgAnalyser.frequencyBinCount : 128);
+  if (orgAnalyser) orgAnalyser.getByteFrequencyData(freq);
+
+  // Fade trail
+  orgCtx.fillStyle = 'rgba(0,0,0,0.18)';
+  orgCtx.fillRect(0, 0, W, H);
+
+  const COLORS = {
+    0:   'rgba(239,60,35,',
+    24:  'rgba(245,126,32,',
+    165: 'rgba(0,204,153,'
+  };
+
+  ORG_CELLS.forEach((c, i) => {
+    const amp = freq[c.band * 4] / 255;
+    const r   = (c.r + amp * 16) * (W / 380);
+
+    c.x += c.vx * (1 + amp * 3);
+    c.y += c.vy * (1 + amp * 2);
+    if (c.x < 0 || c.x > 1) { c.vx *= -1; c.x = Math.max(0, Math.min(1, c.x)); }
+    if (c.y < 0 || c.y > 1) { c.vy *= -1; c.y = Math.max(0, Math.min(1, c.y)); }
+
+    const cx = c.x * W, cy = c.y * H;
+    const col = COLORS[c.hue];
+
+    // Glow
+    const g = orgCtx.createRadialGradient(cx, cy, 0, cx, cy, r * 2.8);
+    g.addColorStop(0, col + (0.28 + amp * 0.55) + ')');
+    g.addColorStop(1, col + '0)');
+    orgCtx.beginPath();
+    orgCtx.arc(cx, cy, r * 2.8, 0, Math.PI * 2);
+    orgCtx.fillStyle = g;
+    orgCtx.fill();
+
+    // Core
+    orgCtx.beginPath();
+    orgCtx.arc(cx, cy, r * (0.35 + amp * 0.65), 0, Math.PI * 2);
+    orgCtx.fillStyle = col + (0.65 + amp * 0.35) + ')';
+    orgCtx.fill();
+
+    // Connections at high amplitude
+    if (amp > 0.45) {
+      ORG_CELLS.forEach((o, j) => {
+        if (j <= i) return;
+        const dx = (c.x - o.x) * W, dy = (c.y - o.y) * H;
+        const d  = Math.hypot(dx, dy);
+        if (d < 75 * (W / 380)) {
+          orgCtx.beginPath();
+          orgCtx.moveTo(cx, cy);
+          orgCtx.lineTo(o.x * W, o.y * H);
+          orgCtx.strokeStyle = `rgba(255,255,255,${(1 - d / (75 * W / 380)) * amp * 0.25})`;
+          orgCtx.lineWidth = 0.8;
+          orgCtx.stroke();
+        }
+      });
+    }
+  });
+}
+
+function stopOrganism() {
+  if (orgAnim) { cancelAnimationFrame(orgAnim); orgAnim = null; }
+}
+
   
 
 </script>
