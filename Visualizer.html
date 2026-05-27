@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signal Organism v2</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: monospace;
+    color: #444;
+    gap: 16px;
+  }
+
+  #stage {
+    width: 320px;
+    height: 320px;
+    border-radius: 50%;
+    overflow: hidden;
+    position: relative;
+    cursor: pointer;
+  }
+
+  #viz-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  .controls {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  button {
+    background: #0a0a0a;
+    color: #444;
+    border: 1px solid #1a1a1a;
+    padding: 5px 12px;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    border-radius: 2px;
+    transition: all 0.15s;
+  }
+  button:hover { border-color: #444; color: #aaa; }
+  button.active { border-color: #ffd000; color: #ffd000; }
+
+  .mode-label {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: #1a1a1a;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .band-bars {
+    display: flex;
+    gap: 3px;
+    align-items: flex-end;
+    height: 24px;
+    margin-left: 6px;
+  }
+  .bar { width: 6px; border-radius: 1px; min-height: 2px; transition: height 0.04s; }
+  #b0 { background: #ff2200; }   /* bass — red (original) */
+  #b1 { background: #ffd000; }   /* lo-mid — gold */
+  #b2 { background: #00cc44; }   /* mid — green (original) */
+  #b3 { background: #0088ff; }   /* hi-mid — blue */
+  #b4 { background: #ccccff; }   /* high — white/violet */
+
+  .divider {
+    width: 1px; height: 18px;
+    background: #1a1a1a;
+    margin: 0 2px;
+  }
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="viz-canvas"></canvas>
+</div>
+
+<div class="controls">
+  <!-- Viz mode -->
+  <button id="btn-original" class="active">ORIGINAL</button>
+  <button id="btn-organism">SWAPPED</button>
+  <button id="btn-grid">GRID</button>
+
+  <div class="divider"></div>
+
+  <!-- Audio sim mode -->
+  <button id="btn-idle" class="active" style="color:#333;border-color:#111;">IDLE</button>
+  <button id="btn-beat">BEAT</button>
+  <button id="btn-ambient">AMBIENT</button>
+  <button id="btn-chaos">CHAOS</button>
+
+  <div class="band-bars">
+    <div class="bar" id="b0" style="height:2px"></div>
+    <div class="bar" id="b1" style="height:2px"></div>
+    <div class="bar" id="b2" style="height:2px"></div>
+    <div class="bar" id="b3" style="height:2px"></div>
+    <div class="bar" id="b4" style="height:2px"></div>
+  </div>
+</div>
+<div class="mode-label" id="mode-label">original · idle</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════
+let vizMode  = 'original';   // 'original' | 'organism' | 'grid'
+let simMode  = 'idle';
+let simTime  = 0;
+let frame    = 0;
+
+// ═══════════════════════════════════════════════════════════════════════
+//  CANVAS
+// ═══════════════════════════════════════════════════════════════════════
+const cv  = document.getElementById('viz-canvas');
+const RES = 512;
+cv.width  = cv.height = RES;
+const ctx = cv.getContext('2d', { alpha: false });
+
+// ═══════════════════════════════════════════════════════════════════════
+//  SIMULATED AUDIO
+// ═══════════════════════════════════════════════════════════════════════
+function getSimBands() {
+  simTime += 0.016;
+  const t = simTime;
+
+  if (simMode === 'idle') return [
+    0.04 + 0.03 * Math.sin(t * 0.7),
+    0.05 + 0.03 * Math.sin(t * 0.9 + 1),
+    0.04 + 0.02 * Math.sin(t * 1.1 + 2),
+    0.03 + 0.02 * Math.sin(t * 0.6 + 3),
+    0.02 + 0.01 * Math.sin(t * 0.8 + 4),
+  ];
+
+  if (simMode === 'beat') {
+    const kick  = Math.pow(Math.max(0, Math.sin(t * Math.PI * 2.13)), 12);
+    const snare = Math.pow(Math.max(0, Math.sin(t * Math.PI * 1.07 + Math.PI)), 10) * 0.7;
+    return [
+      kick * 0.9 + 0.06,
+      snare * 0.5 + 0.08 + 0.04 * Math.sin(t * 1.3),
+      0.12 + 0.08 * Math.sin(t * 2.1),
+      0.10 + 0.06 * Math.sin(t * 3.3),
+      0.06 + 0.05 * Math.sin(t * 4.7),
+    ];
+  }
+
+  if (simMode === 'ambient') return [
+    0.08 + 0.06 * Math.sin(t * 0.3),
+    0.14 + 0.10 * Math.sin(t * 0.5 + 1),
+    0.18 + 0.12 * Math.sin(t * 0.7 + 2),
+    0.22 + 0.14 * Math.sin(t * 0.4 + 0.5),
+    0.16 + 0.10 * Math.sin(t * 0.6 + 1.5),
+  ];
+
+  if (simMode === 'chaos') return [
+    0.2 + 0.5 * Math.pow(Math.abs(Math.sin(t * 5.3)), 2),
+    0.3 + 0.4 * Math.pow(Math.abs(Math.sin(t * 7.1 + 1)), 2),
+    0.2 + 0.5 * Math.pow(Math.abs(Math.sin(t * 3.7 + 2)), 2),
+    0.1 + 0.6 * Math.pow(Math.abs(Math.sin(t * 9.2 + 0.5)), 3),
+    0.1 + 0.4 * Math.pow(Math.abs(Math.sin(t * 11.4 + 1.2)), 3),
+  ];
+
+  return [0,0,0,0,0];
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  ██  ORGANISM MODE
+// ═══════════════════════════════════════════════════════════════════════
+const G  = 80;
+const CS = RES / G;
+
+const _A = new Float32Array(G * G), _B = new Float32Array(G * G), _C = new Float32Array(G * G);
+let cur = _A, prv = _B, nxt = _C;
+
+const _WA = new Float32Array(G * G), _WB = new Float32Array(G * G), _WC = new Float32Array(G * G);
+let wcur = _WA, wprv = _WB, wnxt = _WC;
+
+const colr = new Uint8Array(G * G);
+
+const DIFFUSE = 0.18, DECAY = 0.963, WAVE_SPD = 0.42, WAVE_DMP = 0.938, ALIVE_THR = 0.07;
+
+// ── PALETTE: original (from buildVisualizer.js) — red=bass, green=mid ─
+const PALETTE_ORIGINAL = [
+  { fill: '#ff2200', stroke: '#cc1500', dot: '#3a0700' }, // 0 bass    — red
+  { fill: '#ffd000', stroke: '#ccaa00', dot: '#3f3000' }, // 1 lo-mid  — gold
+  { fill: '#00cc44', stroke: '#009933', dot: '#003314' }, // 2 mid     — green
+  { fill: '#0088ff', stroke: '#0066cc', dot: '#001840' }, // 3 hi-mid  — blue
+  { fill: '#ccccff', stroke: '#9999cc', dot: '#24243a' }, // 4 high    — white/violet
+];
+
+// ── PALETTE: swapped — green=bass (low root), red=mid (melodic) ────────
+const PALETTE_SWAPPED = [
+  { fill: '#00ff66', stroke: '#00cc44', dot: '#003318' }, // 0 bass    — electric green
+  { fill: '#ffd000', stroke: '#ccaa00', dot: '#3f3000' }, // 1 lo-mid  — gold
+  { fill: '#ff2200', stroke: '#cc1500', dot: '#3a0700' }, // 2 mid     — red
+  { fill: '#0088ff', stroke: '#0066cc', dot: '#001840' }, // 3 hi-mid  — blue
+  { fill: '#ccccff', stroke: '#9999cc', dot: '#24243a' }, // 4 high    — white/violet
+];
+
+// Active palette — switches with vizMode
+let PALETTE = PALETTE_ORIGINAL;
+
+// Background dot field
+const bgCv = document.createElement('canvas');
+bgCv.width = bgCv.height = RES;
+const bgCtx = bgCv.getContext('2d');
+bgCtx.fillStyle = '#00000a';
+bgCtx.fillRect(0, 0, RES, RES);
+bgCtx.fillStyle = 'rgba(40,50,60,0.6)';   // neutral dark field
+for (let i = 0; i < 2400; i++) {
+  bgCtx.fillRect(Math.random() * RES | 0, Math.random() * RES | 0, 1, 1);
+}
+
+const CX = RES * 0.5, CY = RES * 0.5, RADIUS = RES * 0.46;
+let torsion = 0, torsionV = 0;
+
+// ── Broadcast dot state ────────────────────────────────────────────────
+// A pulsing orb at center representing the DJ broadcast point.
+let broadcastPulse = 0;   // 0→1, driven by bass energy
+let broadcastRings = [];  // expanding rings on beat
+
+function ij(x, y) { return y * G + x; }
+
+const SEED_RADIUS = [5, 8, 13, 19, 26];
+const SEED_COUNT  = [10, 9, 8, 7, 6];
+
+function seedGrid(bands) {
+  const half = G >> 1;
+  for (let b = 0; b < 5; b++) {
+    const lv = bands[b];
+    if (lv < 0.04) continue;
+    const n = Math.ceil(lv * SEED_COUNT[b]);
+    for (let s = 0; s < n; s++) {
+      const ang = Math.random() * Math.PI * 2;
+      const r   = Math.random() * SEED_RADIUS[b];
+      const gx  = (half + Math.cos(ang) * r + 0.5) | 0;
+      const gy  = (half + Math.sin(ang) * r + 0.5) | 0;
+      if (gx < 1 || gx >= G - 1 || gy < 1 || gy >= G - 1) continue;
+      const ii = ij(gx, gy);
+      cur[ii]  = Math.min(1.0, cur[ii] + lv * 2.0);
+      colr[ii] = b;
+      if (lv > 0.52) wcur[ii] = Math.min(1.0, wcur[ii] + lv * 0.65);
+    }
+  }
+}
+
+function seedIdle(f) {
+  if ((f & 0x1F) !== 0) return;
+  const ang = (f / 300) * Math.PI * 2;
+  const half = G >> 1;
+  for (let b = 0; b < 5; b++) {
+    const a  = ang + b * 1.2566;
+    const r  = 5 + b * 2.5;
+    const gx = (half + Math.cos(a) * r + 0.5) | 0;
+    const gy = (half + Math.sin(a) * r + 0.5) | 0;
+    if (gx < 1 || gx >= G - 1 || gy < 1 || gy >= G - 1) continue;
+    const ii = ij(gx, gy);
+    cur[ii]  = Math.max(cur[ii], 0.32);
+    colr[ii] = b;
+  }
+}
+
+function stepDiffusion() {
+  for (let y = 1; y < G - 1; y++) {
+    for (let x = 1; x < G - 1; x++) {
+      const i = ij(x, y);
+      const ns = cur[ij(x-1,y)] + cur[ij(x+1,y)] + cur[ij(x,y-1)] + cur[ij(x,y+1)];
+      nxt[i] = (cur[i] + ns * DIFFUSE) * DECAY;
+      if (nxt[i] < 0) nxt[i] = 0;
+      if (nxt[i] > 0.12 && cur[i] < 0.07) {
+        let bestE = -1, bestC = colr[i];
+        const n0=ij(x-1,y),n1=ij(x+1,y),n2=ij(x,y-1),n3=ij(x,y+1);
+        if(cur[n0]>bestE){bestE=cur[n0];bestC=colr[n0];}
+        if(cur[n1]>bestE){bestE=cur[n1];bestC=colr[n1];}
+        if(cur[n2]>bestE){bestE=cur[n2];bestC=colr[n2];}
+        if(cur[n3]>bestE){bestE=cur[n3];bestC=colr[n3];}
+        colr[i] = bestC;
+      }
+    }
+  }
+  const tmp = prv; prv = cur; cur = nxt; nxt = tmp;
+}
+
+function stepWave() {
+  for (let y = 1; y < G - 1; y++) {
+    for (let x = 1; x < G - 1; x++) {
+      const i   = ij(x, y);
+      const lap = wcur[ij(x-1,y)] + wcur[ij(x+1,y)] + wcur[ij(x,y-1)] + wcur[ij(x,y+1)] - 4 * wcur[i];
+      wnxt[i] = (2 * wcur[i] - wprv[i] + WAVE_SPD * lap) * WAVE_DMP;
+      if (wnxt[i] >  1) wnxt[i] =  1;
+      if (wnxt[i] < -1) wnxt[i] = -1;
+    }
+  }
+  const tmp = wprv; wprv = wcur; wcur = wnxt; wnxt = tmp;
+}
+
+// ── Beat pulse detection ───────────────────────────────────────────────
+let lastBass = 0;
+const PULSE_THRESHOLD = 0.28;
+let pulseRings = [];
+
+function checkBeat(bands) {
+  const bass = bands[0];
+  if (bass > PULSE_THRESHOLD && lastBass <= PULSE_THRESHOLD) {
+    pulseRings.push({ r: 4, alpha: 0.85, color: '#ffd000' });
+    broadcastPulse = 1.0;
+  }
+  lastBass = bass;
+  // Decay broadcast pulse
+  broadcastPulse *= 0.91;
+}
+
+function drawBroadcastDot(bands) {
+  const avgE = (bands[0]+bands[1]+bands[2]+bands[3]+bands[4]) * 0.2;
+
+  // Outer glow — pulses with beat
+  const glowR = 14 + broadcastPulse * 12;
+  const grd = ctx.createRadialGradient(CX, CY, 0, CX, CY, glowR);
+  grd.addColorStop(0,   `rgba(255,255,255,${0.35 + broadcastPulse * 0.4})`);
+  grd.addColorStop(0.4, `rgba(180,255,220,${0.18 + broadcastPulse * 0.2})`);
+  grd.addColorStop(1,   'rgba(0,255,80,0)');
+  ctx.fillStyle = grd;
+  ctx.beginPath();
+  ctx.arc(CX, CY, glowR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Expanding rings from beat hit
+  for (let i = pulseRings.length - 1; i >= 0; i--) {
+    const p = pulseRings[i];
+    p.r    += 2.8;
+    p.alpha -= 0.024;
+    if (p.alpha <= 0) { pulseRings.splice(i, 1); continue; }
+    ctx.save();
+    ctx.globalAlpha = p.alpha;
+    ctx.strokeStyle = '#ffd000';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(CX, CY, p.r * CS * 0.5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = p.alpha * 0.25;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Core dot — solid white/gold, always visible
+  const coreR = 4 + broadcastPulse * 3;
+  ctx.save();
+  ctx.globalAlpha = 1;
+
+  // White hot center
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(CX, CY, coreR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Gold ring around it
+  ctx.strokeStyle = '#ffd000';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(CX, CY, coreR + 3, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Tiny crosshair
+  ctx.strokeStyle = 'rgba(255,208,0,0.5)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(CX - 10, CY); ctx.lineTo(CX + 10, CY);
+  ctx.moveTo(CX, CY - 10); ctx.lineTo(CX, CY + 10);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function renderOrganism(bands) {
+  ctx.drawImage(bgCv, 0, 0);
+
+  const avgE = (bands[0]+bands[1]+bands[2]+bands[3]+bands[4]) * 0.2;
+  torsionV  += (avgE * 0.007 - torsionV) * 0.10;
+  torsion   += torsionV;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(CX, CY, RADIUS, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Broadcast dot renders BEHIND cells (substrate layer)
+  drawBroadcastDot(bands);
+
+  for (let y = 0; y < G; y++) {
+    for (let x = 0; x < G; x++) {
+      const ii = ij(x, y);
+      const e  = cur[ii];
+      if (e < ALIVE_THR) continue;
+
+      const px = x * CS + CS * 0.5;
+      const py = y * CS + CS * 0.5;
+      const wDisp = wcur[ii] * CS * 0.55;
+      const dx = px - CX, dy = py - CY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      const ta   = torsion * (dist / RADIUS);
+      const cosT = Math.cos(ta), sinT = Math.sin(ta);
+      const ddx  = dx + wDisp, ddy = dy + wDisp;
+      const rx   = CX + ddx*cosT - ddy*sinT;
+      const ry   = CY + ddx*sinT + ddy*cosT;
+
+      const pal   = PALETTE[colr[ii]];
+      const alpha = Math.min(1, e * 1.9);
+      ctx.globalAlpha = alpha;
+
+      const sz = Math.max(2, CS * Math.min(0.88, e * 1.15));
+      const h  = sz * 0.5;
+
+      if (e > 0.58) {
+        ctx.fillStyle = pal.fill;
+        ctx.fillRect(rx - h, ry - h, sz, sz);
+      } else if (e > 0.26) {
+        ctx.strokeStyle = pal.stroke;
+        ctx.lineWidth = 0.7;
+        ctx.strokeRect(rx - h, ry - h, sz, sz);
+      } else {
+        ctx.fillStyle = pal.dot;
+        ctx.fillRect(rx - 1, ry - 1, 2, 2);
+      }
+
+      if (e > 0.58) {
+        ctx.lineWidth = 0.55;
+        ctx.globalAlpha = alpha * 0.38;
+        const drawC = (nx, ny) => {
+          const ni = ij(nx, ny);
+          if (cur[ni] <= 0.58 || colr[ni] !== colr[ii]) return;
+          const px2=nx*CS+CS*0.5, py2=ny*CS+CS*0.5;
+          const dx2=px2-CX, dy2=py2-CY;
+          const d2=Math.sqrt(dx2*dx2+dy2*dy2);
+          const ta2=torsion*(d2/RADIUS);
+          const wD2=wcur[ni]*CS*0.55;
+          const ddx2=dx2+wD2, ddy2=dy2+wD2;
+          const rx2=CX+ddx2*Math.cos(ta2)-ddy2*Math.sin(ta2);
+          const ry2=CY+ddx2*Math.sin(ta2)+ddy2*Math.cos(ta2);
+          ctx.strokeStyle = pal.fill;
+          ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx2,ry2); ctx.stroke();
+        };
+        if (x < G-1) drawC(x+1, y);
+        if (y < G-1) drawC(x, y+1);
+      }
+    }
+  }
+
+  ctx.restore();
+  ctx.globalAlpha = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  ▦  GRID MODE  (original 28×14 scanline style, reconstructed)
+// ═══════════════════════════════════════════════════════════════════════
+const GCOLS = 28, GROWS = 14;
+const GCW   = RES / GCOLS, GCH = RES / GROWS;
+
+// Band ranges for 128 fft bins mapped to 28 columns
+function renderGrid(bands) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, RES, RES);
+
+  // Map 128 bins → 28 columns (each column = ~4.5 bins)
+  // Simulate from bands for preview
+  const t = simTime;
+  const cols = new Float32Array(GCOLS);
+  for (let c = 0; c < GCOLS; c++) {
+    const f = c / GCOLS;
+    if (c < 5) {
+      cols[c] = bands[0] * (0.7 + 0.3 * Math.sin(t * 3 + c));
+    } else if (c < 11) {
+      cols[c] = bands[1] * (0.6 + 0.4 * Math.sin(t * 2.3 + c * 0.5));
+    } else if (c < 18) {
+      cols[c] = bands[2] * (0.5 + 0.5 * Math.sin(t * 1.7 + c * 0.4));
+    } else if (c < 23) {
+      cols[c] = bands[3] * (0.5 + 0.5 * Math.sin(t * 2.1 + c * 0.3));
+    } else {
+      cols[c] = bands[4] * (0.4 + 0.6 * Math.sin(t * 3.2 + c * 0.6));
+    }
+  }
+
+  for (let c = 0; c < GCOLS; c++) {
+    const energy  = cols[c];
+    const litRows = Math.round(energy * GROWS);
+
+    for (let r = 0; r < GROWS; r++) {
+      const active = r >= (GROWS - litRows);
+      const norm   = r / GROWS;
+
+      // Color by column band range
+      let hue;
+      if (c < 5)       hue = '#00ff66';   // bass — electric green
+      else if (c < 11) hue = '#ffd000';   // lo-mid — gold
+      else if (c < 18) hue = '#ff2200';   // mid — red
+      else if (c < 23) hue = '#0088ff';   // hi-mid — blue
+      else              hue = '#ccccff';  // high — white
+
+      const alpha = active ? (0.5 + energy * 0.5) : 0.04;
+      ctx.globalAlpha = alpha;
+
+      // Pixel gap between cells
+      const px = c * GCW + 1;
+      const py = r * GCH + 1;
+      const pw = GCW - 2;
+      const ph = GCH - 2;
+
+      ctx.fillStyle = active ? hue : '#111';
+      ctx.fillRect(px, py, pw, ph);
+
+      // Scanline overlay on active cells
+      if (active && r % 2 === 0) {
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.fillRect(px, py, pw, ph * 0.5);
+      }
+    }
+  }
+
+  // Broadcast dot in grid mode — centered gold dot
+  ctx.globalAlpha = 1;
+  const gdx = RES * 0.5, gdy = RES * 0.5;
+  ctx.fillStyle = '#ffd000';
+  ctx.beginPath();
+  ctx.arc(gdx, gdy, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MAIN LOOP
+// ═══════════════════════════════════════════════════════════════════════
+function loop() {
+  frame++;
+  const bands = getSimBands();
+
+  if (vizMode === 'organism' || vizMode === 'original') {
+    PALETTE = vizMode === 'original' ? PALETTE_ORIGINAL : PALETTE_SWAPPED;
+    seedGrid(bands);
+    if (simMode === 'idle') seedIdle(frame);
+    checkBeat(bands);
+    stepDiffusion();
+    stepWave();
+    renderOrganism(bands);
+  } else {
+    renderGrid(bands);
+  }
+
+  updateBars(bands);
+  requestAnimationFrame(loop);
+}
+
+function updateBars(bands) {
+  for (let i = 0; i < 5; i++) {
+    document.getElementById('b'+i).style.height = Math.max(2, bands[i] * 24) + 'px';
+  }
+}
+
+loop();
+
+// ═══════════════════════════════════════════════════════════════════════
+//  BUTTON WIRING
+// ═══════════════════════════════════════════════════════════════════════
+const vizBtns = ['original','organism','grid'];
+const simBtns = ['idle','beat','ambient','chaos'];
+
+function updateLabel() {
+  document.getElementById('mode-label').textContent = `${vizMode} · ${simMode}`;
+}
+
+vizBtns.forEach(m => {
+  document.getElementById('btn-'+m).addEventListener('click', () => {
+    vizBtns.forEach(b => document.getElementById('btn-'+b).classList.remove('active'));
+    document.getElementById('btn-'+m).classList.add('active');
+    vizMode = m;
+    pulseRings = [];
+    broadcastPulse = 0;
+    updateLabel();
+  });
+});
+
+simBtns.forEach(m => {
+  document.getElementById('btn-'+m).addEventListener('click', () => {
+    simBtns.forEach(b => {
+      const el = document.getElementById('btn-'+b);
+      el.classList.remove('active');
+      el.style.color = ''; el.style.borderColor = '';
+    });
+    document.getElementById('btn-'+m).classList.add('active');
+    simMode = m;
+    updateLabel();
+  });
+});
+
+// Initial sim button state fix (idle starts dimmed, click activates it properly)
+document.getElementById('btn-idle').addEventListener('click', () => {
+  document.getElementById('btn-idle').classList.add('active');
+});
+</script>
+</body>
+</html>
