@@ -1059,6 +1059,34 @@ function togglePlay(){
 audio.addEventListener('ended', async ()=>{
   document.getElementById('progress-fill').style.width='0%';
   
+  if(activeZone?.id){
+    const {data:tracks} = await db.from('tracks')
+      .select('public_url,title')
+      .eq('zone_id',activeZone.id)
+      .order('created_at',{ascending:true});
+    
+    if(tracks?.length > 1){
+      const {data:z} = await db.from('zones').select('current_track_url').eq('id',activeZone.id).single();
+      const currentIdx = tracks.findIndex(t => t.public_url === z.current_track_url);
+      const next = tracks[currentIdx + 1] || tracks[0];
+      const startedAt = new Date().toISOString();
+      audio.src = next.public_url;
+      audio.loop = false;
+      audio.play().catch(()=>{});
+      await db.from('zones').update({
+        current_track_url: next.public_url,
+        track_name: next.title,
+        playback_started_at: startedAt
+      }).eq('id', activeZone.id);
+      document.getElementById('track-name').textContent = next.title;
+      showToast('Now playing: ' + next.title);
+      return;
+    }
+  }
+  audio.currentTime = 0;
+  audio.play().catch(()=>{});
+});
+  
   // Try to advance playlist
   if(activeZone?.id){
     const {data:z} = await db.from('zones').select('playlist,current_track_url').eq('id',activeZone.id).single();
