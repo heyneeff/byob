@@ -734,6 +734,8 @@ window.addEventListener('DOMContentLoaded', async()=>{
       document.getElementById('dj-auth').style.display='none';
       document.getElementById('dj-app').style.display='block';
       loadDemoMode();
+setTimeout(()=>switchPanel('setup',document.querySelector('[data-panel="setup"]')),50);
+
     }
   } catch(e) {}
 });
@@ -1860,9 +1862,6 @@ function setLight(btn,col){
 
 // ── OVERRIDE switchPanel for v6 right nav ──────────────
 // Open on Setup by default
-document.addEventListener('DOMContentLoaded',()=>{
-  setTimeout(()=>switchPanel('setup',document.querySelector('[data-panel="setup"]')),50);
-});
 
 function switchPanel(name,btn){
 
