@@ -1078,11 +1078,22 @@ async function playNext() {
     document.getElementById('track-name').textContent = next.title || '';
     showToast('Now playing: ' + next.title);
     if (activeZone?.id) {
+      const startedAt = new Date().toISOString();
+      const playAt = Date.now() + 1500;
       await db.from('zones').update({
         current_track_url:   next.url,
         track_name:          next.title,
-        playback_started_at: new Date().toISOString()
+        playback_started_at: startedAt,
+        play_at:             playAt,
+        play_from_s:         0,
+        active:              true
       }).eq('id', activeZone.id);
+      if (window._djSyncChannel) {
+        setTimeout(() => window._djSyncChannel.send({
+          type: 'broadcast', event: 'hard_sync',
+          payload: { resyncAt: Date.now()+1000, playback_started_at: startedAt, resetOffsets: false }
+        }), 1600);
+      }
     }
     return;
   }
@@ -1109,11 +1120,22 @@ async function playNext() {
         audio.src  = next.public_url;
         audio.loop = false;
         audio.play().catch(() => {});
+        const startedAt = new Date().toISOString();
+        const playAt = Date.now() + 1500;
         await db.from('zones').update({
           current_track_url:   next.public_url,
           track_name:          next.title,
-          playback_started_at: new Date().toISOString()
+          playback_started_at: startedAt,
+          play_at:             playAt,
+          play_from_s:         0,
+          active:              true
         }).eq('id', activeZone.id);
+        if (window._djSyncChannel) {
+          setTimeout(() => window._djSyncChannel.send({
+            type: 'broadcast', event: 'hard_sync',
+            payload: { resyncAt: Date.now()+1000, playback_started_at: startedAt, resetOffsets: false }
+          }), 1600);
+        }
         document.getElementById('track-name').textContent = next.title;
         showToast('Now playing: ' + next.title);
         return;
@@ -1128,6 +1150,7 @@ async function playNext() {
   document.getElementById('btn-play').textContent = '▶';
   document.getElementById('btn-play').classList.remove('playing');
 }
+
 
 audio.addEventListener('ended', playNext);
   
