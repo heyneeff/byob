@@ -2890,12 +2890,18 @@ async function activateZone(z) {
     const delay = Math.max(0, waitMs);
     boomSay('Syncing all speakers…', delay + 500, false, 'regular');
        setTimeout(() => {
-      if (!audio.duration) return;
-      const elapsed = (Date.now() - new Date(payload.playback_started_at).getTime()) / 1000;
-      seekPreservingBT((elapsed + SEEK_STAB_S) % audio.duration);
-      setSyncIndicator('synced', 0);
-      showToast('🔄 Synced by DJ');
-    }, delay);
+  if (payload.track_url && audio.src !== payload.track_url) {
+    loadTrack(payload.track_url, payload.track_name, payload.playback_started_at, payload.resyncAt, 0);
+    showToast('Now playing: ' + (payload.track_name || 'new track'));
+    return;
+  }
+  if (!audio.duration) return;
+  const elapsed = (Date.now() - new Date(payload.playback_started_at).getTime()) / 1000;
+  seekPreservingBT((elapsed + SEEK_STAB_S) % audio.duration);
+  setSyncIndicator('synced', 0);
+  showToast('🔄 Synced by DJ');
+}, delay);
+
   })
    .on('broadcast', { event: 'spatial_config' }, ({ payload }) => {
     // Store spatial config — used for slot assignment
