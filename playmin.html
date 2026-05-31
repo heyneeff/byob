@@ -1064,6 +1064,10 @@ audio.addEventListener('ended', async ()=>{
       .select('public_url,title')
       .eq('zone_id',activeZone.id)
       .order('created_at',{ascending:true});
+
+console.log('Tracks found:', tracks?.length, 'Current URL:', z?.current_track_url);
+console.log('Tracks:', JSON.stringify(tracks?.map(t => t.public_url)));
+
     
     if(tracks?.length > 1){
       const {data:z} = await db.from('zones').select('current_track_url').eq('id',activeZone.id).single();
