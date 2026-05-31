@@ -1056,41 +1056,80 @@ function togglePlay(){
   document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
   if(isPlaying){audio.play().catch(()=>{});}else{audio.pause();}
 }
-audio.addEventListener('ended', async ()=>{
-  document.getElementById('progress-fill').style.width='0%';
-  
-  if(activeZone?.id){
-    const {data:tracks} = await db.from('tracks')
-      .select('public_url,title')
-      .eq('zone_id',activeZone.id)
-      .order('created_at',{ascending:true});
+// ── PLAYLIST QUEUE ────────────────────────────────────────
+let playlist = [];
+let queueIdx  = -1;
 
-console.log('Tracks found:', tracks?.length, 'Current URL:', z?.current_track_url);
-console.log('Tracks:', JSON.stringify(tracks?.map(t => t.public_url)));
+function queueTrack(url, title) {
+  playlist.push({ url, title });
+  showToast('Added to queue: ' + title);
+}
 
-    
-    if(tracks?.length > 1){
-      const {data:z} = await db.from('zones').select('current_track_url').eq('id',activeZone.id).single();
-      const currentIdx = tracks.findIndex(t => t.public_url === z.current_track_url);
-      const next = tracks[currentIdx + 1] || tracks[0];
-      const startedAt = new Date().toISOString();
-      audio.src = next.public_url;
-      audio.loop = false;
-      audio.play().catch(()=>{});
+async function playNext() {
+  document.getElementById('progress-fill').style.width = '0%';
+
+  // Use in-memory queue first
+  if (playlist.length > 0 && queueIdx + 1 < playlist.length) {
+    queueIdx++;
+    const next = playlist[queueIdx];
+    audio.src  = next.url;
+    audio.loop = false;
+    audio.play().catch(() => {});
+    document.getElementById('track-name').textContent = next.title || '';
+    showToast('Now playing: ' + next.title);
+    if (activeZone?.id) {
       await db.from('zones').update({
-        current_track_url: next.public_url,
-        track_name: next.title,
-        playback_started_at: startedAt
+        current_track_url:   next.url,
+        track_name:          next.title,
+        playback_started_at: new Date().toISOString()
       }).eq('id', activeZone.id);
-      document.getElementById('track-name').textContent = next.title;
-      showToast('Now playing: ' + next.title);
-      return;
+    }
+    return;
+  }
+
+  // Fallback: advance by DB upload order
+  if (activeZone?.id) {
+    const { data: tracks } = await db.from('tracks')
+      .select('public_url,title')
+      .eq('zone_id', activeZone.id)
+      .order('created_at', { ascending: true });
+
+    if (tracks?.length > 1) {
+      const { data: z } = await db.from('zones')
+        .select('current_track_url')
+        .eq('id', activeZone.id)
+        .single();
+
+      const currentIdx = tracks.findIndex(t => t.public_url === z?.current_track_url);
+      const next = (currentIdx >= 0 && currentIdx + 1 < tracks.length)
+        ? tracks[currentIdx + 1]
+        : null;
+
+      if (next) {
+        audio.src  = next.public_url;
+        audio.loop = false;
+        audio.play().catch(() => {});
+        await db.from('zones').update({
+          current_track_url:   next.public_url,
+          track_name:          next.title,
+          playback_started_at: new Date().toISOString()
+        }).eq('id', activeZone.id);
+        document.getElementById('track-name').textContent = next.title;
+        showToast('Now playing: ' + next.title);
+        return;
+      }
     }
   }
+
+  // Nothing left — stop cleanly
+  audio.pause();
   audio.currentTime = 0;
-  audio.play().catch(()=>{});
-});
-  
+  isPlaying = false;
+  document.getElementById('btn-play').textContent = '▶';
+  document.getElementById('btn-play').classList.remove('playing');
+}
+
+audio.addEventListener('ended', playNext);
   
 audio.addEventListener('timeupdate',()=>{
   if(!audio.duration)return;
@@ -1102,10 +1141,15 @@ audio.addEventListener('timeupdate',()=>{
   const tb=document.getElementById('tb-trackname');
   if(tn&&tb)tb.textContent=tn.textContent;
 });
-document.getElementById('progress-bar').addEventListener('click',e=>{
-  const r=e.currentTarget.getBoundingClientRect();
-  if(audio.duration)audio.currentTime=((e.clientX-r.left)/r.width)*audio.duration;
-});
+function seekFromEvent(e) {
+  const r = e.currentTarget.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  if (audio.duration) audio.currentTime = ((clientX - r.left) / r.width) * audio.duration;
+}
+document.getElementById('progress-bar').addEventListener('click', seekFromEvent);
+document.getElementById('progress-bar').addEventListener('touchstart', seekFromEvent);
+document.getElementById('progress-bar').addEventListener('touchmove', seekFromEvent);
+
 document.getElementById('volume').addEventListener('input',e=>audio.volume=e.target.value/100);
 
 document.getElementById('file-input').addEventListener('change',async(e)=>{
@@ -1989,7 +2033,7 @@ function loadDeck(d,id){
     document.getElementById('btn-play').textContent='⏸';
     document.getElementById('btn-play').classList.add('playing');
     if(t.url){
-      audio.src=t.url;audio.loop=true;audio.play().catch(()=>{});isPlaying=true;
+      audio.src=t.url;audio.loop=false;audio.play().catch(()=>{});isPlaying=true;
       window._lastPublicUrl=t.url;
       // Auto-broadcast to listeners if zone is active
       if(activeZone){
