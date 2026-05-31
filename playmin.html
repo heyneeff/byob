@@ -1087,10 +1087,7 @@ audio.addEventListener('ended', async ()=>{
   audio.play().catch(()=>{});
 });
   
-  // No playlist — just loop
-  audio.currentTime = 0;
-  audio.play().catch(()=>{});
-});
+  
 audio.addEventListener('timeupdate',()=>{
   if(!audio.duration)return;
   document.getElementById('progress-fill').style.width=(audio.currentTime/audio.duration*100)+'%';
