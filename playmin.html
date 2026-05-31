@@ -1091,7 +1091,7 @@ async function playNext() {
       if (window._djSyncChannel) {
         setTimeout(() => window._djSyncChannel.send({
           type: 'broadcast', event: 'hard_sync',
-          payload: { resyncAt: Date.now()+1000, playback_started_at: startedAt, resetOffsets: false }
+          payload: { resyncAt: Date.now()+1000, playback_started_at: startedAt, resetOffsets: false, track_url: next.url || next.public_url, track_name: next.title }
         }), 1600);
       }
     }
