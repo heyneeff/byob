@@ -1158,7 +1158,7 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
   let playbackStartedAt=null;
   audio.addEventListener('playing',()=>{if(!playbackStartedAt)playbackStartedAt=new Date().toISOString();},{once:true});
   audio.src=URL.createObjectURL(file);
-  audio.loop=true;
+  audio.loop=false;
   audio.play().catch(()=>{});
   isPlaying=true;
   document.getElementById('btn-play').textContent='⏸';
