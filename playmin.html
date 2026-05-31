@@ -2033,7 +2033,7 @@ function loadDeck(d,id){
     document.getElementById('btn-play').textContent='⏸';
     document.getElementById('btn-play').classList.add('playing');
     if(t.url){
-      audio.src=t.url;audio.loop=false;audio.play().catch(()=>{});isPlaying=true;
+      audio.src=t.url;audio.loop=false;audio.play().catch(()=>{});isPlaying=true; playlist=[{url:t.url,title:t.name}];queueIdx=0;
       window._lastPublicUrl=t.url;
       // Auto-broadcast to listeners if zone is active
       if(activeZone){
@@ -2077,9 +2077,11 @@ function startDrag(ev,id){
 }
 
 function quickSlot(id){
-  const t=TRACKS.find(t=>t.id===id);if(!t)return;
-  assignTrackToZone(selectedSlot||'C', t.id, t.name);
+  const t=(_realTracks||[]).find(t=>t.id===id)||TRACKS.find(t=>t.id===id);
+  if(!t||!t.url){showToast('No URL for this track');return;}
+  queueTrack(t.url, t.name);
 }
+
 
 // Library HTML
 function libHTML(filter=''){
