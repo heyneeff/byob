@@ -2193,39 +2193,7 @@ function crateActive(el){
   el.classList.add('active');
 }
 
-// Also update loadDeck to support real URL tracks
-const _origLoadDeck = loadDeck;
-function loadDeck(d, id) {
-  const t = _realTracks.find(t=>t.id===id) || TRACKS.find(t=>t.id===id);
-  if (!t) return;
-  if (t.url) {
-    // Real uploaded track — load into main audio player too
-    audio.src = t.url; audio.loop = false;
-    audio.play().catch(()=>{});
-    isPlaying = true;
-    document.getElementById('btn-play').textContent = '⏸';
-    document.getElementById('btn-play').classList.add('playing');
-    document.getElementById('track-name').textContent = t.name;
-    document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
-  }
-  if(d==='a'){
-    deckA={...deckA,track:t,bpm:parseInt(t.bpm)||124,playing:true};
-    document.getElementById('da-name').textContent=t.name;
-    document.getElementById('da-artist').textContent=t.artist;
-    document.getElementById('da-bpm').textContent=t.bpm;
-    document.getElementById('da-play').textContent='⏸ PAUSE';
-    if(t.bpm!=='—') document.getElementById('tb-bpm').textContent=t.bpm;
-  } else {
-    deckB={...deckB,track:t,bpm:parseInt(t.bpm)||124,playing:true};
-    document.getElementById('db-name').textContent=t.name;
-    document.getElementById('db-artist').textContent=t.artist;
-    document.getElementById('db-bpm').textContent=t.bpm;
-    document.getElementById('db-play').textContent='⏸ PAUSE';
-  }
-  buildLibs();
-}
-
-// Refresh library when a track is uploaded
+\// Refresh library when a track is uploaded
 const _origFileInput = document.getElementById('file-input');
 if(_origFileInput){
   _origFileInput.addEventListener('change', ()=>{
