@@ -939,7 +939,7 @@ function centerOnUser(){
     leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});
   },()=>showToast('Location not available'),{enableHighAccuracy:true,timeout:8000});
 }
-function updateMapHint(lat,lng){document.getElementById('map-coords').textContent='Center: '+lat.toFixed(5)+', '+lng.toFixed(5);}
+function updateMapHint(lat,lng){const _mc=document.getElementById('map-coords');if(_mc)_mc.textContent='Center: '+lat.toFixed(5)+', '+lng.toFixed(5);}
 async function searchMap(){
   const q=document.getElementById('map-search-input').value.trim();
   if(!q)return;
