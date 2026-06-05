@@ -2090,8 +2090,8 @@ function loadDeck(d,id){
       window._lastPublicUrl=t.url;
       // Auto-broadcast to listeners if zone is active
       if(activeZone){
-        const startedAt=new Date().toISOString();
-        const playAt=Date.now()+1500;
+        const startedAt=new Date(serverNow()).toISOString();
+        const playAt=serverNow()+1500;
         db.from('zones').update({
           current_track_url:t.url,
           track_name:t.name,
@@ -2103,7 +2103,7 @@ function loadDeck(d,id){
           if(window._djSyncChannel){
             setTimeout(()=>window._djSyncChannel.send({
               type:'broadcast',event:'hard_sync',
-              payload:{resyncAt:Date.now()+1000,playback_started_at:startedAt,resetOffsets:false}
+              payload:{resyncAt:serverNow()+1000,playback_started_at:startedAt,resetOffsets:false}
             }),1600);
           }
           showToast('📡 Broadcasting: '+t.name);

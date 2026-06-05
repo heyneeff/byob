@@ -40,6 +40,12 @@ Carnival Society / The Circle (paid membership)
 
 -----
 
+## ✅ Solved — Session 4 (Jun 5 2026)
+
+- **Clock-sync layer completed end-to-end** — `measureClockOffset()` now called on boot + every 60s + fresh at zone entry. `syncedNow()` (listener) / `serverNow()` (DJ) replace all `Date.now()` calls that touch server-written timestamps (`playback_started_at`, `play_at`, `resyncAt`). Local relative timers (presence prune, animation loops) left on raw `Date.now()`. Last missed site fixed: library-track auto-broadcast in playmin.html was still using `new Date()` / `Date.now()` for `startedAt`, `playAt`, and `resyncAt`.
+- **HUD `_clockOffset` row** — listener HUD now surfaces the server clock offset in ms; warns yellow when `0` (clock not yet measured).
+- **DJ clock parity** — playmin.html has identical `_clockOffset` / `measureClockOffset()` / `serverNow()` stack; measured in both auth paths (session restore + login).
+
 ## ✅ Solved — Session 3 (May 26 2026)
 
 - **Listener dot disappearing** — root cause: `syncZoneAudio()` was overwriting `activeZone` with a Supabase select that excluded `lat`, `lng`, `radius_m`. Every sync cycle stripped the coordinates, making bearing and dist return `NaN`. Fix: added `lat,lng,radius_m` to the select query.
@@ -57,6 +63,41 @@ Carnival Society / The Circle (paid membership)
 - [ ] **Event delete** — no way to delete scheduled events from playmin UI
 - [ ] **`libHTML` defined twice** in dj.html — dead code, no active harm but needs cleanup
 - [ ] **DJ dot bearing hardcoded to 0** in `startDJPresenceBroadcast` — DJ always appears due north on spatial map regardless of actual position
+
+-----
+
+## 🔊 Audio Engine — Tightening Queue
+
+Now that the clock layer is verified on-device, these are the remaining sync reliability wins in priority order.
+
+### A. RPC verification
+Confirm `db.rpc('now')` returns a valid server timestamp in both listener and DJ contexts. If it 404s (silently caught, `_clockOffset` stays `0`, HUD stays yellow), either expose the PostgreSQL built-in via PostgREST permissions or create a wrapper: `create or replace function public.now() returns timestamptz language sql stable as $$ select now(); $$;` and grant execute to anon + authenticated. The HUD `_clockOffset` row is the canary.
+
+### B. Multi-sample clock measurement
+Replace single-ping `measureClockOffset()` with a 3-ping median to reject network jitter spikes:
+```js
+async function measureClockOffset() {
+  const samples = [];
+  for (let i = 0; i < 3; i++) {
+    const t0 = Date.now();
+    const { data } = await db.rpc('now').single();
+    const t1 = Date.now();
+    if (data) samples.push(new Date(data).getTime() - (t0 + (t1 - t0) / 2));
+    if (i < 2) await new Promise(r => setTimeout(r, 80));
+  }
+  if (samples.length) _clockOffset = samples.sort((a,b)=>a-b)[Math.floor(samples.length/2)];
+}
+```
+Apply identically in both listener.html and playmin.html.
+
+### C. Zone-entry re-measurement
+`measureClockOffset()` is already called in `activateZone()` (listener) — verify it awaits before `seekToSync()` runs. If the await is missing or the seek fires before the offset resolves, first-join drift is silently wrong.
+
+### D. `SEEK_STAB_S` tuning
+`SEEK_STAB_S = 0.27` was a one-time empirical estimate. After clock sync is verified, re-measure actual seek-to-playback latency on target iOS/Android devices and update the constant. A per-device override in localStorage (`byob_seek_stab`) would let the HUD expose it for field tuning.
+
+### E. Scatter offset in `seekToSync`
+`_scatterOffsetMs` is subtracted in `seekToSync` but only set by sweep events. Verify it resets to `0` at zone entry so a listener joining after a sweep isn't permanently offset.
 
 -----
 
@@ -207,24 +248,26 @@ Monthly dues. Has existing website + basic backend (not yet on Supabase).
 
 ## 🗓 Suggested Build Order
 
-|Phase|What                          |Why                             |
-|-----|------------------------------|--------------------------------|
-|1    |Event delete + open bugs      |Clean house first               |
-|2    |Slot routing + Signal Organism|Complete the listener experience|
-|3    |Profiles + follow system      |Foundation for everything social|
-|4    |Front page discovery          |Public face of the platform     |
-|5    |Stripe Connect + ticketing    |Revenue                         |
-|6    |The Circle on Supabase        |Unified backend                 |
-|7    |Push notifications            |Retention                       |
-|8    |Carnival Society dues flow    |Full membership loop            |
+|Phase|What                                      |Why                                        |
+|-----|------------------------------------------|-------------------------------------------|
+|1    |Audio engine tightening (A–E above)       |Verify clock sync on device before spatial |
+|2    |Event delete + open bugs                  |Clean house                                |
+|3    |Slot routing + Signal Organism            |Complete the listener experience           |
+|4    |Profiles + follow system                  |Foundation for everything social           |
+|5    |Front page discovery                      |Public face of the platform                |
+|6    |Stripe Connect + ticketing                |Revenue                                    |
+|7    |The Circle on Supabase                    |Unified backend                            |
+|8    |Push notifications                        |Retention                                  |
+|9    |Carnival Society dues flow                |Full membership loop                       |
 
 -----
 
 ## Session Log
 
-|Date       |Session |Key outcomes                                                                                                                            |
-|-----------|--------|----------------------------------------------------------------------------------------------------------------------------------------|
-|May 26 2026|Thread 3|Fixed dot disappear (syncZoneAudio lat/lng), fixed bearing NaN, consolidated geo loop, built sync dashboard, scoped full product roadmap|
+|Date       |Session |Key outcomes                                                                                                                                                  |
+|-----------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|Jun 5 2026 |Thread 4|Completed clock-sync layer (listener + DJ), fixed last missed Date.now() in library-track broadcast, added audio engine tightening queue to roadmap           |
+|May 26 2026|Thread 3|Fixed dot disappear (syncZoneAudio lat/lng), fixed bearing NaN, consolidated geo loop, built sync dashboard, scoped full product roadmap                      |
 
 -----
 
