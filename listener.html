@@ -1913,14 +1913,14 @@ document.addEventListener('visibilitychange', () => {
 // WEBRTC RECEIVER
 // ════════════════════════════════════════════════════════════
 const RTC_CONFIG_STATIC = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-let _rtcConfigCache = null;
+let _rtcConfigCache = null, _rtcConfigAt = 0;
 async function getRTCConfig() {
-  if (_rtcConfigCache) return _rtcConfigCache;
+  if (_rtcConfigCache && Date.now() - _rtcConfigAt < 3 * 3600 * 1000) return _rtcConfigCache;
   try {
     const r = await fetch("https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7");
     const iceServers = await r.json();
-    _rtcConfigCache = { iceServers };
-  } catch(e) { _rtcConfigCache = RTC_CONFIG_STATIC; }
+    _rtcConfigCache = { iceServers }; _rtcConfigAt = Date.now();
+  } catch(e) { _rtcConfigCache = RTC_CONFIG_STATIC; _rtcConfigAt = Date.now(); }
   return _rtcConfigCache;
 }
 const listenerId = Math.random().toString(36).substr(2,9);

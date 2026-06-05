@@ -1251,11 +1251,12 @@ window._lastPublicUrl = urlData.publicUrl;
 });
 
 // ── WEBRTC BROADCAST ─────────────────────────────────────
-let _rtcConfigCache=null;
+let _rtcConfigCache=null,_rtcConfigAt=0;
 async function getRTCConfig(){
-  if(_rtcConfigCache)return _rtcConfigCache;
-  try{const r=await fetch('https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7');const iceServers=await r.json();_rtcConfigCache={iceServers};}
-  catch(e){_rtcConfigCache={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};}
+  // Refresh every 3h — Metered TURN credentials TTL is typically 1-24h
+  if(_rtcConfigCache&&Date.now()-_rtcConfigAt<3*3600*1000)return _rtcConfigCache;
+  try{const r=await fetch('https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7');const iceServers=await r.json();_rtcConfigCache={iceServers};_rtcConfigAt=Date.now();}
+  catch(e){_rtcConfigCache={iceServers:[{urls:'stun:stun.l.google.com:19302'}]};_rtcConfigAt=Date.now();}
   return _rtcConfigCache;
 }
 let peerConnections={};
@@ -1379,6 +1380,7 @@ async function toggleLive(){
   const constraints={audio:audioConstraints};
   try{
     liveStream=await navigator.mediaDevices.getUserMedia(constraints);
+    scanDevices(); // re-scan after permission — labels now visible on iOS
     audioCtx=new AudioContext();
     analyserNode=audioCtx.createAnalyser();analyserNode.fftSize=256;
     audioCtx.createMediaStreamSource(liveStream).connect(analyserNode);
@@ -1390,7 +1392,7 @@ async function toggleLive(){
     document.getElementById('track-name').textContent='🔴 LIVE — '+activeZone.name;
     document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
     await startWebRTCBroadcast(liveStream);
-    await db.from('zones').update({current_track_url:'webrtc-live',track_name:'🔴 LIVE — '+activeZone.name,playback_started_at:new Date().toISOString()}).eq('id',activeZone.id);
+    await db.from('zones').update({current_track_url:'webrtc-live',track_name:'🔴 LIVE — '+activeZone.name,playback_started_at:new Date(serverNow()).toISOString()}).eq('id',activeZone.id);
     showToast('You are LIVE — listeners connecting 🎛️');
   }catch(e){showToast('Cannot access input: '+e.message);}
 }
