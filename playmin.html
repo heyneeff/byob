@@ -560,16 +560,29 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
         <span class="rack-header-arrow">▶</span>
       </div>
       <div class="rack-body" style="padding:4px 6px 6px;">
-        <div class="mode-strip">
-          <button class="mode-pill active" id="mode-single" onclick="setMode('single')">SINGLE</button>
-          <button class="mode-pill" id="mode-cluster" onclick="setMode('cluster')">CLUSTER</button>
-          <button class="mode-pill" id="mode-sweep" onclick="setMode('sweep')">SWEEP</button>
+        <div class="mode-strip" style="grid-template-columns:repeat(5,1fr);">
+          <button class="mode-pill active" id="mode-single"  onclick="setMode('single')">SINGLE</button>
+          <button class="mode-pill"        id="mode-cluster" onclick="setMode('cluster')">CLSTR</button>
+          <button class="mode-pill"        id="mode-ring"    onclick="setMode('ring')">RING</button>
+          <button class="mode-pill"        id="mode-sweep"   onclick="setMode('sweep')">SWEEP</button>
+          <button class="mode-pill"        id="mode-scatter" onclick="setMode('scatter')">SCAT</button>
         </div>
 
         <!-- Cluster controls -->
         <div id="mode-body-cluster" style="display:none;flex-direction:column;gap:3px;">
           <button id="btn-cluster" onclick="toggleCluster()" class="rack-btn" style="width:100%;border-color:var(--teal);color:var(--teal);">⬡ START CLUSTER</button>
           <div style="font-size:8px;color:var(--muted);text-align:center;padding:2px 0;">Groups by proximity · auto-assigns stems · 30s refresh</div>
+        </div>
+
+        <!-- Ring controls -->
+        <div id="mode-body-ring" style="display:none;flex-direction:column;gap:4px;">
+          <div class="rack-knob-row">
+            <span class="rack-knob-label">Rings</span>
+            <input type="range" class="rack-slider" id="ring-count" min="2" max="5" step="1" value="3" style="accent-color:var(--orange);" oninput="document.getElementById('ring-count-label').textContent=this.value"/>
+            <span class="rack-val" id="ring-count-label">3</span>
+          </div>
+          <button id="btn-ring" onclick="toggleRing()" class="rack-btn" style="width:100%;border-color:var(--orange);color:var(--orange);">⊚ START RING</button>
+          <div style="font-size:8px;color:var(--muted);text-align:center;">Inner = C · outward by dist · recomputes 15s</div>
         </div>
 
         <!-- Scatter controls -->
@@ -591,15 +604,46 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
         <!-- Sweep controls -->
         <div id="mode-body-sweep" style="display:none;flex-direction:column;gap:3px;">
           <div class="rack-sweep-grid">
-            <button class="rack-btn" onclick="startCircularSweep(2,1)" style="color:var(--teal);border-color:var(--teal);">↻ 2 RPM</button>
-            <button class="rack-btn" onclick="startCircularSweep(4,1)" style="color:var(--teal);border-color:var(--teal);">↻ 4 RPM</button>
-            <button class="rack-btn" onclick="startCircularSweep(8,1)" style="color:var(--teal);border-color:var(--teal);">↻ 8 RPM</button>
+            <button class="rack-btn" onclick="startCircularSweep(2,1)"  style="color:var(--teal);border-color:var(--teal);">↻ 2 RPM</button>
+            <button class="rack-btn" onclick="startCircularSweep(4,1)"  style="color:var(--teal);border-color:var(--teal);">↻ 4 RPM</button>
+            <button class="rack-btn" onclick="startCircularSweep(8,1)"  style="color:var(--teal);border-color:var(--teal);">↻ 8 RPM</button>
             <button class="rack-btn" onclick="startCircularSweep(4,-1)" style="color:var(--orange);border-color:var(--orange);">↺ REV</button>
           </div>
           <button class="rack-btn danger" onclick="stopCircularSweep()" style="width:100%;">◼ STOP</button>
         </div>
 
         <button onclick="triggerResync()" class="rack-btn" style="width:100%;margin-top:4px;color:var(--teal);border-color:var(--teal);">🔄 Sync All</button>
+      </div>
+    </div>
+
+    <!-- MOVEMENT section -->
+    <div class="rack-section open" id="rack-movement">
+      <div class="rack-header" onclick="toggleRack('rack-movement')">
+        <span class="rack-header-label">Movement</span>
+        <span class="rack-header-arrow">▶</span>
+      </div>
+      <div class="rack-body" style="padding:4px 6px 6px;">
+        <div class="mode-strip" style="grid-template-columns:repeat(4,1fr);margin-bottom:4px;">
+          <button class="mode-pill active" id="mv-wave"  onclick="setMovement('wave')">WAVE</button>
+          <button class="mode-pill"        id="mv-pulse" onclick="setMovement('pulse')">PULSE</button>
+          <button class="mode-pill"        id="mv-orbit" onclick="setMovement('orbit')">ORBIT</button>
+          <button class="mode-pill"        id="mv-swing" onclick="setMovement('swing')">SWING</button>
+        </div>
+        <div class="rack-knob-row">
+          <span class="rack-knob-label">Rate</span>
+          <input type="range" class="rack-slider" id="mv-rate" min="300" max="8000" step="100" value="2000" style="accent-color:#a78bfa;" oninput="updateMvLabel()"/>
+          <span class="rack-val" id="mv-rate-label">2.0s</span>
+        </div>
+        <div class="rack-knob-row">
+          <span class="rack-knob-label">Stems</span>
+          <input type="range" class="rack-slider" id="mv-depth" min="2" max="5" step="1" value="2" style="accent-color:#a78bfa;" oninput="document.getElementById('mv-depth-label').textContent=this.value"/>
+          <span class="rack-val" id="mv-depth-label">2</span>
+        </div>
+        <div class="rack-btn-row">
+          <button class="rack-btn" id="btn-movement" onclick="toggleMovement()" style="border-color:#a78bfa;color:#a78bfa;">▶ START</button>
+          <button class="rack-btn" onclick="snapSpeakers()">⚡ SNAP</button>
+        </div>
+        <div style="font-size:8px;color:var(--muted);text-align:center;margin-top:2px;" id="mv-status"></div>
       </div>
     </div>
 
@@ -1533,6 +1577,120 @@ function updateClusterBtn(){
   else{btn.textContent='⬡ START CLUSTER';btn.classList.remove('active');}
 }
 
+// ── RING MODE ─────────────────────────────────────────────
+let _ringActive=false, _ringInterval=null;
+
+function toggleRing(){
+  if(_ringActive){stopRing();}else{startRing();}
+}
+function startRing(){
+  _ringActive=true;
+  const btn=document.getElementById('btn-ring');
+  if(btn){btn.textContent='⊚ STOP RING';btn.classList.add('active');}
+  applyRing();
+  _ringInterval=setInterval(applyRing,15000);
+}
+function stopRing(){
+  _ringActive=false;
+  clearInterval(_ringInterval);_ringInterval=null;
+  const btn=document.getElementById('btn-ring');
+  if(btn){btn.textContent='⊚ START RING';btn.classList.remove('active');}
+}
+function applyRing(){
+  const numRings=Math.min(parseInt(document.getElementById('ring-count')?.value)||3,5);
+  const slotKeys=['C','1','2','3','4'].slice(0,numRings);
+  const listeners=Object.values(liveListeners);
+  if(!listeners.length)return;
+  const maxDist=Math.max(...listeners.map(l=>l.dist||0),0.001);
+  const assignments={};
+  listeners.forEach(l=>{
+    const ratio=(l.dist||0)/maxDist;
+    assignments[l.id]=slotKeys[Math.min(Math.floor(ratio*numRings),numRings-1)];
+  });
+  if(window._djSyncChannel){
+    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTracks,playback_started_at:new Date(serverNow()).toISOString()}});
+  }
+  showToast('⊚ Ring · '+numRings+' rings · '+listeners.length+' speakers');
+}
+
+// ── MOVEMENT / AUTO-PAN ───────────────────────────────────
+let _mvActive=false, _mvInterval=null, _mvPattern='wave', _mvPhase=0;
+
+function setMovement(pattern){
+  _mvPattern=pattern;
+  ['wave','pulse','orbit','swing'].forEach(p=>document.getElementById('mv-'+p)?.classList.toggle('active',p===pattern));
+}
+function updateMvLabel(){
+  const ms=parseInt(document.getElementById('mv-rate')?.value)||2000;
+  const el=document.getElementById('mv-rate-label');
+  if(el)el.textContent=(ms/1000).toFixed(1)+'s';
+}
+function toggleMovement(){
+  if(_mvActive){stopMovement();}else{startMovement();}
+}
+function startMovement(){
+  _mvActive=true; _mvPhase=0;
+  const btn=document.getElementById('btn-movement');
+  if(btn){btn.textContent='◼ STOP';btn.style.background='#a78bfa';btn.style.color='#000';btn.style.borderColor='#a78bfa';}
+  tickMovement();
+  const rate=parseInt(document.getElementById('mv-rate')?.value)||2000;
+  _mvInterval=setInterval(()=>{tickMovement();},parseInt(document.getElementById('mv-rate')?.value)||2000);
+}
+function stopMovement(){
+  _mvActive=false; clearInterval(_mvInterval); _mvInterval=null; _mvPhase=0;
+  const btn=document.getElementById('btn-movement');
+  if(btn){btn.textContent='▶ START';btn.style.background='';btn.style.color='#a78bfa';btn.style.borderColor='#a78bfa';}
+  const status=document.getElementById('mv-status');if(status)status.textContent='';
+}
+function tickMovement(){
+  const listeners=Object.values(liveListeners);
+  if(!listeners.length||!window._djSyncChannel)return;
+  const depth=parseInt(document.getElementById('mv-depth')?.value)||2;
+  const slotKeys=['C','1','2','3','4'].slice(0,Math.min(depth,5));
+  const n=slotKeys.length;
+  const maxDist=Math.max(...listeners.map(l=>l.dist||0),0.001);
+  const assignments={};
+
+  switch(_mvPattern){
+    case 'wave':
+      // front rolls outward: stem = floor((normDist*n + phase) % n)
+      listeners.forEach(l=>{
+        const wave=(_mvPhase+((l.dist||0)/maxDist)*n)%n;
+        assignments[l.id]=slotKeys[Math.floor(wave)];
+      });
+      _mvPhase=(_mvPhase+1)%n;
+      break;
+    case 'pulse':
+      // hot zone expands/contracts from center like a heartbeat
+      {const r=(Math.sin(_mvPhase*Math.PI)+1)/2; // 0→1→0
+      listeners.forEach(l=>{ assignments[l.id]=((l.dist||0)/maxDist)<=r?slotKeys[0]:slotKeys[Math.min(1,n-1)]; });
+      _mvPhase=(_mvPhase+0.3)%2;}
+      break;
+    case 'orbit':
+      // hot arc revolves around the crowd by bearing
+      {const orb=(_mvPhase*360)%360;const arc=80;
+      listeners.forEach(l=>{
+        const diff=Math.abs(((l.bearing||0)-orb+540)%360-180);
+        assignments[l.id]=diff<arc/2?slotKeys[0]:slotKeys[Math.min(1,n-1)];
+      });
+      _mvPhase=(_mvPhase+0.12)%1;}
+      break;
+    case 'swing':
+      // pendulum: stem gradient follows an oscillating bearing axis
+      {const axis=180+Math.sin(_mvPhase*Math.PI*2)*90;
+      listeners.forEach(l=>{
+        const diff=Math.abs(((l.bearing||0)-axis+540)%360-180)/180;
+        assignments[l.id]=slotKeys[Math.min(Math.floor(diff*n),n-1)];
+      });
+      _mvPhase=(_mvPhase+0.1)%1;}
+      break;
+  }
+
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTracks,playback_started_at:new Date(serverNow()).toISOString()}});
+  const status=document.getElementById('mv-status');
+  if(status)status.textContent=_mvPattern.toUpperCase()+' · '+listeners.length+' speakers · phase '+((_mvPhase)*10|0)+'/'+(n*10);
+}
+
 async function scanDevices(){
   try{
     const devices=await navigator.mediaDevices.enumerateDevices();
@@ -1977,12 +2135,13 @@ function toggleRack(id){
 let _spatialMode='single';
 function setMode(mode){
   _spatialMode=mode;
-  ['single','cluster','sweep','scatter'].forEach(m=>{
+  ['single','cluster','ring','sweep','scatter'].forEach(m=>{
     document.getElementById('mode-'+m)?.classList.toggle('active',m===mode);
     const body=document.getElementById('mode-body-'+m);
     if(body)body.style.display=m===mode?'flex':'none';
   });
-  if(mode!=='cluster'&&window._clusterInterval){stopCluster();}
+  if(mode!=='cluster'&&_clusterActive)stopCluster();
+  if(mode!=='ring'&&_ringActive)stopRing();
 }
 function dropOnZone(event,zone){
   event.preventDefault();
