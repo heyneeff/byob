@@ -2317,12 +2317,12 @@ function placeUserMarker(lat, lng) {
   userMarker = L.marker([lat, lng], {
     icon: L.divIcon({
       html:`<div class="user-dot-wrap">
-        <div class="user-dot-ring"></div>
-        <div class="user-dot"></div>
+        <div class="user-dot-ring" style="border-color:rgba(245,126,32,.45);"></div>
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:16px;line-height:1;">⭐</div>
       </div>`,
-      iconSize:[16,16], iconAnchor:[8,8], className:''
+      iconSize:[28,28], iconAnchor:[14,14], className:''
     }),
-    zIndexOffset: 1000  // always on top of zone markers
+    zIndexOffset: 1000
   }).addTo(leafletMap);
 }
 
@@ -2464,6 +2464,52 @@ function updateGuestList() {
       </div>`;
     ul.appendChild(self);
   }
+
+  updateGuestMapMarkers();
+}
+
+// ── GUEST MAP MARKERS ─────────────────────────────────────
+let _guestMapMarkers = {};
+
+function updateGuestMapMarkers() {
+  if (!leafletMap || !activeZone?.lat) return;
+  const seen = new Set();
+
+  Object.values(liveGuests).forEach(g => {
+    if (g.bearing == null) return;
+    seen.add(g.id);
+    const pos = destFromBearing(activeZone.lat, activeZone.lng, g.bearing, g.dist);
+    const isFriend = !!_friends[g.id];
+    const friendName = isFriend ? (_friends[g.id].name || g.name || '') : '';
+    const label = isFriend && friendName
+      ? `<div style="font-size:9px;font-weight:700;color:#fff;background:rgba(0,0,0,.75);border-radius:4px;padding:1px 5px;margin-top:1px;white-space:nowrap;letter-spacing:.02em;">${friendName}</div>`
+      : '';
+    const html = `<div style="text-align:center;cursor:pointer;"><div style="font-size:${isFriend?'18':'14'}px;line-height:1;">${g.emoji||'🎧'}</div>${label}</div>`;
+    const sz = isFriend ? 44 : 20;
+
+    if (_guestMapMarkers[g.id]) {
+      _guestMapMarkers[g.id].setLatLng(pos);
+      _guestMapMarkers[g.id].setIcon(L.divIcon({html,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],className:''}));
+    } else {
+      const m = L.marker(pos, {
+        icon: L.divIcon({html,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],className:''}),
+        zIndexOffset: isFriend ? 600 : 400
+      });
+      m.on('click', () => openGuestCard(g));
+      m.addTo(leafletMap);
+      _guestMapMarkers[g.id] = m;
+    }
+  });
+
+  // Remove markers for guests who have left
+  Object.keys(_guestMapMarkers).forEach(id => {
+    if (!seen.has(id)) { _guestMapMarkers[id].remove(); delete _guestMapMarkers[id]; }
+  });
+}
+
+function clearGuestMapMarkers() {
+  Object.values(_guestMapMarkers).forEach(m => m.remove());
+  _guestMapMarkers = {};
 }
 
 function openGuestCard(g) {
@@ -2511,6 +2557,7 @@ function initGuestListChannel(zoneId) {
         name:     payload.name,
         emoji:    payload.emoji,
         dist:     distMeters,
+        bearing:  payload.bearing ?? 0,
         status:   distMeters <= zoneRadius ? 'present' : distMeters <= 500 ? 'ontheway' : null,
         lastSeen: Date.now(),
       };
@@ -2811,6 +2858,7 @@ async function activateZone(z) {
   initGuestListChannel(z.id);
   _crowdTriggered.clear();
   liveGuests = {};
+  clearGuestMapMarkers();
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
   await measureClockOffset();
     startSyncEngine();
@@ -3581,6 +3629,16 @@ function updateNav(z) {
 
   if (accuracyCircle) accuracyCircle.setLatLng([userLat, userLng]);
   if (window._navLine) window._navLine.setLatLngs([[userLat,userLng],[z.lat,z.lng]]);
+}
+
+// Convert zone-center + bearing + distance → absolute lat/lng
+function destFromBearing(lat, lng, bearingDeg, distMeters) {
+  const R = 6371000, br = bearingDeg * Math.PI / 180;
+  const lat1 = lat * Math.PI / 180, lng1 = lng * Math.PI / 180;
+  const d = distMeters / R;
+  const lat2 = Math.asin(Math.sin(lat1)*Math.cos(d) + Math.cos(lat1)*Math.sin(d)*Math.cos(br));
+  const lng2 = lng1 + Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(lat1), Math.cos(d) - Math.sin(lat1)*Math.sin(lat2));
+  return [lat2 * 180 / Math.PI, lng2 * 180 / Math.PI];
 }
 
 function getBearing(lat1, lng1, lat2, lng2) {
