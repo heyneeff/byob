@@ -1,1 +1,493 @@
- <meta http-equiv="refresh" content="0; url=listener.html">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="theme-color" content="#0a0a0a"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <title>BYOB — Free Party Platform</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;0,900;1,900&family=Roboto:wght@400;700&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root{
+      --bg:#0a0a0a;
+      --card:#111;
+      --card2:#161616;
+      --cream:#f0ebe1;
+      --orange:#f57e20;
+      --red:#ef3c23;
+      --teal:#00cc99;
+      --white:#fff;
+      --muted:#666;
+      --border:#222;
+      --text-dark:#1a1a1a;
+    }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-serif;min-height:100dvh;-webkit-font-smoothing:antialiased;}
+
+    /* ── HEADER ── */
+    .hdr{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 12px;position:sticky;top:0;z-index:100;background:rgba(10,10,10,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);}
+    .hdr-logo{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;letter-spacing:.04em;color:var(--white);}
+    .hdr-logo span{color:var(--orange);}
+    .hdr-actions{display:flex;gap:10px;align-items:center;}
+    .hdr-link{font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);text-decoration:none;}
+    .hdr-link:hover{color:var(--white);}
+    .hdr-dj{background:var(--orange);color:#000;padding:7px 14px;border-radius:20px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;transition:opacity .15s;}
+    .hdr-dj:hover{opacity:.85;}
+
+    /* ── HERO ── */
+    .hero{padding:0 16px;margin-top:16px;}
+    .hero-card{border-radius:20px;overflow:hidden;position:relative;background:linear-gradient(145deg,#1a1a1a 0%,#0f0f0f 100%);border:1px solid #222;min-height:300px;display:flex;flex-direction:column;justify-content:flex-end;padding:28px 24px 32px;}
+    .hero-bg-art{position:absolute;top:0;right:0;bottom:0;width:50%;background:linear-gradient(135deg,var(--orange) 0%,var(--red) 100%);opacity:.07;clip-path:polygon(30% 0%,100% 0%,100% 100%,0% 100%);pointer-events:none;}
+    .hero-eyebrow{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);margin-bottom:6px;position:relative;}
+    .hero-name{font-family:'Barlow Condensed',sans-serif;font-size:52px;font-weight:900;line-height:.92;letter-spacing:-.01em;text-transform:uppercase;color:var(--white);position:relative;margin-bottom:6px;}
+    .hero-sub{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.06em;position:relative;margin-bottom:18px;}
+    .hero-meta{display:flex;gap:8px;flex-wrap:wrap;position:relative;margin-bottom:22px;}
+    .hero-chip{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.13);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:700;color:rgba(255,255,255,.75);letter-spacing:.04em;}
+    .hero-chip.free{background:rgba(0,204,153,.12);border-color:var(--teal);color:var(--teal);}
+    .hero-chip.paid{background:rgba(245,126,32,.1);border-color:var(--orange);color:var(--orange);}
+    .hero-chip.locked{background:rgba(239,60,35,.08);border-color:rgba(239,60,35,.25);color:rgba(239,60,35,.7);}
+    .hero-cta{display:inline-block;background:var(--orange);color:#000;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;padding:14px 32px;border-radius:12px;text-decoration:none;border:none;cursor:pointer;position:relative;transition:transform .12s,opacity .12s;}
+    .hero-cta:active{transform:scale(.97);}
+    .hero-cta.notify{background:rgba(255,255,255,.1);color:var(--white);border:1.5px solid rgba(255,255,255,.2);}
+    .hero-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:240px;text-align:center;}
+    .hero-empty-title{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;text-transform:uppercase;color:rgba(255,255,255,.13);}
+    .hero-empty-sub{font-size:13px;color:var(--muted);}
+
+    /* ── FILTERS ── */
+    .filters{padding:16px 16px 0;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+    .filters::-webkit-scrollbar{display:none;}
+    .filter-chip{flex-shrink:0;padding:8px 16px;border-radius:20px;border:1.5px solid var(--border);background:transparent;color:rgba(255,255,255,.45);font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;cursor:pointer;transition:all .15s;white-space:nowrap;}
+    .filter-chip.active{background:var(--white);border-color:var(--white);color:#000;}
+    .filter-chip:hover:not(.active){border-color:#444;color:var(--white);}
+
+    /* ── SECTION HEADER ── */
+    .section-hdr{display:flex;align-items:baseline;justify-content:space-between;padding:24px 20px 10px;}
+    .section-title{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;}
+    .section-count{font-size:12px;color:var(--muted);}
+
+    /* ── EVENT CARDS ── */
+    .event-grid{padding:0 16px 16px;display:flex;flex-direction:column;gap:12px;}
+
+    .evt-card{border-radius:16px;overflow:hidden;background:var(--cream);color:var(--text-dark);cursor:pointer;transition:transform .15s;}
+    .evt-card:active{transform:scale(.99);}
+    .evt-accent-bar{height:4px;}
+    .evt-card-inner{padding:20px 20px 22px;}
+    .evt-badge-row{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+    .evt-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;}
+    .evt-badge.free{background:#000;color:var(--teal);}
+    .evt-badge.price{background:#000;color:var(--orange);}
+    .evt-badge.upcoming{background:rgba(0,0,0,.08);color:#666;}
+    .evt-badge.tonight{background:var(--red);color:#fff;}
+    .evt-badge.city{background:rgba(0,0,0,.06);color:#777;}
+    .evt-name{font-family:'Barlow Condensed',sans-serif;font-size:34px;font-weight:900;line-height:.95;letter-spacing:-.01em;text-transform:uppercase;color:var(--text-dark);margin-bottom:4px;}
+    .evt-artist{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;letter-spacing:.08em;color:#777;margin-bottom:14px;text-transform:uppercase;}
+    .evt-info-row{margin-bottom:18px;display:flex;flex-direction:column;gap:6px;}
+    .evt-info-item{display:flex;flex-direction:column;gap:1px;}
+    .evt-info-label{font-size:9px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:#aaa;}
+    .evt-info-val{font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:700;color:var(--text-dark);}
+    .evt-loc-locked{font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:#aaa;}
+    .evt-actions{display:flex;gap:8px;flex-wrap:wrap;}
+    .evt-cta{display:inline-block;padding:12px 24px;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;text-decoration:none;border:none;cursor:pointer;transition:opacity .15s;}
+    .evt-cta.primary{background:var(--orange);color:#000;}
+    .evt-cta.primary:hover{opacity:.85;}
+    .evt-cta.notify-btn{background:transparent;border:1.5px solid #ccc;color:#666;padding:11px 18px;}
+    .evt-cta.notify-btn:hover{border-color:#999;color:#333;}
+
+    /* dark variant */
+    .evt-card.dark{background:var(--card);color:var(--white);}
+    .evt-card.dark .evt-name{color:var(--white);}
+    .evt-card.dark .evt-artist{color:var(--muted);}
+    .evt-card.dark .evt-info-label{color:#444;}
+    .evt-card.dark .evt-info-val{color:var(--white);}
+    .evt-card.dark .evt-badge.upcoming{background:rgba(255,255,255,.06);color:var(--muted);}
+    .evt-card.dark .evt-badge.city{background:rgba(255,255,255,.06);color:var(--muted);}
+    .evt-card.dark .evt-loc-locked{color:var(--muted);}
+    .evt-card.dark .evt-cta.notify-btn{border-color:#333;color:var(--muted);}
+    .evt-card.dark .evt-cta.notify-btn:hover{border-color:#666;color:var(--white);}
+
+    /* ── NOTIFY MODAL ── */
+    .notify-modal{display:none;position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);align-items:flex-end;justify-content:center;}
+    .notify-modal.open{display:flex;}
+    .notify-sheet{background:var(--card2);border-top:3px solid var(--teal);border-radius:20px 20px 0 0;padding:24px 24px 50px;width:100%;max-width:480px;position:relative;}
+    .notify-close{position:absolute;top:14px;right:18px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;}
+    .notify-title{font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--white);margin-bottom:4px;}
+    .notify-sub{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5;}
+    .notify-input{width:100%;background:#111;border:1.5px solid #333;border-radius:10px;padding:13px 14px;color:var(--white);font-size:16px;outline:none;font-family:'Roboto',sans-serif;margin-bottom:10px;}
+    .notify-input:focus{border-color:var(--teal);}
+    .notify-submit{width:100%;padding:15px;background:var(--teal);color:#000;border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.1em;cursor:pointer;margin-bottom:8px;}
+    .notify-cancel{width:100%;padding:12px;background:transparent;color:var(--muted);border:none;font-family:'Barlow Condensed',sans-serif;font-size:15px;cursor:pointer;}
+
+    /* ── ADD TO HOME SCREEN ── */
+    .a2hs{position:fixed;bottom:0;left:0;right:0;z-index:400;background:var(--card2);border-top:2px solid var(--orange);padding:16px 20px 36px;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
+    .a2hs.show{transform:translateY(0);}
+    .a2hs-inner{display:flex;align-items:center;gap:14px;}
+    .a2hs-icon{width:46px;height:46px;background:var(--orange);border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;}
+    .a2hs-text{flex:1;}
+    .a2hs-text strong{display:block;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--white);margin-bottom:2px;}
+    .a2hs-text span{font-size:12px;color:var(--muted);line-height:1.4;}
+    .a2hs-got{flex-shrink:0;background:var(--orange);color:#000;border:none;border-radius:8px;padding:9px 16px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;}
+    .a2hs-x{position:absolute;top:10px;right:14px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer;line-height:1;}
+
+    /* ── EMPTY / LOADING ── */
+    .empty-state{padding:56px 24px;text-align:center;}
+    .empty-icon{font-size:44px;margin-bottom:12px;}
+    .empty-title{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;text-transform:uppercase;color:rgba(255,255,255,.18);margin-bottom:8px;}
+    .empty-sub{font-size:13px;color:var(--muted);}
+    .loading-state{padding:60px 24px;text-align:center;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:rgba(255,255,255,.12);}
+
+    /* ── TOAST ── */
+    .toast{position:fixed;top:80px;left:50%;transform:translateX(-50%) translateY(-20px);background:var(--teal);color:#000;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;padding:11px 22px;border-radius:10px;z-index:999;letter-spacing:.08em;opacity:0;transition:all .25s;pointer-events:none;white-space:nowrap;}
+    .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+    /* ── FOOTER ── */
+    .footer{padding:32px 24px 60px;border-top:1px solid var(--border);margin-top:12px;}
+    .footer-logo{font-family:'Barlow Condensed',sans-serif;font-size:30px;font-weight:900;color:rgba(255,255,255,.12);margin-bottom:6px;}
+    .footer-sub{font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.5;}
+    .footer-links{display:flex;gap:18px;}
+    .footer-link{font-size:12px;color:var(--muted);text-decoration:none;letter-spacing:.05em;}
+    .footer-link:hover{color:var(--white);}
+
+    @media(min-width:640px){
+      .event-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+      .event-grid>.evt-card:first-child{grid-column:1/-1;}
+    }
+  </style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="hdr-logo">BYOB<span>.</span></div>
+  <nav class="hdr-actions">
+    <a class="hdr-link" href="listener.html">Open App</a>
+    <a class="hdr-link hdr-dj" href="playmin.html">DJ Login</a>
+  </nav>
+</header>
+
+<section class="hero" id="hero-section">
+  <div class="hero-card"><div class="hero-empty"><div style="color:rgba(255,255,255,.12);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;">Loading…</div></div></div>
+</section>
+
+<div class="filters" id="filter-row">
+  <button class="filter-chip active" data-filter="all" onclick="setFilter('all',this)">All</button>
+  <button class="filter-chip" data-filter="free" onclick="setFilter('free',this)">Free</button>
+  <button class="filter-chip" data-filter="tonight" onclick="setFilter('tonight',this)">Tonight</button>
+  <button class="filter-chip" data-filter="weekend" onclick="setFilter('weekend',this)">This Weekend</button>
+</div>
+
+<div class="section-hdr">
+  <span class="section-title">Upcoming</span>
+  <span class="section-count" id="event-count"></span>
+</div>
+<div class="event-grid" id="event-grid">
+  <div class="loading-state">Loading…</div>
+</div>
+
+<footer class="footer">
+  <div class="footer-logo">BYOB</div>
+  <div class="footer-sub">Bring Your Own Boombox.<br>Geofenced parties, no infrastructure required.</div>
+  <div class="footer-links">
+    <a class="footer-link" href="listener.html">Open App</a>
+    <a class="footer-link" href="playmin.html">For DJs</a>
+  </div>
+</footer>
+
+<!-- NOTIFY MODAL -->
+<div class="notify-modal" id="notify-modal" onclick="if(event.target===this)closeNotify()">
+  <div class="notify-sheet">
+    <button class="notify-close" onclick="closeNotify()">✕</button>
+    <div class="notify-title" id="notify-event-name">Get Notified</div>
+    <div class="notify-sub">Drop your number or email — we'll hit you when the location drops.</div>
+    <input class="notify-input" id="notify-contact" type="text" placeholder="Phone or email" autocomplete="email"/>
+    <button class="notify-submit" onclick="submitNotify()">Notify Me 🔔</button>
+    <button class="notify-cancel" onclick="closeNotify()">Maybe later</button>
+  </div>
+</div>
+
+<!-- ADD TO HOME SCREEN BANNER -->
+<div class="a2hs" id="a2hs">
+  <button class="a2hs-x" onclick="dismissA2HS()">✕</button>
+  <div class="a2hs-inner">
+    <div class="a2hs-icon">🎛️</div>
+    <div class="a2hs-text">
+      <strong>Add BYOB to your home screen</strong>
+      <span>Tap <strong>Share ↑</strong> then <strong>"Add to Home Screen"</strong> for the full experience</span>
+    </div>
+    <button class="a2hs-got" onclick="dismissA2HS()">Got it</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = 'https://ohacvuwzvuifpyqckise.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTA2MDQwMjMsImV4cCI6MjAyNjE4MDAyM30.1oSXBRBNRPIAB2RLFTzaFoB6wKCaT9HoISSznhTCDHw';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let _allEvents = [];
+let _activeFilter = 'all';
+let _notifyEventId = null;
+let _toastTimer = null;
+
+// ── TOAST ─────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── FILTERS ───────────────────────────────────────────────
+function injectCityChips(events) {
+  const cities = [...new Set(events.map(e => e.city).filter(Boolean))];
+  const row = document.getElementById('filter-row');
+  row.querySelectorAll('[data-city]').forEach(el => el.remove());
+  cities.forEach(city => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-chip';
+    btn.setAttribute('data-city', city);
+    btn.setAttribute('data-filter', 'city:' + city);
+    btn.textContent = city;
+    btn.onclick = () => setFilter('city:' + city, btn);
+    row.appendChild(btn);
+  });
+}
+
+function setFilter(f, btn) {
+  _activeFilter = f;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  renderGrid(_allEvents);
+}
+
+function applyFilter(events) {
+  const now = Date.now();
+  if (_activeFilter === 'all') return events;
+  if (_activeFilter === 'free') return events.filter(e => !e.ticket_price || parseFloat(e.ticket_price) === 0);
+  if (_activeFilter === 'tonight') {
+    const end = new Date(); end.setHours(23, 59, 59, 999);
+    return events.filter(e => { const s = new Date(e.event_start); return s >= new Date(now - 3600000) && s <= end; });
+  }
+  if (_activeFilter === 'weekend') {
+    const d = new Date(), day = d.getDay();
+    const fri = new Date(d); fri.setDate(d.getDate() + ((5 - day + 7) % 7 || 0)); fri.setHours(0, 0, 0, 0);
+    const sun = new Date(fri); sun.setDate(fri.getDate() + 2); sun.setHours(23, 59, 59, 999);
+    return events.filter(e => { const s = new Date(e.event_start); return s >= fri && s <= sun; });
+  }
+  if (_activeFilter.startsWith('city:')) {
+    return events.filter(e => e.city === _activeFilter.slice(5));
+  }
+  return events;
+}
+
+// ── REVEAL LOGIC ──────────────────────────────────────────
+// Free events: reveal location at location_reveal_at
+// Paid events: location only reveals after ticket purchase — stays locked on front page
+function revealState(e) {
+  const now = Date.now();
+  const isFree = !e.ticket_price || parseFloat(e.ticket_price) === 0;
+  const pastReveal = now >= new Date(e.location_reveal_at).getTime();
+  if (isFree && pastReveal) return 'revealed';
+  if (!isFree) return 'paid';
+  return 'pending';
+}
+
+function fmtDate(iso, short) {
+  const d = new Date(iso);
+  return short
+    ? d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function countdown(iso) {
+  const diff = new Date(iso).getTime() - Date.now();
+  if (diff <= 0) return 'Now';
+  const h = Math.floor(diff / 3600000), m = Math.floor((diff % 3600000) / 60000);
+  if (h > 48) return Math.floor(h / 24) + 'd away';
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm';
+}
+
+function isTonight(iso) {
+  return new Date(iso).toDateString() === new Date().toDateString();
+}
+
+// ── HERO ──────────────────────────────────────────────────
+function renderHero(events) {
+  const el = document.getElementById('hero-section');
+  if (!events.length) {
+    el.innerHTML = `<div class="hero-card"><div class="hero-bg-art"></div><div class="hero-empty">
+      <div class="hero-empty-title">No events yet</div>
+      <div style="font-size:13px;color:var(--muted)">Check back soon — something's brewing.</div>
+    </div></div>`;
+    return;
+  }
+  const e = events.find(ev => new Date(ev.event_start) >= new Date(Date.now() - 3600000)) || events[0];
+  const state = revealState(e);
+  const isFree = !e.ticket_price || parseFloat(e.ticket_price) === 0;
+  const tonight = isTonight(e.event_start);
+  const artists = e.artists?.join(', ') || '';
+
+  let locChip = '', cta = '';
+  if (state === 'revealed') {
+    locChip = `<span class="hero-chip">📍 ${e.city || 'Location revealed'}</span>`;
+    cta = `<a class="hero-cta" href="listener.html">Get In${isFree ? ' — Free' : ''} →</a>`;
+  } else if (state === 'paid') {
+    locChip = `<span class="hero-chip locked">🔒 Location unlocks with ticket</span>`;
+    cta = `<button class="hero-cta notify" onclick="openNotify('${e.id}','${e.name.replace(/'/g,"\\'").replace(/"/g,"&quot;")}')">Get Notified 🔔</button>`;
+  } else {
+    locChip = `<span class="hero-chip">📍 Drops ${fmtDate(e.location_reveal_at, true)}</span>`;
+    cta = `<button class="hero-cta notify" onclick="openNotify('${e.id}','${e.name.replace(/'/g,"\\'").replace(/"/g,"&quot;")}')">Get Notified 🔔</button>`;
+  }
+
+  el.innerHTML = `<div class="hero-card">
+    <div class="hero-bg-art"></div>
+    <div class="hero-eyebrow">${tonight ? '🔴 Tonight' : 'Coming Up'}</div>
+    <div class="hero-name">${e.name}</div>
+    ${artists ? `<div class="hero-sub">${artists}</div>` : ''}
+    <div class="hero-meta">
+      <span class="hero-chip">📅 ${fmtDate(e.event_start)}</span>
+      ${locChip}
+      <span class="hero-chip ${isFree ? 'free' : 'paid'}">${isFree ? 'FREE' : 'From $' + parseFloat(e.ticket_price).toFixed(0)}</span>
+    </div>
+    ${cta}
+  </div>`;
+}
+
+// ── EVENT GRID ─────────────────────────────────────────────
+const ACCENT_COLORS = ['#f57e20', '#00cc99', '#ef3c23', '#a78bfa'];
+
+function renderGrid(events) {
+  const filtered = applyFilter(events);
+  document.getElementById('event-count').textContent = filtered.length + ' event' + (filtered.length !== 1 ? 's' : '');
+  const grid = document.getElementById('event-grid');
+
+  if (!filtered.length) {
+    grid.innerHTML = `<div class="empty-state"><div class="empty-icon">🥁</div>
+      <div class="empty-title">Nothing here</div>
+      <div class="empty-sub">Try a different filter</div></div>`;
+    return;
+  }
+
+  grid.innerHTML = filtered.map((e, i) => {
+    const state = revealState(e);
+    const isFree = !e.ticket_price || parseFloat(e.ticket_price) === 0;
+    const tonight = isTonight(e.event_start);
+    const artists = e.artists?.join(' · ') || '';
+    const dark = i % 3 !== 0;
+    const accent = ACCENT_COLORS[i % ACCENT_COLORS.length];
+    const safeName = e.name.replace(/'/g,"\\'").replace(/"/g,"&quot;");
+
+    let locHtml = '', ctaHtml = '';
+    if (state === 'revealed') {
+      locHtml = `<div class="evt-info-item"><div class="evt-info-label">Location</div><div class="evt-info-val">📍 ${e.city || 'Revealed — open app'}</div></div>`;
+      ctaHtml = `<a class="evt-cta primary" href="listener.html">Get In →</a>
+                 <button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">🔔</button>`;
+    } else if (state === 'paid') {
+      locHtml = `<div class="evt-loc-locked">🔒 Buy ticket to unlock location</div>`;
+      ctaHtml = `<button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">Get Notified 🔔</button>`;
+    } else {
+      locHtml = `<div class="evt-info-item"><div class="evt-info-label">Location drops in</div><div class="evt-info-val">⏳ ${countdown(e.location_reveal_at)}</div></div>`;
+      ctaHtml = `<button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">Get Notified 🔔</button>`;
+    }
+
+    return `<div class="evt-card${dark ? ' dark' : ''}">
+      <div class="evt-accent-bar" style="background:${accent}"></div>
+      <div class="evt-card-inner">
+        <div class="evt-badge-row">
+          <span class="evt-badge ${tonight ? 'tonight' : 'upcoming'}">${tonight ? 'Tonight' : fmtDate(e.event_start, true)}</span>
+          <span class="evt-badge ${isFree ? 'free' : 'price'}">${isFree ? 'FREE' : '$' + parseFloat(e.ticket_price).toFixed(0)}</span>
+          ${e.city ? `<span class="evt-badge city">${e.city}</span>` : ''}
+        </div>
+        <div class="evt-name">${e.name}</div>
+        ${artists ? `<div class="evt-artist">${artists}</div>` : ''}
+        <div class="evt-info-row">${locHtml}</div>
+        <div class="evt-actions">${ctaHtml}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ── LOAD EVENTS ───────────────────────────────────────────
+async function loadEvents() {
+  try {
+    const { data, error } = await db
+      .from('events')
+      .select('id,name,artists,description,event_start,location_reveal_at,lat,lng,radius_m,zone_id,ticket_price,city')
+      .gte('event_start', new Date(Date.now() - 4 * 3600 * 1000).toISOString())
+      .order('event_start', { ascending: true })
+      .limit(20);
+    if (error) throw error;
+    _allEvents = data || [];
+    injectCityChips(_allEvents);
+    renderHero(_allEvents);
+    renderGrid(_allEvents);
+  } catch(err) {
+    document.getElementById('event-grid').innerHTML = `<div class="empty-state">
+      <div class="empty-icon">⚡</div>
+      <div class="empty-title">Couldn't load</div>
+      <div class="empty-sub">${err.message}</div></div>`;
+  }
+}
+
+// ── NOTIFY ────────────────────────────────────────────────
+function openNotify(eventId, eventName) {
+  _notifyEventId = eventId;
+  document.getElementById('notify-event-name').textContent = eventName;
+  document.getElementById('notify-contact').value = '';
+  document.getElementById('notify-modal').classList.add('open');
+  setTimeout(() => document.getElementById('notify-contact').focus(), 100);
+}
+
+function closeNotify() {
+  document.getElementById('notify-modal').classList.remove('open');
+}
+
+async function submitNotify() {
+  const contact = document.getElementById('notify-contact').value.trim();
+  if (!contact) return;
+  // Persisted locally — push notification backend is a future feature
+  const stored = JSON.parse(localStorage.getItem('byob_notify') || '[]');
+  if (!stored.find(s => s.eventId === _notifyEventId && s.contact === contact)) {
+    stored.push({ eventId: _notifyEventId, contact, at: Date.now() });
+    localStorage.setItem('byob_notify', JSON.stringify(stored));
+  }
+  closeNotify();
+  showToast('🔔 You\'re on the list');
+}
+
+// ── ADD TO HOME SCREEN ────────────────────────────────────
+function showA2HSIfNeeded() {
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const isStandalone = window.navigator.standalone === true;
+  const dismissed = localStorage.getItem('byob_a2hs');
+  if (isIOS && !isStandalone && !dismissed) {
+    setTimeout(() => document.getElementById('a2hs').classList.add('show'), 4000);
+  }
+}
+
+function dismissA2HS() {
+  document.getElementById('a2hs').classList.remove('show');
+  localStorage.setItem('byob_a2hs', '1');
+}
+
+// ── LIVE UPDATES ──────────────────────────────────────────
+function subscribeToUpdates() {
+  db.channel('events_public')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' }, loadEvents)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events' }, loadEvents)
+    .subscribe();
+}
+
+// ── INIT ─────────────────────────────────────────────────
+loadEvents();
+showA2HSIfNeeded();
+subscribeToUpdates();
+// Re-render reveal countdowns every minute without refetching
+setInterval(() => { if (_allEvents.length) { renderHero(_allEvents); renderGrid(_allEvents); } }, 60000);
+</script>
+</body>
+</html>

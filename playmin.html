@@ -327,7 +327,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Event starts</div><input class="zdp-name" id="evt-start" type="datetime-local" style="margin:0;font-size:11px;"/></div>
     <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Reveal location at</div><input class="zdp-name" id="evt-reveal" type="datetime-local" style="margin:0;font-size:11px;"/></div>
   </div>
-  <div style="font-size:10px;color:var(--muted);margin:8px 0;">Location uses current zone center.</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+    <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">City (shown on front page)</div><input class="zdp-name" id="evt-city" type="text" placeholder="e.g. Denver, CO" style="margin:0;font-size:11px;"/></div>
+    <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Ticket price (blank = free)</div><input class="zdp-name" id="evt-price" type="number" min="0" step="1" placeholder="0" style="margin:0;font-size:11px;"/></div>
+  </div>
+  <div style="font-size:10px;color:var(--muted);margin:8px 0;">Location uses current zone center. Free events reveal at the reveal time; paid events reveal after purchase.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <button class="zdp-confirm" style="background:var(--red);" onclick="confirmEvent()">✓ Schedule</button>
     <button class="zdp-cancel" onclick="closeEventPanel()">✕ Cancel</button>
@@ -1982,8 +1986,11 @@ async function confirmEvent(){
   const lat=activeZone?.lat||draftCenter?.lat||userLat;
   const lng=activeZone?.lng||draftCenter?.lng||userLng;
   if(!lat){showToast('Set a zone location first');return;}
+  const city=document.getElementById('evt-city').value.trim()||null;
+  const priceRaw=document.getElementById('evt-price').value.trim();
+  const ticket_price=priceRaw&&parseFloat(priceRaw)>0?parseFloat(priceRaw):null;
   try{
-    const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at:new Date(reveal).toISOString(),lat,lng,radius_m:activeZone?.radius_m||draftRadius||200,zone_id:activeZone?.id||null,created_by:currentUser.id});
+    const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at:new Date(reveal).toISOString(),lat,lng,radius_m:activeZone?.radius_m||draftRadius||200,zone_id:activeZone?.id||null,created_by:currentUser.id,city,ticket_price});
     if(error)throw error;
     closeEventPanel();showToast('"'+name+'" scheduled 📅');loadEvents();
   }catch(e){showToast('Error: '+e.message);}
