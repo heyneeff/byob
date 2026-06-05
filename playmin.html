@@ -708,6 +708,14 @@ const DENVER=[39.7392,-104.9903];
 let leafletMap=null,userMarker=null,draftCircle=null,draftMarker=null,zoneCircles={};
 let activeZone=null,currentUser=null;
 let _clockOffset=0;
+let _zonesGlobalSubbed=false;
+function initZonesGlobalSub(){
+  if(_zonesGlobalSubbed)return;_zonesGlobalSubbed=true;
+  db.channel('zones_global')
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'zones'},()=>{if(window._mapInited&&leafletMap)loadZones();})
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones'},({new:zn})=>{if(!zn.active&&window._mapInited&&leafletMap)loadZones();})
+    .subscribe();
+}
 async function measureClockOffset(){
   try{const t0=Date.now();const{data}=await db.rpc('now').single();const t1=Date.now();if(!data)return;_clockOffset=new Date(data).getTime()-(t0+(t1-t0)/2);}
   catch(e){_clockOffset=0;}
@@ -741,6 +749,7 @@ window.addEventListener('DOMContentLoaded', async()=>{
       document.getElementById('dj-app').style.display='block';
       loadDemoMode();
       measureClockOffset();setInterval(measureClockOffset,60000);
+      initZonesGlobalSub();
 setTimeout(()=>switchPanel('setup',document.querySelector('[data-panel="setup"]')),50);
 
     }
@@ -767,6 +776,7 @@ async function handleDJAuth(){
     loadDemoMode();
     loadEvents().catch(()=>{});
     measureClockOffset();setInterval(measureClockOffset,60000);
+    initZonesGlobalSub();
     setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
     showToast('Welcome DJ '+currentUser.email.split('@')[0]+' 🎛️');
   } catch(e) {

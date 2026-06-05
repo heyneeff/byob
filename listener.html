@@ -2201,6 +2201,24 @@ function launchApp() {
 
   initMap();
   loadZones(false);
+
+  // Live zone list — reload when a zone is created or deactivated.
+  // Mid-session updates (track change, listener count) are handled by the
+  // per-zone _zoneChannel and don't need a full list refresh.
+  let _zonesRefreshTimer = null;
+  function scheduleZoneRefresh() {
+    clearTimeout(_zonesRefreshTimer);
+    _zonesRefreshTimer = setTimeout(() => loadZones(), 400);
+  }
+  db.channel('zones_global')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'zones' }, scheduleZoneRefresh)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zones' }, ({ new: zn }) => {
+      // Only reload for deactivations or zones we haven't seen yet.
+      // Frequent updates (track, listeners, playback) are skipped here.
+      if (!zn.active || !knownZones.find(z => z.id === zn.id)) scheduleZoneRefresh();
+    })
+    .subscribe();
+
   // Keep Supabase awake — ping every 2 minutes
   const keepAlive = async () => { try { await db.from('zones').select('id').limit(1);  } catch(e) { console.warn('babble:', e.message, e.stack); }
 }
