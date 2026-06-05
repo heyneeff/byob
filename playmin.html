@@ -486,7 +486,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <div id="slot-4"><span id="slot-4-name"></span><span id="slot-4-controls"></span></div>
     </div>
 
-    <div id="zone-slots" style="padding:4px 5px;display:flex;flex-direction:column;gap:2px;">
+    <div id="zone-slots" style="padding:4px 5px;display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
       <div class="slot-clip" id="clip-C" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'C')" onclick="selectZoneSlot('C')">
         <div class="slot-clip-color" style="background:var(--orange);">C</div>
         <div class="slot-clip-name" id="clip-C-name">All speakers</div>
@@ -532,6 +532,14 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
         <button onclick="removeSlot()" style="width:28px;padding:5px 0;border:1px dashed var(--muted);border-radius:4px;background:transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:12px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)';" onmouseout="this.style.borderColor='var(--muted)';this.style.color='var(--muted)';">−</button>
       </div>
     </div>
+
+    <!-- Stems browser -->
+    <div style="border-top:1px solid var(--rim);flex-shrink:0;display:flex;align-items:center;gap:4px;padding:4px 7px;background:#0e0e0e;">
+      <span style="font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;flex:1;">STEMS</span>
+      <button onclick="document.getElementById('stem-file-input').click()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">+ UPLOAD</button>
+    </div>
+    <input class="sp-stems-search" id="stems-search" placeholder="search stems…" oninput="filterStems(this.value)"/>
+    <div class="sp-stems-list" id="sp-stems-list"></div>
   </div>
 
   <!-- LEFT HANDLE -->
@@ -819,6 +827,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     </div>
     <button onclick="openLibrary()" style="display:block;width:100%;padding:10px;background:#111;color:var(--orange);border:1px solid var(--orange);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;cursor:pointer;margin-bottom:8px;">📚 Track Library</button>
     <input type="file" id="file-input" multiple style="display:none;"/>
+    <input type="file" id="stem-file-input" multiple accept="audio/*" style="display:none;"/>
     <div class="upload-status-row"><span class="upload-status" id="upload-status"></span></div>
     <div class="device-row" id="device-row" style="display:none;">
       <select class="device-select" id="device-select"><option value="">— select audio input —</option></select>
@@ -2714,6 +2723,8 @@ function libHTML(filter=''){
 }
 // Real library — fetches from Supabase tracks table, falls back to demo TRACKS
 let _realTracks = [];  // cache
+let _libCrate = 'all'; // 'all' | 'songs' | 'stems'
+let _libFilter = '';
 
 async function fetchRealTracks() {
   if(!currentUser) return [];
@@ -2721,15 +2732,16 @@ async function fetchRealTracks() {
     const { data } = await db.from('tracks')
       .select('id,title,public_url,file_path,created_at')
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(200);
     if (data?.length) {
       return data.map((t,i) => ({
-        id: 'R'+i,
+        id: 'R'+t.id,
         name: t.title || t.file_path?.split('/').pop() || 'Track',
         artist: currentUser.email?.split('@')[0] || 'You',
         bpm: '—', key: '—', dur: '—',
         col: ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'][i%5],
-        url: t.public_url
+        url: t.public_url,
+        type: t.file_path?.startsWith('stems/') ? 'stem' : 'song'
       }));
     }
   } catch(e) { console.warn('Library fetch:', e.message); }
@@ -2737,27 +2749,23 @@ async function fetchRealTracks() {
 }
 
 function libHTML(tracks, filter='') {
-  const list = tracks.filter(t =>
-    t.name.toLowerCase().includes(filter.toLowerCase()) ||
-    t.artist.toLowerCase().includes(filter.toLowerCase())
-  );
-  if (!list.length) return `
-    <div class="lib-bar"><div class="crates">
-      <button class="crate active" onclick="crateActive(this)">All</button>
-      <button class="crate" onclick="crateActive(this)">★ Favs</button>
+  const q = filter.toLowerCase();
+  const list = tracks.filter(t => {
+    const matchesCrate = _libCrate==='all' || t.type===_libCrate || (!t.type && _libCrate==='songs');
+    const matchesSearch = !q || t.name.toLowerCase().includes(q) || (t.artist||'').toLowerCase().includes(q);
+    return matchesCrate && matchesSearch;
+  });
+  const crateBar = `<div class="lib-bar"><div class="crates">
+      <button class="crate ${_libCrate==='all'?'active':''}" onclick="setCrate('all',this)">All</button>
+      <button class="crate ${_libCrate==='songs'?'active':''}" onclick="setCrate('songs',this)">Songs</button>
+      <button class="crate ${_libCrate==='stems'?'active':''}" onclick="setCrate('stems',this)">Stems</button>
     </div>
-    <input class="lib-search" placeholder="🔍 Search…" oninput="filterLib(this.value)"/>
-    <button class="lib-upload" onclick="document.getElementById('file-input').click()">+ Upload</button>
-    </div>
-    <div style="padding:12px;font-size:11px;color:var(--muted);">No tracks yet — upload one in Setup ↓</div>`;
-
-  return `<div class="lib-bar"><div class="crates">
-      <button class="crate active" onclick="crateActive(this)">All</button>
-      <button class="crate" onclick="crateActive(this)">★ Favs</button>
-    </div>
-    <input class="lib-search" placeholder="🔍 Search…" oninput="filterLib(this.value)"/>
-    <button class="lib-upload" onclick="document.getElementById('file-input').click()">+ Upload</button>
-    </div>
+    <input class="lib-search" placeholder="🔍 Search…" oninput="filterLib(this.value)" value="${filter.replace(/"/g,'&quot;')}"/>
+    <button class="lib-upload" onclick="document.getElementById('file-input').click()">+ Song</button>
+    <button class="lib-upload" onclick="document.getElementById('stem-file-input').click()" style="background:var(--teal);">+ Stem</button>
+    </div>`;
+  if (!list.length) return crateBar + `<div style="padding:12px;font-size:11px;color:var(--muted);">Nothing here yet</div>`;
+  return crateBar + `
     <div class="lib-cols">
       <div class="lc">Title / Artist</div><div class="lc">BPM</div>
       <div class="lc">Key</div><div class="lc">Time</div>
@@ -2768,7 +2776,7 @@ function libHTML(tracks, filter='') {
         draggable="true" ondragstart="startDrag(event,'${t.id}')">
         <div class="tr-name">
           <div class="tr-col" style="background:${t.col};"></div>
-          <div class="tr-txt"><div class="tr-title">${t.name}</div><div class="tr-artist">${t.artist}</div></div>
+          <div class="tr-txt"><div class="tr-title">${t.name}</div><div class="tr-artist" style="color:${t.type==='stem'?'var(--teal)':'var(--muted2)'};">${t.type==='stem'?'◈ stem · ':''}${t.artist}</div></div>
         </div>
         <div class="tr-bpm">${t.bpm}</div>
         <div class="tr-key">${t.key}</div>
@@ -2794,16 +2802,20 @@ async function buildLibs(filter='') {
   buildStemsPanel();
 }
 
-function filterLib(v){ buildLibs(v); }
+function filterLib(v){ _libFilter=v; buildLibs(v); }
 function filterStems(v){ buildStemsPanel(v); }
+function setCrate(crate, btn){ _libCrate=crate; crateActive(btn); buildLibs(_libFilter); }
 
 // Compact stems panel for left column
 function buildStemsPanel(filter='') {
   const el = document.getElementById('sp-stems-list');
   if (!el) return;
-  const tracks = (_realTracks.length ? _realTracks : TRACKS)
-    .filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase()) || (t.artist||'').toLowerCase().includes(filter.toLowerCase()));
-  if (!tracks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px;text-align:center;">Nothing found</div>'; return; }
+  const pool = _realTracks.length ? _realTracks : TRACKS;
+  const stems = pool.filter(t => t.type === 'stem');
+  const source = stems.length ? stems : pool; // fall back to all if no stems uploaded yet
+  const q = filter.toLowerCase();
+  const tracks = source.filter(t => !q || t.name.toLowerCase().includes(q) || (t.artist||'').toLowerCase().includes(q));
+  if (!tracks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px;text-align:center;">No stems yet — upload above</div>'; return; }
   el.innerHTML = tracks.map(t => `
     <div class="stem-row" draggable="true" ondragstart="startDrag(event,'${t.id}')" title="${t.name} — ${t.artist||''}">
       <div class="stem-dot" style="background:${t.col||'#555'}"></div>
@@ -2867,9 +2879,40 @@ function crateActive(el){
 const _origFileInput = document.getElementById('file-input');
 if(_origFileInput){
   _origFileInput.addEventListener('change', ()=>{
-    setTimeout(()=>{ _realTracks=[]; buildLibs(); }, 3000); // refresh after upload
+    setTimeout(()=>{ _realTracks=[]; buildLibs(); }, 3000);
   });
 }
+
+// Stem upload handler
+document.getElementById('stem-file-input').addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  if (!currentUser) { showToast('Sign in first'); return; }
+  let done = 0;
+  for (const file of files) {
+    showToast('Uploading stem: ' + file.name.replace(/\.[^/.]+$/,'') + '…');
+    try {
+      const path = 'stems/' + currentUser.id + '/' + Date.now() + '_' + file.name;
+      const { error } = await db.storage.from('boombox').upload(path, file);
+      if (error) throw error;
+      const { data: urlData } = db.storage.from('boombox').getPublicUrl(path);
+      await db.from('tracks').insert({
+        user_id: currentUser.id,
+        zone_id: activeZone?.id || null,
+        title: file.name.replace(/\.[^/.]+$/, ''),
+        file_path: path,
+        public_url: urlData.publicUrl
+      });
+      done++;
+    } catch(err) { showToast('Upload failed: ' + err.message); }
+  }
+  if (done) {
+    showToast('✓ ' + done + ' stem' + (done>1?'s':'') + ' uploaded');
+    _realTracks = [];
+    setTimeout(() => buildLibs(), 800);
+  }
+  e.target.value = '';
+});
 
 // Initial load — deferred so currentUser is set
 setTimeout(()=>{ buildLibs(); initSpatialResize(); }, 800);
