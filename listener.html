@@ -3648,10 +3648,20 @@ async function measureClockOffset() {
     const t0 = Date.now();
     const { data, error } = await db.rpc('server_now').single();
     const t1 = Date.now();
-    if (error || !data) { console.warn('[clock] rpc error', error?.message); return; }
+    if (error || !data) {
+      showToast('clock rpc fail: ' + (error?.message || 'no data'));
+      return;
+    }
     const serverMs = new Date(data).getTime();
+    if (isNaN(serverMs)) {
+      showToast('clock parse fail: ' + JSON.stringify(data).slice(0, 60));
+      return;
+    }
     _clockOffset = serverMs - (t0 + (t1 - t0) / 2);
-  } catch(e) { console.warn('[clock] exception', e.message); }
+    showToast('clock ok: ' + _clockOffset.toFixed(0) + 'ms');
+  } catch(e) {
+    showToast('clock err: ' + e.message);
+  }
 }
 function syncedNow() { return Date.now() + _clockOffset; }
 
