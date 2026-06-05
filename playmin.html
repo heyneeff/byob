@@ -470,13 +470,64 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="panel active" id="panel-spatial">
 <div class="spatial-panel" id="spatial-panel">
 
-  <!-- LEFT: stems browser -->
-  <div class="sp-stems">
-    <div class="sp-stems-bar">
-      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;white-space:nowrap;">STEMS</span>
-      <input class="sp-stems-search" id="sp-stems-search" placeholder="search…" oninput="filterStems(this.value)"/>
+  <!-- LEFT: zone slots -->
+  <div class="sp-stems" style="background:#111;">
+    <div class="sp-stems-bar" style="justify-content:space-between;">
+      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">SLOTS</span>
+      <button onclick="broadcastAllZones()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;letter-spacing:.1em;padding:2px 7px;border:1px solid var(--orange);border-radius:3px;background:transparent;color:var(--orange);cursor:pointer;">⚡ ALL</button>
     </div>
-    <div class="sp-stems-list" id="sp-stems-list"></div>
+
+    <!-- hidden legacy stubs for JS compat -->
+    <div style="display:none">
+      <div id="slot-C"><span id="slot-C-name"></span><span id="slot-C-controls"></span></div>
+      <div id="slot-1"><span id="slot-1-name"></span><span id="slot-1-controls"></span></div>
+      <div id="slot-2"><span id="slot-2-name"></span><span id="slot-2-controls"></span></div>
+      <div id="slot-3"><span id="slot-3-name"></span><span id="slot-3-controls"></span></div>
+      <div id="slot-4"><span id="slot-4-name"></span><span id="slot-4-controls"></span></div>
+    </div>
+
+    <div id="zone-slots" style="padding:4px 5px;display:flex;flex-direction:column;gap:2px;">
+      <div class="slot-clip" id="clip-C" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'C')" onclick="selectZoneSlot('C')">
+        <div class="slot-clip-color" style="background:var(--orange);">C</div>
+        <div class="slot-clip-name" id="clip-C-name">All speakers</div>
+        <div class="slot-clip-acts">
+          <button class="slot-clip-btn play" onclick="playZone(event,'C')">▶</button>
+          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'C')">×</button>
+        </div>
+      </div>
+      <div class="slot-clip" id="clip-1" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'1')" onclick="selectZoneSlot('1')">
+        <div class="slot-clip-color" style="background:var(--teal);">1</div>
+        <div class="slot-clip-name" id="clip-1-name">Cluster 1</div>
+        <div class="slot-clip-acts">
+          <button class="slot-clip-btn play" onclick="playZone(event,'1')">▶</button>
+          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'1')">×</button>
+        </div>
+      </div>
+      <div class="slot-clip" id="clip-2" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'2')" onclick="selectZoneSlot('2')">
+        <div class="slot-clip-color" style="background:var(--red);">2</div>
+        <div class="slot-clip-name" id="clip-2-name">Cluster 2</div>
+        <div class="slot-clip-acts">
+          <button class="slot-clip-btn play" onclick="playZone(event,'2')">▶</button>
+          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'2')">×</button>
+        </div>
+      </div>
+      <div class="slot-clip" id="clip-3" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'3')" onclick="selectZoneSlot('3')">
+        <div class="slot-clip-color" style="background:#a78bfa;">3</div>
+        <div class="slot-clip-name" id="clip-3-name">Cluster 3</div>
+        <div class="slot-clip-acts">
+          <button class="slot-clip-btn play" onclick="playZone(event,'3')">▶</button>
+          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'3')">×</button>
+        </div>
+      </div>
+      <div class="slot-clip" id="clip-4" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'4')" onclick="selectZoneSlot('4')">
+        <div class="slot-clip-color" style="background:#f472b6;">4</div>
+        <div class="slot-clip-name" id="clip-4-name">Cluster 4</div>
+        <div class="slot-clip-acts">
+          <button class="slot-clip-btn play" onclick="playZone(event,'4')">▶</button>
+          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'4')">×</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- LEFT HANDLE -->
@@ -490,68 +541,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
   <!-- RIGHT: Ableton-style rack -->
   <div class="sp-rack" id="sp-rack">
-
-    <!-- SLOTS section -->
-    <div class="rack-section open" id="rack-slots">
-      <div class="rack-header" onclick="toggleRack('rack-slots')">
-        <span class="rack-header-label">Zone Slots</span>
-        <span class="rack-header-arrow">▶</span>
-      </div>
-      <div class="rack-body">
-        <!-- hidden legacy elements for JS compat -->
-        <div style="display:none">
-          <div id="slot-C"><span id="slot-C-name"></span><span id="slot-C-controls"></span></div>
-          <div id="slot-1"><span id="slot-1-name"></span><span id="slot-1-controls"></span></div>
-          <div id="slot-2"><span id="slot-2-name"></span><span id="slot-2-controls"></span></div>
-          <div id="slot-3"><span id="slot-3-name"></span><span id="slot-3-controls"></span></div>
-          <div id="slot-4"><span id="slot-4-name"></span><span id="slot-4-controls"></span></div>
-        </div>
-        <!-- Clip-style slot rows -->
-        <div id="zone-slots">
-          <div class="slot-clip" id="clip-C" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'C')" onclick="selectZoneSlot('C')">
-            <div class="slot-clip-color" style="background:var(--orange);">C</div>
-            <div class="slot-clip-name" id="clip-C-name">All speakers</div>
-            <div class="slot-clip-acts">
-              <button class="slot-clip-btn play" onclick="playZone(event,'C')">▶</button>
-              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'C')">×</button>
-            </div>
-          </div>
-          <div class="slot-clip" id="clip-1" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'1')" onclick="selectZoneSlot('1')">
-            <div class="slot-clip-color" style="background:var(--teal);">1</div>
-            <div class="slot-clip-name" id="clip-1-name">Cluster 1</div>
-            <div class="slot-clip-acts">
-              <button class="slot-clip-btn play" onclick="playZone(event,'1')">▶</button>
-              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'1')">×</button>
-            </div>
-          </div>
-          <div class="slot-clip" id="clip-2" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'2')" onclick="selectZoneSlot('2')">
-            <div class="slot-clip-color" style="background:var(--red);">2</div>
-            <div class="slot-clip-name" id="clip-2-name">Cluster 2</div>
-            <div class="slot-clip-acts">
-              <button class="slot-clip-btn play" onclick="playZone(event,'2')">▶</button>
-              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'2')">×</button>
-            </div>
-          </div>
-          <div class="slot-clip" id="clip-3" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'3')" onclick="selectZoneSlot('3')">
-            <div class="slot-clip-color" style="background:#a78bfa;">3</div>
-            <div class="slot-clip-name" id="clip-3-name">Cluster 3</div>
-            <div class="slot-clip-acts">
-              <button class="slot-clip-btn play" onclick="playZone(event,'3')">▶</button>
-              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'3')">×</button>
-            </div>
-          </div>
-          <div class="slot-clip" id="clip-4" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'4')" onclick="selectZoneSlot('4')">
-            <div class="slot-clip-color" style="background:#f472b6;">4</div>
-            <div class="slot-clip-name" id="clip-4-name">Cluster 4</div>
-            <div class="slot-clip-acts">
-              <button class="slot-clip-btn play" onclick="playZone(event,'4')">▶</button>
-              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'4')">×</button>
-            </div>
-          </div>
-        </div>
-        <button onclick="broadcastAllZones()" class="rack-btn active" style="margin-top:2px;width:100%;border-radius:4px;padding:6px;">⚡ Broadcast All</button>
-      </div>
-    </div>
 
     <!-- MODE section -->
     <div class="rack-section open" id="rack-mode">
