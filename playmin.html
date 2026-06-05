@@ -717,8 +717,8 @@ function initZonesGlobalSub(){
     .subscribe();
 }
 async function measureClockOffset(){
-  try{const t0=Date.now();const{data}=await db.rpc('now').single();const t1=Date.now();if(!data)return;_clockOffset=new Date(data).getTime()-(t0+(t1-t0)/2);}
-  catch(e){_clockOffset=0;}
+  try{const t0=Date.now();const{data,error}=await db.rpc('server_now').single();const t1=Date.now();if(error||!data)return;_clockOffset=new Date(data).getTime()-(t0+(t1-t0)/2);}
+  catch(e){}
 }
 function serverNow(){return Date.now()+_clockOffset;}
 let userLat=null,userLng=null;

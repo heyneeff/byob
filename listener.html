@@ -3646,12 +3646,12 @@ let _scatterOffsetMs = 0;
 async function measureClockOffset() {
   try {
     const t0 = Date.now();
-    const { data } = await db.rpc('now').single();  // returns server timestamp
+    const { data, error } = await db.rpc('server_now').single();
     const t1 = Date.now();
-    if (!data) return;
+    if (error || !data) { console.warn('[clock] rpc error', error?.message); return; }
     const serverMs = new Date(data).getTime();
     _clockOffset = serverMs - (t0 + (t1 - t0) / 2);
-  } catch(e) { _clockOffset = 0; }
+  } catch(e) { console.warn('[clock] exception', e.message); }
 }
 function syncedNow() { return Date.now() + _clockOffset; }
 
