@@ -530,9 +530,6 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .boom-menu-item.danger{color:var(--red);}
 /* ── CALIBRATION NUDGE ── */
 .cal-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;}
-.cal-btn{width:36px;height:28px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--muted);font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s;}
-.cal-btn:active{background:var(--orange);color:#000;border-color:var(--orange);}
-.cal-label{font-size:9px;color:var(--muted);letter-spacing:.12em;text-transform:uppercase;min-width:60px;text-align:center;}
 /* ── TAP BANNER ── */
 #tap-banner{display:none;position:fixed;bottom:0;left:0;right:0;z-index:900;background:var(--orange);color:#000;font-family:'Roboto Condensed',sans-serif;font-size:24px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:28px 20px 36px;text-align:center;box-shadow:0 -4px 40px rgba(245,126,32,.7);cursor:pointer;animation:tapPulse 1.4s ease-in-out infinite;}
 @keyframes tapPulse{0%,100%{opacity:1}50%{opacity:.85}}
@@ -760,7 +757,7 @@ audio{display:none;}
     <button class="hud-act" onclick="hudForceEnter()">⚡ ENTER</button>
     <button class="hud-act" onclick="hudForceExit()">🚪 EXIT</button>
     <button class="hud-act" onclick="hudReSeek()">🎯 RE-SEEK</button>
-    <button class="hud-act" onclick="hudResetCal()">🔄 RESET CAL</button>
+    <button class="hud-act" onclick="hudResetCal()">🔄 RESET</button>
   </div>
 </div>
 <div id="toast"></div>
@@ -1046,23 +1043,6 @@ requestAnimationFrame(rafLoop);
 // ════════════════════════════════════════════════════════════
 // CALIBRATION NUDGE
 // ════════════════════════════════════════════════════════════
-let _calOffset = parseFloat(localStorage.getItem('byob_cal_offset') || '0');
-function nudge(deltaSeconds) {
-  _calOffset += deltaSeconds;
-  _calOffset = Math.max(-3, Math.min(3, _calOffset));
-  localStorage.setItem('byob_cal_offset', _calOffset.toString());
-  updateCalLabel();
-  if (audio.duration && !audio.paused) audio.currentTime = Math.max(0, audio.currentTime + deltaSeconds);
-  // Save as device latency so next zone entry is automatic
-  _deviceLatencyMs = -_calOffset * 1000;
-  if (_deviceLatencyMs > 0) localStorage.setItem('byob_device_latency', _deviceLatencyMs.toString());
-}
-
-function updateCalLabel() {
-  const ms = Math.round(_calOffset * 1000);
-  const el = document.getElementById('cal-label');
-  if (el) { el.textContent = (ms >= 0 ? '+' : '') + ms + ' ms'; el.style.color = ms === 0 ? 'var(--muted)' : 'var(--orange)'; }
-}
 
 // ════════════════════════════════════════════════════════════
 // TAP BANNER
@@ -1241,11 +1221,11 @@ function seekToSync(startedAt, playAt, playFromS) {
   let seekTo = 0;
   if (playAt && playFromS !== undefined) {
     const delayMs = playAt - syncedNow();
-    seekTo = (playFromS || 0) + _calOffset + SEEK_STAB_S;
+    seekTo = (playFromS || 0) + SEEK_STAB_S;
     if (delayMs < 0) seekTo += (-delayMs / 1000);
   } else if (startedAt) {
     const elapsed = (syncedNow() - new Date(startedAt).getTime()) / 1000;
-        seekTo = elapsed + _calOffset - (_deviceLatencyMs / 1000) + SEEK_STAB_S - (_scatterOffsetMs / 1000);
+        seekTo = elapsed - (_deviceLatencyMs / 1000) + SEEK_STAB_S - (_scatterOffsetMs / 1000);
 
   }
   audio.currentTime = Math.max(0, seekTo % audio.duration);
@@ -1913,7 +1893,7 @@ async function syncZoneAudio() {
       // Only correct big drifts — don't fight the BT lag correction
       // BT sync handles sub-second corrections; this only catches clock drift > 2s
       const elapsed = (syncedNow() - new Date(z.playback_started_at).getTime()) / 1000;
-const expected = (elapsed + _calOffset - (_scatterOffsetMs / 1000)) % audio.duration;
+const expected = (elapsed - (_scatterOffsetMs / 1000)) % audio.duration;
 const drift = Math.abs(audio.currentTime - expected);
 if (drift > 0.08) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
 
@@ -2878,7 +2858,7 @@ async function activateZone(z) {
                     setTimeout(() => {
             if (!activeZone || !audio.duration) return;
             const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
-            const target = (elapsed + _calOffset) % audio.duration;
+            const target = elapsed % audio.duration;
             seekPreservingBT(target);
             setSyncIndicator('synced', 0);
           }, delay);
@@ -2912,9 +2892,8 @@ async function activateZone(z) {
     const waitMs = payload.resyncAt - syncedNow();
     if (Math.abs(waitMs) > 10000) return;
         if (payload.resetOffsets) {
-      localStorage.removeItem('byob_cal_offset');
       localStorage.removeItem('byob_device_latency');
-      _calOffset = 0; _deviceLatencyMs = 0; _scatterOffsetMs = 0; updateCalLabel();
+      _deviceLatencyMs = 0; _scatterOffsetMs = 0;
     }
     const delay = Math.max(0, waitMs);
     boomSay('Syncing all speakers…', delay + 500, false, 'regular');
@@ -2959,7 +2938,7 @@ async function activateZone(z) {
     boomSay(`♩ +${(_scatterOffsetMs/1000).toFixed(2)}s`, 1800, false, 'devious');
     if (activeZone?.playback_started_at && audio.duration) {
       const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-      const raw = elapsed + _calOffset - (_deviceLatencyMs/1000) + SEEK_STAB_S - (_scatterOffsetMs/1000);
+      const raw = elapsed - (_deviceLatencyMs/1000) + SEEK_STAB_S - (_scatterOffsetMs/1000);
       seekPreservingBT(((raw % audio.duration) + audio.duration) % audio.duration);
     }
   }).subscribe();
@@ -4122,7 +4101,7 @@ function buildHUDRows() {
     ? new Date(activeZone.playback_started_at).getTime() : null;
   const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
   const expectedPos = elapsed !== null && audio.duration
-    ? ((elapsed + _calOffset - _deviceLatencyMs/1000) % audio.duration) : null;
+    ? ((elapsed - _deviceLatencyMs/1000) % audio.duration) : null;
   const drift = expectedPos !== null
     ? (audio.currentTime - expectedPos) : null;
 
@@ -4141,7 +4120,6 @@ function buildHUDRows() {
     ['_webAudioPlaying', String(_webAudioPlaying)],
     ['_deviceLatencyMs', _deviceLatencyMs+'ms',
       v => parseFloat(v)===0?'warn':''],
-    ['_calOffset',       (_calOffset*1000).toFixed(0)+'ms'],
     ['_clockOffset',     _clockOffset.toFixed(0)+'ms', v => parseFloat(v)===0?'warn':''],
     ['_syncState',       typeof _syncState !== 'undefined' ? _syncState : '—'],
     ['activeZone',       activeZone?.name ?? 'none'],
@@ -4194,7 +4172,7 @@ function broadcastHUD() {
     ? new Date(activeZone.playback_started_at).getTime() : null;
   const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
   const expectedPos = elapsed !== null && audio.duration
-    ? ((elapsed + _calOffset - _deviceLatencyMs / 1000) % audio.duration) : null;
+    ? ((elapsed - _deviceLatencyMs / 1000) % audio.duration) : null;
   const drift = expectedPos !== null ? (audio.currentTime - expectedPos) : null;
   _hudChannel.send({
     type: 'broadcast', event: 'hud_data',
@@ -4206,7 +4184,6 @@ function broadcastHUD() {
       driftMs:     drift !== null ? (drift * 1000).toFixed(0) : null,
       duration:    audio.duration?.toFixed(2),
       deviceLatencyMs: _deviceLatencyMs,
-      calOffset:   Math.round(_calOffset * 1000),
       syncState:   typeof _syncState !== 'undefined' ? _syncState : '—',
       zone:        activeZone?.name || null,
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
@@ -4236,12 +4213,9 @@ function hudForceExit() {
 }
 
 function hudResetCal() {
-  localStorage.setItem('byob_cal_offset', '0');
-  localStorage.setItem('byob_device_latency', '0');
-  _calOffset = 0;
+  localStorage.removeItem('byob_device_latency');
   _deviceLatencyMs = 0;
-  updateCalLabel();
-  showToast('🔄 Calibration reset — re-entering zone recommended');
+  showToast('🔄 Latency reset — re-entering zone recommended');
 }
 
   
@@ -4273,7 +4247,7 @@ function ensureZoneSubscription() {
           setTimeout(() => {
             if (!audio.duration) return;
             const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
-            seekPreservingBT((elapsed + _calOffset) % audio.duration);
+            seekPreservingBT(elapsed % audio.duration);
           }, Math.max(0, waitMs));
         }
       }
@@ -4349,7 +4323,7 @@ function applySweepOffset(sweep){
   setTimeout(()=>{
     if(!audio.duration || !activeZone?.playback_started_at) return;
     const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-    seekPreservingBT(((elapsed + _calOffset - _deviceLatencyMs/1000) % audio.duration));
+    seekPreservingBT(((elapsed - _deviceLatencyMs/1000) % audio.duration));
     showToast('◎ Sweep hit — '+Math.round(delayMs)+'ms');
   }, delayMs);
 }
@@ -4376,7 +4350,7 @@ function broadcastDebug() {
         ? (distM(userLat, userLng, activeZone.lat, activeZone.lng) * 1609.34).toFixed(0)
         : null,
       deviceLatencyMs: interval ? 1 : 0,
-      calOffset:  hasChannel ? 1 : 0,
+      channelOk:  hasChannel ? 1 : 0,
       syncState:  [
         hasZone    ? '✓ zone'    : '✗ zone',
         hasGPS     ? '✓ GPS'     : '✗ GPS',
