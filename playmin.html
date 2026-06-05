@@ -1597,7 +1597,7 @@ function clusterSpeakers(){
   const k=Math.min(stems.length,entries.length);
   const assignments=kMeansClusters(entries,k);
   const zoneTrkPayload=flatZoneTracks();
-  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:new Date(serverNow()).toISOString(),cluster_count:k}});
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400,cluster_count:k}});
   showToast('⬡ '+k+' clusters · '+entries.length+' speakers');
   _clusterActive=true;
   updateClusterBtn();
@@ -1654,7 +1654,7 @@ function applyRing(){
     assignments[l.id]=slotKeys[Math.min(Math.floor(ratio*numRings),numRings-1)];
   });
   if(window._djSyncChannel){
-    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString()}});
+    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
   }
   showToast('⊚ Ring · '+numRings+' rings · '+listeners.length+' speakers');
 }
@@ -1733,7 +1733,7 @@ function tickMovement(){
       break;
   }
 
-  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString()}});
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
   const status=document.getElementById('mv-status');
   if(status)status.textContent=_mvPattern.toUpperCase()+' · '+listeners.length+' speakers · phase '+((_mvPhase)*10|0)+'/'+(n*10);
 }

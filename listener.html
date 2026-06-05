@@ -3183,10 +3183,13 @@ async function activateZone(z) {
     const trackUrl = mySlot
       ? (payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'])
       : payload.zone_tracks?.['C'];
-    if (trackUrl && trackUrl !== audio.src) {
-      loadTrack(trackUrl, 'Cluster ' + (mySlot || 'C'), payload.playback_started_at);
-      boomSay('⬡ Cluster ' + (mySlot || 'C'), 2000, false, 'regular');
-    }
+    if (!trackUrl || trackUrl === audio.src) return;
+    const label = 'Cluster ' + (mySlot || 'C');
+    const waitMs = payload.play_at ? Math.max(0, payload.play_at - syncedNow()) : 0;
+    setTimeout(() => {
+      loadTrack(trackUrl, label, payload.playback_started_at);
+      boomSay('⬡ ' + (mySlot || 'C'), 2000, false, 'regular');
+    }, waitMs);
   }).subscribe();
 }
  
