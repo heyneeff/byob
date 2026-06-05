@@ -527,6 +527,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
           <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'4')">×</button>
         </div>
       </div>
+      <div id="slot-add-row" style="display:flex;gap:2px;padding:3px 2px 2px;">
+        <button onclick="addSlot()" style="flex:1;padding:5px 0;border:1px dashed var(--muted);border-radius:4px;background:transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;letter-spacing:.08em;transition:all .15s;" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)';" onmouseout="this.style.borderColor='var(--muted)';this.style.color='var(--muted)';">+ STEM</button>
+        <button onclick="removeSlot()" style="width:28px;padding:5px 0;border:1px dashed var(--muted);border-radius:4px;background:transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:12px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)';" onmouseout="this.style.borderColor='var(--muted)';this.style.color='var(--muted)';">−</button>
+      </div>
     </div>
   </div>
 
@@ -2142,6 +2146,55 @@ async function loadFromLibrary(filename){
 }
 
 // ── ZONE SLOT SYSTEM ──────────────────────────────────────
+const SLOT_PALETTE=['var(--orange)','var(--teal)','var(--red)','#a78bfa','#f472b6','#34d399','#fbbf24','#60a5fa','#f87171','#c084fc','#fb923c','#a3e635'];
+let _slotCount=4; // numbered slots (C is always present, then 1.._slotCount)
+
+function getSlotKeys(){
+  const keys=['C'];
+  for(let i=1;i<=_slotCount;i++) keys.push(String(i));
+  return keys;
+}
+function slotColor(key){
+  if(key==='C') return SLOT_PALETTE[0];
+  return SLOT_PALETTE[parseInt(key)%SLOT_PALETTE.length]||'#888';
+}
+
+function addSlot(){
+  _slotCount++;
+  const key=String(_slotCount);
+  const color=slotColor(key);
+  // Add hidden legacy stub
+  const stubs=document.getElementById('slot-C')?.parentElement;
+  if(stubs){const s=document.createElement('div');s.id='slot-'+key;s.innerHTML=`<span id="slot-${key}-name"></span><span id="slot-${key}-controls"></span>`;stubs.appendChild(s);}
+  // Add clip row before the +/− buttons
+  const clip=document.createElement('div');
+  clip.className='slot-clip';clip.id='clip-'+key;
+  clip.setAttribute('ondragover','event.preventDefault()');
+  clip.setAttribute('ondrop',`dropOnZone(event,'${key}')`);
+  clip.onclick=()=>selectZoneSlot(key);
+  clip.innerHTML=`<div class="slot-clip-color" style="background:${color};">${key}</div><div class="slot-clip-name" id="clip-${key}-name">Slot ${key}</div><div class="slot-clip-acts"><button class="slot-clip-btn play" onclick="playZone(event,'${key}')">▶</button><button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'${key}')">×</button></div>`;
+  document.getElementById('zone-slots')?.insertBefore(clip, document.getElementById('slot-add-row'));
+  // Add stem panel button
+  rebuildStemBtns();
+  showToast('Slot '+key+' added');
+}
+
+function removeSlot(){
+  if(_slotCount<=1){showToast('Need at least one numbered slot');return;}
+  const key=String(_slotCount);
+  if(zoneTracks[key]){delete zoneTracks[key];}
+  document.getElementById('clip-'+key)?.remove();
+  document.getElementById('slot-'+key)?.remove();
+  _slotCount--;
+  rebuildStemBtns();
+  showToast('Slot '+key+' removed');
+}
+
+function rebuildStemBtns(){
+  // Rebuild slot assign buttons in stems panel
+  buildStemsPanel();
+}
+
 let zoneMode='zone',zoneTracks={},selectedSlot=null,_draggingTrack=null;
 function setZoneMode(mode,btn){
   zoneMode=mode;
@@ -2194,19 +2247,19 @@ function tapAssignTrack(id){
 function showSlotPicker(id){
   const t=(_realTracks||[]).find(t=>t.id===id)||TRACKS.find(t=>t.id===id);
   if(!t)return;
-  // Remove any existing picker
   document.getElementById('slot-picker')?.remove();
   const picker=document.createElement('div');
   picker.id='slot-picker';
   picker.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:var(--surface2);border-top:3px solid var(--orange);padding:16px 18px 40px;';
+  const keys=getSlotKeys();
+  const btnHTML=keys.map(k=>{
+    const bg=slotColor(k).replace('var(--orange)','#f57e20').replace('var(--teal)','#00cc99').replace('var(--red)','#ef3c23');
+    const fg=(k==='C'||['#00cc99','#a78bfa','#f472b6','#34d399','#fbbf24','#60a5fa','#a3e635'].some(c=>bg===c))?'#000':'#fff';
+    return `<button onclick="assignTrackToZone('${k}','${(t.url||t.id).replace(/'/g,"\\'")}','${t.name.replace(/'/g,"\\'")}');document.getElementById('slot-picker').remove();" style="padding:14px;background:${bg};color:${fg};border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">${k}</button>`;
+  }).join('');
   picker.innerHTML=`
-    <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--orange);margin-bottom:12px;">Assign "${t.name}" to slot</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
-      <button onclick="assignTrackToZone('C','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:var(--orange);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">C</button>
-      <button onclick="assignTrackToZone('1','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:var(--teal);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">1</button>
-      <button onclick="assignTrackToZone('2','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">2</button>
-      <button onclick="assignTrackToZone('3','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:#a78bfa;color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">3</button>
-      <button onclick="assignTrackToZone('4','${t.url||t.id}','${t.name}');document.getElementById('slot-picker').remove();" style="padding:14px;background:#f472b6;color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">4</button>
+    <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--orange);margin-bottom:12px;">Assign to slot</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">${btnHTML}
       <button onclick="document.getElementById('slot-picker').remove();" style="padding:14px;background:transparent;color:var(--muted);border:1px solid #333;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;cursor:pointer;">✕</button>
     </div>
   `;
@@ -2230,7 +2283,8 @@ function clearZoneSlot(event,zone){
   const slot=document.getElementById('slot-'+zone);
   const nameEl=document.getElementById('slot-'+zone+'-name');
   const controls=document.getElementById('slot-'+zone+'-controls');
-  const clipDefaults={C:'All speakers',1:'Cluster 1',2:'Cluster 2',3:'Cluster 3',4:'Cluster 4'};
+  const clipDefaults={C:'All speakers'};
+  for(let i=1;i<=_slotCount;i++) clipDefaults[i]='Cluster '+i;
   const clipName=document.getElementById('clip-'+zone+'-name');
   const clip=document.getElementById('clip-'+zone);
 
