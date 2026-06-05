@@ -1964,6 +1964,13 @@ async function joinWebRTCStream(zoneId) {
     });
 }
 
+function patchSdpForMusic(sdp) {
+  return sdp.replace(/(a=fmtp:(\d+) opus[^\r]*)/g, line => {
+    if (!/stereo=/.test(line)) line += ';stereo=1;sprop-stereo=1';
+    if (!/maxaveragebitrate=/.test(line)) line += ';maxaveragebitrate=128000';
+    return line;
+  });
+}
 async function handleOffer(sdp) {
   const cfg = await getRTCConfig();
   rtcPeer = new RTCPeerConnection(cfg);
@@ -1983,8 +1990,8 @@ async function handleOffer(sdp) {
   };
   await rtcPeer.setRemoteDescription({ type:'offer', sdp });
   const answer = await rtcPeer.createAnswer();
-  await rtcPeer.setLocalDescription(answer);
-  rtcChannel.send({ type:'broadcast', event:'answer', payload:{ to:'dj', from:listenerId, sdp:answer.sdp } });
+  await rtcPeer.setLocalDescription({ type:'answer', sdp: patchSdpForMusic(answer.sdp) });
+  rtcChannel.send({ type:'broadcast', event:'answer', payload:{ to:'dj', from:listenerId, sdp: rtcPeer.localDescription.sdp } });
 }
 
 // ════════════════════════════════════════════════════════════

@@ -709,7 +709,7 @@ let leafletMap=null,userMarker=null,draftCircle=null,draftMarker=null,zoneCircle
 let activeZone=null,currentUser=null;
 let userLat=null,userLng=null;
 let draftCenter=null,draftRadius=200,drawMode=false;
-let isPlaying=false,liveStream=null,audioCtx=null,analyserNode=null,meterRAF=null;
+let isPlaying=false,liveStream=null,audioCtx=null,analyserNode=null,meterRAF=null,_micModeArmed=false;
 let msgTarget='all',djIsSignUp=false;
 const audio=document.getElementById('audio-player');
 
@@ -1248,6 +1248,20 @@ async function startWebRTCBroadcast(stream){
     .on('broadcast',{event:'ice-dj'},async({payload})=>{const pc=peerConnections[payload.from];if(pc&&payload.candidate){await pc.addIceCandidate(payload.candidate).catch(()=>{});}})
     .subscribe(status=>{if(status==='SUBSCRIBED')showToast('WebRTC signaling ready 📡');});
 }
+function patchSdpForMusic(sdp){
+  // Force stereo Opus at 128kbps — patches the fmtp line for the Opus payload type
+  return sdp.replace(/(a=rtpmap:(\d+) opus\/48000\/2\r\n)/,(match,line,pt)=>{
+    const fmtpRe=new RegExp('a=fmtp:'+pt+' .*\r\n');
+    if(fmtpRe.test(sdp)) return line; // fmtp already present, handled below
+    return line+'a=fmtp:'+pt+' minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=128000\r\n';
+  }).replace(/(a=fmtp:(\d+) )(.*)(stereo=[01])(.*)/g,(_,pre,pt,pre2,_stereo,post)=>pre+pt+' '+pre2+'stereo=1'+post)
+    .replace(/(a=fmtp:(\d+) )(.*)(maxaveragebitrate=\d+)(.*)/g,(_,pre,pt,pre2,_br,post)=>pre+pt+' '+pre2+'maxaveragebitrate=128000'+post)
+    .replace(/(a=fmtp:(\d+) opus[^\r]*)/g,line=>{
+      if(!/stereo=/.test(line)) line+=';stereo=1;sprop-stereo=1';
+      if(!/maxaveragebitrate=/.test(line)) line+=';maxaveragebitrate=128000';
+      return line;
+    });
+}
 async function createOfferFor(listenerId){
   if(!localStream)return;
   const rtcCfg=await getRTCConfig();
@@ -1256,12 +1270,17 @@ async function createOfferFor(listenerId){
   localStream.getAudioTracks().forEach(track=>pc.addTrack(track,localStream));
   pc.onicecandidate=({candidate})=>{if(candidate&&signalingChannel){signalingChannel.send({type:'broadcast',event:'ice-listener',payload:{to:listenerId,from:'dj',candidate}});}};
   pc.onconnectionstatechange=()=>{
-    if(pc.connectionState==='connected')showToast('Listener connected 🎧');
+    if(pc.connectionState==='connected'){
+      showToast('Listener connected 🎧');
+      // Bump bitrate via sender params after connection (belt-and-suspenders alongside SDP patch)
+      const sender=pc.getSenders().find(s=>s.track?.kind==='audio');
+      if(sender){const p=sender.getParameters();if(p.encodings?.length){p.encodings[0].maxBitrate=128000;sender.setParameters(p).catch(()=>{});}}
+    }
     if(pc.connectionState==='failed'||pc.connectionState==='disconnected'){pc.close();delete peerConnections[listenerId];}
   };
   const offer=await pc.createOffer({offerToReceiveAudio:false});
-  await pc.setLocalDescription(offer);
-  signalingChannel.send({type:'broadcast',event:'offer',payload:{to:listenerId,sdp:offer.sdp}});
+  await pc.setLocalDescription({type:'offer',sdp:patchSdpForMusic(offer.sdp)});
+  signalingChannel.send({type:'broadcast',event:'offer',payload:{to:listenerId,sdp:pc.localDescription.sdp}});
 }
 function stopWebRTCBroadcast(){
   Object.values(peerConnections).forEach(pc=>pc.close());
@@ -1284,6 +1303,7 @@ async function scanDevices(){
 }
 function startLiveStream(){
   if(liveStream){toggleLive();return;}
+  _micModeArmed=true;
   document.getElementById('device-row').style.display='flex';
   scanDevices();
   const streamBtn=document.querySelector('.btn-live-stream');
@@ -1294,7 +1314,7 @@ async function toggleLive(){
   // Sync topbar btn-live state
   const btnLive=document.getElementById('btn-live');
   if(liveStream){
-    liveStream.getTracks().forEach(t=>t.stop());liveStream=null;
+    liveStream.getTracks().forEach(t=>t.stop());liveStream=null;_micModeArmed=false;
     if(meterRAF)cancelAnimationFrame(meterRAF);
     document.getElementById('meter-fill').style.width='0%';
     btn.classList.remove('active');btn.textContent='Go Live';
@@ -1330,9 +1350,11 @@ async function toggleLive(){
     return;
   }
 
-  if(!liveStream){showToast('Choose an audio source first ↑');return;}
+  if(!_micModeArmed){showToast('Choose an audio source first ↑');return;}
   const deviceId=document.getElementById('device-select').value;
-  const constraints={audio:deviceId?{deviceId:{exact:deviceId},echoCancellation:false,noiseSuppression:false,sampleRate:48000}:{echoCancellation:false,noiseSuppression:false}};
+  const audioConstraints={echoCancellation:false,noiseSuppression:false,autoGainControl:false,sampleRate:48000,channelCount:2};
+  if(deviceId)audioConstraints.deviceId={exact:deviceId};
+  const constraints={audio:audioConstraints};
   try{
     liveStream=await navigator.mediaDevices.getUserMedia(constraints);
     audioCtx=new AudioContext();
