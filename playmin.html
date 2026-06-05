@@ -1242,8 +1242,45 @@ async function loadZones(){
   data.forEach(z=>{
     if(zoneCircles[z.id])return;
     zoneCircles[z.id]=L.circle([z.lat,z.lng],{radius:z.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.06,weight:1.5}).addTo(leafletMap);
-    if(!activeZone){activeZone=z;document.getElementById('btn-create-zone').textContent='✓ '+z.name;document.getElementById('btn-create-zone').classList.add('has-zone');startListenerTracking(z.id);startDJPresenceBroadcast(z);}
+    if(!activeZone&&z.host_id===currentUser?.id) restoreZone(z);
   });
+}
+
+function restoreZone(z){
+  activeZone=z;
+  // Reconnect sync channel
+  window._djSyncChannel=db.channel('sync_'+z.id).subscribe();
+  window._currentZone={playback_started_at:z.playback_started_at};
+  // Zone button
+  const btn=document.getElementById('btn-create-zone');
+  if(btn){btn.textContent='✓ '+z.name;btn.classList.add('has-zone');}
+  // Restore zone slot tracks
+  if(z.zone_tracks){
+    try{
+      const saved=typeof z.zone_tracks==='string'?JSON.parse(z.zone_tracks):z.zone_tracks;
+      Object.entries(saved).forEach(([slot,urlOrObj])=>{
+        const url=typeof urlOrObj==='string'?urlOrObj:urlOrObj?.url;
+        const name=typeof urlOrObj==='object'?urlOrObj?.name:url?.split('/').pop();
+        if(url){zoneTracks[slot]={url,name};assignTrackToZone(slot,url,name);}
+      });
+    }catch(e){}
+  }
+  // Restore track display
+  if(z.current_track_url&&z.current_track_url!=='webrtc-live'){
+    document.getElementById('track-name').textContent=z.track_name||'';
+    document.getElementById('tb-trackname').textContent=z.track_name||'';
+  }
+  // Restore Go Live state if stream was active
+  if(z.current_track_url==='webrtc-live'){
+    const goBtn=document.getElementById('btn-go-live');
+    const topBtn=document.getElementById('btn-live');
+    if(goBtn){goBtn.textContent='⏹ End Stream';goBtn.classList.add('active');}
+    if(topBtn){topBtn.textContent='🔴 Live';topBtn.classList.add('active');}
+    showToast('Stream was live — reconnect mic to resume 🎙');
+  }
+  startListenerTracking(z.id);
+  startDJPresenceBroadcast(z);
+  showToast('Zone "'+z.name+'" restored 📡');
 }
 
 // ── PLAYER ────────────────────────────────────────────────
