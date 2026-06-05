@@ -2411,6 +2411,7 @@ function exitNotify() {
 let liveGuests = {};           // { id: { name, emoji, dist, status, lastSeen } }
 let _friends   = JSON.parse(localStorage.getItem('byob_friends_v2') || '{}'); // keyed by userId
 let _lastGuestCount = 0;
+let _seenFriendIds = new Set(); // userIds already announced this zone session
 let _gcCurrentId = null;
 
 const BOOMY_CROWD = [
@@ -2477,6 +2478,16 @@ function updateGuestList() {
       </div>`;
     ul.appendChild(self);
   }
+
+  // Phase C: announce friends who just arrived
+  sorted.forEach(g => {
+    if (g.userId && _friends[g.userId] && !_seenFriendIds.has(g.userId)) {
+      _seenFriendIds.add(g.userId);
+      const name = g.name || _friends[g.userId]?.name || 'A friend';
+      const emoji = g.emoji || _friends[g.userId]?.emoji || '🎧';
+      setTimeout(() => boomSay(`${emoji} ${name} is here`, 4000, true, 'devious'), 800);
+    }
+  });
 
   updateGuestMapMarkers();
 }
@@ -2690,6 +2701,24 @@ async function loadFriendships() {
     });
     localStorage.setItem('byob_friends_v2', JSON.stringify(_friends));
   } catch(e) { console.warn('loadFriendships:', e.message); }
+}
+
+// Phase C: announce friends who RSVPed to the event at this zone
+async function checkFriendsGoingToEvent(zoneId) {
+  try {
+    const friendIds = Object.keys(_friends);
+    if (!friendIds.length) return;
+    const { data: evts } = await db.from('events').select('id,name').eq('zone_id', zoneId).limit(1);
+    if (!evts?.length) return;
+    const eventId = evts[0].id;
+    const { data: interests } = await db.from('event_interest').select('user_id').eq('event_id', eventId).in('user_id', friendIds);
+    if (!interests?.length) return;
+    const names = interests.map(r => _friends[r.user_id]?.name || 'A friend');
+    const msg = names.length === 1
+      ? `${names[0]} is going to this — keep an eye out`
+      : `${names.slice(0,-1).join(', ')} and ${names[names.length-1]} are going to this`;
+    setTimeout(() => boomSay(`⭐ ${msg}`, 6000, true, 'devious'), 3000);
+  } catch(e) { /* non-critical */ }
 }
 
 // Receive presence from other listeners — and broadcast our own
@@ -3011,8 +3040,13 @@ async function activateZone(z) {
   // Start real guest list
   initGuestListChannel(z.id);
   _crowdTriggered.clear();
+  _seenFriendIds.clear();
   liveGuests = {};
   clearGuestMapMarkers();
+
+  // Phase C: check if any friends are going to the event at this zone
+  checkFriendsGoingToEvent(z.id);
+
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
   await measureClockOffset();
     startSyncEngine();

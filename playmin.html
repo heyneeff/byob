@@ -2003,7 +2003,7 @@ async function loadEvents(){
     const start=new Date(e.event_start).toLocaleString();
     const reveal=new Date(e.location_reveal_at).toLocaleString();
     const artists=e.artists?.join(', ')||'—';
-         return '<div style="background:var(--surface2);border:1px solid #222;border-left:3px solid var(--red);border-radius:4px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;"><div style="flex:1;min-width:0;"><div style="font-weight:700;color:var(--cream);font-size:13px;">'+e.name+'</div><div style="font-size:10px;color:var(--muted);margin-top:3px;">'+artists+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">📅 '+start+'</div><div style="font-size:10px;color:var(--orange);margin-top:2px;">📍 Reveals: '+reveal+'</div></div><button onclick="confirmDeleteEvent(\''+e.id+'\',this)" style="flex-shrink:0;background:transparent;border:1px solid #333;border-radius:4px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;transition:all .15s;">✕</button></div>';
+         return '<div id="evt-'+e.id+'" style="background:var(--surface2);border:1px solid #222;border-left:3px solid var(--red);border-radius:4px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;"><div style="flex:1;min-width:0;"><div style="font-weight:700;color:var(--cream);font-size:13px;">'+e.name+'</div><div style="font-size:10px;color:var(--muted);margin-top:3px;">'+artists+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">📅 '+start+'</div><div style="font-size:10px;color:var(--orange);margin-top:2px;">📍 Reveals: '+reveal+'</div></div><button onclick="confirmDeleteEvent(\''+e.id+'\',this)" style="flex-shrink:0;background:transparent;border:1px solid #333;border-radius:4px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;transition:all .15s;">✕</button></div>';
 
 
   }).join('');
@@ -2021,6 +2021,7 @@ function showToast(msg,isError=false){
 
 function confirmDeleteEvent(id, btn){
   if(btn.dataset.confirming==='1'){
+    document.getElementById('evt-'+id)?.remove(); // optimistic — gone immediately
     deleteEvent(id);
   } else {
     btn.dataset.confirming='1';
@@ -2036,9 +2037,9 @@ function confirmDeleteEvent(id, btn){
   }
 }
 async function deleteEvent(id){
-  const{error}=await db.from('events').delete().eq('id',id);
-  if(error){showToast('Delete failed: '+error.message,true);console.error('deleteEvent',error);return;}
-  loadEvents();
+  const{data,error}=await db.from('events').delete().eq('id',id).select('id');
+  if(error){showToast('Delete failed: '+error.message,true);console.error('deleteEvent',error);loadEvents();return;}
+  if(!data?.length){showToast('Not deleted — check Supabase delete policy',true);loadEvents();return;}
   showToast('Event deleted');
 }
 

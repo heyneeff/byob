@@ -103,6 +103,7 @@
     .evt-card.dark .evt-info-val{color:var(--white);}
     .evt-card.dark .evt-badge.upcoming{background:rgba(255,255,255,.06);color:var(--muted);}
     .evt-card.dark .evt-badge.city{background:rgba(255,255,255,.06);color:var(--muted);}
+    .evt-badge.friends{background:rgba(0,204,153,.12);color:var(--teal);border:1px solid rgba(0,204,153,.25);}
     .evt-card.dark .evt-loc-locked{color:var(--muted);}
     .evt-card.dark .evt-cta.notify-btn{border-color:#333;color:var(--muted);}
     .evt-card.dark .evt-cta.notify-btn:hover{border-color:#666;color:var(--white);}
@@ -230,6 +231,8 @@ let _allEvents = [];
 let _activeFilter = 'all';
 let _notifyEventId = null;
 let _toastTimer = null;
+let _currentUser = null;
+let _friendInterests = {}; // { eventId: [userId, ...] }
 
 // ── TOAST ─────────────────────────────────────────────────
 function showToast(msg) {
@@ -401,6 +404,7 @@ function renderGrid(events) {
           <span class="evt-badge ${tonight ? 'tonight' : 'upcoming'}">${tonight ? 'Tonight' : fmtDate(e.event_start, true)}</span>
           <span class="evt-badge ${isFree ? 'free' : 'price'}">${isFree ? 'FREE' : '$' + parseFloat(e.ticket_price).toFixed(0)}</span>
           ${e.city ? `<span class="evt-badge city">${e.city}</span>` : ''}
+          ${(()=>{ const n=(_friendInterests[e.id]||[]).length; return n?`<span class="evt-badge friends">⭐ ${n} friend${n>1?'s':''} going</span>`:''; })()}
         </div>
         <div class="evt-name">${e.name}</div>
         ${artists ? `<div class="evt-artist">${artists}</div>` : ''}
@@ -449,14 +453,40 @@ function closeNotify() {
 async function submitNotify() {
   const contact = document.getElementById('notify-contact').value.trim();
   if (!contact) return;
-  // Persisted locally — push notification backend is a future feature
   const stored = JSON.parse(localStorage.getItem('byob_notify') || '[]');
   if (!stored.find(s => s.eventId === _notifyEventId && s.contact === contact)) {
     stored.push({ eventId: _notifyEventId, contact, at: Date.now() });
     localStorage.setItem('byob_notify', JSON.stringify(stored));
   }
+  // If logged in, persist interest to Supabase so friends can see it
+  if (_currentUser) {
+    await db.from('event_interest').upsert(
+      { event_id: _notifyEventId, user_id: _currentUser.id },
+      { onConflict: 'event_id,user_id' }
+    );
+  }
   closeNotify();
   showToast('🔔 You\'re on the list');
+}
+
+// ── FRIEND INTERESTS ──────────────────────────────────────
+async function initAuth() {
+  const { data: { session } } = await db.auth.getSession();
+  _currentUser = session?.user || null;
+  if (_currentUser) await loadFriendInterests();
+}
+
+async function loadFriendInterests() {
+  const friends = JSON.parse(localStorage.getItem('byob_friends_v2') || '{}');
+  const friendIds = Object.keys(friends);
+  if (!friendIds.length) return;
+  const { data } = await db.from('event_interest').select('event_id,user_id').in('user_id', friendIds);
+  _friendInterests = {};
+  (data || []).forEach(r => {
+    if (!_friendInterests[r.event_id]) _friendInterests[r.event_id] = [];
+    _friendInterests[r.event_id].push(r.user_id);
+  });
+  if (_allEvents.length) { renderHero(_allEvents); renderGrid(_allEvents); }
 }
 
 // ── ADD TO HOME SCREEN ────────────────────────────────────
@@ -484,6 +514,7 @@ function subscribeToUpdates() {
 
 // ── INIT ─────────────────────────────────────────────────
 loadEvents();
+initAuth();
 showA2HSIfNeeded();
 subscribeToUpdates();
 // Re-render reveal countdowns every minute without refetching
