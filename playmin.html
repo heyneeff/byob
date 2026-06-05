@@ -38,10 +38,36 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .content{grid-column:1;display:flex;flex-direction:column;overflow:hidden;}
 .panel{display:none;flex:1;flex-direction:column;overflow:hidden;}
 .panel.active{display:flex;}
-/* SPATIAL */
-.spatial-panel{flex:1;display:grid;grid-template-columns:220px 1fr;grid-template-rows:1fr minmax(220px,40vh);overflow:hidden;}
+/* SPATIAL — 3-column resizable Ableton-style layout */
+.spatial-panel{flex:1;display:grid;grid-template-columns:var(--sp-left,180px) 5px 1fr 5px var(--sp-right,220px);grid-template-rows:1fr 5px minmax(var(--sp-bottom,190px),35vh);overflow:hidden;}
 
-.sp-tools{grid-column:1;grid-row:1;display:flex;flex-direction:column;gap:5px;padding:8px;border-right:1px solid var(--rim);background:var(--card);overflow-y:auto;}
+/* Drag handles */
+.sp-handle-v{cursor:col-resize;background:var(--rim);transition:background .15s;z-index:5;}
+.sp-handle-v:hover,.sp-handle-v.dragging{background:var(--teal);}
+.sp-handle-h{grid-column:1/-1;grid-row:2;cursor:row-resize;background:var(--rim);transition:background .15s;z-index:5;}
+.sp-handle-h:hover,.sp-handle-h.dragging{background:var(--teal);}
+
+/* Left: stems browser */
+.sp-stems{grid-column:1;grid-row:1;display:flex;flex-direction:column;background:var(--card);overflow:hidden;border-right:none;}
+.sp-stems-bar{display:flex;align-items:center;gap:4px;padding:6px 7px;border-bottom:1px solid var(--rim);flex-shrink:0;}
+.sp-stems-search{flex:1;background:var(--card2);border:1px solid var(--rim);border-radius:5px;padding:4px 7px;color:var(--cream);font-size:11px;outline:none;font-family:'Roboto',sans-serif;}
+.sp-stems-search:focus{border-color:var(--teal);}
+.sp-stems-list{flex:1;overflow-y:auto;padding:4px 5px;}
+.sp-stems-list::-webkit-scrollbar{width:2px;}.sp-stems-list::-webkit-scrollbar-thumb{background:var(--rim);}
+.stem-row{display:flex;align-items:center;gap:5px;padding:5px 4px;border-radius:5px;cursor:grab;transition:background .1s;}
+.stem-row:hover{background:var(--card2);}
+.stem-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.stem-title{flex:1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
+.stem-btns{display:flex;gap:2px;flex-shrink:0;}
+.stem-btn{width:17px;height:17px;border-radius:3px;border:none;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;cursor:pointer;background:var(--card2);color:var(--muted);transition:all .1s;}
+.stem-btn:hover{background:var(--orange);color:#000;}
+
+/* Center: radar */
+.sp-radar{grid-column:3;grid-row:1;display:flex;align-items:center;justify-content:center;background:var(--bg);overflow:hidden;}
+#sg{touch-action:none;cursor:crosshair;}
+
+/* Right: tools */
+.sp-tools{grid-column:5;grid-row:1;display:flex;flex-direction:column;gap:5px;padding:8px;border-left:none;background:var(--card);overflow-y:auto;}
 .sp-tools::-webkit-scrollbar{width:2px;}.sp-tools::-webkit-scrollbar-thumb{background:var(--rim);}
 .sp-label{font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);flex-shrink:0;margin-top:4px;font-family:'Barlow Condensed',sans-serif;}
 .mode-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;}
@@ -59,9 +85,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .sact-col{display:flex;flex-direction:column;gap:4px;}
 .sact{padding:9px;border:none;border-radius:9px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;transition:transform .1s;box-shadow:0 3px 10px rgba(0,0,0,.4);}
 .sact:active{transform:scale(.97);}.sact-scatter{background:var(--red);color:#fff;}.sact-snap{background:var(--teal);color:#000;}
-.sp-radar{grid-column:2;grid-row:1;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:8px;}
-#sg{touch-action:none;cursor:crosshair;}
-.sp-library{grid-column:1/3;grid-row:2;background:var(--card);border-top:1px solid var(--rim);display:flex;flex-direction:column;overflow:hidden;}
+
+/* Bottom: library */
+.sp-library{grid-column:1/-1;grid-row:3;background:var(--card);border-top:none;display:flex;flex-direction:column;overflow:hidden;}
 /* DECK */
 .deck-panel{flex:1;display:grid;grid-template-rows:minmax(0,1fr) auto minmax(180px,35vh);overflow:hidden;}
 .deck-top{display:grid;grid-template-columns:1fr 118px 1fr;overflow:hidden;border-bottom:1px solid var(--rim);}
@@ -414,7 +440,27 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
 <!-- SPATIAL -->
 <div class="panel active" id="panel-spatial">
-<div class="spatial-panel">
+<div class="spatial-panel" id="spatial-panel">
+
+  <!-- LEFT: stems browser -->
+  <div class="sp-stems">
+    <div class="sp-stems-bar">
+      <span class="sp-label" style="margin:0;">Stems</span>
+      <input class="sp-stems-search" id="sp-stems-search" placeholder="search…" oninput="filterStems(this.value)"/>
+    </div>
+    <div class="sp-stems-list" id="sp-stems-list"></div>
+  </div>
+
+  <!-- HANDLE: left resize -->
+  <div class="sp-handle-v" id="sp-handle-left"></div>
+
+  <!-- CENTER: radar canvas -->
+  <div class="sp-radar" id="sp-spatial-map" style="overflow:hidden;border-radius:0;"></div>
+
+  <!-- HANDLE: right resize -->
+  <div class="sp-handle-v" id="sp-handle-right"></div>
+
+  <!-- RIGHT: tools -->
   <div class="sp-tools">
     <div class="sp-label">Zone Tracks</div>
     <div id="zone-slots">
@@ -473,8 +519,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <button onclick="stopCircularSweep()" style="width:100%;padding:8px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">◼ Stop Sweep</button>
   </div>
 
-  <!-- MAP as spatial interface — listeners shown as colored dots by slot -->
-  <div class="sp-radar" id="sp-spatial-map" style="background:var(--bg);overflow:hidden;border-radius:12px;"></div>
+  <!-- HANDLE: bottom resize -->
+  <div class="sp-handle-h" id="sp-handle-bottom"></div>
+
+  <!-- BOTTOM: library -->
   <div class="sp-library" id="sp-lib"></div>
 </div>
 </div>
@@ -2369,9 +2417,73 @@ async function buildLibs(filter='') {
   const html = libHTML(_realTracks, filter);
   const sl = document.getElementById('sp-lib'); if(sl) sl.innerHTML = html;
   const dl = document.getElementById('deck-lib'); if(dl) dl.innerHTML = html;
+  buildStemsPanel();
 }
 
 function filterLib(v){ buildLibs(v); }
+function filterStems(v){ buildStemsPanel(v); }
+
+// Compact stems panel for left column
+function buildStemsPanel(filter='') {
+  const el = document.getElementById('sp-stems-list');
+  if (!el) return;
+  const tracks = (_realTracks.length ? _realTracks : TRACKS)
+    .filter(t => !filter || t.name.toLowerCase().includes(filter.toLowerCase()) || (t.artist||'').toLowerCase().includes(filter.toLowerCase()));
+  if (!tracks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px;text-align:center;">Nothing found</div>'; return; }
+  el.innerHTML = tracks.map(t => `
+    <div class="stem-row" draggable="true" ondragstart="startDrag(event,'${t.id}')" title="${t.name} — ${t.artist||''}">
+      <div class="stem-dot" style="background:${t.col||'#555'}"></div>
+      <div class="stem-title">${t.name}</div>
+      <div class="stem-btns">
+        ${['C','1','2','3','4'].map(s=>`<button class="stem-btn" onclick="assignStemToSlot(event,'${t.id}','${s}')" title="→ Slot ${s}">${s}</button>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function assignStemToSlot(e, id, slot) {
+  e.stopPropagation();
+  const t = (_realTracks||[]).find(t=>t.id===id) || TRACKS.find(t=>t.id===id);
+  if (!t) return;
+  assignTrackToZone(slot, t.url||t.id, t.name);
+}
+
+// Resizable panel handles
+function initSpatialResize() {
+  const panel = document.getElementById('spatial-panel');
+  if (!panel) return;
+  let dragging = null, startPos = 0, startVal = 0;
+
+  function getVar(name) {
+    return parseFloat(getComputedStyle(panel).getPropertyValue(name)) || 0;
+  }
+
+  function onDown(e, which) {
+    dragging = which;
+    startPos = which === 'bottom' ? (e.clientY || e.touches?.[0]?.clientY) : (e.clientX || e.touches?.[0]?.clientX);
+    if (which === 'left')   startVal = getVar('--sp-left')   || 180;
+    if (which === 'right')  startVal = getVar('--sp-right')  || 220;
+    if (which === 'bottom') startVal = getVar('--sp-bottom') || 190;
+    document.getElementById('sp-handle-'+which)?.classList.add('dragging');
+    e.preventDefault();
+  }
+
+  document.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const pos = dragging === 'bottom' ? e.clientY : e.clientX;
+    const delta = pos - startPos;
+    if (dragging === 'left')   panel.style.setProperty('--sp-left',   Math.max(100, Math.min(380, startVal + delta)) + 'px');
+    if (dragging === 'right')  panel.style.setProperty('--sp-right',  Math.max(140, Math.min(400, startVal - delta)) + 'px');
+    if (dragging === 'bottom') panel.style.setProperty('--sp-bottom', Math.max(80,  Math.min(520, startVal - delta)) + 'px');
+  });
+  document.addEventListener('pointerup', () => {
+    if (dragging) { document.getElementById('sp-handle-'+dragging)?.classList.remove('dragging'); dragging = null; }
+  });
+
+  document.getElementById('sp-handle-left')?.addEventListener('pointerdown',   e => onDown(e,'left'));
+  document.getElementById('sp-handle-right')?.addEventListener('pointerdown',  e => onDown(e,'right'));
+  document.getElementById('sp-handle-bottom')?.addEventListener('pointerdown', e => onDown(e,'bottom'));
+}
+
 function crateActive(el){
   el.closest('.crates').querySelectorAll('.crate').forEach(c=>c.classList.remove('active'));
   el.classList.add('active');
@@ -2386,7 +2498,7 @@ if(_origFileInput){
 }
 
 // Initial load — deferred so currentUser is set
-setTimeout(()=>buildLibs(), 800);
+setTimeout(()=>{ buildLibs(); initSpatialResize(); }, 800);
 
 // Mixer EQ knobs
 const MX_BANDS=['HI','MID','LOW'];
