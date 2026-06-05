@@ -1939,6 +1939,14 @@ async function deleteEvent(id){
 // ── DJ PRESENCE BROADCAST ────────────────────────────────
 // Broadcast DJ position on presence channel so listeners know zone is active
 // and can compute their own geofence status
+function getBearing(lat1, lng1, lat2, lng2) {
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const lat1r = lat1 * Math.PI / 180, lat2r = lat2 * Math.PI / 180;
+  const y = Math.sin(dLng) * Math.cos(lat2r);
+  const x = Math.cos(lat1r)*Math.sin(lat2r) - Math.sin(lat1r)*Math.cos(lat2r)*Math.cos(dLng);
+  return ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+}
+
 let _djPresenceInterval = null;
 function startDJPresenceBroadcast(zone) {
   if (_djPresenceInterval) clearInterval(_djPresenceInterval);
@@ -1947,12 +1955,12 @@ function startDJPresenceBroadcast(zone) {
     if (status !== 'SUBSCRIBED') return;
     function broadcast() {
       if (!currentUser) return;
-      const lat = userLat || zone.lat;
-      const lng = userLng || zone.lng;
-      // Compute dist from zone center in miles
-      const dist = lat && zone.lat
-        ? Math.sqrt(Math.pow((lat-zone.lat)*69,2)+Math.pow((lng-zone.lng)*69*Math.cos(zone.lat*Math.PI/180),2))
+      // Only use real GPS — falling back to zone coords gives getBearing(center,center)=0
+      const hasDJPos = !!(userLat && userLng);
+      const dist = hasDJPos
+        ? Math.sqrt(Math.pow((userLat-zone.lat)*69,2)+Math.pow((userLng-zone.lng)*69*Math.cos(zone.lat*Math.PI/180),2))
         : 0;
+      const bearing = hasDJPos ? getBearing(zone.lat, zone.lng, userLat, userLng) : 0;
       presenceCh.send({
         type: 'broadcast', event: 'proximity',
         payload: {
@@ -1960,8 +1968,7 @@ function startDJPresenceBroadcast(zone) {
           name:    'DJ ★ ' + (currentUser.email?.split('@')[0] || 'Host'),
           emoji:   '🎛️',
           dist,
-          bearing: lat && zone.lat ? getBearing(zone.lat, zone.lng, lat, lng) : 0,
-
+          bearing,
           phone:   '',
           isDJ:    true
         }

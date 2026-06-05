@@ -58,11 +58,13 @@ Carnival Society / The Circle (paid membership)
 
 -----
 
+## ✅ Solved — Session 5 (Jun 5 2026)
+
+- **DJ dot bearing fixed** — `getBearing` was called in `startDJPresenceBroadcast` but not defined in playmin.html (only in listener.html), causing a `ReferenceError` that crashed `broadcast()` before `setInterval` was set — DJ presence was never actually broadcasting. Added `getBearing` to playmin.html and fixed the GPS fallback: bearing and dist now only compute from real DJ GPS, fall back to `0` when no fix yet.
+
 ## 🔧 Open Bugs
 
-- [ ] **Event delete** — no way to delete scheduled events from playmin UI
 - [ ] **`libHTML` defined twice** in dj.html — dead code, no active harm but needs cleanup
-- [ ] **DJ dot bearing hardcoded to 0** in `startDJPresenceBroadcast` — DJ always appears due north on spatial map regardless of actual position
 
 -----
 
@@ -250,8 +252,8 @@ Monthly dues. Has existing website + basic backend (not yet on Supabase).
 
 |Phase|What                                      |Why                                        |
 |-----|------------------------------------------|-------------------------------------------|
-|1    |Audio engine tightening (A–E above)       |Verify clock sync on device before spatial |
-|2    |Event delete + open bugs                  |Clean house                                |
+|1    |Audio engine tightening (A–E above)       |✅ Complete                                |
+|2    |Event delete + open bugs                  |✅ Complete                                |
 |3    |Slot routing + Signal Organism            |Complete the listener experience           |
 |4    |Profiles + follow system                  |Foundation for everything social           |
 |5    |Front page discovery                      |Public face of the platform                |
@@ -266,6 +268,7 @@ Monthly dues. Has existing website + basic backend (not yet on Supabase).
 
 |Date       |Session |Key outcomes                                                                                                                                                  |
 |-----------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|Jun 5 2026 |Thread 5|Fixed DJ dot bearing — getBearing missing in playmin.html caused ReferenceError, DJ presence never broadcast; added getBearing, fixed GPS fallback logic       |
 |Jun 5 2026 |Thread 4|Completed clock-sync layer (listener + DJ), fixed last missed Date.now() in library-track broadcast, added audio engine tightening queue to roadmap           |
 |May 26 2026|Thread 3|Fixed dot disappear (syncZoneAudio lat/lng), fixed bearing NaN, consolidated geo loop, built sync dashboard, scoped full product roadmap                      |
 
