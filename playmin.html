@@ -707,6 +707,12 @@ const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const DENVER=[39.7392,-104.9903];
 let leafletMap=null,userMarker=null,draftCircle=null,draftMarker=null,zoneCircles={};
 let activeZone=null,currentUser=null;
+let _clockOffset=0;
+async function measureClockOffset(){
+  try{const t0=Date.now();const{data}=await db.rpc('now').single();const t1=Date.now();if(!data)return;_clockOffset=new Date(data).getTime()-(t0+(t1-t0)/2);}
+  catch(e){_clockOffset=0;}
+}
+function serverNow(){return Date.now()+_clockOffset;}
 let userLat=null,userLng=null;
 let draftCenter=null,draftRadius=200,drawMode=false;
 let isPlaying=false,liveStream=null,audioCtx=null,analyserNode=null,meterRAF=null,_micModeArmed=false;
@@ -734,6 +740,7 @@ window.addEventListener('DOMContentLoaded', async()=>{
       document.getElementById('dj-auth').style.display='none';
       document.getElementById('dj-app').style.display='block';
       loadDemoMode();
+      measureClockOffset();setInterval(measureClockOffset,60000);
 setTimeout(()=>switchPanel('setup',document.querySelector('[data-panel="setup"]')),50);
 
     }
@@ -759,6 +766,7 @@ async function handleDJAuth(){
     window._mapInited=false;  // lazy-init on setup panel
     loadDemoMode();
     loadEvents().catch(()=>{});
+    measureClockOffset();setInterval(measureClockOffset,60000);
     setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
     showToast('Welcome DJ '+currentUser.email.split('@')[0]+' 🎛️');
   } catch(e) {
@@ -803,7 +811,7 @@ function scatterSpeakers(){
 }
 function snapSpeakers(){
   if(!window._djSyncChannel){showToast('No active zone');return;}
-  const resyncAt=Date.now()+1500;
+  const resyncAt=serverNow()+1500;
   window._djSyncChannel.send({type:'broadcast',event:'hard_sync',payload:{resyncAt,playback_started_at:window._currentZone?.playback_started_at,resetOffsets:true}});
   showToast('⚡ SNAP in 1.5s…');
 }
@@ -1078,8 +1086,8 @@ async function playNext() {
     document.getElementById('track-name').textContent = next.title || '';
     showToast('Now playing: ' + next.title);
     if (activeZone?.id) {
-      const startedAt = new Date().toISOString();
-      const playAt = Date.now() + 1500;
+      const startedAt = new Date(serverNow()).toISOString();
+      const playAt = serverNow() + 1500;
       await db.from('zones').update({
         current_track_url:   next.url,
         track_name:          next.title,
@@ -1091,7 +1099,7 @@ async function playNext() {
       if (window._djSyncChannel) {
         setTimeout(() => window._djSyncChannel.send({
           type: 'broadcast', event: 'hard_sync',
-          payload: { resyncAt: Date.now()+1000, playback_started_at: startedAt, resetOffsets: false, track_url: next.url || next.public_url, track_name: next.title }
+          payload: { resyncAt: serverNow()+1000, playback_started_at: startedAt, resetOffsets: false, track_url: next.url || next.public_url, track_name: next.title }
         }), 1600);
       }
     }
@@ -1120,8 +1128,8 @@ async function playNext() {
         audio.src  = next.public_url;
         audio.loop = false;
         audio.play().catch(() => {});
-        const startedAt = new Date().toISOString();
-        const playAt = Date.now() + 1500;
+        const startedAt = new Date(serverNow()).toISOString();
+        const playAt = serverNow() + 1500;
         await db.from('zones').update({
           current_track_url:   next.public_url,
           track_name:          next.title,
@@ -1133,7 +1141,7 @@ async function playNext() {
         if (window._djSyncChannel) {
           setTimeout(() => window._djSyncChannel.send({
             type: 'broadcast', event: 'hard_sync',
-            payload: { resyncAt: Date.now()+1000, playback_started_at: startedAt, resetOffsets: false }
+            payload: { resyncAt: serverNow()+1000, playback_started_at: startedAt, resetOffsets: false }
           }), 1600);
         }
         document.getElementById('track-name').textContent = next.title;
@@ -1179,7 +1187,7 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
   const file=e.target.files[0];if(!file)return;
   const statusEl=document.getElementById('upload-status');
   let playbackStartedAt=null;
-  audio.addEventListener('playing',()=>{if(!playbackStartedAt)playbackStartedAt=new Date().toISOString();},{once:true});
+  audio.addEventListener('playing',()=>{if(!playbackStartedAt)playbackStartedAt=new Date(serverNow()).toISOString();},{once:true});
   audio.src=URL.createObjectURL(file);
   audio.loop=false;
   audio.play().catch(()=>{});
@@ -1197,9 +1205,9 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
     if(activeZone){
       const bufferMs=2000;
-      const playAt=Date.now()+bufferMs;
+      const playAt=serverNow()+bufferMs;
       const playFromS=audio.currentTime+(bufferMs/1000);
-      const startedAt=playbackStartedAt||new Date().toISOString();
+      const startedAt=playbackStartedAt||new Date(serverNow()).toISOString();
       await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_started_at:startedAt,play_at:playAt,play_from_s:playFromS,active:true}).eq('id',activeZone.id);
 window._lastPublicUrl = urlData.publicUrl;
       window._currentZone={playback_started_at:startedAt};
@@ -1208,11 +1216,11 @@ window._lastPublicUrl = urlData.publicUrl;
     showToast('Broadcasting 📡');
     // Immediately hard-sync all subscribed listeners
     if(window._djSyncChannel && audio.duration){
-      const freshAt=new Date(Date.now()-audio.currentTime*1000).toISOString();
+      const freshAt=new Date(serverNow()-audio.currentTime*1000).toISOString();
       setTimeout(()=>{
         window._djSyncChannel.send({
           type:'broadcast',event:'hard_sync',
-          payload:{resyncAt:Date.now()+1000,playback_started_at:freshAt,resetOffsets:false}
+          payload:{resyncAt:serverNow()+1000,playback_started_at:freshAt,resetOffsets:false}
         });
       },1500);
     }
@@ -1331,19 +1339,19 @@ async function toggleLive(){
     document.getElementById('track-name').textContent='📡 LIVE — '+activeZone.name;
     audio.play().catch(()=>{});
     const publicUrl = window._lastPublicUrl || audio.src;
-    const startedAt = new Date(Date.now()-audio.currentTime*1000).toISOString();
+    const startedAt = new Date(serverNow()-audio.currentTime*1000).toISOString();
     await db.from('zones').update({
       current_track_url: publicUrl,
       track_name: document.getElementById('track-name').textContent,
       playback_started_at: startedAt,
-      play_at: Date.now()+1500,
+      play_at: serverNow()+1500,
       play_from_s: audio.currentTime,
       active: true
     }).eq('id',activeZone.id);
     if(window._djSyncChannel){
       setTimeout(()=>window._djSyncChannel.send({
         type:'broadcast',event:'hard_sync',
-        payload:{resyncAt:Date.now()+1000,playback_started_at:startedAt,resetOffsets:false}
+        payload:{resyncAt:serverNow()+1000,playback_started_at:startedAt,resetOffsets:false}
       }),1600);
     }
     showToast('Broadcasting track ⚡');
@@ -1476,8 +1484,8 @@ async function triggerResync() {
   if (!activeZone) return showToast('No active zone');
   if (!audio.src || !audio.duration) return showToast('No track loaded');
 
-  const resyncAt = Date.now() + 3000;
-  const freshStartedAt = new Date(Date.now() - audio.currentTime * 1000).toISOString();
+  const resyncAt = serverNow() + 3000;
+  const freshStartedAt = new Date(serverNow() - audio.currentTime * 1000).toISOString();
 
   // Use existing channel — never fails due to subscribe timing
   const ch = window._djSyncChannel || db.channel('sync_' + activeZone.id);
@@ -1791,7 +1799,7 @@ async function broadcastAllZones(){
   if(!activeZone){showToast('Create a zone first');return;}
   if(!Object.keys(zoneTracks).length){showToast('Assign tracks to zones first');return;}
 
-  const startedAt = new Date().toISOString();
+  const startedAt = new Date(serverNow()).toISOString();
   const payload={};
   Object.entries(zoneTracks).forEach(([z,t])=>{payload[z]=t.url;});
 

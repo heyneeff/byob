@@ -1240,11 +1240,11 @@ function seekToSync(startedAt, playAt, playFromS) {
   if (!audio.duration) return;
   let seekTo = 0;
   if (playAt && playFromS !== undefined) {
-    const delayMs = playAt - Date.now();
+    const delayMs = playAt - syncedNow();
     seekTo = (playFromS || 0) + _calOffset + SEEK_STAB_S;
     if (delayMs < 0) seekTo += (-delayMs / 1000);
   } else if (startedAt) {
-    const elapsed = (Date.now() - new Date(startedAt).getTime()) / 1000;
+    const elapsed = (syncedNow() - new Date(startedAt).getTime()) / 1000;
         seekTo = elapsed + _calOffset - (_deviceLatencyMs / 1000) + SEEK_STAB_S - (_scatterOffsetMs / 1000);
 
   }
@@ -1912,7 +1912,7 @@ async function syncZoneAudio() {
 
       // Only correct big drifts — don't fight the BT lag correction
       // BT sync handles sub-second corrections; this only catches clock drift > 2s
-      const elapsed = (Date.now() - new Date(z.playback_started_at).getTime()) / 1000;
+      const elapsed = (syncedNow() - new Date(z.playback_started_at).getTime()) / 1000;
 const expected = (elapsed + _calOffset - (_scatterOffsetMs / 1000)) % audio.duration;
 const drift = Math.abs(audio.currentTime - expected);
 if (drift > 0.08) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
@@ -2128,6 +2128,8 @@ async function handleLogin() {
 
 // ── ENTER APP ────────────────────────────────────────────
 function enterApp() {
+  measureClockOffset();
+  setInterval(measureClockOffset, 60000);
   document.getElementById('login-screen').classList.add('exit');
   setTimeout(() => {
     document.getElementById('login-screen').style.display = 'none';
@@ -2811,6 +2813,7 @@ async function activateZone(z) {
   _crowdTriggered.clear();
   liveGuests = {};
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
+  await measureClockOffset();
     startSyncEngine();
 
     // Calibration already ran during approach — nothing to do here
@@ -2848,14 +2851,14 @@ async function activateZone(z) {
       // DJ announcement — boombox delivers the message
             // Coordinated resync — all phones seek simultaneously
             if (zn.resync_at) {
-        const waitMs = new Date(zn.resync_at).getTime() - Date.now();
+        const waitMs = new Date(zn.resync_at).getTime() - syncedNow();
         if (Math.abs(waitMs) < 10000) {
           const delay = Math.max(0, waitMs);
 
           boomSay('Syncing all speakers…', waitMs, false, 'regular');
                     setTimeout(() => {
             if (!activeZone || !audio.duration) return;
-            const elapsed = (Date.now() - new Date(zn.playback_started_at).getTime()) / 1000;
+            const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
             const target = (elapsed + _calOffset) % audio.duration;
             seekPreservingBT(target);
             setSyncIndicator('synced', 0);
@@ -2887,7 +2890,7 @@ async function activateZone(z) {
   if (window._syncChannel) { window._syncChannel.unsubscribe(); }
   window._syncChannel = db.channel('sync_' + z.id)
    .on('broadcast', { event: 'hard_sync' }, ({ payload }) => {
-    const waitMs = payload.resyncAt - Date.now();
+    const waitMs = payload.resyncAt - syncedNow();
     if (Math.abs(waitMs) > 10000) return;
         if (payload.resetOffsets) {
       localStorage.removeItem('byob_cal_offset');
@@ -2903,7 +2906,7 @@ async function activateZone(z) {
     return;
   }
   if (!audio.duration) return;
-  const elapsed = (Date.now() - new Date(payload.playback_started_at).getTime()) / 1000;
+  const elapsed = (syncedNow() - new Date(payload.playback_started_at).getTime()) / 1000;
   seekPreservingBT((elapsed + SEEK_STAB_S) % audio.duration);
   setSyncIndicator('synced', 0);
   showToast('🔄 Synced by DJ');
@@ -2936,7 +2939,7 @@ async function activateZone(z) {
     _scatterOffsetMs = voices > 1 ? Math.round((slot / (voices - 1)) * maxMs) : 0;
     boomSay(`♩ +${(_scatterOffsetMs/1000).toFixed(2)}s`, 1800, false, 'devious');
     if (activeZone?.playback_started_at && audio.duration) {
-      const elapsed = (Date.now() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+      const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
       const raw = elapsed + _calOffset - (_deviceLatencyMs/1000) + SEEK_STAB_S - (_scatterOffsetMs/1000);
       seekPreservingBT(((raw % audio.duration) + audio.duration) % audio.duration);
     }
@@ -3630,9 +3633,9 @@ async function measureClockOffset() {
     if (!data) return;
     const serverMs = new Date(data).getTime();
     _clockOffset = serverMs - (t0 + (t1 - t0) / 2);
-    console.log('[ClockSync] Offset:', _clockOffset.toFixed(0) + 'ms');
   } catch(e) { _clockOffset = 0; }
 }
+function syncedNow() { return Date.now() + _clockOffset; }
 
 
 async function calibrateDeviceLatency() {
@@ -3928,7 +3931,7 @@ async function runAutoSync(){
       if(ps) refSrc = ctx.createMediaStreamSource(ps);
     }catch(_){}
     const wallElapsed = activeZone?.playback_started_at
-      ? (Date.now() - new Date(activeZone.playback_started_at).getTime()) / 1000
+      ? (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000
       : audio.currentTime;
     const btCompensation = (_deviceLatencyMs || 0) / 1000;
     const snapPos = Math.max(0, wallElapsed - btCompensation) % (audio.duration || 1);
@@ -4089,7 +4092,7 @@ function hudVal(val, warnFn) {
 }
 
 function buildHUDRows() {
-  const now = Date.now();
+  const now = syncedNow();
   const startedAt = activeZone?.playback_started_at
     ? new Date(activeZone.playback_started_at).getTime() : null;
   const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
@@ -4099,7 +4102,7 @@ function buildHUDRows() {
     ? (audio.currentTime - expectedPos) : null;
 
   const rows = [
-    ['Date.now()',        now],
+    ['syncedNow()',       now],
     ['playback_started', activeZone?.playback_started_at ?? '—'],
     ['wall elapsed',     elapsed !== null ? elapsed.toFixed(3)+'s' : '—'],
     ['audio.currentTime',audio.duration ? audio.currentTime.toFixed(3)+'s' : '—'],
@@ -4114,6 +4117,7 @@ function buildHUDRows() {
     ['_deviceLatencyMs', _deviceLatencyMs+'ms',
       v => parseFloat(v)===0?'warn':''],
     ['_calOffset',       (_calOffset*1000).toFixed(0)+'ms'],
+    ['_clockOffset',     _clockOffset.toFixed(0)+'ms', v => parseFloat(v)===0?'warn':''],
     ['_syncState',       typeof _syncState !== 'undefined' ? _syncState : '—'],
     ['activeZone',       activeZone?.name ?? 'none'],
     ['zone.radius_m',    activeZone?.radius_m ?? '—'],
@@ -4160,7 +4164,7 @@ function ensureHUDChannel() {
 
 function broadcastHUD() {
   ensureHUDChannel();
-  const now = Date.now();
+  const now = syncedNow();
   const startedAt = activeZone?.playback_started_at
     ? new Date(activeZone.playback_started_at).getTime() : null;
   const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
@@ -4239,11 +4243,11 @@ function ensureZoneSubscription() {
   window._zoneChannel = db.channel('zone_' + activeZone.id)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zones', filter: 'id=eq.' + activeZone.id }, ({ new: zn }) => {
       if (zn.resync_at) {
-        const waitMs = new Date(zn.resync_at).getTime() - Date.now();
+        const waitMs = new Date(zn.resync_at).getTime() - syncedNow();
         if (Math.abs(waitMs) < 10000) {
           setTimeout(() => {
             if (!audio.duration) return;
-            const elapsed = (Date.now() - new Date(zn.playback_started_at).getTime()) / 1000;
+            const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
             seekPreservingBT((elapsed + _calOffset) % audio.duration);
           }, Math.max(0, waitMs));
         }
@@ -4319,7 +4323,7 @@ function applySweepOffset(sweep){
   // Apply seek offset when beam hits us
   setTimeout(()=>{
     if(!audio.duration || !activeZone?.playback_started_at) return;
-    const elapsed = (Date.now() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+    const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
     seekPreservingBT(((elapsed + _calOffset - _deviceLatencyMs/1000) % audio.duration));
     showToast('◎ Sweep hit — '+Math.round(delayMs)+'ms');
   }, delayMs);
