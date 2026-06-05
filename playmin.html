@@ -39,7 +39,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .panel{display:none;flex:1;flex-direction:column;overflow:hidden;}
 .panel.active{display:flex;}
 /* SPATIAL — 3-column resizable layout */
-.spatial-panel{flex:1;display:grid;grid-template-columns:var(--sp-left,180px) 5px 1fr 5px var(--sp-right,224px);grid-template-rows:1fr 5px minmax(190px,35vh);overflow:hidden;}
+.spatial-panel{flex:1;display:grid;grid-template-columns:var(--sp-left,180px) 5px 1fr 5px var(--sp-right,224px);grid-template-rows:1fr 5px var(--sp-bottom,190px);overflow:hidden;}
 
 /* Drag handles — explicit placement, never auto */
 .sp-hv-left {grid-column:2;grid-row:1;cursor:col-resize;background:var(--rim);transition:background .15s;z-index:5;}
@@ -1564,8 +1564,8 @@ function kMeansClusters(entries, k) {
   }
   // Sort cluster indices by bearing so slot labels are geographically consistent
   const sorted=centroids.map((c,ci)=>({ci,angle:(Math.atan2(c.x,c.y)*180/Math.PI+360)%360})).sort((a,b)=>a.angle-b.angle);
-  const slotKeys=['1','2','3','4'].slice(0,k);
-  const c2s={};sorted.forEach(({ci},rank)=>{c2s[ci]=slotKeys[rank];});
+  const slotKeys=getSlotKeys().filter(k=>k!=='C').slice(0,k);
+  const c2s={};sorted.forEach(({ci},rank)=>{c2s[ci]=slotKeys[rank]||'1';});
   const result={};pts.forEach((p,i)=>{result[p.id]=c2s[assignments[i]]||'1';});
   return result;
 }
@@ -1580,9 +1580,7 @@ function clusterSpeakers(){
   if(!entries.length){showToast('No listeners on map yet');return;}
   const k=Math.min(stems.length,entries.length);
   const assignments=kMeansClusters(entries,k);
-  const zoneTrkPayload={};
-  stems.forEach(z=>{if(zoneTracks[z])zoneTrkPayload[z]=zoneTracks[z].url;});
-  if(zoneTracks['C'])zoneTrkPayload['C']=zoneTracks['C'].url;
+  const zoneTrkPayload=flatZoneTracks();
   window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:new Date(serverNow()).toISOString(),cluster_count:k}});
   showToast('⬡ '+k+' clusters · '+entries.length+' speakers');
   _clusterActive=true;
@@ -1630,8 +1628,8 @@ function stopRing(){
 }
 function applyRing(){
   const numRings=Math.min(parseInt(document.getElementById('ring-count')?.value)||3,5);
-  const slotKeys=['C','1','2','3','4'].slice(0,numRings);
-  const listeners=Object.values(liveListeners);
+  const slotKeys=getSlotKeys().slice(0,numRings);
+  const listeners=Object.values(liveListeners).filter(l=>!l.isDJ);
   if(!listeners.length)return;
   const maxDist=Math.max(...listeners.map(l=>l.dist||0),0.001);
   const assignments={};
@@ -1640,7 +1638,7 @@ function applyRing(){
     assignments[l.id]=slotKeys[Math.min(Math.floor(ratio*numRings),numRings-1)];
   });
   if(window._djSyncChannel){
-    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTracks,playback_started_at:new Date(serverNow()).toISOString()}});
+    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString()}});
   }
   showToast('⊚ Ring · '+numRings+' rings · '+listeners.length+' speakers');
 }
@@ -1678,7 +1676,8 @@ function tickMovement(){
   const listeners=Object.values(liveListeners);
   if(!listeners.length||!window._djSyncChannel)return;
   const depth=parseInt(document.getElementById('mv-depth')?.value)||2;
-  const slotKeys=['C','1','2','3','4'].slice(0,Math.min(depth,5));
+  const allKeys=getSlotKeys();
+  const slotKeys=allKeys.slice(0,Math.min(depth,allKeys.length));
   const n=slotKeys.length;
   const maxDist=Math.max(...listeners.map(l=>l.dist||0),0.001);
   const assignments={};
@@ -1718,7 +1717,7 @@ function tickMovement(){
       break;
   }
 
-  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTracks,playback_started_at:new Date(serverNow()).toISOString()}});
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString()}});
   const status=document.getElementById('mv-status');
   if(status)status.textContent=_mvPattern.toUpperCase()+' · '+listeners.length+' speakers · phase '+((_mvPhase)*10|0)+'/'+(n*10);
 }
@@ -2148,6 +2147,12 @@ async function loadFromLibrary(filename){
 }
 
 // ── ZONE SLOT SYSTEM ──────────────────────────────────────
+function flatZoneTracks(){
+  const out={};
+  Object.entries(zoneTracks||{}).forEach(([k,v])=>{out[k]=v?.url||v;});
+  return out;
+}
+
 const SLOT_PALETTE=['var(--orange)','var(--teal)','var(--red)','#a78bfa','#f472b6','#34d399','#fbbf24','#60a5fa','#f87171','#c084fc','#fb923c','#a3e635'];
 let _slotCount=4; // numbered slots (C is always present, then 1.._slotCount)
 
@@ -2788,7 +2793,7 @@ function buildStemsPanel(filter='') {
       <div class="stem-dot" style="background:${t.col||'#555'}"></div>
       <div class="stem-title">${t.name}</div>
       <div class="stem-btns">
-        ${['C','1','2','3','4'].map(s=>`<button class="stem-btn" onclick="assignStemToSlot(event,'${t.id}','${s}')" title="→ Slot ${s}">${s}</button>`).join('')}
+        ${getSlotKeys().map(s=>`<button class="stem-btn" onclick="assignStemToSlot(event,'${t.id}','${s}')" title="→ Slot ${s}">${s}</button>`).join('')}
       </div>
     </div>`).join('');
 }
