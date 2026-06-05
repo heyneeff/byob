@@ -2941,6 +2941,16 @@ async function activateZone(z) {
       const raw = elapsed - (_deviceLatencyMs/1000) + SEEK_STAB_S - (_scatterOffsetMs/1000);
       seekPreservingBT(((raw % audio.duration) + audio.duration) % audio.duration);
     }
+  })
+  .on('broadcast', { event: 'cluster_assign' }, ({ payload }) => {
+    const mySlot = payload.assignments?.[listenerId];
+    const trackUrl = mySlot
+      ? (payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'])
+      : payload.zone_tracks?.['C'];
+    if (trackUrl && trackUrl !== audio.src) {
+      loadTrack(trackUrl, 'Cluster ' + (mySlot || 'C'), payload.playback_started_at);
+      boomSay('⬡ Cluster ' + (mySlot || 'C'), 2000, false, 'regular');
+    }
   }).subscribe();
 }
  

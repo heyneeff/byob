@@ -107,36 +107,45 @@ Apply identically in both listener.html and playmin.html.
 
 These were scoped in Session 3 but not yet built. Take them in order.
 
-### 1. Slot Routing 1/2/3/4 (Listener side)
+## Spatial Audio — The Vision
 
-Listener selects which zone slot they want to hear (1–4). Pan position tied to slot. Already have DJ-side slot assignment working.
+BYOB is building toward a Dolby Atmos-style spatial DJ tool where the geofenced crowd IS the speaker array.
 
-- HTML: slot row buttons above Music section in listener.html
-- JS: `selectSlot(n)` updates presence payload with `slot` field
-- CSS: slot button styles
+- **Stems** are loaded into zone slots (C, 1–4) from the library — drag-drop or assign
+- **Spatial modes** control how stems get routed to physical listener clusters — all DJ-side, silent on listener
+- Listeners auto-receive stem assignments based on their GPS position — no UI, no listener action
 
-### 2. 3D Sweep (Listener receive)
+### Spatial Modes
 
-DJ broadcasts sweep events. Listener calculates their angular position relative to sweep front and pans accordingly.
+| Mode | Behavior |
+|------|----------|
+| **Single** | All listeners hear Center (C) stem — default |
+| **Cluster** | DJ groups listeners by GPS proximity into N clusters; each cluster gets a different stem. E.g. 100 listeners → 10 clusters of 10, each cluster hears a different stem. |
+| **Sweep** | Existing sweep beam — staggered playback offset as the beam passes each listener's bearing |
+| *(future)* | Per-listener pan, 3D elevation, directional fade, signal organism sync |
 
-- `applySweepEvent({ angle, intensity, duration })` in listener.html
-- Hooks into existing `_panNode` / `_audioCtx`
+### Cluster Mode — How It Works
 
-### 3. Signal Organism Visualizer
+1. DJ loads stems into zone slots in the library
+2. DJ selects "Cluster" mode in the Spatial panel
+3. System reads `liveListeners` positions (all have bearing + dist from zone center)
+4. K-means clusters listeners into N groups (N = number of loaded stems)
+5. DJ device broadcasts `cluster_assign` via `sync_{zone_id}` with `{listenerId → slotKey}` map + `zone_tracks`
+6. Each listener's `sync` handler silently receives their assignment and loads that stem
+7. Clusters auto-recompute every 30s as listeners move
 
-Replace static bar visualizer with living organism — 22 cells that pulse, drift, and connect based on frequency bands. Audio-reactive using Web Audio analyser.
+### Current State
 
-- Replace `<div class="viz-wrap" id="visualizer">` with `<canvas id="organism-canvas">`
-- `initOrganism()` called on first play
-- `renderOrganism()` RAF loop
+- **DJ side**: Zone slots UI (C, 1–4) with drag-drop, library stems, `zone_tracks` column — working
+- **Listener side**: `getSpatialSlot()` does naive bearing-quadrant self-assignment — to be replaced by DJ-broadcast `cluster_assign` events
+- **Sweep**: Working
 
-### 4. Color Palette Expansion
+### Queued Spatial Features (Phase 3+)
 
-Add `--gold`, `--violet`, `--hot-pink` to `:root` in listener.html for richer slot/zone color coding.
-
-### 5. Fix Event Delete
-
-Add delete button to event cards in playmin setup panel. Supabase `delete().eq('id', e.id)` then reload list.
+1. **Cluster mode** (DJ broadcasts proximity-based stem assignments)
+2. **Signal Organism Visualizer** — audio-reactive canvas on listener, synced to stem beat data from DJ
+3. **3D sweep receive** — listener pans based on angular position relative to sweep beam front
+4. **Per-listener pan node** — `_panNode` set from cluster centroid bearing relative to listener GPS
 
 -----
 

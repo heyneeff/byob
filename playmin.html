@@ -443,6 +443,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
     <button onclick="broadcastAllZones()" style="width:100%;padding:10px;background:var(--card2);color:var(--orange);border:1px solid var(--orange);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;margin-top:6px;">⚡ Broadcast All Zones</button>
 
+    <div class="sp-label" style="margin-top:8px;">Cluster Mode</div>
+    <button id="btn-cluster" onclick="toggleCluster()" style="width:100%;padding:10px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;">⬡ CLUSTER</button>
+    <div style="font-size:9px;color:var(--muted);margin-top:3px;margin-bottom:2px;">Groups listeners by proximity · assigns each cluster a stem · recomputes every 30s</div>
+
     <div class="sp-label" style="margin-top:8px;">Scatter</div>
     <input type="range" id="scatter-ms" min="0" max="30000" step="250" value="2000" style="width:100%;accent-color:var(--red);" oninput="updateScatterLabel()"/>
     <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px;"><span>0s</span><span id="scatter-label" style="color:var(--white);font-weight:700;">2.0s spread</span><span>30s</span></div>
@@ -1311,6 +1315,84 @@ function stopWebRTCBroadcast(){
   if(signalingChannel){signalingChannel.unsubscribe();signalingChannel=null;}
   localStream=null;
 }
+
+// ── CLUSTER MODE ──────────────────────────────────────────
+// Groups listeners by GPS proximity into k clusters; assigns each cluster a stem.
+// k = number of loaded spatial slots (1–4). Recomputes every 30s while active.
+function kMeansClusters(entries, k) {
+  if(!entries.length||k<1)return{};
+  k=Math.min(k,entries.length);
+  // Convert bearing+dist (miles) to approximate Cartesian meters from zone center
+  const pts=entries.map(({id,bearing,dist})=>{
+    const r=(dist||0)*1609.34,rad=((bearing||0)*Math.PI)/180;
+    return{id,x:r*Math.sin(rad),y:r*Math.cos(rad)};
+  });
+  const avgR=pts.reduce((s,p)=>s+Math.sqrt(p.x**2+p.y**2),0)/pts.length||50;
+  // Initialize centroids evenly around a circle at average listener radius
+  let centroids=Array.from({length:k},(_,i)=>{
+    const a=(i/k)*2*Math.PI;return{x:avgR*Math.sin(a),y:avgR*Math.cos(a)};
+  });
+  let assignments=new Array(pts.length).fill(0);
+  for(let iter=0;iter<15;iter++){
+    let changed=false;
+    pts.forEach((p,i)=>{
+      let best=0,bestD=Infinity;
+      centroids.forEach((c,ci)=>{const d=(p.x-c.x)**2+(p.y-c.y)**2;if(d<bestD){bestD=d;best=ci;}});
+      if(assignments[i]!==best){assignments[i]=best;changed=true;}
+    });
+    if(!changed)break;
+    centroids=centroids.map((prev,ci)=>{
+      const g=pts.filter((_,i)=>assignments[i]===ci);
+      return g.length?{x:g.reduce((s,p)=>s+p.x,0)/g.length,y:g.reduce((s,p)=>s+p.y,0)/g.length}:prev;
+    });
+  }
+  // Sort cluster indices by bearing so slot labels are geographically consistent
+  const sorted=centroids.map((c,ci)=>({ci,angle:(Math.atan2(c.x,c.y)*180/Math.PI+360)%360})).sort((a,b)=>a.angle-b.angle);
+  const slotKeys=['1','2','3','4'].slice(0,k);
+  const c2s={};sorted.forEach(({ci},rank)=>{c2s[ci]=slotKeys[rank];});
+  const result={};pts.forEach((p,i)=>{result[p.id]=c2s[assignments[i]]||'1';});
+  return result;
+}
+
+let _clusterInterval=null,_clusterActive=false;
+
+function clusterSpeakers(){
+  if(!activeZone||!window._djSyncChannel){showToast('No active zone');return;}
+  const stems=Object.keys(zoneTracks).filter(k=>k!=='C');
+  if(stems.length<2){showToast('Load at least 2 stems into slots 1–4 first');return;}
+  const entries=Object.entries(liveListeners).filter(([,l])=>!l.isDJ).map(([id,l])=>({id,bearing:l.bearing||0,dist:l.dist||0}));
+  if(!entries.length){showToast('No listeners on map yet');return;}
+  const k=Math.min(stems.length,entries.length);
+  const assignments=kMeansClusters(entries,k);
+  const zoneTrkPayload={};
+  stems.forEach(z=>{if(zoneTracks[z])zoneTrkPayload[z]=zoneTracks[z].url;});
+  if(zoneTracks['C'])zoneTrkPayload['C']=zoneTracks['C'].url;
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:new Date(serverNow()).toISOString(),cluster_count:k}});
+  showToast('⬡ '+k+' clusters · '+entries.length+' speakers');
+  _clusterActive=true;
+  updateClusterBtn();
+}
+
+function stopCluster(){
+  if(_clusterInterval){clearInterval(_clusterInterval);_clusterInterval=null;}
+  _clusterActive=false;
+  updateClusterBtn();
+  showToast('Cluster off');
+}
+
+function toggleCluster(){
+  if(_clusterActive){stopCluster();return;}
+  clusterSpeakers();
+  _clusterInterval=setInterval(clusterSpeakers,30000);
+}
+
+function updateClusterBtn(){
+  const btn=document.getElementById('btn-cluster');
+  if(!btn)return;
+  if(_clusterActive){btn.textContent='⬡ CLUSTER ON';btn.style.background='var(--teal)';btn.style.color='#000';}
+  else{btn.textContent='⬡ CLUSTER';btn.style.background='var(--card2)';btn.style.color='var(--teal)';}
+}
+
 async function scanDevices(){
   try{
     const devices=await navigator.mediaDevices.enumerateDevices();
