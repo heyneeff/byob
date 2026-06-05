@@ -2003,7 +2003,7 @@ async function loadEvents(){
     const start=new Date(e.event_start).toLocaleString();
     const reveal=new Date(e.location_reveal_at).toLocaleString();
     const artists=e.artists?.join(', ')||'—';
-         return '<div style="background:var(--surface2);border:1px solid #222;border-left:3px solid var(--red);border-radius:4px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;"><div style="flex:1;min-width:0;"><div style="font-weight:700;color:var(--cream);font-size:13px;">'+e.name+'</div><div style="font-size:10px;color:var(--muted);margin-top:3px;">'+artists+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">📅 '+start+'</div><div style="font-size:10px;color:var(--orange);margin-top:2px;">📍 Reveals: '+reveal+'</div></div><button onclick="deleteEvent(\''+e.id+'\')" style="flex-shrink:0;background:transparent;border:1px solid #333;border-radius:4px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;">✕</button></div>';
+         return '<div style="background:var(--surface2);border:1px solid #222;border-left:3px solid var(--red);border-radius:4px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;"><div style="flex:1;min-width:0;"><div style="font-weight:700;color:var(--cream);font-size:13px;">'+e.name+'</div><div style="font-size:10px;color:var(--muted);margin-top:3px;">'+artists+'</div><div style="font-size:10px;color:var(--muted);margin-top:2px;">📅 '+start+'</div><div style="font-size:10px;color:var(--orange);margin-top:2px;">📍 Reveals: '+reveal+'</div></div><button onclick="confirmDeleteEvent(\''+e.id+'\',this)" style="flex-shrink:0;background:transparent;border:1px solid #333;border-radius:4px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;transition:all .15s;">✕</button></div>';
 
 
   }).join('');
@@ -2019,8 +2019,23 @@ function showToast(msg,isError=false){
   t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),isError?5000:3000);
 }
 
+function confirmDeleteEvent(id, btn){
+  if(btn.dataset.confirming==='1'){
+    deleteEvent(id);
+  } else {
+    btn.dataset.confirming='1';
+    btn.textContent='Sure?';
+    btn.style.color='var(--red)';
+    btn.style.borderColor='var(--red)';
+    setTimeout(()=>{
+      if(btn.isConnected&&btn.dataset.confirming==='1'){
+        btn.dataset.confirming='';btn.textContent='✕';
+        btn.style.color='';btn.style.borderColor='';
+      }
+    },3000);
+  }
+}
 async function deleteEvent(id){
-  if(!confirm('Delete this event?'))return;
   const{error}=await db.from('events').delete().eq('id',id);
   if(error){showToast('Delete failed: '+error.message,true);console.error('deleteEvent',error);return;}
   loadEvents();
