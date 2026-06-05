@@ -1271,12 +1271,28 @@ function restoreZone(z){
       });
     }catch(e){}
   }
-  // Restore track display
+  // Restore track display + audio + Go Live state
   if(z.current_track_url&&z.current_track_url!=='webrtc-live'){
-    document.getElementById('track-name').textContent=z.track_name||'';
-    document.getElementById('tb-trackname').textContent=z.track_name||'';
+    const trackName=z.track_name||z.current_track_url.split('/').pop();
+    document.getElementById('track-name').textContent=trackName;
+    document.getElementById('tb-trackname').textContent=trackName;
+    // Reload audio and seek to current playback position
+    audio.src=z.current_track_url;
+    window._lastPublicUrl=z.current_track_url;
+    audio.addEventListener('loadedmetadata',()=>{
+      const elapsed=(syncedNow()-new Date(z.playback_started_at).getTime())/1000;
+      if(elapsed>0&&elapsed<audio.duration){audio.currentTime=elapsed;}
+      audio.play().catch(()=>{});
+      isPlaying=true;
+      const pb=document.getElementById('btn-play');
+      if(pb){pb.textContent='⏸';pb.classList.add('playing');}
+    },{once:true});
+    // Mark Go Live as active
+    const goBtn=document.getElementById('btn-go-live');
+    const topBtn=document.getElementById('btn-live');
+    if(goBtn){goBtn.classList.add('active');goBtn.textContent='■ Stop Live';}
+    if(topBtn){topBtn.classList.add('active');topBtn.textContent='■ Live';}
   }
-  // Restore Go Live state if stream was active
   if(z.current_track_url==='webrtc-live'){
     const goBtn=document.getElementById('btn-go-live');
     const topBtn=document.getElementById('btn-live');
