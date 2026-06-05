@@ -24,10 +24,11 @@
       --text-dark:#1a1a1a;
     }
     *{box-sizing:border-box;margin:0;padding:0;}
-    html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-serif;min-height:100dvh;-webkit-font-smoothing:antialiased;}
+    html{background:var(--bg);}
+    body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-serif;min-height:100dvh;-webkit-font-smoothing:antialiased;padding-top:env(safe-area-inset-top);}
 
     /* ── HEADER ── */
-    .hdr{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 12px;padding-top:calc(18px + env(safe-area-inset-top));position:sticky;top:0;z-index:100;background:rgba(10,10,10,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);}
+    .hdr{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 12px;position:sticky;top:0;z-index:100;background:rgba(10,10,10,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);}
     .hdr-logo{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;letter-spacing:.04em;color:var(--white);}
     .hdr-logo span{color:var(--orange);}
     .hdr-actions{display:flex;gap:10px;align-items:center;}
