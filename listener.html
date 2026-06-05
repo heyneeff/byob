@@ -707,12 +707,22 @@ audio{display:none;}
 
 <div id="boom-menu"><div class="boom-menu-item" id="ls-dj-link" style="display:none" onclick="openDJMode()">🎛️ Open DJ Mode</div><div class="boom-menu-item danger" onclick="lsLogout()">⏏ Log Out</div></div>
 <div id="tap-banner" onclick="onTapBanner()">🎧 TAP TO START THE MUSIC</div>
-<!-- GUEST FRIEND CARD -->
+<!-- GUEST FELLOWSHIP CARD -->
 <div id="guest-card">
   <div class="guest-card-emoji" id="gc-emoji">🎧</div>
-  <div class="guest-card-name" id="gc-name"></div>
-  <button class="btn-star-friend" id="gc-star-btn" onclick="toggleFriend()"></button>
+  <div class="guest-card-name" id="gc-name">Someone here</div>
+  <div id="gc-contact" style="display:none;gap:8px;flex-direction:column;"></div>
+  <button class="btn-star-friend" id="gc-star-btn"></button>
   <button class="btn-card-close" onclick="closeGuestCard()">Close</button>
+</div>
+
+<!-- INCOMING FRIEND REQUEST CARD -->
+<div id="request-card" style="position:fixed;bottom:0;left:0;right:0;z-index:861;background:var(--surface2);border-top:2px solid var(--orange);border-radius:20px 20px 0 0;padding:24px 20px 40px;transform:translateY(100%);transition:transform .3s cubic-bezier(.2,.8,.3,1);display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center;">
+  <div id="rc-emoji" style="font-size:52px;">👋</div>
+  <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:.04em;color:var(--white);">Someone wants to connect</div>
+  <div style="font-size:13px;color:var(--muted);">At this event right now</div>
+  <button class="btn-star-friend" onclick="acceptCurrentRequest()" style="background:var(--orange);color:#000;">👋 Say Hey Back</button>
+  <button class="btn-card-close" onclick="dismissRequest()">Maybe later</button>
 </div>
 
 <!-- EXIT ACTION CARDS -->
@@ -2181,6 +2191,8 @@ function launchApp() {
 
   initMap();
   loadZones(false);
+  loadFriendships();
+  subscribeFriendRequests();
 
   // Live zone list — reload when a zone is created or deactivated.
   // Mid-session updates (track change, listener count) are handled by the
@@ -2397,7 +2409,7 @@ function exitNotify() {
 
 
 let liveGuests = {};           // { id: { name, emoji, dist, status, lastSeen } }
-let _friends   = JSON.parse(localStorage.getItem('byob_friends') || '{}');
+let _friends   = JSON.parse(localStorage.getItem('byob_friends_v2') || '{}'); // keyed by userId
 let _lastGuestCount = 0;
 let _gcCurrentId = null;
 
@@ -2435,13 +2447,14 @@ function updateGuestList() {
 
   ul.innerHTML = '';
   sorted.forEach(g => {
-    const isFriend = !!_friends[g.id];
+    const isFriend = !!(g.userId && _friends[g.userId]);
+    const displayName = isFriend ? (g.name || 'Friend') : 'Someone here';
     const row = document.createElement('div');
     row.className = 'guest-row' + (isFriend ? ' friend' : '');
     row.innerHTML = `
       <div class="guest-emoji">${g.emoji || '🎧'}</div>
       <div class="guest-info">
-        <div class="guest-name${isFriend ? ' friend-name' : ''}">${g.name || 'Anonymous'}</div>
+        <div class="guest-name${isFriend ? ' friend-name' : ''}">${displayName}</div>
         <div class="guest-status ${g.status}">${g.status === 'present' ? 'Present' : 'On The Way'}</div>
       </div>
       <div class="guest-star${isFriend ? ' starred' : ''}">⭐</div>`;
@@ -2479,8 +2492,8 @@ function updateGuestMapMarkers() {
     if (g.bearing == null) return;
     seen.add(g.id);
     const pos = destFromBearing(activeZone.lat, activeZone.lng, g.bearing, g.dist);
-    const isFriend = !!_friends[g.id];
-    const friendName = isFriend ? (_friends[g.id].name || g.name || '') : '';
+    const isFriend = !!(g.userId && _friends[g.userId]);
+    const friendName = isFriend ? (g.name || _friends[g.userId]?.name || '') : '';
     const label = isFriend && friendName
       ? `<div style="font-size:9px;font-weight:700;color:#fff;background:rgba(0,0,0,.75);border-radius:4px;padding:1px 5px;margin-top:1px;white-space:nowrap;letter-spacing:.02em;">${friendName}</div>`
       : '';
@@ -2512,34 +2525,171 @@ function clearGuestMapMarkers() {
   _guestMapMarkers = {};
 }
 
+let _gcCurrentGuest = null;
+let _pendingRequest  = null;
+
 function openGuestCard(g) {
-  _gcCurrentId = g.id;
+  _gcCurrentGuest = g;
+  _gcCurrentId    = g.id; // keep for legacy refs
   document.getElementById('gc-emoji').textContent = g.emoji || '🎧';
-  document.getElementById('gc-name').textContent  = g.name || 'Anonymous';
-  const isFriend = !!_friends[g.id];
-  const btn = document.getElementById('gc-star-btn');
-  btn.textContent = isFriend ? '★ Remove Friend' : '⭐ Add as Friend';
-  btn.className   = 'btn-star-friend' + (isFriend ? ' unstar' : '');
+
+  const isFriend   = !!(g.userId && _friends[g.userId]);
+  const isPending  = window._sentRequests?.has(g.userId);
+  const contactEl  = document.getElementById('gc-contact');
+  const btn        = document.getElementById('gc-star-btn');
+
+  if (isFriend) {
+    document.getElementById('gc-name').textContent = g.name || 'Friend';
+    // Show contact info if they shared it
+    const lines = [];
+    if (g.phone)     lines.push(`📞 ${g.phone}`);
+    if (g.instagram) lines.push(`📸 @${g.instagram}`);
+    contactEl.style.display = lines.length ? 'flex' : 'none';
+    contactEl.innerHTML = lines.map(l => `<div style="font-size:15px;color:var(--cream);text-align:center;">${l}</div>`).join('');
+    btn.textContent = '★ Remove Friend';
+    btn.className   = 'btn-star-friend unstar';
+    btn.onclick     = removeFriend;
+  } else {
+    document.getElementById('gc-name').textContent = 'Someone here';
+    contactEl.style.display = 'none';
+    if (isPending) {
+      btn.textContent = '✓ Request Sent';
+      btn.className   = 'btn-star-friend';
+      btn.style.background = '#333'; btn.style.color = 'var(--muted)';
+      btn.onclick = null;
+    } else {
+      btn.textContent = '👋 Say Hey';
+      btn.className   = 'btn-star-friend';
+      btn.style.background = ''; btn.style.color = '';
+      btn.onclick     = sayHey;
+    }
+  }
   document.getElementById('guest-card').classList.add('open');
 }
 
 function closeGuestCard() {
   document.getElementById('guest-card').classList.remove('open');
-  _gcCurrentId = null;
+  _gcCurrentGuest = null; _gcCurrentId = null;
 }
 
-function toggleFriend() {
-  if (!_gcCurrentId) return;
-  if (_friends[_gcCurrentId]) {
-    delete _friends[_gcCurrentId];
-  } else {
-    const g = liveGuests[_gcCurrentId];
-    _friends[_gcCurrentId] = { name: g?.name, emoji: g?.emoji };
-    boomSay('We see you making friends. Yes. This is good.', 2500, false, 'regular');
+async function sayHey() {
+  const g = _gcCurrentGuest;
+  if (!g?.userId) { showToast('Cannot connect right now'); return; }
+  const btn = document.getElementById('gc-star-btn');
+  btn.textContent = 'Sending…'; btn.onclick = null;
+
+  const { error } = await db.from('friendships').insert({
+    requester_id: currentUser.id,
+    addressee_id: g.userId
+  });
+
+  if (error && error.code !== '23505') {
+    showToast('Could not send — try again'); btn.textContent = '👋 Say Hey'; btn.onclick = sayHey; return;
   }
-  localStorage.setItem('byob_friends', JSON.stringify(_friends));
+  if (!window._sentRequests) window._sentRequests = new Set();
+  window._sentRequests.add(g.userId);
+  btn.textContent = '✓ Request Sent'; btn.style.background = '#333'; btn.style.color = 'var(--muted)';
+  boomSay('Signal sent. Now we wait.', 2200, false, 'regular');
+  setTimeout(closeGuestCard, 1200);
+}
+
+function removeFriend() {
+  const g = _gcCurrentGuest;
+  if (!g?.userId) return;
+  delete _friends[g.userId];
+  localStorage.setItem('byob_friends_v2', JSON.stringify(_friends));
+  db.from('friendships')
+    .delete()
+    .or(`and(requester_id.eq.${currentUser.id},addressee_id.eq.${g.userId}),and(requester_id.eq.${g.userId},addressee_id.eq.${currentUser.id})`)
+    .then(() => {});
   closeGuestCard();
   updateGuestList();
+  showToast('Friend removed');
+}
+
+function showRequestCard(req, fromEmoji) {
+  _pendingRequest = req;
+  document.getElementById('rc-emoji').textContent = fromEmoji || '👋';
+  document.getElementById('request-card').style.transform = 'translateY(0)';
+}
+
+function dismissRequest() {
+  document.getElementById('request-card').style.transform = 'translateY(100%)';
+  _pendingRequest = null;
+}
+
+async function acceptCurrentRequest() {
+  if (!_pendingRequest) return;
+  const req = _pendingRequest;
+  dismissRequest();
+
+  const { error } = await db.from('friendships').update({ status: 'accepted' }).eq('id', req.id);
+  if (error) { showToast('Could not accept — try again'); return; }
+
+  // Add to local friends using their userId as key
+  const g = Object.values(liveGuests).find(l => l.userId === req.requester_id);
+  if (g) {
+    _friends[g.userId] = { name: g.name, emoji: g.emoji, phone: g.phone, instagram: g.instagram };
+    localStorage.setItem('byob_friends_v2', JSON.stringify(_friends));
+    updateGuestList();
+    boomSay('New connection. Yes. This is good.', 2500, false, 'devious');
+  }
+}
+
+// ── FRIEND REQUEST REALTIME SUB ───────────────────────────
+function subscribeFriendRequests() {
+  if (!currentUser) return;
+  db.channel('friendships_in_' + currentUser.id)
+    .on('postgres_changes', {
+      event: 'INSERT', schema: 'public', table: 'friendships',
+      filter: `addressee_id=eq.${currentUser.id}`
+    }, ({ new: req }) => {
+      if (req.status !== 'pending') return;
+      const g = Object.values(liveGuests).find(l => l.userId === req.requester_id);
+      const emoji = g?.emoji || '👋';
+      boomSay(`${emoji} someone here wants to connect`, 7000, true, 'regular');
+      setTimeout(() => showRequestCard(req, emoji), 1000);
+    })
+    .on('postgres_changes', {
+      event: 'UPDATE', schema: 'public', table: 'friendships',
+      filter: `requester_id=eq.${currentUser.id}`
+    }, ({ new: req }) => {
+      if (req.status !== 'accepted') return;
+      const g = Object.values(liveGuests).find(l => l.userId === req.addressee_id);
+      if (g) {
+        _friends[g.userId] = { name: g.name, emoji: g.emoji, phone: g.phone, instagram: g.instagram };
+        localStorage.setItem('byob_friends_v2', JSON.stringify(_friends));
+        updateGuestList();
+        boomSay(`${g.emoji} ${g.name} said hey back`, 3000, false, 'devious');
+      }
+    })
+    .subscribe();
+}
+
+// Load accepted friendships from Supabase on app start
+async function loadFriendships() {
+  if (!currentUser) return;
+  try {
+    const { data } = await db.from('friendships')
+      .select('requester_id,addressee_id,status')
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${currentUser.id},addressee_id.eq.${currentUser.id}`);
+    if (!data) return;
+    // Populate _sentRequests so pending buttons render correctly
+    const { data: pending } = await db.from('friendships')
+      .select('addressee_id')
+      .eq('requester_id', currentUser.id)
+      .eq('status', 'pending');
+    if (pending) {
+      window._sentRequests = new Set(pending.map(r => r.addressee_id));
+    }
+    // Accepted friendships: store the other person's userId so map markers work
+    data.forEach(f => {
+      const otherUserId = f.requester_id === currentUser.id ? f.addressee_id : f.requester_id;
+      if (!_friends[otherUserId]) _friends[otherUserId] = { userId: otherUserId };
+    });
+    localStorage.setItem('byob_friends_v2', JSON.stringify(_friends));
+  } catch(e) { console.warn('loadFriendships:', e.message); }
 }
 
 // Receive presence from other listeners — and broadcast our own
@@ -2553,13 +2703,16 @@ function initGuestListChannel(zoneId) {
       const distMeters = payload.dist * 1609.34;
       const zoneRadius = activeZone?.radius_m || 200;
       liveGuests[payload.id] = {
-        id:       payload.id,
-        name:     payload.name,
-        emoji:    payload.emoji,
-        dist:     distMeters,
-        bearing:  payload.bearing ?? 0,
-        status:   distMeters <= zoneRadius ? 'present' : distMeters <= 500 ? 'ontheway' : null,
-        lastSeen: Date.now(),
+        id:        payload.id,
+        userId:    payload.userId || null,
+        name:      payload.name,
+        emoji:     payload.emoji,
+        dist:      distMeters,
+        bearing:   payload.bearing ?? 0,
+        phone:     payload.phone || '',
+        instagram: payload.instagram || '',
+        status:    distMeters <= zoneRadius ? 'present' : distMeters <= 500 ? 'ontheway' : null,
+        lastSeen:  Date.now(),
       };
       if (liveGuests[payload.id].status === null) delete liveGuests[payload.id];
       updateGuestList();
@@ -2573,14 +2726,15 @@ function initGuestListChannel(zoneId) {
   }
   const sendPresence = () => {
     if (!activeZone || !userLat || !window._guestChannel) return;
-    const dist    = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
-    const bearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
-    const name    = currentUser?.user_metadata?.display_name || 'Anonymous';
-    const emoji   = currentUser?.user_metadata?.emoji || '🎧';
-    const phone   = currentUser?.user_metadata?.phone || '';
+    const dist      = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
+    const bearing   = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
+    const name      = currentUser?.user_metadata?.display_name || 'Anonymous';
+    const emoji     = currentUser?.user_metadata?.emoji || '🎧';
+    const phone     = currentUser?.user_metadata?.phone || '';
+    const instagram = currentUser?.user_metadata?.instagram || '';
     window._guestChannel.send({
       type: 'broadcast', event: 'proximity',
-      payload: { id: listenerId, dist, bearing, name, emoji, phone }
+      payload: { id: listenerId, userId: currentUser?.id, dist, bearing, name, emoji, phone, instagram }
     });
   };
   setTimeout(sendPresence, 1500);
