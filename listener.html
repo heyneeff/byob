@@ -2823,6 +2823,7 @@ async function previewZone(z) {
 // Called when geofence is physically crossed — this plays the music
 async function activateZone(z) {
   activeZone = z;
+  _scatterOffsetMs = 0; // clear any sweep offset from a previous zone
   unlockUI(z);
 
 
@@ -3644,15 +3645,20 @@ let _scatterOffsetMs = 0;
 
 
 async function measureClockOffset() {
-  try {
-    const t0 = Date.now();
-    const { data, error } = await db.rpc('server_now').single();
-    const t1 = Date.now();
-    if (error || !data) return;
-    const serverMs = new Date(data).getTime();
-    if (isNaN(serverMs)) return;
-    _clockOffset = serverMs - (t0 + (t1 - t0) / 2);
-  } catch(e) {}
+  const samples = [];
+  for (let i = 0; i < 3; i++) {
+    try {
+      const t0 = Date.now();
+      const { data, error } = await db.rpc('server_now').single();
+      const t1 = Date.now();
+      if (!error && data) {
+        const serverMs = new Date(data).getTime();
+        if (!isNaN(serverMs)) samples.push(serverMs - (t0 + (t1 - t0) / 2));
+      }
+    } catch(e) {}
+    if (i < 2) await new Promise(r => setTimeout(r, 80));
+  }
+  if (samples.length) _clockOffset = samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)];
 }
 function syncedNow() { return Date.now() + _clockOffset; }
 
