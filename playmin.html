@@ -38,56 +38,84 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .content{grid-column:1;display:flex;flex-direction:column;overflow:hidden;}
 .panel{display:none;flex:1;flex-direction:column;overflow:hidden;}
 .panel.active{display:flex;}
-/* SPATIAL — 3-column resizable Ableton-style layout */
-.spatial-panel{flex:1;display:grid;grid-template-columns:var(--sp-left,180px) 5px 1fr 5px var(--sp-right,220px);grid-template-rows:1fr 5px minmax(var(--sp-bottom,190px),35vh);overflow:hidden;}
+/* SPATIAL — 3-column resizable layout */
+.spatial-panel{flex:1;display:grid;grid-template-columns:var(--sp-left,180px) 5px 1fr 5px var(--sp-right,224px);grid-template-rows:1fr 5px minmax(190px,35vh);overflow:hidden;}
 
-/* Drag handles */
-.sp-handle-v{cursor:col-resize;background:var(--rim);transition:background .15s;z-index:5;}
-.sp-handle-v:hover,.sp-handle-v.dragging{background:var(--teal);}
-.sp-handle-h{grid-column:1/-1;grid-row:2;cursor:row-resize;background:var(--rim);transition:background .15s;z-index:5;}
-.sp-handle-h:hover,.sp-handle-h.dragging{background:var(--teal);}
+/* Drag handles — explicit placement, never auto */
+.sp-hv-left {grid-column:2;grid-row:1;cursor:col-resize;background:var(--rim);transition:background .15s;z-index:5;}
+.sp-hv-right{grid-column:4;grid-row:1;cursor:col-resize;background:var(--rim);transition:background .15s;z-index:5;}
+.sp-hh     {grid-column:1/-1;grid-row:2;cursor:row-resize;background:var(--rim);transition:background .15s;z-index:5;}
+.sp-hv-left:hover,.sp-hv-left.dragging,
+.sp-hv-right:hover,.sp-hv-right.dragging,
+.sp-hh:hover,.sp-hh.dragging{background:var(--teal);}
 
 /* Left: stems browser */
-.sp-stems{grid-column:1;grid-row:1;display:flex;flex-direction:column;background:var(--card);overflow:hidden;border-right:none;}
-.sp-stems-bar{display:flex;align-items:center;gap:4px;padding:6px 7px;border-bottom:1px solid var(--rim);flex-shrink:0;}
-.sp-stems-search{flex:1;background:var(--card2);border:1px solid var(--rim);border-radius:5px;padding:4px 7px;color:var(--cream);font-size:11px;outline:none;font-family:'Roboto',sans-serif;}
+.sp-stems{grid-column:1;grid-row:1;display:flex;flex-direction:column;background:#0e0e0e;overflow:hidden;}
+.sp-stems-bar{display:flex;align-items:center;gap:4px;padding:5px 7px;border-bottom:1px solid var(--rim);flex-shrink:0;background:#111;}
+.sp-stems-search{flex:1;background:var(--bg);border:1px solid var(--rim);border-radius:4px;padding:3px 6px;color:var(--cream);font-size:10px;outline:none;font-family:'Roboto',sans-serif;}
 .sp-stems-search:focus{border-color:var(--teal);}
-.sp-stems-list{flex:1;overflow-y:auto;padding:4px 5px;}
+.sp-stems-list{flex:1;overflow-y:auto;padding:3px 4px;}
 .sp-stems-list::-webkit-scrollbar{width:2px;}.sp-stems-list::-webkit-scrollbar-thumb{background:var(--rim);}
-.stem-row{display:flex;align-items:center;gap:5px;padding:5px 4px;border-radius:5px;cursor:grab;transition:background .1s;}
-.stem-row:hover{background:var(--card2);}
-.stem-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.stem-row{display:flex;align-items:center;gap:5px;padding:4px;border-radius:4px;cursor:grab;transition:background .1s;border-bottom:1px solid rgba(255,255,255,.03);}
+.stem-row:hover{background:#1a1a1a;}
+.stem-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
 .stem-title{flex:1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
 .stem-btns{display:flex;gap:2px;flex-shrink:0;}
-.stem-btn{width:17px;height:17px;border-radius:3px;border:none;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;cursor:pointer;background:var(--card2);color:var(--muted);transition:all .1s;}
+.stem-btn{width:16px;height:16px;border-radius:3px;border:none;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;cursor:pointer;background:#1c1c1c;color:var(--muted);transition:all .1s;}
 .stem-btn:hover{background:var(--orange);color:#000;}
 
 /* Center: radar */
 .sp-radar{grid-column:3;grid-row:1;display:flex;align-items:center;justify-content:center;background:var(--bg);overflow:hidden;}
 #sg{touch-action:none;cursor:crosshair;}
 
-/* Right: tools */
-.sp-tools{grid-column:5;grid-row:1;display:flex;flex-direction:column;gap:5px;padding:8px;border-left:none;background:var(--card);overflow-y:auto;}
-.sp-tools::-webkit-scrollbar{width:2px;}.sp-tools::-webkit-scrollbar-thumb{background:var(--rim);}
-.sp-label{font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);flex-shrink:0;margin-top:4px;font-family:'Barlow Condensed',sans-serif;}
-.mode-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:3px;}
-.mbutton{padding:6px 3px;border:none;border-radius:7px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;background:var(--card2);color:var(--muted);transition:all .15s;}
-.mbutton.active{background:var(--orange);color:#000;}
-.zone-slot{display:flex;align-items:center;gap:6px;padding:6px 8px;border-radius:8px;background:var(--card2);border:1.5px dashed var(--rim);cursor:pointer;transition:all .15s;margin-bottom:2px;}
-.zone-slot:hover{border-color:var(--border);}.zone-slot.loaded{border-style:solid;background:#0d0d00;}.zone-slot.selected{border-color:var(--orange);}
-.zslot-badge{width:22px;height:22px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;color:#000;flex-shrink:0;}
-.zslot-info{flex:1;min-width:0;}
-.zslot-name{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.zslot-sub{font-size:8px;color:var(--muted);letter-spacing:.06em;margin-top:1px;}
-.zslot-controls{display:flex;gap:3px;flex-shrink:0;}
-.zslot-btn{width:22px;height:22px;border-radius:4px;border:none;background:var(--card);color:var(--white);font-size:10px;cursor:pointer;transition:all .15s;}
-.zslot-btn:hover{background:var(--orange);color:#000;}.zslot-btn.danger:hover{background:var(--red);}
-.sact-col{display:flex;flex-direction:column;gap:4px;}
-.sact{padding:9px;border:none;border-radius:9px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;transition:transform .1s;box-shadow:0 3px 10px rgba(0,0,0,.4);}
-.sact:active{transform:scale(.97);}.sact-scatter{background:var(--red);color:#fff;}.sact-snap{background:var(--teal);color:#000;}
+/* Right: Ableton-style rack */
+.sp-rack{grid-column:5;grid-row:1;display:flex;flex-direction:column;background:#111;overflow:hidden;}
+.rack-section{border-bottom:1px solid var(--rim);flex-shrink:0;}
+.rack-header{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:#141414;cursor:pointer;user-select:none;}
+.rack-header-label{font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);}
+.rack-header-arrow{font-size:8px;color:var(--muted);transition:transform .15s;}
+.rack-section.open .rack-header-arrow{transform:rotate(90deg);}
+.rack-body{display:none;padding:5px 6px;gap:4px;flex-direction:column;}
+.rack-section.open .rack-body{display:flex;}
 
-/* Bottom: library */
-.sp-library{grid-column:1/-1;grid-row:3;background:var(--card);border-top:none;display:flex;flex-direction:column;overflow:hidden;}
+/* Slot clips — Ableton session-view style */
+.slot-clip{display:flex;align-items:center;height:28px;border-radius:4px;overflow:hidden;cursor:pointer;transition:filter .1s;margin-bottom:2px;border:1px solid rgba(255,255,255,.06);}
+.slot-clip:hover{filter:brightness(1.2);}
+.slot-clip.selected{border-color:var(--orange);box-shadow:0 0 0 1px var(--orange) inset;}
+.slot-clip-color{width:24px;height:100%;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;color:#000;flex-shrink:0;}
+.slot-clip-name{flex:1;font-size:9px;padding:0 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
+.slot-clip-acts{display:flex;gap:1px;padding-right:4px;flex-shrink:0;}
+.slot-clip-btn{width:20px;height:20px;border:none;border-radius:3px;background:rgba(255,255,255,.06);color:var(--white);font-size:9px;cursor:pointer;transition:background .1s;}
+.slot-clip-btn:hover{background:rgba(255,255,255,.18);}
+.slot-clip-btn.danger:hover{background:var(--red);}
+.slot-clip-btn.play{color:var(--teal);}
+
+/* Mode strip */
+.mode-strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:5px 6px;}
+.mode-pill{padding:5px 0;border:none;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.12em;background:#1a1a1a;color:var(--muted);transition:all .15s;text-align:center;}
+.mode-pill.active{background:var(--orange);color:#000;}
+
+/* Rack controls */
+.rack-knob-row{display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.rack-knob-label{font-size:9px;color:var(--muted);width:44px;flex-shrink:0;}
+.rack-slider{flex:1;accent-color:var(--red);height:3px;}
+.rack-val{font-size:9px;color:var(--cream);width:30px;text-align:right;flex-shrink:0;}
+.rack-btn-row{display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-bottom:3px;}
+.rack-btn{padding:6px 0;border:none;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;background:#1a1a1a;color:var(--muted);border:1px solid var(--rim);transition:all .15s;}
+.rack-btn:hover{border-color:var(--teal);color:var(--teal);}
+.rack-btn.danger:hover{border-color:var(--red);color:var(--red);}
+.rack-btn.active{background:var(--teal);color:#000;border-color:var(--teal);}
+.rack-btn.hot{background:var(--red);color:#fff;border-color:var(--red);}
+.rack-sweep-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;}
+
+/* Bottom: full library */
+.sp-library{grid-column:1/-1;grid-row:3;background:var(--card);display:flex;flex-direction:column;overflow:hidden;}
+
+/* Legacy slot classes kept for JS compat */
+.sp-label{font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);flex-shrink:0;margin-top:4px;font-family:'Barlow Condensed',sans-serif;}
+.zone-slot{display:none;}
+.zslot-badge,.zslot-info,.zslot-name,.zslot-sub,.zslot-controls,.zslot-btn{display:contents;}
+.sact-col,.sact,.sact-scatter,.sact-snap,.scatter-voices-sel,.mbutton,.mode-grid{display:none;}
 /* DECK */
 .deck-panel{flex:1;display:grid;grid-template-rows:minmax(0,1fr) auto minmax(180px,35vh);overflow:hidden;}
 .deck-top{display:grid;grid-template-columns:1fr 118px 1fr;overflow:hidden;border-bottom:1px solid var(--rim);}
@@ -445,82 +473,142 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <!-- LEFT: stems browser -->
   <div class="sp-stems">
     <div class="sp-stems-bar">
-      <span class="sp-label" style="margin:0;">Stems</span>
+      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;white-space:nowrap;">STEMS</span>
       <input class="sp-stems-search" id="sp-stems-search" placeholder="search…" oninput="filterStems(this.value)"/>
     </div>
     <div class="sp-stems-list" id="sp-stems-list"></div>
   </div>
 
-  <!-- HANDLE: left resize -->
-  <div class="sp-handle-v" id="sp-handle-left"></div>
+  <!-- LEFT HANDLE -->
+  <div class="sp-hv-left" id="sp-handle-left"></div>
 
-  <!-- CENTER: radar canvas -->
-  <div class="sp-radar" id="sp-spatial-map" style="overflow:hidden;border-radius:0;"></div>
+  <!-- CENTER: radar -->
+  <div class="sp-radar" id="sp-spatial-map"></div>
 
-  <!-- HANDLE: right resize -->
-  <div class="sp-handle-v" id="sp-handle-right"></div>
+  <!-- RIGHT HANDLE -->
+  <div class="sp-hv-right" id="sp-handle-right"></div>
 
-  <!-- RIGHT: tools -->
-  <div class="sp-tools">
-    <div class="sp-label">Zone Tracks</div>
-    <div id="zone-slots">
-      <div class="zone-slot" id="slot-C" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'C')" onclick="selectZoneSlot('C')">
-        <div class="zslot-badge" style="background:var(--orange);">C</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-C-name">Center — drop track</div><div class="zslot-sub">All speakers</div></div>
-        <div class="zslot-controls" id="slot-C-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'C')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'C')">×</button></div>
+  <!-- RIGHT: Ableton-style rack -->
+  <div class="sp-rack" id="sp-rack">
+
+    <!-- SLOTS section -->
+    <div class="rack-section open" id="rack-slots">
+      <div class="rack-header" onclick="toggleRack('rack-slots')">
+        <span class="rack-header-label">Zone Slots</span>
+        <span class="rack-header-arrow">▶</span>
       </div>
-      <div class="zone-slot" id="slot-1" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'1')" onclick="selectZoneSlot('1')">
-        <div class="zslot-badge" style="background:var(--teal);">1</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-1-name">Slot 1 — drop track</div><div class="zslot-sub">Cluster 1</div></div>
-        <div class="zslot-controls" id="slot-1-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'1')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'1')">×</button></div>
-      </div>
-      <div class="zone-slot" id="slot-2" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'2')" onclick="selectZoneSlot('2')">
-        <div class="zslot-badge" style="background:var(--red);">2</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-2-name">Slot 2 — drop track</div><div class="zslot-sub">Cluster 2</div></div>
-        <div class="zslot-controls" id="slot-2-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'2')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'2')">×</button></div>
-      </div>
-      <div class="zone-slot" id="slot-3" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'3')" onclick="selectZoneSlot('3')">
-        <div class="zslot-badge" style="background:#a78bfa;">3</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-3-name">Slot 3 — drop track</div><div class="zslot-sub">Cluster 3</div></div>
-        <div class="zslot-controls" id="slot-3-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'3')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'3')">×</button></div>
-      </div>
-      <div class="zone-slot" id="slot-4" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'4')" onclick="selectZoneSlot('4')">
-        <div class="zslot-badge" style="background:#f472b6;">4</div>
-        <div class="zslot-info"><div class="zslot-name" id="slot-4-name">Slot 4 — drop track</div><div class="zslot-sub">Cluster 4</div></div>
-        <div class="zslot-controls" id="slot-4-controls" style="display:none;"><button class="zslot-btn" onclick="playZone(event,'4')">▶</button><button class="zslot-btn danger" onclick="clearZoneSlot(event,'4')">×</button></div>
+      <div class="rack-body">
+        <!-- hidden legacy elements for JS compat -->
+        <div style="display:none">
+          <div id="slot-C"><span id="slot-C-name"></span><span id="slot-C-controls"></span></div>
+          <div id="slot-1"><span id="slot-1-name"></span><span id="slot-1-controls"></span></div>
+          <div id="slot-2"><span id="slot-2-name"></span><span id="slot-2-controls"></span></div>
+          <div id="slot-3"><span id="slot-3-name"></span><span id="slot-3-controls"></span></div>
+          <div id="slot-4"><span id="slot-4-name"></span><span id="slot-4-controls"></span></div>
+        </div>
+        <!-- Clip-style slot rows -->
+        <div id="zone-slots">
+          <div class="slot-clip" id="clip-C" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'C')" onclick="selectZoneSlot('C')">
+            <div class="slot-clip-color" style="background:var(--orange);">C</div>
+            <div class="slot-clip-name" id="clip-C-name">All speakers</div>
+            <div class="slot-clip-acts">
+              <button class="slot-clip-btn play" onclick="playZone(event,'C')">▶</button>
+              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'C')">×</button>
+            </div>
+          </div>
+          <div class="slot-clip" id="clip-1" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'1')" onclick="selectZoneSlot('1')">
+            <div class="slot-clip-color" style="background:var(--teal);">1</div>
+            <div class="slot-clip-name" id="clip-1-name">Cluster 1</div>
+            <div class="slot-clip-acts">
+              <button class="slot-clip-btn play" onclick="playZone(event,'1')">▶</button>
+              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'1')">×</button>
+            </div>
+          </div>
+          <div class="slot-clip" id="clip-2" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'2')" onclick="selectZoneSlot('2')">
+            <div class="slot-clip-color" style="background:var(--red);">2</div>
+            <div class="slot-clip-name" id="clip-2-name">Cluster 2</div>
+            <div class="slot-clip-acts">
+              <button class="slot-clip-btn play" onclick="playZone(event,'2')">▶</button>
+              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'2')">×</button>
+            </div>
+          </div>
+          <div class="slot-clip" id="clip-3" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'3')" onclick="selectZoneSlot('3')">
+            <div class="slot-clip-color" style="background:#a78bfa;">3</div>
+            <div class="slot-clip-name" id="clip-3-name">Cluster 3</div>
+            <div class="slot-clip-acts">
+              <button class="slot-clip-btn play" onclick="playZone(event,'3')">▶</button>
+              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'3')">×</button>
+            </div>
+          </div>
+          <div class="slot-clip" id="clip-4" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'4')" onclick="selectZoneSlot('4')">
+            <div class="slot-clip-color" style="background:#f472b6;">4</div>
+            <div class="slot-clip-name" id="clip-4-name">Cluster 4</div>
+            <div class="slot-clip-acts">
+              <button class="slot-clip-btn play" onclick="playZone(event,'4')">▶</button>
+              <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'4')">×</button>
+            </div>
+          </div>
+        </div>
+        <button onclick="broadcastAllZones()" class="rack-btn active" style="margin-top:2px;width:100%;border-radius:4px;padding:6px;">⚡ Broadcast All</button>
       </div>
     </div>
 
-    <button onclick="broadcastAllZones()" style="width:100%;padding:10px;background:var(--card2);color:var(--orange);border:1px solid var(--orange);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;margin-top:6px;">⚡ Broadcast All Zones</button>
+    <!-- MODE section -->
+    <div class="rack-section open" id="rack-mode">
+      <div class="rack-header" onclick="toggleRack('rack-mode')">
+        <span class="rack-header-label">Spatial Mode</span>
+        <span class="rack-header-arrow">▶</span>
+      </div>
+      <div class="rack-body" style="padding:4px 6px 6px;">
+        <div class="mode-strip">
+          <button class="mode-pill active" id="mode-single" onclick="setMode('single')">SINGLE</button>
+          <button class="mode-pill" id="mode-cluster" onclick="setMode('cluster')">CLUSTER</button>
+          <button class="mode-pill" id="mode-sweep" onclick="setMode('sweep')">SWEEP</button>
+        </div>
 
-    <div class="sp-label" style="margin-top:8px;">Cluster Mode</div>
-    <button id="btn-cluster" onclick="toggleCluster()" style="width:100%;padding:10px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;">⬡ CLUSTER</button>
-    <div style="font-size:9px;color:var(--muted);margin-top:3px;margin-bottom:2px;">Groups listeners by proximity · assigns each cluster a stem · recomputes every 30s</div>
+        <!-- Cluster controls -->
+        <div id="mode-body-cluster" style="display:none;flex-direction:column;gap:3px;">
+          <button id="btn-cluster" onclick="toggleCluster()" class="rack-btn" style="width:100%;border-color:var(--teal);color:var(--teal);">⬡ START CLUSTER</button>
+          <div style="font-size:8px;color:var(--muted);text-align:center;padding:2px 0;">Groups by proximity · auto-assigns stems · 30s refresh</div>
+        </div>
 
-    <div class="sp-label" style="margin-top:8px;">Scatter</div>
-    <input type="range" id="scatter-ms" min="0" max="30000" step="250" value="2000" style="width:100%;accent-color:var(--red);" oninput="updateScatterLabel()"/>
-    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px;"><span>0s</span><span id="scatter-label" style="color:var(--white);font-weight:700;">2.0s spread</span><span>30s</span></div>
-    <select id="scatter-voices" class="scatter-voices-sel">
-      <option value="2">2 voices</option><option value="3">3 voices</option><option value="4" selected>4 voices</option><option value="6">6 voices</option><option value="8">8 voices</option>
-    </select>
-    <div class="sact-col">
-      <button class="sact sact-scatter" onclick="scatterSpeakers()">♪ SCATTER</button>
-      <button class="sact sact-snap"    onclick="snapSpeakers()">⚡ SNAP</button>
-      <button onclick="triggerResync()" style="width:100%;padding:9px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:9px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">🔄 Sync All Speakers</button>
+        <!-- Scatter controls -->
+        <div id="mode-body-scatter" style="display:none;flex-direction:column;gap:4px;">
+          <div class="rack-knob-row">
+            <span class="rack-knob-label">Spread</span>
+            <input type="range" class="rack-slider" id="scatter-ms" min="0" max="30000" step="250" value="2000" oninput="updateScatterLabel()"/>
+            <span class="rack-val" id="scatter-label">2.0s</span>
+          </div>
+          <select id="scatter-voices" style="width:100%;background:#1a1a1a;border:1px solid var(--rim);border-radius:4px;padding:4px 6px;color:var(--cream);font-size:10px;outline:none;">
+            <option value="2">2 voices</option><option value="3">3 voices</option><option value="4" selected>4 voices</option><option value="6">6 voices</option><option value="8">8 voices</option>
+          </select>
+          <div class="rack-btn-row">
+            <button class="rack-btn hot" onclick="scatterSpeakers()">♪ SCATTER</button>
+            <button class="rack-btn active" onclick="snapSpeakers()">⚡ SNAP</button>
+          </div>
+        </div>
+
+        <!-- Sweep controls -->
+        <div id="mode-body-sweep" style="display:none;flex-direction:column;gap:3px;">
+          <div class="rack-sweep-grid">
+            <button class="rack-btn" onclick="startCircularSweep(2,1)" style="color:var(--teal);border-color:var(--teal);">↻ 2 RPM</button>
+            <button class="rack-btn" onclick="startCircularSweep(4,1)" style="color:var(--teal);border-color:var(--teal);">↻ 4 RPM</button>
+            <button class="rack-btn" onclick="startCircularSweep(8,1)" style="color:var(--teal);border-color:var(--teal);">↻ 8 RPM</button>
+            <button class="rack-btn" onclick="startCircularSweep(4,-1)" style="color:var(--orange);border-color:var(--orange);">↺ REV</button>
+          </div>
+          <button class="rack-btn danger" onclick="stopCircularSweep()" style="width:100%;">◼ STOP</button>
+        </div>
+
+        <button onclick="triggerResync()" class="rack-btn" style="width:100%;margin-top:4px;color:var(--teal);border-color:var(--teal);">🔄 Sync All</button>
+      </div>
     </div>
 
-    <div class="sp-label" style="margin-top:8px;">Circular Sweep</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
-      <button onclick="startCircularSweep(2,1)"  style="padding:8px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↻ 2 RPM</button>
-      <button onclick="startCircularSweep(4,1)"  style="padding:8px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↻ 4 RPM</button>
-      <button onclick="startCircularSweep(8,1)"  style="padding:8px;background:var(--card2);color:var(--teal);border:1px solid var(--teal);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↻ 8 RPM</button>
-      <button onclick="startCircularSweep(4,-1)" style="padding:8px;background:var(--card2);color:var(--orange);border:1px solid var(--orange);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;">↺ Reverse</button>
-    </div>
-    <button onclick="stopCircularSweep()" style="width:100%;padding:8px;background:var(--red);color:#fff;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;">◼ Stop Sweep</button>
+    <!-- overflow spacer -->
+    <div style="flex:1;overflow-y:auto;"></div>
   </div>
 
-  <!-- HANDLE: bottom resize -->
-  <div class="sp-handle-h" id="sp-handle-bottom"></div>
+  <!-- BOTTOM HANDLE -->
+  <div class="sp-hh" id="sp-handle-bottom"></div>
 
   <!-- BOTTOM: library -->
   <div class="sp-library" id="sp-lib"></div>
@@ -870,7 +958,7 @@ function toggleDJSignUp(){
 function updateScatterLabel(){
   const ms=parseInt(document.getElementById('scatter-ms').value);
   const s=(ms/1000).toFixed(ms<1000?1:1);
-  document.getElementById('scatter-label').textContent=s+'s spread';
+  document.getElementById('scatter-label').textContent=s+'s';
 }
 function scatterSpeakers(){
   const maxMs=parseInt(document.getElementById('scatter-ms').value);
@@ -1441,8 +1529,8 @@ function toggleCluster(){
 function updateClusterBtn(){
   const btn=document.getElementById('btn-cluster');
   if(!btn)return;
-  if(_clusterActive){btn.textContent='⬡ CLUSTER ON';btn.style.background='var(--teal)';btn.style.color='#000';}
-  else{btn.textContent='⬡ CLUSTER';btn.style.background='var(--card2)';btn.style.color='var(--teal)';}
+  if(_clusterActive){btn.textContent='⬡ STOP CLUSTER';btn.classList.add('active');}
+  else{btn.textContent='⬡ START CLUSTER';btn.classList.remove('active');}
 }
 
 async function scanDevices(){
@@ -1879,8 +1967,22 @@ function setZoneMode(mode,btn){
 }
 function selectZoneSlot(zone){
   selectedSlot=zone;
-  document.querySelectorAll('.zone-slot').forEach(s=>s.classList.remove('selected'));
-  document.getElementById('slot-'+zone)?.classList.add('selected');
+  document.querySelectorAll('.slot-clip').forEach(s=>s.classList.remove('selected'));
+  document.getElementById('clip-'+zone)?.classList.add('selected');
+}
+function toggleRack(id){
+  const s=document.getElementById(id);if(!s)return;
+  s.classList.toggle('open');
+}
+let _spatialMode='single';
+function setMode(mode){
+  _spatialMode=mode;
+  ['single','cluster','sweep','scatter'].forEach(m=>{
+    document.getElementById('mode-'+m)?.classList.toggle('active',m===mode);
+    const body=document.getElementById('mode-body-'+m);
+    if(body)body.style.display=m===mode?'flex':'none';
+  });
+  if(mode!=='cluster'&&window._clusterInterval){stopCluster();}
 }
 function dropOnZone(event,zone){
   event.preventDefault();
@@ -1927,21 +2029,31 @@ function showSlotPicker(id){
 }
 
   const controls=document.getElementById('slot-'+zone+'-controls');
-  if(nameEl)nameEl.textContent=name||url.split('/').pop();
+  const trackName=name||url.split('/').pop();
+  if(nameEl)nameEl.textContent=trackName;
   if(slot)slot.classList.add('loaded');
   if(controls)controls.style.display='flex';
-  showToast('Zone '+zone+' → '+(name||'track loaded'));
+  // Update clip-style UI
+  const clipName=document.getElementById('clip-'+zone+'-name');
+  const clip=document.getElementById('clip-'+zone);
+  if(clipName)clipName.textContent=trackName;
+  if(clip)clip.style.opacity='1';
+  showToast('Zone '+zone+' → '+trackName);
 }
 function clearZoneSlot(event,zone){
   event.stopPropagation();delete zoneTracks[zone];
   const slot=document.getElementById('slot-'+zone);
   const nameEl=document.getElementById('slot-'+zone+'-name');
   const controls=document.getElementById('slot-'+zone+'-controls');
-  const defaults={C:'Center — drop track',1:'Slot 1 — drop track',2:'Slot 2 — drop track',3:'Slot 3 — drop track',4:'Slot 4 — drop track'};
+  const clipDefaults={C:'All speakers',1:'Cluster 1',2:'Cluster 2',3:'Cluster 3',4:'Cluster 4'};
+  const clipName=document.getElementById('clip-'+zone+'-name');
+  const clip=document.getElementById('clip-'+zone);
 
-  if(nameEl)nameEl.textContent=defaults[zone];
+  if(nameEl)nameEl.textContent='';
   if(slot)slot.classList.remove('loaded','selected');
   if(controls)controls.style.display='none';
+  if(clipName)clipName.textContent=clipDefaults[zone];
+  if(clip)clip.classList.remove('selected');
 }
 function playZone(event,zone){event.stopPropagation();const t=zoneTracks[zone];if(!t)return;audio.src=t.url;audio.play().catch(()=>{});document.getElementById('track-name').textContent=t.name;showToast('Playing Zone '+zone+': '+t.name);}
 function muteZone(event,zone){event.stopPropagation();showToast('Zone '+zone+' muted');}
