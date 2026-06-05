@@ -2014,7 +2014,8 @@ function showToast(msg,isError=false){
 
 async function deleteEvent(id){
   if(!confirm('Delete this event?'))return;
-  await db.from('events').delete().eq('id',id);
+  const{error}=await db.from('events').delete().eq('id',id);
+  if(error){showToast('Delete failed: '+error.message,true);console.error('deleteEvent',error);return;}
   loadEvents();
   showToast('Event deleted');
 }
