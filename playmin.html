@@ -1056,27 +1056,31 @@ function loadDemoMode(){
 
 function renderSpatialDots(spMap){
   if(!spMap || !activeZone) return;
-  const listeners = Object.values(liveListeners||{});
-  if(!listeners.length){
-    if(window._spDotLayer) window._spDotLayer.forEach(m=>m.remove());
-    window._spDotLayer = [];
-    return;
-  }
-  // Update existing markers instead of clearing all
-  if(!window._spDotLayer) window._spDotLayer = [];
   if(!window._spDotMarkers) window._spDotMarkers = {};
 
+  // DJ dot — rendered directly from GPS, never depends on presence loop
+  const djLat = (userLat && userLng) ? userLat : activeZone.lat;
+  const djLng = (userLat && userLng) ? userLng : activeZone.lng;
+  const djLabel = currentUser ? 'DJ ★ ' + (currentUser.email?.split('@')[0]||'Host') : 'DJ';
+  if(window._spDotMarkers['__dj__']){
+    window._spDotMarkers['__dj__'].setLatLng([djLat, djLng]);
+  } else {
+    const djMarker = L.circleMarker([djLat, djLng],{
+      radius:11, color:'#fff', weight:2,
+      fillColor:'#f57e20', fillOpacity:1
+    }).addTo(spMap);
+    djMarker.bindTooltip(djLabel, {permanent:true, direction:'top', offset:[0,-12]});
+    window._spDotMarkers['__dj__'] = djMarker;
+  }
 
+  const listeners = Object.values(liveListeners||{}).filter(l=>!l.isDJ);
+  if(!window._spDotLayer) window._spDotLayer = [];
   const voices = parseInt(document.getElementById('scatter-voices')?.value||4);
   const SLOT_COLORS = ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'];
+  const seen = new Set(['__dj__']);
 
-
-  // Track which IDs we've seen this render
-  const seen = new Set();
-
-    listeners.forEach(l => {
+  listeners.forEach(l => {
     if(l.dist == null) return;
-
     const dotKey = l.id || l.name || 'unknown';
     seen.add(dotKey);
     const distM = (l.dist||0) * 1609.34;
@@ -1085,8 +1089,7 @@ function renderSpatialDots(spMap){
     const lng = activeZone.lng + (distM/(111320*Math.cos(activeZone.lat*Math.PI/180))) * Math.sin(bearingRad);
     const slot = Math.floor(((l.bearing||0) % 360) / (360/voices)) % voices;
     const color = SLOT_COLORS[slot];
-
-        if(window._spDotMarkers[dotKey]){
+    if(window._spDotMarkers[dotKey]){
       window._spDotMarkers[dotKey].setLatLng([lat, lng]);
       window._spDotMarkers[dotKey].setStyle({fillColor: color});
     } else {
@@ -1096,11 +1099,10 @@ function renderSpatialDots(spMap){
       }).addTo(spMap);
       marker.bindTooltip(l.name||'Listener', {permanent:true, direction:'top', offset:[0,-10]});
       window._spDotMarkers[dotKey] = marker;
-
     }
   });
 
-  // Remove markers for listeners who left
+  // Remove markers for listeners who left (DJ marker exempt)
   Object.keys(window._spDotMarkers).forEach(id => {
     if(!seen.has(id)){
       window._spDotMarkers[id].remove();
@@ -1831,7 +1833,7 @@ function startListenerTracking(zoneId){
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-                         liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
+                         liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,status,updated:Date.now()};
       console.log('PING received:',payload.name,'keys in liveListeners:',Object.keys(liveListeners).length);
 
             renderLiveGuestList();
@@ -1846,7 +1848,7 @@ function startListenerTracking(zoneId){
           presenceChannel = db.channel('presence_'+zoneId)
             .on('broadcast',{event:'proximity'},({payload})=>{
               const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-                    liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,status,updated:Date.now()};
+                    liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,status,updated:Date.now()};
       document.title = 'L:'+Object.keys(liveListeners).length+' '+Date.now();
 
               renderLiveGuestList();
