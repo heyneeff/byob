@@ -476,6 +476,18 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   </div>
 </div>
 
+<!-- SETS MODAL -->
+<div id="sets-modal" style="position:fixed;inset:0;z-index:600;background:rgba(0,0,0,.88);display:none;align-items:flex-end;justify-content:center;">
+  <div style="background:#111;border-top:3px solid var(--teal);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:20px 18px 40px;max-height:75vh;overflow-y:auto;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:24px;font-weight:900;color:var(--teal);">💿 Music Sets</div>
+      <button onclick="saveCurrentSet()" style="padding:8px 16px;background:var(--orange);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;">💾 Save Current</button>
+    </div>
+    <div id="sets-list"></div>
+    <button onclick="document.getElementById('sets-modal').style.display='none'" style="width:100%;padding:14px;margin-top:8px;background:transparent;border:1px solid #333;border-radius:10px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:16px;cursor:pointer;">Close</button>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <!-- RESTORE OVERLAY -->
@@ -519,6 +531,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <div style="display:flex;gap:3px;">
         <button id="btn-dot-labels" onclick="toggleDotLabels()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;" title="Toggle names on map">👁</button>
         <button onclick="remixSlots()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid #a78bfa;border-radius:3px;background:transparent;color:#a78bfa;cursor:pointer;" title="Randomly remix stem slots">🎲</button>
+        <button onclick="openSetsModal()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;" title="Save / load sets">💿</button>
         <button onclick="broadcastAllZones()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;letter-spacing:.1em;padding:2px 7px;border:1px solid var(--orange);border-radius:3px;background:transparent;color:var(--orange);cursor:pointer;">⚡ ALL</button>
       </div>
     </div>
@@ -2591,6 +2604,63 @@ function flatZoneTracks(){
   const out={};
   Object.entries(zoneTracks||{}).forEach(([k,v])=>{out[k]=v?.url||v;});
   return out;
+}
+
+// ── Music Sets (save/load slot configurations) ────────────────────────────
+function _getSets(){ try{ return JSON.parse(localStorage.getItem('byob_sets')||'[]'); }catch(e){ return []; } }
+function _putSets(arr){ localStorage.setItem('byob_sets', JSON.stringify(arr)); }
+
+function saveCurrentSet(){
+  const name = prompt('Name this set:','');
+  if(!name?.trim()) return;
+  const sets = _getSets();
+  sets.unshift({ id: Date.now(), name: name.trim(), slotCount: _slotCount, tracks: JSON.parse(JSON.stringify(zoneTracks)) });
+  _putSets(sets);
+  showToast('Set saved: '+name.trim());
+}
+
+function loadSet(id){
+  const set = _getSets().find(s=>s.id===id);
+  if(!set){ showToast('Set not found'); return; }
+  // Restore slot count
+  while(_slotCount < set.slotCount) addSlot();
+  while(_slotCount > set.slotCount) removeSlot();
+  // Restore tracks
+  Object.keys(zoneTracks).forEach(k=>clearZoneSlot({stopPropagation:()=>{}}, k));
+  Object.entries(set.tracks||{}).forEach(([slot,t])=>{ if(t?.url) assignTrackToZone(slot,t.url,t.name); });
+  document.getElementById('sets-modal').style.display='none';
+  showToast('Loaded: '+set.name);
+}
+
+function deleteSet(id){
+  _putSets(_getSets().filter(s=>s.id!==id));
+  renderSetsModal();
+}
+
+function openSetsModal(){
+  document.getElementById('sets-modal').style.display='flex';
+  renderSetsModal();
+}
+
+function renderSetsModal(){
+  const sets = _getSets();
+  const list = document.getElementById('sets-list');
+  if(!sets.length){
+    list.innerHTML='<div style="color:var(--muted);font-size:13px;padding:12px 0;">No saved sets yet — assign tracks to slots and hit 💾 Save Set.</div>';
+    return;
+  }
+  list.innerHTML = sets.map(s=>{
+    const slots = Object.keys(s.tracks||{}).join(', ') || '—';
+    const date = new Date(s.id).toLocaleDateString();
+    return `<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border-radius:10px;margin-bottom:8px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${s.name}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">Slots: ${slots} &nbsp;·&nbsp; ${date}</div>
+      </div>
+      <button onclick="loadSet(${s.id})" style="padding:8px 14px;background:var(--teal);color:#000;border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;cursor:pointer;flex-shrink:0;">Load</button>
+      <button onclick="deleteSet(${s.id});event.stopPropagation();" style="padding:8px 10px;background:transparent;color:var(--red);border:1px solid var(--red);border-radius:8px;font-size:13px;cursor:pointer;flex-shrink:0;">✕</button>
+    </div>`;
+  }).join('');
 }
 
 const SLOT_PALETTE=['var(--orange)','var(--teal)','var(--red)','#a78bfa','#f472b6','#34d399','#fbbf24','#60a5fa','#f87171','#c084fc','#fb923c','#a3e635'];
