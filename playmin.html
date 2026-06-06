@@ -554,8 +554,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <!-- LEFT HANDLE -->
   <div class="sp-hv-left" id="sp-handle-left"></div>
 
-  <!-- CENTER: radar -->
+  <!-- CENTER: radar (Leaflet map) + hidden orchestra canvas for sweep logic -->
   <div class="sp-radar" id="sp-spatial-map"></div>
+  <div id="sp-radar" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;"></div>
 
   <!-- RIGHT HANDLE -->
   <div class="sp-hv-right" id="sp-handle-right"></div>
@@ -773,6 +774,16 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button class="visuals-card" onclick="openVisuals()"><img class="eye-icon" id="eye-img" alt="Vis"/></button>
       <div class="volume-row"><span class="vol-label">VOL</span><input type="range" class="vol" id="volume" min="0" max="100" value="80"/></div>
     </div>
+  </div>
+
+  <!-- Queue strip -->
+  <div id="queue-strip" style="display:none;background:var(--card);border-top:1px solid var(--rim);padding:4px 8px;max-height:120px;overflow-y:auto;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;letter-spacing:.1em;color:var(--muted);">UP NEXT</span>
+      <span id="queue-count" style="background:var(--orange);color:#000;border-radius:8px;padding:1px 6px;font-size:9px;font-weight:900;"></span>
+      <button onclick="clearQueue()" style="margin-left:auto;background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">CLEAR</button>
+    </div>
+    <div id="queue-list"></div>
   </div>
 
   <!-- Library -->
@@ -1385,7 +1396,37 @@ let queueIdx  = -1;
 
 function queueTrack(url, title) {
   playlist.push({ url, title });
-  showToast('Added to queue: ' + title);
+  renderQueue();
+  showToast('+ ' + title);
+}
+
+function clearQueue() {
+  playlist = []; queueIdx = -1;
+  renderQueue();
+}
+
+function removeFromQueue(i) {
+  if(i <= queueIdx) queueIdx--;
+  playlist.splice(i,1);
+  renderQueue();
+}
+
+function renderQueue() {
+  const strip = document.getElementById('queue-strip');
+  const list  = document.getElementById('queue-list');
+  const count = document.getElementById('queue-count');
+  if(!strip || !list) return;
+  const upcoming = playlist.slice(queueIdx+1);
+  strip.style.display = upcoming.length ? '' : 'none';
+  count.textContent = upcoming.length;
+  list.innerHTML = upcoming.map((t,i)=>{
+    const realIdx = queueIdx+1+i;
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--rim);">
+      <span style="color:var(--orange);font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;width:16px;">${i+1}</span>
+      <span style="flex:1;font-size:11px;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.title||'—'}</span>
+      <button onclick="removeFromQueue(${realIdx})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 4px;">×</button>
+    </div>`;
+  }).join('');
 }
 
 async function playNext() {
@@ -1394,6 +1435,7 @@ async function playNext() {
   // Use in-memory queue first
   if (playlist.length > 0 && queueIdx + 1 < playlist.length) {
     queueIdx++;
+    renderQueue();
     const next = playlist[queueIdx];
     audio.src  = next.url;
     audio.loop = false;
@@ -2581,8 +2623,24 @@ let _sweepDir    = 1;   // 1=clockwise, -1=counter
 let _sweepRaf    = null;
 
 function startCircularSweep(rpm,dir){
-  if(_orchestra) _orchestra.startSweep(rpm,dir);
-  else showToast('Open Spatial panel first');
+  if(!activeZone){ showToast('Create a zone first'); return; }
+  if(!window._djSyncChannel){ showToast('Go Live first'); return; }
+  if(_orchestra){ _orchestra.startSweep(rpm,dir); return; }
+  // Fallback broadcast without visual orchestra
+  _sweepActive=true; _sweepDir=dir;
+  if(_sweepRaf){ cancelAnimationFrame(_sweepRaf); _sweepRaf=null; }
+  const degsPerSec=rpm*6*dir;
+  let sweepAngle=0, lastT=performance.now();
+  window._djSyncChannel.send({type:'broadcast',event:'sweep_start',payload:{rpm,dir,startAngle:0,startedAt:serverNow()}});
+  function tick(now){
+    if(!_sweepActive) return;
+    sweepAngle=(sweepAngle+degsPerSec*(now-lastT)/1000+360)%360;
+    lastT=now;
+    window._djSyncChannel.send({type:'broadcast',event:'sweep_tick',payload:{angle:sweepAngle,rpm}});
+    _sweepRaf=requestAnimationFrame(tick);
+  }
+  _sweepRaf=requestAnimationFrame(tick);
+  showToast('↻ Sweep '+rpm+' RPM');
 }
 
 
@@ -2796,10 +2854,9 @@ function switchPanel(name,btn){
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
-    if(name==='spatial') initSpatialMap();
+  if(name==='spatial'){ initSpatialMap(); initOrchestra(); }
   if(name==='crowd') initCrowdMap();
-
-
+  if(name==='deck' || name==='spatial'){ buildLibs(); }
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
 }
 
@@ -2897,12 +2954,26 @@ function loadDeck(d,id){
       }
     }
   } else {
-
     deckB={...deckB,track:t,bpm:t.bpm,playing:true};
     document.getElementById('db-name').textContent=t.name;
     document.getElementById('db-artist').textContent=t.artist;
     document.getElementById('db-bpm').textContent=t.bpm;
     document.getElementById('db-play').textContent='⏸ PAUSE';
+    if(t.url){
+      audio.src=t.url; audio.loop=false; audio.play().catch(()=>{}); isPlaying=true;
+      window._lastPublicUrl=t.url;
+      document.getElementById('track-name').textContent=t.name;
+      document.getElementById('btn-play').textContent='⏸';
+      document.getElementById('btn-play').classList.add('playing');
+      if(activeZone){
+        const startedAt=new Date(serverNow()).toISOString();
+        const playAt=serverNow()+1500;
+        db.from('zones').update({current_track_url:t.url,track_name:t.name,playback_started_at:startedAt,play_at:playAt,play_from_s:0,active:true}).eq('id',activeZone.id).then(()=>{
+          if(window._djSyncChannel) setTimeout(()=>window._djSyncChannel.send({type:'broadcast',event:'hard_sync',payload:{resyncAt:serverNow()+1000,playback_started_at:startedAt,resetOffsets:false,track_url:t.url,track_name:t.name}}),1600);
+          showToast('📡 Broadcasting: '+t.name);
+        });
+      }
+    }
   }
   buildLibs();
 }
@@ -2922,31 +2993,6 @@ function quickSlot(id){
 }
 
 
-// Library HTML
-function libHTML(filter=''){
-  const list=TRACKS.filter(t=>t.name.toLowerCase().includes(filter.toLowerCase())||t.artist.toLowerCase().includes(filter.toLowerCase()));
-  return`<div class="lib-bar"><div class="crates">
-      <button class="crate active" onclick="crateActive(this)">All</button>
-      <button class="crate" onclick="crateActive(this)">Stems</button>
-      <button class="crate" onclick="crateActive(this)">Recent</button>
-      <button class="crate" onclick="crateActive(this)">★ Favs</button>
-    </div>
-    <input class="lib-search" placeholder="🔍 Search…" oninput="filterLib(this.value)"/>
-    <button class="lib-upload" onclick="document.getElementById('file-input').click()">+ Upload</button>
-    </div>
-    <div class="lib-cols"><div class="lc">Title / Artist</div><div class="lc">BPM</div><div class="lc">Key</div><div class="lc">Time</div><div class="lc" style="text-align:right;">Load</div></div>
-    <div class="lib-rows">${list.map(t=>`
-      <div class="trow ${deckA.track?.id===t.id?'loaded-a':deckB.track?.id===t.id?'loaded-b':''}" draggable="true" ondragstart="startDrag(event,'${t.id}')">
-        <div class="tr-name"><div class="tr-col" style="background:${t.col};"></div><div class="tr-txt"><div class="tr-title">${t.name}</div><div class="tr-artist">${t.artist}</div></div></div>
-        <div class="tr-bpm">${t.bpm}</div><div class="tr-key">${t.key}</div><div class="tr-dur">${t.dur}</div>
-        <div class="tr-acts">
-          <button class="tr-btn" onclick="loadDeck('a','${t.id}')">A</button>
-          <button class="tr-btn b" onclick="loadDeck('b','${t.id}')">B</button>
-          <button class="tr-btn" onclick="quickSlot('${t.id}')">+</button>
-        </div>
-      </div>`).join('')}
-    </div>`;
-}
 // Real library — fetches from Supabase tracks table, falls back to demo TRACKS
 let _realTracks = [];  // cache
 let _libCrate = 'all'; // 'all' | 'songs' | 'stems'
@@ -3008,9 +3054,9 @@ function libHTML(tracks, filter='') {
         <div class="tr-key">${t.key}</div>
         <div class="tr-dur">${t.dur}</div>
         <div class="tr-acts">
-          <button class="tr-btn" onclick="loadDeck('a','${t.id}')">A</button>
-          <button class="tr-btn b" onclick="loadDeck('b','${t.id}')">B</button>
-          <button class="tr-btn" onclick="quickSlot('${t.id}')">+</button>
+          <button class="tr-btn" onclick="loadDeck('a','${t.id}')" title="Load to Deck A · plays now">A</button>
+          <button class="tr-btn b" onclick="loadDeck('b','${t.id}')" title="Load to Deck B · plays now">B</button>
+          <button class="tr-btn" onclick="quickSlot('${t.id}')" title="Add to queue" style="background:var(--card2);color:var(--orange);border-color:var(--orange);">Q</button>
         </div>
       </div>`).join('')}
     </div>`;
