@@ -1221,11 +1221,8 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   setMuteBtn(false);
   document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='running'; b.style.opacity='1'; });
   isPlaying = true;
-  _webAudioPlaying = true;
+  // _webAudioPlaying is set true only when audio.play() actually resolves
 
-  // Connect audio element to GainNode (first time only)
-  // Set source and seek on load
-  // DEBUG OFF  alert('loadTrack called\nURL: ' + (url ? url.slice(0,60) : 'EMPTY') + '\nstartedAt: ' + startedAt);
   audio.src = url;
   audio.loop = true;
 
@@ -1234,9 +1231,9 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     if (!audio.duration) return;
     seekToSync(startedAt, playAt, playFromS);
 
-        audio.addEventListener('playing', function onPlaying() {
+    audio.addEventListener('playing', function onPlaying() {
       audio.removeEventListener('playing', onPlaying);
-   seekToSync(startedAt, playAt, playFromS);
+      seekToSync(startedAt, playAt, playFromS);
       setTimeout(() => seekToSync(startedAt, playAt, playFromS), 400);
       setTimeout(() => seekToSync(startedAt, playAt, playFromS), 800);
       setTimeout(() => seekToSync(startedAt, playAt, playFromS), 1500);
@@ -1248,20 +1245,19 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       }
     }, { once: true });
     audio.volume = 0;
-        audio.play().then(() => {
+    audio.play().then(() => {
       _webAudioPlaying = true;
       fadeAudioIn(8000);
       if (!orgReady) initOrganism();
-    }) .catch((e) => {
+    }).catch((e) => {
       console.warn('Play blocked:', e.message);
-      // Fallback — any tap on body starts it
-      document.body.addEventListener('click', () => {
-        audio.volume = 0;
-        audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(8000); });
-      }, { once: true });
-      showToast('Tap anywhere to start music 🎧');
+      _webAudioPlaying = false;
+      // Make Boomy tappable so there's a clear visual call-to-action
+      const wrap = document.getElementById('boom-popup-wrap');
+      if (wrap) wrap.classList.add('tappable');
+      document.getElementById('tap-banner')?.classList.add('visible');
+      boomSay('Tap me to start the music.', 12000, true, 'regular');
     });
-
 
   }, { once: true });
 
@@ -1943,12 +1939,11 @@ async function syncZoneAudio() {
         // Drift correction
     if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
 
-      // Only correct big drifts — don't fight the BT lag correction
-      // BT sync handles sub-second corrections; this only catches clock drift > 2s
       const elapsed = (syncedNow() - new Date(z.playback_started_at).getTime()) / 1000;
-const expected = (elapsed - (_scatterOffsetMs / 1000)) % audio.duration;
-const drift = Math.abs(audio.currentTime - expected);
-if (drift > 0.08) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
+      // expected must match seekToSync target so we don't fight our own compensation
+      const expected = (elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000) - (_scatterOffsetMs / 1000)) % audio.duration;
+      const drift = Math.abs(audio.currentTime - expected);
+      if (drift > 0.5) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
 
     }
     
