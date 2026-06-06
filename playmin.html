@@ -1287,14 +1287,27 @@ function restoreZone(z){
     document.getElementById('tb-trackname').textContent=trackName;
     // Reload audio and seek to current playback position
     audio.src=z.current_track_url;
+    audio.load();
     window._lastPublicUrl=z.current_track_url;
-    audio.addEventListener('loadedmetadata',()=>{
+    audio.addEventListener('loadedmetadata', async ()=>{
+      // Ensure clock offset is measured before seeking
+      if(!_clockOffset) await measureClockOffset();
       const elapsed=(serverNow()-new Date(z.playback_started_at).getTime())/1000;
-      if(elapsed>0&&elapsed<audio.duration){audio.currentTime=elapsed;}
-      audio.play().catch(()=>{});
-      isPlaying=true;
-      const pb=document.getElementById('btn-play');
-      if(pb){pb.textContent='⏸';pb.classList.add('playing');}
+      if(elapsed>0 && audio.duration){
+        audio.currentTime = elapsed % audio.duration;
+      }
+      try{
+        await audio.play();
+        isPlaying=true;
+        const pb=document.getElementById('btn-play');
+        if(pb){pb.textContent='⏸';pb.classList.add('playing');}
+      }catch(e){
+        // Autoplay blocked — resume on first tap
+        window._pendingRestore=true;
+        const pb=document.getElementById('btn-play');
+        if(pb){pb.textContent='▶ TAP TO RESUME';pb.style.background='var(--orange)';}
+        showToast('Tap ▶ to resume');
+      }
     },{once:true});
     // Mark Go Live as active
     const goBtn=document.getElementById('btn-go-live');
@@ -1316,6 +1329,15 @@ function restoreZone(z){
 
 // ── PLAYER ────────────────────────────────────────────────
 function togglePlay(){
+  // If autoplay was blocked on restore, first tap just resumes without toggling
+  if(window._pendingRestore){
+    window._pendingRestore=false;
+    const btn=document.getElementById('btn-play');
+    btn.textContent='⏸'; btn.classList.add('playing'); btn.style.background='';
+    isPlaying=true;
+    audio.play().catch(()=>{});
+    return;
+  }
   isPlaying=!isPlaying;
   const btn=document.getElementById('btn-play');
   btn.textContent=isPlaying?'⏸':'▶';
