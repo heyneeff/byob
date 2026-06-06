@@ -1185,12 +1185,15 @@ function renderSpatialDots(spMap){
   if(!spMap || !activeZone) return;
   if(!window._spDotMarkers) window._spDotMarkers = {};
 
-  // DJ dot — rendered directly from GPS, never depends on presence loop
+  // DJ dot — permanent, never pruned, re-added if map was invalidated
   const djLat = (userLat && userLng) ? userLat : activeZone.lat;
   const djLng = (userLat && userLng) ? userLng : activeZone.lng;
   const djLabel = currentUser ? 'DJ ★ ' + (currentUser.email?.split('@')[0]||'Host') : 'DJ';
   if(window._spDotMarkers['__dj__']){
     window._spDotMarkers['__dj__'].setLatLng([djLat, djLng]);
+    if(!spMap.hasLayer(window._spDotMarkers['__dj__'])){
+      window._spDotMarkers['__dj__'].addTo(spMap);
+    }
   } else {
     const djMarker = L.circleMarker([djLat, djLng],{
       radius:11, color:'#fff', weight:2,
@@ -2382,6 +2385,7 @@ function bearingToXY(bearing,distRatio,cx,cy,r){const angle=bearing*Math.PI/180;
 function drawGrid(){
   const canvas=document.getElementById('grid-canvas');if(!canvas)return;
   const ctx=canvas.getContext('2d');const W=canvas.width,H=canvas.height;const cx=W/2,cy=H/2,r=W/2-14;
+  if(r<=0)return;
   ctx.clearRect(0,0,W,H);
   ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#050505';ctx.fill();
   [0.25,0.5,0.75,1].forEach(ratio=>{ctx.beginPath();ctx.arc(cx,cy,r*ratio,0,Math.PI*2);ctx.strokeStyle='rgba(0,204,153,0.1)';ctx.lineWidth=1;ctx.stroke();});
