@@ -1035,7 +1035,7 @@ async function measureClockOffset(){
   if(samples.length)_clockOffset=samples.sort((a,b)=>a-b)[Math.floor(samples.length/2)];
 }
 function serverNow(){return Date.now()+_clockOffset;}
-let userLat=null,userLng=null;
+let userLat=null,userLng=null,_userPosPinned=false;
 let draftCenter=null,draftRadius=200,drawMode=false;
 let isPlaying=false,liveStream=null,audioCtx=null,analyserNode=null,meterRAF=null,_micModeArmed=false;
 let msgTarget='all',djIsSignUp=false;
@@ -1253,6 +1253,7 @@ function initMap(lat,lng){
   [100,300,600].forEach(ms=>setTimeout(()=>leafletMap.invalidateSize(),ms));
 
   navigator.geolocation.watchPosition(pos=>{
+    if(_userPosPinned)return; // user manually dragged their dot — respect it
     userLat=pos.coords.latitude;userLng=pos.coords.longitude;
     if(!userMarker){
       placeUserMarker(userLat,userLng);
@@ -1267,8 +1268,15 @@ function placeUserMarker(lat,lng){
   if(userMarker)userMarker.remove();
   userMarker=L.marker([lat,lng],{
     icon:L.divIcon({html:'<div class="user-dot-wrap"><div class="user-dot-ring"></div><div class="user-dot"></div></div>',iconSize:[16,16],iconAnchor:[8,8],className:''}),
+    draggable:true,
     zIndexOffset:1000
   }).addTo(leafletMap);
+  userMarker.on('drag',e=>{
+    _userPosPinned=true;
+    userLat=e.latlng.lat;userLng=e.latlng.lng;
+    updateMapHint(userLat,userLng);
+  });
+  userMarker.on('dragstart',()=>{ _userPosPinned=true; });
 }
 function centerOnUser(){
   if(userLat&&leafletMap){leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});return;}
