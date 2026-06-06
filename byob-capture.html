@@ -364,7 +364,8 @@ header {
 <header>
   <div class="logo">BY<em>O</em>B <span style="color:var(--dim);font-size:9px;letter-spacing:3px;">CAPTURE</span></div>
   <div class="hdr-right">
-    <button class="mode-pill active" id="live-pill">LIVE</button>
+    <button class="mode-pill active" id="live-pill">TAB AUDIO</button>
+    <button class="mode-pill" id="mic-pill">🎙 MIC</button>
     <button class="mode-pill" id="sr-pill">📱 SCREEN REC</button>
     <button class="auth-pill" id="auth-pill" onclick="toggleAuthForm()">BYOB ↗</button>
   </div>
@@ -424,16 +425,19 @@ header {
   <div class="status-line">
     <div class="status-main"  id="status-main">PRESS KEY TO BEGIN</div>
     <div class="status-timer" id="status-timer"></div>
-    <div class="status-sub"   id="status-sub">
-      On first press, your browser asks what to capture.<br>
-      Video is discarded immediately — audio only.
-    </div>
+    <div class="status-sub" id="status-sub"></div>
   </div>
 
   <div class="source-badge" id="source-badge">
     <div class="src-dot"></div>
     <span id="source-label">AUDIO SOURCE LIVE</span>
     <button class="eject-btn" id="eject-btn">✕ eject</button>
+  </div>
+
+  <div id="mic-select-row" style="display:none;flex-direction:column;align-items:center;gap:6px;margin-top:10px;">
+    <select id="mic-select" style="background:var(--surf);border:1px solid var(--b2);color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:1px;padding:6px 10px;max-width:260px;width:100%;border-radius:1px;">
+      <option value="">— select input device —</option>
+    </select>
   </div>
 
   <div class="key-config-row">
@@ -570,14 +574,38 @@ function toast(msg, dur = 2600) {
 
 // ── Mode tabs ─────────────────────────────────────────────────
 document.getElementById('live-pill').addEventListener('click', () => setMode('live'));
+document.getElementById('mic-pill').addEventListener('click',  () => setMode('mic'));
 document.getElementById('sr-pill').addEventListener('click',   () => setMode('scrub'));
 
 function setMode(m) {
   mode = m;
   document.getElementById('live-pill').classList.toggle('active', m === 'live');
+  document.getElementById('mic-pill').classList.toggle('active',  m === 'mic');
   document.getElementById('sr-pill').classList.toggle('active',   m === 'scrub');
-  document.getElementById('capture-zone').style.display = m === 'live'  ? '' : 'none';
+  document.getElementById('capture-zone').style.display = (m === 'live' || m === 'mic') ? '' : 'none';
   document.getElementById('scrub-zone').classList.toggle('show', m === 'scrub');
+  document.getElementById('mic-select-row').style.display = m === 'mic' ? 'flex' : 'none';
+  const msgs = {
+    live: 'Press key → pick a Chrome Tab → check "Share tab audio".\nDoes not work on Safari or Firefox.',
+    mic:  'Capture from any mic or audio interface. Select your device below.',
+  };
+  document.getElementById('status-sub').textContent = msgs[m] || '';
+  if (m === 'mic') populateMicDevices();
+  else if (m === 'live') { stopRecording(false); ejectLiveStream(); }
+}
+
+async function populateMicDevices() {
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true }).then(s => s.getTracks().forEach(t => t.stop()));
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const sel = document.getElementById('mic-select');
+    sel.innerHTML = '<option value="">— select input —</option>';
+    devices.filter(d => d.kind === 'audioinput').forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.deviceId; opt.textContent = d.label || `Input ${d.deviceId.slice(0,6)}`;
+      sel.appendChild(opt);
+    });
+  } catch(e) { toast('MIC PERMISSION DENIED'); }
 }
 
 // ── Key label ─────────────────────────────────────────────────
@@ -636,9 +664,53 @@ document.addEventListener('keydown', e => {
 function handleShortcut() {
   if (mode === 'scrub' && srDst) {
     toggleScrubGrab();
+  } else if (mode === 'mic') {
+    handleMicShortcut();
   } else {
     handleLiveShortcut();
   }
+}
+
+async function handleMicShortcut() {
+  if (liveState === 'idle') {
+    await acquireMicStream();
+  } else if (liveState === 'ready') {
+    startRecording();
+  } else if (liveState === 'recording') {
+    stopRecording(true);
+  }
+}
+
+async function acquireMicStream() {
+  if (liveState === 'waiting') return;
+  setLiveState('waiting');
+  getCtx();
+
+  const deviceId = document.getElementById('mic-select').value;
+  const constraints = { audio: deviceId ? { deviceId: { exact: deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false } : true };
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch(err) {
+    setLiveState('idle');
+    if (err.name === 'NotAllowedError') toast('MIC PERMISSION DENIED');
+    else toast(`MIC ERROR: ${err.message}`);
+    return;
+  }
+
+  const audioTracks = stream.getAudioTracks();
+  if (!audioTracks.length) { setLiveState('idle'); toast('NO MIC AUDIO'); return; }
+
+  liveStream = new MediaStream(audioTracks);
+  audioTracks[0].addEventListener('ended', () => { stopRecording(false); ejectLiveStream(); toast('MIC ENDED'); });
+
+  const trackLabel = audioTracks[0].label || 'MIC INPUT';
+  document.getElementById('source-label').textContent = trackLabel.length > 32 ? trackLabel.slice(0,30)+'…' : trackLabel.toUpperCase();
+  document.getElementById('source-badge').classList.add('show');
+
+  setLiveState('ready');
+  startRecording();
 }
 
 // ── Big key tap (mobile / mouse) ──────────────────────────────
@@ -671,19 +743,8 @@ async function acquireStream() {
   let stream;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia({
-      audio: {
-        echoCancellation:  false,
-        noiseSuppression:  false,
-        autoGainControl:   false,
-        sampleRate:        44100
-      },
-      video: {
-        // Minimum possible — browser needs this in the request
-        // We stop these tracks the moment we get them
-        width:     { ideal: 1, max: 1 },
-        height:    { ideal: 1, max: 1 },
-        frameRate: { ideal: 1, max: 1 }
-      }
+      audio: true,
+      video: { width: { ideal: 1, max: 1 }, height: { ideal: 1, max: 1 }, frameRate: { ideal: 1, max: 1 } }
     });
   } catch (err) {
     setLiveState('idle');
@@ -704,7 +765,7 @@ async function acquireStream() {
   const audioTracks = stream.getAudioTracks();
   if (!audioTracks.length) {
     setLiveState('idle');
-    toast('NO AUDIO — CHECK "SHARE AUDIO" IN THE DIALOG');
+    toast('NO AUDIO — CHROME ONLY, SELECT A TAB AND TICK "SHARE TAB AUDIO"');
     return;
   }
 
