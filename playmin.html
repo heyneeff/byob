@@ -965,7 +965,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div class="section-label">Audio Source</div>
     <div class="live-menu-row">
       <button class="btn-live-option btn-live-stream" onclick="startLiveStream()">🎙 Live Mic</button>
-      <button class="btn-live-option btn-live-upload" onclick="openLibrary()">📚 Use Library</button>
+      <button class="btn-live-option btn-live-upload" onclick="switchPanel('deck',document.querySelector('[data-panel=deck]'))">📚 Use Library</button>
     </div>
     <input type="file" id="file-input" multiple style="display:none;"/>
     <input type="file" id="stem-file-input" multiple accept="audio/*" style="display:none;"/>
