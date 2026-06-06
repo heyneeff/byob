@@ -25,6 +25,7 @@
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--white);font-family:'Roboto',sans-serif;}
 .dj-inner{display:flex;flex-direction:column;height:100vh;}
+@keyframes boomyIdle{0%,100%{transform:translateY(0) rotate(0deg) scale(1);}50%{transform:translateY(-6px) rotate(2deg) scale(1.05);}}
 .topbar{height:44px;display:flex;align-items:center;padding:0 10px;background:var(--card);border-bottom:1px solid var(--rim);gap:10px;flex-shrink:0;position:relative;}
 .topbar-stats{display:flex;gap:10px;}
 .tstat{text-align:center;line-height:1;}
@@ -448,6 +449,14 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
 <div id="toast"></div>
 
+<!-- RESTORE OVERLAY -->
+<div id="restore-overlay" onclick="resumeFromRestore()" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.82);flex-direction:column;align-items:center;justify-content:center;gap:20px;cursor:pointer;">
+  <img id="restore-boom-img" style="height:80px;mix-blend-mode:screen;animation:boomyIdle 1.8s ease-in-out infinite;" alt=""/>
+  <div style="font-family:'Barlow Condensed',sans-serif;font-size:32px;font-weight:900;letter-spacing:.06em;color:#fff;text-align:center;line-height:1.2;max-width:280px;">looks like you refreshed</div>
+  <div style="font-size:15px;color:var(--muted,#888);text-align:center;letter-spacing:.06em;">tap anywhere to resume</div>
+  <div style="background:var(--orange,#f57e20);color:#000;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;letter-spacing:.08em;padding:14px 36px;border-radius:10px;box-shadow:4px 4px 0 rgba(0,0,0,.5);">▶ RESUME</div>
+</div>
+
 <!-- MAIN APP -->
 <div id="dj-app" style="display:none">
 <div class="dj-inner">
@@ -455,10 +464,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="topbar">
   <img id="logo-img" style="height:28px;mix-blend-mode:screen;" alt="BYOB"/>
   <img id="boom-img" onclick="toggleDJMenu()" style="height:32px;cursor:pointer;mix-blend-mode:screen;margin-left:2px;position:relative;z-index:901;" alt="menu"/>
-  <div id="dj-boom-bubble" style="display:none;position:absolute;top:48px;left:8px;z-index:902;background:var(--surface2,#1a1a1a);border:1.5px solid var(--orange,#f57e20);border-radius:10px;padding:8px 12px;font-size:13px;color:#fff;max-width:220px;line-height:1.4;box-shadow:0 4px 18px rgba(0,0,0,.5);pointer-events:none;">
-    <div id="dj-boom-bubble-text"></div>
-    <div style="position:absolute;top:-7px;left:14px;width:12px;height:12px;background:var(--surface2,#1a1a1a);border-top:1.5px solid var(--orange,#f57e20);border-left:1.5px solid var(--orange,#f57e20);transform:rotate(45deg);"></div>
-  </div>
   <div class="topbar-stats">
     <div class="tstat"><div class="tstat-v" id="tb-bpm">—</div><div class="tstat-l">BPM</div></div>
     <div class="tstat"><div class="tstat-v" id="tb-live">0</div><div class="tstat-l">Live</div></div>
@@ -984,15 +989,7 @@ async function handleDJAuth(){
   }
 }
 function toggleDJMenu(){
-  if(window._pendingRestore){
-    window._pendingRestore=false;
-    document.getElementById('dj-boom-bubble').style.display='none';
-    isPlaying=true;
-    const pb=document.getElementById('btn-play');
-    if(pb){pb.textContent='⏸';pb.classList.add('playing');pb.style.background='';}
-    audio.play().catch(()=>{});
-    return;
-  }
+  if(window._pendingRestore){ resumeFromRestore(); return; }
   document.getElementById('boom-menu').classList.toggle('open');
 }
 async function djLogout(){
@@ -2480,15 +2477,23 @@ async function loadEvents(){
 function toggleLiveMenu(){}  // no-op in play.html
 
 let toastTimer;
-let _djBubbleTimer = null;
-function djBoomSay(text, durationMs=4000){
-  const bubble = document.getElementById('dj-boom-bubble');
-  const textEl  = document.getElementById('dj-boom-bubble-text');
-  if(!bubble || !textEl) return;
-  textEl.textContent = text;
-  bubble.style.display = 'block';
-  clearTimeout(_djBubbleTimer);
-  _djBubbleTimer = setTimeout(()=>{ bubble.style.display='none'; }, durationMs);
+function djBoomSay(text){
+  const overlay = document.getElementById('restore-overlay');
+  if(!overlay) return;
+  // Mirror current boom-img src so the overlay shows the same character
+  const boomSrc = document.getElementById('boom-img')?.src;
+  const restoreImg = document.getElementById('restore-boom-img');
+  if(restoreImg && boomSrc) restoreImg.src = boomSrc;
+  overlay.style.display = 'flex';
+}
+
+function resumeFromRestore(){
+  document.getElementById('restore-overlay').style.display = 'none';
+  window._pendingRestore = false;
+  isPlaying = true;
+  const pb = document.getElementById('btn-play');
+  if(pb){ pb.textContent='⏸'; pb.classList.add('playing'); pb.style.background=''; }
+  audio.play().catch(()=>{});
 }
 
 function showToast(msg,isError=false){
