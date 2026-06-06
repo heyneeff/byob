@@ -389,7 +389,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <input type="range" class="radius-slider" id="zdp-radius" min="10" max="2000" value="200" step="10" oninput="onRadiusSlider(this.value)" style="flex:1"/>
     <span class="zdp-val" id="zdp-radius-val">200m</span>
   </div>
-  <button onclick="snapDraftToGPS()" style="width:100%;background:transparent;border:1px solid var(--orange);color:var(--orange);border-radius:8px;padding:9px;font-family:'Roboto',sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;">📍 Snap to My GPS</button>
   <input class="zdp-name" id="zdp-name" type="text" placeholder="Zone name (e.g. Civic Park Rave)"/>
   <input class="zdp-name" id="zdp-tip-url" type="url" placeholder="Tip link (Venmo, CashApp, PayPal…)" style="margin-top:6px;opacity:.8;"/>
   <div class="zdp-actions">
@@ -1035,7 +1034,7 @@ async function measureClockOffset(){
   if(samples.length)_clockOffset=samples.sort((a,b)=>a-b)[Math.floor(samples.length/2)];
 }
 function serverNow(){return Date.now()+_clockOffset;}
-let userLat=null,userLng=null,_userPosPinned=false;
+let userLat=null,userLng=null;
 let draftCenter=null,draftRadius=200,drawMode=false;
 let isPlaying=false,liveStream=null,audioCtx=null,analyserNode=null,meterRAF=null,_micModeArmed=false;
 let msgTarget='all',djIsSignUp=false;
@@ -1253,7 +1252,7 @@ function initMap(lat,lng){
   [100,300,600].forEach(ms=>setTimeout(()=>leafletMap.invalidateSize(),ms));
 
   navigator.geolocation.watchPosition(pos=>{
-    if(_userPosPinned)return; // user manually dragged their dot — respect it
+    const acc = pos.coords.accuracy; // meters — network fix ~1000m, GPS fix <50m
     userLat=pos.coords.latitude;userLng=pos.coords.longitude;
     if(!userMarker){
       placeUserMarker(userLat,userLng);
@@ -1261,22 +1260,18 @@ function initMap(lat,lng){
     } else {
       userMarker.setLatLng([userLat,userLng]);
     }
+    // show accuracy ring so DJ can see when GPS has locked
+    if(userMarker._accCircle) userMarker._accCircle.setLatLng([userLat,userLng]).setRadius(acc);
+    else userMarker._accCircle = L.circle([userLat,userLng],{radius:acc,color:'#f57e20',fillOpacity:0,weight:1,opacity:.35,dashArray:'4 4'}).addTo(leafletMap);
     updateMapHint(userLat,userLng);
-  },()=>{updateMapHint(lat,lng);},{enableHighAccuracy:true,maximumAge:0});
+  },()=>{updateMapHint(lat,lng);},{enableHighAccuracy:true,maximumAge:0,timeout:30000});
 }
 function placeUserMarker(lat,lng){
   if(userMarker)userMarker.remove();
   userMarker=L.marker([lat,lng],{
     icon:L.divIcon({html:'<div class="user-dot-wrap"><div class="user-dot-ring"></div><div class="user-dot"></div></div>',iconSize:[16,16],iconAnchor:[8,8],className:''}),
-    draggable:true,
     zIndexOffset:1000
   }).addTo(leafletMap);
-  userMarker.on('drag',e=>{
-    _userPosPinned=true;
-    userLat=e.latlng.lat;userLng=e.latlng.lng;
-    updateMapHint(userLat,userLng);
-  });
-  userMarker.on('dragstart',()=>{ _userPosPinned=true; });
 }
 function centerOnUser(){
   if(userLat&&leafletMap){leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});return;}
@@ -1342,11 +1337,7 @@ function onCreateZone(){
   placeDraft(L.latLng(userLat,userLng));
   leafletMap.on('click',onMapClick);
 }
-function snapDraftToGPS(){
-  if(!userLat){showToast('GPS not ready yet');return;}
-  placeDraft(L.latLng(userLat,userLng));
-  leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.4});
-}
+
 function onMapClick(e){if(drawMode)placeDraft(e.latlng);}
 function placeDraft(latlng){
   draftCenter=latlng;
