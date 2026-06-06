@@ -389,6 +389,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <input type="range" class="radius-slider" id="zdp-radius" min="10" max="2000" value="200" step="10" oninput="onRadiusSlider(this.value)" style="flex:1"/>
     <span class="zdp-val" id="zdp-radius-val">200m</span>
   </div>
+  <button onclick="snapDraftToGPS()" style="width:100%;background:transparent;border:1px solid var(--orange);color:var(--orange);border-radius:8px;padding:9px;font-family:'Roboto',sans-serif;font-size:12px;font-weight:700;cursor:pointer;margin-bottom:10px;">📍 Snap to My GPS</button>
   <input class="zdp-name" id="zdp-name" type="text" placeholder="Zone name (e.g. Civic Park Rave)"/>
   <input class="zdp-name" id="zdp-tip-url" type="url" placeholder="Tip link (Venmo, CashApp, PayPal…)" style="margin-top:6px;opacity:.8;"/>
   <div class="zdp-actions">
@@ -1317,10 +1318,26 @@ document.addEventListener('click',e=>{
 // ── ZONE CREATE ───────────────────────────────────────────
 function onCreateZone(){
   if(activeZone){showToast('Zone active — kill stream first');return;}
+  if(!userLat){
+    showToast('Waiting for GPS — try again in a moment');
+    navigator.geolocation.getCurrentPosition(pos=>{
+      userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+      if(!userMarker)placeUserMarker(userLat,userLng);
+      else userMarker.setLatLng([userLat,userLng]);
+      leafletMap.setView([userLat,userLng],16);
+      showToast('Got GPS — tap "Draw Zone" again');
+    },()=>showToast('GPS unavailable — check location permissions'),{enableHighAccuracy:true,timeout:10000});
+    return;
+  }
   drawMode=true;document.getElementById('map').classList.add('map-draw-mode');
   document.getElementById('zone-draw-panel').classList.add('open');
-  placeDraft(L.latLng(userLat||DENVER[0],userLng||DENVER[1]));
+  placeDraft(L.latLng(userLat,userLng));
   leafletMap.on('click',onMapClick);
+}
+function snapDraftToGPS(){
+  if(!userLat){showToast('GPS not ready yet');return;}
+  placeDraft(L.latLng(userLat,userLng));
+  leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.4});
 }
 function onMapClick(e){if(drawMode)placeDraft(e.latlng);}
 function placeDraft(latlng){
