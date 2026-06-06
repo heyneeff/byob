@@ -70,7 +70,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 #sg{touch-action:none;cursor:crosshair;}
 
 /* Right: Ableton-style rack */
-.sp-rack{grid-column:5;grid-row:1;display:flex;flex-direction:column;background:#111;overflow:hidden;}
+.sp-rack{grid-column:5;grid-row:1;display:flex;flex-direction:column;background:#111;overflow:hidden;min-width:0;}
 .rack-section{border-bottom:1px solid var(--rim);flex-shrink:0;}
 .rack-header{display:flex;align-items:center;justify-content:space-between;padding:4px 8px;background:#141414;cursor:pointer;user-select:none;}
 .rack-header-label{font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);}
@@ -555,13 +555,20 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="panel active" id="panel-spatial">
 <div class="spatial-panel" id="spatial-panel">
 
-  <!-- LEFT: Full library -->
+  <!-- LEFT: Compact track library -->
   <div class="sp-stems" style="background:#111;">
-    <div id="sp-lib" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+    <div class="sp-stems-bar" style="justify-content:space-between;">
+      <div style="display:flex;gap:2px;">
+        <button id="sp-crate-all" onclick="setSpCrate('all',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--orange);background:var(--orange);color:#000;cursor:pointer;">ALL</button>
+        <button id="sp-crate-stems" onclick="setSpCrate('stems',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--muted);background:transparent;color:var(--muted);cursor:pointer;">STEMS</button>
+      </div>
+      <button onclick="document.getElementById('stem-file-input').click()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">+ UPLOAD</button>
+    </div>
+    <input class="sp-stems-search" id="stems-search" placeholder="search…" oninput="buildSpaceLib(this.value)"/>
+    <div class="sp-stems-list" id="sp-stems-list"></div>
     <!-- hidden legacy stubs for JS compat -->
     <div style="display:none">
-      <input class="sp-stems-search" id="stems-search"/>
-      <div class="sp-stems-list" id="sp-stems-list"></div>
+      <div id="sp-lib"></div>
       <div id="zone-slots"></div>
       <div id="slot-add-row"></div>
       <div id="clip-C"><span id="clip-C-name"></span></div>
@@ -3298,7 +3305,7 @@ function switchPanel(name,btn){
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
-  if(name==='spatial'){ initSpatialMap(); renderSceneLauncher(); }
+  if(name==='spatial'){ initSpatialMap(); renderSceneLauncher(); buildSpaceLib(); }
   if(name==='crowd') initCrowdMap();
   if(name==='deck' || name==='spatial'){ buildLibs(); }
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
@@ -3513,8 +3520,8 @@ async function buildLibs(filter='') {
     _realTracks = real.length ? real : TRACKS;  // fall back to demo
   }
   const html = libHTML(_realTracks, filter);
-  const sl = document.getElementById('sp-lib'); if(sl) sl.innerHTML = html;
   const dl = document.getElementById('deck-lib'); if(dl) dl.innerHTML = html;
+  buildSpaceLib(document.getElementById('stems-search')?.value || '');
   buildStemsPanel();
 }
 
@@ -3523,6 +3530,33 @@ function filterStems(v){ buildStemsPanel(v); }
 function setCrate(crate, btn){ _libCrate=crate; crateActive(btn); buildLibs(_libFilter); }
 
 // Compact stems panel for left column
+let _spCrate = 'all';
+function setSpCrate(crate, btn) {
+  _spCrate = crate;
+  document.querySelectorAll('#sp-crate-all,#sp-crate-stems').forEach(b => {
+    b.style.background = 'transparent'; b.style.color = 'var(--muted)'; b.style.borderColor = 'var(--muted)';
+  });
+  btn.style.background = 'var(--orange)'; btn.style.color = '#000'; btn.style.borderColor = 'var(--orange)';
+  buildSpaceLib(document.getElementById('stems-search')?.value || '');
+}
+function buildSpaceLib(filter='') {
+  const el = document.getElementById('sp-stems-list'); if(!el) return;
+  const pool = _realTracks.length ? _realTracks : TRACKS;
+  const q = filter.toLowerCase();
+  const tracks = pool.filter(t => {
+    const matchesCrate = _spCrate==='all' || t.type===_spCrate;
+    const matchesSearch = !q || t.name.toLowerCase().includes(q) || (t.artist||'').toLowerCase().includes(q);
+    return matchesCrate && matchesSearch;
+  });
+  if (!tracks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px;text-align:center;">Nothing here yet</div>'; return; }
+  el.innerHTML = tracks.map(t => `
+    <div class="stem-row" draggable="true" ondragstart="startDrag(event,'${t.id}')" title="${t.name}">
+      <div class="stem-dot" style="background:${t.col||'#555'}"></div>
+      <div class="stem-title">${t.name}<span style="font-size:7px;color:${t.type==='stem'?'var(--teal)':'var(--muted)'};margin-left:3px;">${t.type==='stem'?'◈':''}</span></div>
+      <button class="stem-btn" onclick="showSlotPickerFor('${t.id}',event)" title="Assign to slot" style="width:auto;padding:0 5px;color:var(--orange);flex-shrink:0;">→</button>
+    </div>`).join('');
+}
+
 function buildStemsPanel(filter='') {
   const el = document.getElementById('sp-stems-list');
   if (!el) return;
