@@ -512,7 +512,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <div class="sp-stems" style="background:#111;">
     <div class="sp-stems-bar" style="justify-content:space-between;">
       <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">SLOTS</span>
-      <button onclick="broadcastAllZones()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;letter-spacing:.1em;padding:2px 7px;border:1px solid var(--orange);border-radius:3px;background:transparent;color:var(--orange);cursor:pointer;">⚡ ALL</button>
+      <div style="display:flex;gap:3px;">
+        <button id="btn-dot-labels" onclick="toggleDotLabels()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;" title="Toggle names on map">👁</button>
+        <button onclick="remixSlots()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid #a78bfa;border-radius:3px;background:transparent;color:#a78bfa;cursor:pointer;" title="Randomly remix stem slots">🎲</button>
+        <button onclick="broadcastAllZones()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;letter-spacing:.1em;padding:2px 7px;border:1px solid var(--orange);border-radius:3px;background:transparent;color:var(--orange);cursor:pointer;">⚡ ALL</button>
+      </div>
     </div>
 
     <!-- hidden legacy stubs for JS compat -->
@@ -1185,6 +1189,27 @@ function loadDemoMode(){
     window._spDotInterval = setInterval(()=>renderSpatialDots(window._spMap), 2000);
 }
 
+let _showDotLabels = false;
+function idColor(id){ let h=0; for(let i=0;i<(id||'').length;i++) h=(h*31+id.charCodeAt(i))&0xffffffff; return SLOT_PALETTE[Math.abs(h)%SLOT_PALETTE.length]; }
+function toggleDotLabels(){
+  _showDotLabels=!_showDotLabels;
+  const btn=document.getElementById('btn-dot-labels');
+  if(btn){btn.style.color=_showDotLabels?'var(--cream)':'var(--muted)';btn.style.borderColor=_showDotLabels?'var(--cream)':'var(--muted)';}
+  // force-recreate all markers so tooltip permanent flag changes take effect
+  if(window._spDotMarkers){Object.values(window._spDotMarkers).forEach(m=>m.remove());window._spDotMarkers={};}
+  if(window._spMap) renderSpatialDots(window._spMap);
+}
+function remixSlots(){
+  const listeners=Object.values(liveListeners||{}).filter(l=>!l.isDJ&&l.dist!=null);
+  if(!listeners.length){showToast('No listeners on map');return;}
+  const keys=getSlotKeys();
+  const assignments={};
+  listeners.forEach(l=>{ const k=keys[Math.floor(Math.random()*keys.length)]; assignments[l.id]=k; liveListeners[l.id].slot=k; });
+  const zoneTrks=flatZoneTracks();
+  if(window._djSyncChannel) window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrks,playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+  if(window._spMap) renderSpatialDots(window._spMap);
+  showToast('🎲 Slots remixed');
+}
 function renderSpatialDots(spMap){
   if(!spMap || !activeZone) return;
   if(!window._spDotMarkers) window._spDotMarkers = {};
@@ -1195,22 +1220,14 @@ function renderSpatialDots(spMap){
   const djLabel = currentUser ? 'DJ ★ ' + (currentUser.email?.split('@')[0]||'Host') : 'DJ';
   if(window._spDotMarkers['__dj__']){
     window._spDotMarkers['__dj__'].setLatLng([djLat, djLng]);
-    if(!spMap.hasLayer(window._spDotMarkers['__dj__'])){
-      window._spDotMarkers['__dj__'].addTo(spMap);
-    }
+    if(!spMap.hasLayer(window._spDotMarkers['__dj__'])) window._spDotMarkers['__dj__'].addTo(spMap);
   } else {
-    const djMarker = L.circleMarker([djLat, djLng],{
-      radius:11, color:'#fff', weight:2,
-      fillColor:'#f57e20', fillOpacity:1
-    }).addTo(spMap);
-    djMarker.bindTooltip(djLabel, {permanent:true, direction:'top', offset:[0,-12]});
+    const djMarker = L.circleMarker([djLat, djLng],{radius:8,color:'#fff',weight:2,fillColor:'#f57e20',fillOpacity:1}).addTo(spMap);
+    djMarker.bindTooltip(djLabel,{permanent:true,direction:'top',offset:[0,-10]});
     window._spDotMarkers['__dj__'] = djMarker;
   }
 
   const listeners = Object.values(liveListeners||{}).filter(l=>!l.isDJ);
-  if(!window._spDotLayer) window._spDotLayer = [];
-  const voices = parseInt(document.getElementById('scatter-voices')?.value||4);
-  const SLOT_COLORS = ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'];
   const seen = new Set(['__dj__']);
 
   listeners.forEach(l => {
@@ -1221,27 +1238,21 @@ function renderSpatialDots(spMap){
     const bearingRad = (l.bearing||0) * Math.PI / 180;
     const lat = activeZone.lat + (distM/111320) * Math.cos(bearingRad);
     const lng = activeZone.lng + (distM/(111320*Math.cos(activeZone.lat*Math.PI/180))) * Math.sin(bearingRad);
-    const slot = Math.floor(((l.bearing||0) % 360) / (360/voices)) % voices;
-    const color = SLOT_COLORS[slot];
+    // color: assigned slot color if known, else stable hash of listener id
+    const color = l.slot ? slotColor(l.slot) : idColor(l.id||l.name||dotKey);
     if(window._spDotMarkers[dotKey]){
       window._spDotMarkers[dotKey].setLatLng([lat, lng]);
       window._spDotMarkers[dotKey].setStyle({fillColor: color});
     } else {
-      const marker = L.circleMarker([lat, lng],{
-        radius:9, color:'#000', weight:1.5,
-        fillColor:color, fillOpacity:0.9
-      }).addTo(spMap);
-      marker.bindTooltip(l.name||'Listener', {permanent:true, direction:'top', offset:[0,-10]});
+      const marker = L.circleMarker([lat, lng],{radius:5,color:'rgba(0,0,0,0.6)',weight:1,fillColor:color,fillOpacity:0.92}).addTo(spMap);
+      if(_showDotLabels) marker.bindTooltip(l.name||'?',{permanent:true,direction:'top',offset:[0,-7]});
+      else marker.bindTooltip(l.name||'?',{direction:'top',offset:[0,-7]});
       window._spDotMarkers[dotKey] = marker;
     }
   });
 
-  // Remove markers for listeners who left (DJ marker exempt)
   Object.keys(window._spDotMarkers).forEach(id => {
-    if(!seen.has(id)){
-      window._spDotMarkers[id].remove();
-      delete window._spDotMarkers[id];
-    }
+    if(!seen.has(id)){ window._spDotMarkers[id].remove(); delete window._spDotMarkers[id]; }
   });
 }
 
@@ -1791,6 +1802,10 @@ function kMeansClusters(entries, k) {
   return result;
 }
 
+function stampSlotAssignments(assignments){
+  Object.entries(assignments).forEach(([id,slot])=>{ if(liveListeners[id]) liveListeners[id].slot=slot; });
+  if(window._spMap) renderSpatialDots(window._spMap);
+}
 let _clusterInterval=null,_clusterActive=false;
 
 function clusterSpeakers(){
@@ -1803,6 +1818,7 @@ function clusterSpeakers(){
   const assignments=kMeansClusters(entries,k);
   const zoneTrkPayload=flatZoneTracks();
   window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400,cluster_count:k}});
+  stampSlotAssignments(assignments);
   showToast('⬡ '+k+' clusters · '+entries.length+' speakers');
   _clusterActive=true;
   updateClusterBtn();
@@ -1860,6 +1876,7 @@ function applyRing(){
   });
   if(window._djSyncChannel){
     window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+    stampSlotAssignments(assignments);
   }
   showToast('⊚ Ring · '+numRings+' rings · '+listeners.length+' speakers');
 }
@@ -1939,6 +1956,7 @@ function tickMovement(){
   }
 
   window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+  stampSlotAssignments(assignments);
   const status=document.getElementById('mv-status');
   if(status)status.textContent=_mvPattern.toUpperCase()+' · '+listeners.length+' speakers · phase '+((_mvPhase)*10|0)+'/'+(n*10);
 }
