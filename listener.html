@@ -1938,13 +1938,15 @@ async function syncZoneAudio() {
     if (z.current_track_url === 'webrtc-live' || !z.current_track_url) return;
         // Drift correction
     if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
-
       const elapsed = (syncedNow() - new Date(z.playback_started_at).getTime()) / 1000;
-      // expected must match seekToSync target so we don't fight our own compensation
       const expected = (elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000) - (_scatterOffsetMs / 1000)) % audio.duration;
-      const drift = Math.abs(audio.currentTime - expected);
-      if (drift > 0.5) { console.log('Drift fix:', drift.toFixed(2)+'s'); seekPreservingBT(expected); }
-
+      // positive lag = audio is behind; negative = audio is ahead
+      const lagMs = (expected - audio.currentTime) * 1000;
+      window._lastDriftMs = Math.round(lagMs); // exposed for presence broadcast
+      if (Math.abs(lagMs) > 60) {
+        console.log('Drift correction:', lagMs.toFixed(0)+'ms');
+        applyDriftCorrection(lagMs); // rate-based for <500ms (inaudible), seek for >500ms
+      }
     }
     
   } catch(e) { console.warn('Sync error:', e.message); }
@@ -2949,7 +2951,7 @@ function initGuestListChannel(zoneId) {
     const signal    = window._mySignal || '';
     window._guestChannel.send({
       type: 'broadcast', event: 'proximity',
-      payload: { id: listenerId, userId: currentUser?.id, dist, bearing, name, emoji, phone, instagram, signal }
+      payload: { id: listenerId, userId: currentUser?.id, dist, bearing, name, emoji, phone, instagram, signal, drift_ms: window._lastDriftMs || 0 }
     });
   };
   setTimeout(sendPresence, 1500);
@@ -4074,17 +4076,19 @@ let _scatterOffsetMs = 0;
 
 async function measureClockOffset() {
   const samples = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     try {
       const t0 = Date.now();
       const { data, error } = await db.rpc('server_now').single();
       const t1 = Date.now();
       if (!error && data) {
+        const rtt = t1 - t0;
         const serverMs = new Date(data).getTime();
-        if (!isNaN(serverMs)) samples.push(serverMs - (t0 + (t1 - t0) / 2));
+        // discard samples with suspiciously high RTT (>400ms) — they skew the median
+        if (!isNaN(serverMs) && rtt < 400) samples.push(serverMs - (t0 + rtt / 2));
       }
     } catch(e) {}
-    if (i < 2) await new Promise(r => setTimeout(r, 80));
+    if (i < 4) await new Promise(r => setTimeout(r, 60));
   }
   if (samples.length) _clockOffset = samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)];
 }

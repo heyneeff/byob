@@ -2198,7 +2198,7 @@ function startListenerTracking(zoneId){
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',signal:payload.signal||'',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,status,updated:Date.now()};
+      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',signal:payload.signal||'',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,drift_ms:payload.drift_ms||0,status,updated:Date.now()};
       renderLiveGuestList();
       if(window._spMap) renderSpatialDots(window._spMap);
     })
@@ -2211,7 +2211,7 @@ function startListenerTracking(zoneId){
           presenceChannel = db.channel('presence_'+zoneId)
             .on('broadcast',{event:'proximity'},({payload})=>{
               const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-              liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',signal:payload.signal||'',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,status,updated:Date.now()};
+              liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',signal:payload.signal||'',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,drift_ms:payload.drift_ms||0,status,updated:Date.now()};
 
               renderLiveGuestList();
               if(window._spMap) renderSpatialDots(window._spMap);
@@ -2279,8 +2279,14 @@ function renderLiveGuestList(){
     const distStr=l.dist<0.1?Math.round(l.dist*5280)+' ft':l.dist.toFixed(2)+' mi';
     const phone=l.phone?'<span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+l.phone+'</span>':'';
     const signal = l.signal ? `<span style="font-size:13px;margin-left:4px;" title="Signal">${l.signal}</span>` : '';
+    const absDrift = Math.abs(l.drift_ms||0);
+    const driftHtml = absDrift > 500
+      ? `<span style="font-size:9px;color:var(--red);margin-left:4px;font-weight:700;" title="${l.drift_ms}ms drift">⚠ ${absDrift}ms</span>`
+      : absDrift > 150
+      ? `<span style="font-size:9px;color:#fbbf24;margin-left:4px;" title="${l.drift_ms}ms drift">${absDrift}ms</span>`
+      : '';
     const row=document.createElement('div');row.className='guest-row';
-    row.innerHTML='<span style="font-size:16px;margin-right:4px">'+l.emoji+'</span>'+signal+'<span class="guest-name">'+l.name+'</span><span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+distStr+' away</span>'+phone+'<span class="guest-status '+l.status+'">'+l.status+'</span>';
+    row.innerHTML='<span style="font-size:16px;margin-right:4px">'+l.emoji+'</span>'+signal+'<span class="guest-name">'+l.name+'</span><span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+distStr+' away</span>'+phone+driftHtml+'<span class="guest-status '+l.status+'">'+l.status+'</span>';
     el.appendChild(row);
   });
   renderCrowdMapMarkers();
