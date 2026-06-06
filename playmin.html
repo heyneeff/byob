@@ -91,6 +91,37 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .slot-clip-btn.danger:hover{background:var(--red);}
 .slot-clip-btn.play{color:var(--teal);}
 
+/* Scene Launcher */
+.sl-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+.sl-scroll{flex:1;overflow:auto;}
+.sl-grid{display:inline-flex;flex-direction:column;min-width:100%;}
+.sl-header-row,.sl-clip-row,.sl-fire-row{display:flex;flex-direction:row;}
+.sl-header-row{position:sticky;top:0;z-index:5;background:#111;border-bottom:1px solid var(--rim);}
+.sl-corner{width:22px;flex-shrink:0;border-right:1px solid var(--rim);}
+.sl-add-col{width:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.sl-scene-hd{width:72px;flex-shrink:0;display:flex;align-items:center;padding:2px 3px;border-right:1px solid rgba(255,255,255,.05);gap:2px;overflow:hidden;}
+.sl-scene-nm{flex:1;font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.sl-scene-nm:hover{color:var(--cream);}
+.sl-scene-del{width:11px;height:11px;background:transparent;border:none;color:rgba(255,255,255,.18);font-size:9px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;}
+.sl-scene-del:hover{color:var(--red);}
+.sl-slot-lbl{width:22px;flex-shrink:0;height:26px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;color:#000;border-right:1px solid var(--rim);border-bottom:1px solid rgba(255,255,255,.04);}
+.sl-clip{width:72px;height:26px;flex-shrink:0;display:flex;align-items:center;gap:2px;padding:0 2px;border-right:1px solid rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .1s;overflow:hidden;}
+.sl-clip:hover{background:#1a1a1a;}
+.sl-clip.has-track{background:#141414;}
+.sl-clip.has-track:hover{background:#1e1e1e;}
+.sl-clip.is-live{background:#1a1200;}
+.sl-clip-bar{width:3px;height:18px;border-radius:2px;flex-shrink:0;}
+.sl-clip-nm{flex:1;font-size:8px;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'Barlow Condensed',sans-serif;}
+.sl-clip-x{width:11px;height:11px;background:transparent;border:none;color:rgba(255,255,255,.0);font-size:8px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;transition:color .1s;}
+.sl-clip.has-track:hover .sl-clip-x{color:rgba(255,255,255,.3);}
+.sl-clip-x:hover{color:var(--red) !important;}
+.sl-clip-dot{flex:1;text-align:center;font-size:10px;color:rgba(255,255,255,.1);}
+.sl-fire-row{border-top:1px solid var(--rim);}
+.sl-fire-corner{width:22px;flex-shrink:0;border-right:1px solid var(--rim);}
+.sl-fire-btn{width:72px;flex-shrink:0;height:22px;background:transparent;border:none;border-right:1px solid rgba(255,255,255,.04);color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.1em;cursor:pointer;transition:all .1s;}
+.sl-fire-btn:hover{background:#1a1200;color:var(--orange);}
+.sl-fire-btn.is-live{color:var(--orange);background:#1a1200;}
+
 /* Mode strip */
 .mode-strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:5px 6px;}
 .mode-pill{padding:5px 0;border:none;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.12em;background:#1a1a1a;color:var(--muted);transition:all .15s;text-align:center;}
@@ -524,71 +555,23 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="panel active" id="panel-spatial">
 <div class="spatial-panel" id="spatial-panel">
 
-  <!-- LEFT: zone slots -->
+  <!-- LEFT: Scene Launcher + Stems -->
   <div class="sp-stems" style="background:#111;">
+
+    <!-- Scene Launcher header -->
     <div class="sp-stems-bar" style="justify-content:space-between;">
-      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">SLOTS</span>
+      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">SCENES</span>
       <div style="display:flex;gap:3px;">
         <button id="btn-dot-labels" onclick="toggleDotLabels()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;" title="Toggle names on map">👁</button>
         <button onclick="remixSlots()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid #a78bfa;border-radius:3px;background:transparent;color:#a78bfa;cursor:pointer;" title="Randomly remix stem slots">🎲</button>
-        <button onclick="openSetsModal()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;" title="Save / load sets">💿</button>
-        <button onclick="broadcastAllZones()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;letter-spacing:.1em;padding:2px 7px;border:1px solid var(--orange);border-radius:3px;background:transparent;color:var(--orange);cursor:pointer;">⚡ ALL</button>
+        <button onclick="slAddRemoveSlotMenu()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;" title="Add/remove slots">± SLOT</button>
       </div>
     </div>
 
-    <!-- hidden legacy stubs for JS compat -->
-    <div style="display:none">
-      <div id="slot-C"><span id="slot-C-name"></span><span id="slot-C-controls"></span></div>
-      <div id="slot-1"><span id="slot-1-name"></span><span id="slot-1-controls"></span></div>
-      <div id="slot-2"><span id="slot-2-name"></span><span id="slot-2-controls"></span></div>
-      <div id="slot-3"><span id="slot-3-name"></span><span id="slot-3-controls"></span></div>
-      <div id="slot-4"><span id="slot-4-name"></span><span id="slot-4-controls"></span></div>
-    </div>
-
-    <div id="zone-slots" style="padding:4px 5px;display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
-      <div class="slot-clip" id="clip-C" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'C')" onclick="selectZoneSlot('C')">
-        <div class="slot-clip-color" style="background:var(--orange);">C</div>
-        <div class="slot-clip-name" id="clip-C-name">All speakers</div>
-        <div class="slot-clip-acts">
-          <button class="slot-clip-btn play" onclick="playZone(event,'C')">▶</button>
-          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'C')">×</button>
-        </div>
-      </div>
-      <div class="slot-clip" id="clip-1" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'1')" onclick="selectZoneSlot('1')">
-        <div class="slot-clip-color" style="background:var(--teal);">1</div>
-        <div class="slot-clip-name" id="clip-1-name">Cluster 1</div>
-        <div class="slot-clip-acts">
-          <button class="slot-clip-btn play" onclick="playZone(event,'1')">▶</button>
-          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'1')">×</button>
-        </div>
-      </div>
-      <div class="slot-clip" id="clip-2" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'2')" onclick="selectZoneSlot('2')">
-        <div class="slot-clip-color" style="background:var(--red);">2</div>
-        <div class="slot-clip-name" id="clip-2-name">Cluster 2</div>
-        <div class="slot-clip-acts">
-          <button class="slot-clip-btn play" onclick="playZone(event,'2')">▶</button>
-          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'2')">×</button>
-        </div>
-      </div>
-      <div class="slot-clip" id="clip-3" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'3')" onclick="selectZoneSlot('3')">
-        <div class="slot-clip-color" style="background:#a78bfa;">3</div>
-        <div class="slot-clip-name" id="clip-3-name">Cluster 3</div>
-        <div class="slot-clip-acts">
-          <button class="slot-clip-btn play" onclick="playZone(event,'3')">▶</button>
-          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'3')">×</button>
-        </div>
-      </div>
-      <div class="slot-clip" id="clip-4" ondragover="event.preventDefault()" ondrop="dropOnZone(event,'4')" onclick="selectZoneSlot('4')">
-        <div class="slot-clip-color" style="background:#f472b6;">4</div>
-        <div class="slot-clip-name" id="clip-4-name">Cluster 4</div>
-        <div class="slot-clip-acts">
-          <button class="slot-clip-btn play" onclick="playZone(event,'4')">▶</button>
-          <button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'4')">×</button>
-        </div>
-      </div>
-      <div id="slot-add-row" style="display:flex;gap:2px;padding:3px 2px 2px;">
-        <button onclick="addSlot()" style="flex:1;padding:5px 0;border:1px dashed var(--muted);border-radius:4px;background:transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;cursor:pointer;letter-spacing:.08em;transition:all .15s;" onmouseover="this.style.borderColor='var(--teal)';this.style.color='var(--teal)';" onmouseout="this.style.borderColor='var(--muted)';this.style.color='var(--muted)';">+ STEM</button>
-        <button onclick="removeSlot()" style="width:28px;padding:5px 0;border:1px dashed var(--muted);border-radius:4px;background:transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:12px;cursor:pointer;transition:all .15s;" onmouseover="this.style.borderColor='var(--red)';this.style.color='var(--red)';" onmouseout="this.style.borderColor='var(--muted)';this.style.color='var(--muted)';">−</button>
+    <!-- Scene launcher grid (rendered by JS) -->
+    <div class="sl-wrap">
+      <div class="sl-scroll" id="scene-launcher-scroll">
+        <div id="scene-launcher"></div>
       </div>
     </div>
 
@@ -599,6 +582,22 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     </div>
     <input class="sp-stems-search" id="stems-search" placeholder="search stems…" oninput="filterStems(this.value)"/>
     <div class="sp-stems-list" id="sp-stems-list"></div>
+
+    <!-- hidden legacy stubs for JS compat -->
+    <div style="display:none">
+      <div id="zone-slots"></div>
+      <div id="slot-add-row"></div>
+      <div id="clip-C"><span id="clip-C-name"></span></div>
+      <div id="clip-1"><span id="clip-1-name"></span></div>
+      <div id="clip-2"><span id="clip-2-name"></span></div>
+      <div id="clip-3"><span id="clip-3-name"></span></div>
+      <div id="clip-4"><span id="clip-4-name"></span></div>
+      <div id="slot-C"><span id="slot-C-name"></span><span id="slot-C-controls"></span></div>
+      <div id="slot-1"><span id="slot-1-name"></span><span id="slot-1-controls"></span></div>
+      <div id="slot-2"><span id="slot-2-name"></span><span id="slot-2-controls"></span></div>
+      <div id="slot-3"><span id="slot-3-name"></span><span id="slot-3-controls"></span></div>
+      <div id="slot-4"><span id="slot-4-name"></span><span id="slot-4-controls"></span></div>
+    </div>
   </div>
 
   <!-- LEFT HANDLE -->
@@ -2676,6 +2675,151 @@ function slotColor(key){
   return SLOT_PALETTE[parseInt(key)%SLOT_PALETTE.length]||'#888';
 }
 
+// ── Scene Launcher ────────────────────────────────────────────────────────
+const _SL_KEY='byob_scenes';
+let _scenes=[];
+let _activeSceneId=null;
+
+function _slLoad(){
+  try{ _scenes=JSON.parse(localStorage.getItem(_SL_KEY)||'[]'); }catch(e){ _scenes=[]; }
+  if(!_scenes.length){ _scenes=[{id:Date.now(),name:'Scene 1',tracks:{}}]; _slSave(); }
+}
+function _slSave(){ localStorage.setItem(_SL_KEY,JSON.stringify(_scenes)); }
+
+function slAddScene(){
+  _scenes.push({id:Date.now(),name:'Scene '+(_scenes.length+1),tracks:{}});
+  _slSave(); renderSceneLauncher();
+}
+function slRemoveScene(id){
+  if(_scenes.length<=1){showToast('Need at least one scene');return;}
+  _scenes=_scenes.filter(s=>s.id!==id);
+  if(_activeSceneId===id) _activeSceneId=null;
+  _slSave(); renderSceneLauncher();
+}
+function slRenameScene(id){
+  const s=_scenes.find(s=>s.id===id); if(!s) return;
+  const n=prompt('Rename scene:',s.name);
+  if(n?.trim()){s.name=n.trim(); _slSave(); renderSceneLauncher();}
+}
+function slSetClip(sceneId,slot,url,name){
+  const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
+  s.tracks[slot]={url,name}; _slSave(); renderSceneLauncher();
+}
+function slClearClip(sceneId,slot,ev){
+  if(ev) ev.stopPropagation();
+  const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
+  delete s.tracks[slot]; _slSave(); renderSceneLauncher();
+}
+function slDropOnClip(ev,sceneId,slot){
+  ev.preventDefault();
+  const url=ev.dataTransfer.getData('track-url')||_draggingTrack?.url;
+  const name=ev.dataTransfer.getData('track-name')||_draggingTrack?.name;
+  if(!url) return;
+  slSetClip(sceneId,slot,url,name);
+}
+function slFireScene(sceneId){
+  const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
+  // Load into active zoneTracks
+  getSlotKeys().forEach(k=>{delete zoneTracks[k];});
+  Object.entries(s.tracks||{}).forEach(([slot,t])=>{ if(t?.url) assignTrackToZone(slot,t.url,t.name); });
+  _activeSceneId=sceneId;
+  renderSceneLauncher();
+  broadcastAllZones();
+  showToast('▶ '+s.name);
+}
+function slPickClip(sceneId,slot){
+  document.getElementById('sl-picker')?.remove();
+  const pool=(_realTracks?.length?_realTracks:TRACKS)||[];
+  if(!pool.length){showToast('No tracks — upload stems first');return;}
+  const scene=_scenes.find(s=>s.id===sceneId);
+  const picker=document.createElement('div');
+  picker.id='sl-picker';
+  picker.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#111;border-top:3px solid var(--teal);padding:14px 16px 36px;max-height:55vh;overflow-y:auto;';
+  picker.innerHTML=`
+    <div style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-bottom:10px;font-family:'Barlow Condensed',sans-serif;">${scene?.name||'Scene'} / Slot ${slot}</div>
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      ${pool.map(t=>{
+        const safeUrl=(t.url||t.id||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        const safeName=(t.name||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+        return `<button onclick="slSetClip(${sceneId},'${slot}','${safeUrl}','${safeName}');document.getElementById('sl-picker').remove();" style="padding:9px 12px;background:#1a1a1a;color:var(--cream);border:1px solid var(--rim);border-radius:5px;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;text-align:left;cursor:pointer;">${t.name||t.id}</button>`;
+      }).join('')}
+    </div>
+    <button onclick="document.getElementById('sl-picker').remove()" style="width:100%;padding:11px;margin-top:10px;background:transparent;border:1px solid #333;border-radius:8px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:14px;cursor:pointer;">Cancel</button>`;
+  document.body.appendChild(picker);
+}
+
+function renderSceneLauncher(){
+  const el=document.getElementById('scene-launcher');
+  if(!el) return;
+  const slots=getSlotKeys();
+
+  // helper: resolve CSS var color to hex
+  function resolveColor(c){
+    return c.replace('var(--orange)','#f57e20').replace('var(--teal)','#00cc99').replace('var(--red)','#ef3c23');
+  }
+
+  const headerCells=_scenes.map(s=>`
+    <div class="sl-scene-hd">
+      <span class="sl-scene-nm" ondblclick="slRenameScene(${s.id})" title="double-tap to rename">${s.name}</span>
+      ${_scenes.length>1?`<button class="sl-scene-del" onclick="slRemoveScene(${s.id})">×</button>`:''}
+    </div>`).join('');
+
+  const addBtn=`<div class="sl-add-col"><button onclick="slAddScene()" style="width:22px;height:22px;background:transparent;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;" onmouseover="this.style.color='var(--teal)'" onmouseout="this.style.color='var(--muted)'">+</button></div>`;
+
+  const clipRows=slots.map(slot=>{
+    const bg=resolveColor(slotColor(slot));
+    const cells=_scenes.map(s=>{
+      const t=s.tracks[slot];
+      const live=_activeSceneId===s.id;
+      return t
+        ?`<div class="sl-clip has-track${live?' is-live':''}" ondragover="event.preventDefault()" ondrop="slDropOnClip(event,${s.id},'${slot}')" title="${t.name}">
+            <div class="sl-clip-bar" style="background:${bg};"></div>
+            <div class="sl-clip-nm">${t.name}</div>
+            <button class="sl-clip-x" onclick="slClearClip(${s.id},'${slot}',event)">×</button>
+          </div>`
+        :`<div class="sl-clip" ondragover="event.preventDefault()" ondrop="slDropOnClip(event,${s.id},'${slot}')" onclick="slPickClip(${s.id},'${slot}')">
+            <div class="sl-clip-dot">·</div>
+          </div>`;
+    }).join('');
+    return `<div class="sl-clip-row">
+      <div class="sl-slot-lbl" style="background:${bg};">${slot}</div>
+      ${cells}
+      <div style="width:22px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.04);"></div>
+    </div>`;
+  }).join('');
+
+  const fireCells=_scenes.map(s=>{
+    const live=_activeSceneId===s.id;
+    return `<button class="sl-fire-btn${live?' is-live':''}" onclick="slFireScene(${s.id})">${live?'■ LIVE':'▶ FIRE'}</button>`;
+  }).join('');
+
+  el.innerHTML=`<div class="sl-grid">
+    <div class="sl-header-row">
+      <div class="sl-corner"></div>
+      ${headerCells}
+      ${addBtn}
+    </div>
+    ${clipRows}
+    <div class="sl-fire-row">
+      <div class="sl-fire-corner"></div>
+      ${fireCells}
+      <div style="width:22px;flex-shrink:0;"></div>
+    </div>
+  </div>`;
+}
+
+function slAddRemoveSlotMenu(){
+  document.getElementById('sl-slot-menu')?.remove();
+  const m=document.createElement('div');
+  m.id='sl-slot-menu';
+  m.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#111;border-top:2px solid var(--rim);padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:8px;';
+  m.innerHTML=`
+    <button onclick="addSlot();document.getElementById('sl-slot-menu').remove();" style="padding:14px;background:transparent;color:var(--teal);border:2px solid var(--teal);border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;cursor:pointer;">+ ADD SLOT</button>
+    <button onclick="removeSlot();document.getElementById('sl-slot-menu').remove();" style="padding:14px;background:transparent;color:var(--red);border:2px solid var(--red);border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;cursor:pointer;">− REMOVE</button>
+    <button onclick="document.getElementById('sl-slot-menu').remove()" style="grid-column:1/3;padding:12px;background:transparent;border:1px solid #333;border-radius:8px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:14px;cursor:pointer;">Cancel</button>`;
+  document.body.appendChild(m);
+}
+
 function addSlot(){
   _slotCount++;
   const key=String(_slotCount);
@@ -2693,6 +2837,7 @@ function addSlot(){
   document.getElementById('zone-slots')?.insertBefore(clip, document.getElementById('slot-add-row'));
   // Add stem panel button
   rebuildStemBtns();
+  renderSceneLauncher();
   showToast('Slot '+key+' added');
 }
 
@@ -2704,6 +2849,7 @@ function removeSlot(){
   document.getElementById('slot-'+key)?.remove();
   _slotCount--;
   rebuildStemBtns();
+  renderSceneLauncher();
   showToast('Slot '+key+' removed');
 }
 
@@ -3159,7 +3305,7 @@ function switchPanel(name,btn){
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
-  if(name==='spatial'){ initSpatialMap(); }
+  if(name==='spatial'){ initSpatialMap(); renderSceneLauncher(); }
   if(name==='crowd') initCrowdMap();
   if(name==='deck' || name==='spatial'){ buildLibs(); }
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
@@ -3492,7 +3638,7 @@ document.getElementById('stem-file-input').addEventListener('change', async (e) 
 });
 
 // Initial load — deferred so currentUser is set
-setTimeout(()=>{ buildLibs(); initSpatialResize(); }, 800);
+setTimeout(()=>{ buildLibs(); initSpatialResize(); _slLoad(); renderSceneLauncher(); }, 800);
 
 // Mixer EQ knobs
 const MX_BANDS=['HI','MID','LOW'];
