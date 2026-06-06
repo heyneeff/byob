@@ -3602,6 +3602,7 @@ function drawPlatter(id,deck,color){
   const cv=document.getElementById(id);if(!cv)return;
   const k=cv.getContext('2d');
   const W=cv.width,H=cv.height,cx=W/2,cy=H/2,R=W/2-4;
+  if(R<=0)return;
   k.clearRect(0,0,W,H);
 
   // Momentum decay (when not scratching, not playing)
