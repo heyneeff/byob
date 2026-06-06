@@ -92,9 +92,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .slot-clip-btn.play{color:var(--teal);}
 
 /* Scene Launcher */
-.sl-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;}
-.sl-scroll{flex:1;overflow:auto;width:0;min-width:100%;}
-.sl-grid{display:inline-flex;flex-direction:column;min-width:100%;}
+.sl-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;width:100%;}
+.sl-scroll{flex:1;overflow-x:auto;overflow-y:auto;width:100%;}
+.sl-grid{display:inline-flex;flex-direction:column;min-height:100%;}
 .sl-header-row,.sl-clip-row,.sl-fire-row{display:flex;flex-direction:row;}
 .sl-header-row{position:sticky;top:0;z-index:5;background:#111;border-bottom:1px solid var(--rim);}
 .sl-corner{width:22px;flex-shrink:0;border-right:1px solid var(--rim);}
@@ -555,29 +555,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="panel active" id="panel-spatial">
 <div class="spatial-panel" id="spatial-panel">
 
-  <!-- LEFT: Scene Launcher + Stems -->
+  <!-- LEFT: Stems library -->
   <div class="sp-stems" style="background:#111;">
-
-    <!-- Scene Launcher header -->
     <div class="sp-stems-bar" style="justify-content:space-between;">
-      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">SCENES</span>
-      <div style="display:flex;gap:3px;">
-        <button id="btn-dot-labels" onclick="toggleDotLabels()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;" title="Toggle names on map">👁</button>
-        <button onclick="remixSlots()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid #a78bfa;border-radius:3px;background:transparent;color:#a78bfa;cursor:pointer;" title="Randomly remix stem slots">🎲</button>
-        <button onclick="slAddRemoveSlotMenu()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;" title="Add/remove slots">± SLOT</button>
-      </div>
-    </div>
-
-    <!-- Scene launcher grid (rendered by JS) -->
-    <div class="sl-wrap">
-      <div class="sl-scroll" id="scene-launcher-scroll">
-        <div id="scene-launcher"></div>
-      </div>
-    </div>
-
-    <!-- Stems browser -->
-    <div style="border-top:1px solid var(--rim);flex-shrink:0;display:flex;align-items:center;gap:4px;padding:4px 7px;background:#0e0e0e;">
-      <span style="font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;flex:1;">STEMS</span>
+      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">STEMS</span>
       <button onclick="document.getElementById('stem-file-input').click()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">+ UPLOAD</button>
     </div>
     <input class="sp-stems-search" id="stems-search" placeholder="search stems…" oninput="filterStems(this.value)"/>
@@ -603,8 +584,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <!-- LEFT HANDLE -->
   <div class="sp-hv-left" id="sp-handle-left"></div>
 
-  <!-- CENTER: radar (Leaflet map) + hidden orchestra canvas for sweep logic -->
-  <div class="sp-radar" id="sp-spatial-map"></div>
+  <!-- CENTER: radar map + floating map controls -->
+  <div class="sp-radar" id="sp-spatial-map" style="position:relative;">
+    <div style="position:absolute;top:8px;right:8px;z-index:500;display:flex;flex-direction:column;gap:5px;">
+      <button id="btn-dot-labels" onclick="toggleDotLabels()" title="Toggle listener names" style="width:32px;height:32px;background:rgba(0,0,0,.82);border:1px solid var(--rim);border-radius:7px;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);">👁</button>
+      <button onclick="remixSlots()" title="Remix listener slots" style="width:32px;height:32px;background:rgba(0,0,0,.82);border:1px solid #a78bfa;border-radius:7px;color:#a78bfa;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);">🎲</button>
+    </div>
+  </div>
   <div id="sp-radar" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;"></div>
 
   <!-- RIGHT HANDLE -->
@@ -762,8 +748,20 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <!-- BOTTOM HANDLE -->
   <div class="sp-hh" id="sp-handle-bottom"></div>
 
-  <!-- BOTTOM: library -->
-  <div class="sp-library" id="sp-lib"></div>
+  <!-- BOTTOM: Scene launcher (sp-lib kept as ID for legacy JS, actual lib HTML goes to sp-lib-inner) -->
+  <div class="sp-library" style="flex-direction:column;overflow:hidden;">
+    <div id="sp-lib" style="display:none;"></div><!-- buildLibs target — hidden here, deck-lib handles deck panel -->
+    <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-bottom:1px solid var(--rim);flex-shrink:0;background:#141414;">
+      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;flex:1;">SCENES</span>
+      <button onclick="addSlot()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 7px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">+ SLOT</button>
+      <button onclick="removeSlot()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 7px;border:1px solid var(--red);border-radius:3px;background:transparent;color:var(--red);cursor:pointer;">− SLOT</button>
+    </div>
+    <div class="sl-wrap" style="min-width:0;">
+      <div class="sl-scroll" id="scene-launcher-scroll">
+        <div id="scene-launcher"></div>
+      </div>
+    </div>
+  </div>
 </div>
 </div>
 
