@@ -492,6 +492,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <div class="topbar-stats">
     <div class="tstat"><div class="tstat-v" id="tb-bpm">—</div><div class="tstat-l">BPM</div></div>
     <div class="tstat"><div class="tstat-v" id="tb-live">0</div><div class="tstat-l">Live</div></div>
+    <div class="tstat" id="sync-pill" title="Listeners with fresh presence (< 5s)" style="cursor:default;">
+      <div class="tstat-v" id="tb-sync-count" style="color:var(--muted);">—</div>
+      <div class="tstat-l">SYNC</div>
+    </div>
   </div>
   <div class="tb-trackname" id="tb-trackname"></div>
   <button class="btn-live" id="btn-live" onclick="document.getElementById('btn-go-live').click()">⚡ Go Live</button>   <button onclick="triggerResync()" style="padding:6px 12px;border:none;border-radius:14px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;letter-spacing:.08em;background:var(--teal);color:#000;flex-shrink:0;margin-left:4px;">⟳ Sync</button>
@@ -2193,10 +2197,25 @@ function startListenerTracking(zoneId){
   },30000);
 
 }
+function updateSyncPill(){
+  const el = document.getElementById('tb-sync-count');
+  if(!el) return;
+  const all = Object.values(liveListeners).filter(l=>!l.isDJ);
+  const total = all.length;
+  if(!total){ el.textContent='—'; el.style.color='var(--muted)'; return; }
+  const now = Date.now();
+  const fresh = all.filter(l => now - (l.updated||0) < 5000).length;
+  el.textContent = fresh+'/'+total;
+  el.style.color = fresh===total ? 'var(--teal)' : fresh >= total*0.8 ? '#fbbf24' : 'var(--red)';
+}
+
+setInterval(updateSyncPill, 3000);
+
 function renderLiveGuestList(){
+  updateSyncPill();
   const el = document.getElementById('guest-list');
   const listeners = Object.values(liveListeners);
-  
+
   const _sp = document.getElementById('stat-present');
   const _sa = document.getElementById('stat-approaching');
   const _ss = document.getElementById('stat-speakers');
