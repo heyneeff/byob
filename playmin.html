@@ -938,9 +938,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <div class="setup-map-area">
     <!-- Left-edge action buttons -->
     <div class="setup-left-btns">
-      <button class="setup-action-btn" onclick="openEventPanel()">
-        <span style="font-size:16px;">📅</span>Schedule
-      </button>
       <button class="setup-action-btn" onclick="centerOnUser()">
         <span style="font-size:16px;">◎</span>Find Me
       </button>
@@ -968,7 +965,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div class="section-label">Audio Source</div>
     <div class="live-menu-row">
       <button class="btn-live-option btn-live-stream" onclick="startLiveStream()">🎙 Live Mic</button>
-      <button class="btn-live-option btn-live-upload" onclick="document.getElementById('file-input').click()">🎵 Upload Track</button>
+      <button class="btn-live-option btn-live-upload" onclick="openLibrary()">📚 Use Library</button>
     </div>
     <input type="file" id="file-input" multiple style="display:none;"/>
     <input type="file" id="stem-file-input" multiple accept="audio/*" style="display:none;"/>
@@ -978,6 +975,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button class="btn-scan-sm" onclick="scanDevices()">Scan</button>
     </div>
     <div class="input-meter"><div class="meter-fill" id="meter-fill"></div></div>
+    <button onclick="openEventPanel()" style="width:100%;padding:10px;background:transparent;color:var(--red);border:2px solid var(--red);border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:.08em;cursor:pointer;">📅 Schedule Event</button>
   </div>
 
   <!-- Hidden legacy elements — JS still references these IDs -->
