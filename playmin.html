@@ -112,6 +112,31 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 /* Bottom: full library */
 .sp-library{grid-column:1/-1;grid-row:3;background:var(--card);display:flex;flex-direction:column;overflow:hidden;}
 
+/* Spatial launcher rows */
+.sp-rack{overflow-y:auto;}
+.sp-rack::-webkit-scrollbar{width:2px;}.sp-rack::-webkit-scrollbar-thumb{background:var(--rim);}
+.sr-section-label{padding:5px 8px 2px;font-size:7px;letter-spacing:.2em;color:var(--muted);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;border-top:1px solid var(--rim);margin-top:2px;flex-shrink:0;}
+.sr-row{display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,.04);flex-shrink:0;transition:background .1s;min-height:34px;}
+.sr-row:hover{background:#171717;}
+.sr-row.active{background:#1a1200;border-left:2px solid var(--orange);}
+.sr-fire{flex-shrink:0;width:62px;align-self:stretch;border:none;border-right:1px solid rgba(255,255,255,.06);background:transparent;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:.1em;cursor:pointer;transition:all .15s;padding:0 4px;}
+.sr-fire:hover{background:#1e1e1e;color:var(--cream);}
+.sr-row.active .sr-fire{color:var(--orange);}
+.sr-params{flex:1;display:flex;align-items:center;flex-wrap:wrap;gap:3px;padding:4px 6px;}
+.sr-label{font-size:8px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;white-space:nowrap;}
+.sr-val{font-size:9px;color:var(--cream);min-width:26px;text-align:right;font-family:'IBM Plex Mono',monospace;}
+.sr-stop{border:1px solid var(--rim);border-radius:3px;background:transparent;color:var(--muted);font-size:9px;padding:2px 5px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;transition:all .12s;}
+.sr-stop:hover{border-color:var(--red);color:var(--red);}
+.sr-slider{flex:1;min-width:40px;max-width:80px;accent-color:var(--orange);height:3px;}
+.sr-select{background:#1a1a1a;border:1px solid var(--rim);border-radius:3px;color:var(--cream);font-size:9px;padding:2px 3px;font-family:'Barlow Condensed',sans-serif;outline:none;cursor:pointer;}
+.sr-num{width:38px;background:#1a1a1a;border:1px solid var(--rim);border-radius:3px;color:var(--cream);font-size:9px;padding:2px 4px;font-family:'IBM Plex Mono',monospace;outline:none;text-align:center;}
+.sr-bars{display:flex;gap:1px;flex-shrink:0;}
+.sr-bar{width:18px;height:18px;border:1px solid var(--rim);border-radius:2px;background:#1a1a1a;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;cursor:pointer;transition:all .1s;padding:0;}
+.sr-bar.active{background:var(--orange);color:#000;border-color:var(--orange);}
+.sr-dir{border:1px solid var(--rim);border-radius:3px;background:transparent;color:var(--teal);font-size:11px;padding:1px 5px;cursor:pointer;transition:all .12s;}
+.sr-dir:hover{border-color:var(--teal);background:#001a1a;}
+.sr-hint{flex:1;font-size:8px;color:var(--muted2);padding:0 6px;font-family:'Barlow Condensed',sans-serif;pointer-events:none;}
+
 /* Legacy slot classes kept for JS compat */
 .sp-label{font-size:7px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);flex-shrink:0;margin-top:4px;font-family:'Barlow Condensed',sans-serif;}
 .zone-slot{display:none;}
@@ -561,105 +586,153 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <!-- RIGHT HANDLE -->
   <div class="sp-hv-right" id="sp-handle-right"></div>
 
-  <!-- RIGHT: Ableton-style rack -->
+  <!-- RIGHT: Spatial launcher -->
   <div class="sp-rack" id="sp-rack">
 
-    <!-- MODE section -->
-    <div class="rack-section open" id="rack-mode">
-      <div class="rack-header" onclick="toggleRack('rack-mode')">
-        <span class="rack-header-label">Spatial Mode</span>
-        <span class="rack-header-arrow">▶</span>
-      </div>
-      <div class="rack-body" style="padding:4px 6px 6px;">
-        <div class="mode-strip" style="grid-template-columns:repeat(5,1fr);">
-          <button class="mode-pill active" id="mode-single"  onclick="setMode('single')">SINGLE</button>
-          <button class="mode-pill"        id="mode-cluster" onclick="setMode('cluster')">CLSTR</button>
-          <button class="mode-pill"        id="mode-ring"    onclick="setMode('ring')">RING</button>
-          <button class="mode-pill"        id="mode-sweep"   onclick="setMode('sweep')">SWEEP</button>
-          <button class="mode-pill"        id="mode-scatter" onclick="setMode('scatter')">SCAT</button>
-        </div>
+    <!-- Hidden legacy inputs so existing JS (setMode, toggleCluster, etc.) still works -->
+    <div style="display:none">
+      <input id="ring-count" type="range" min="2" max="5" value="3"/>
+      <span id="ring-count-label">3</span>
+      <input id="scatter-ms" type="range" min="0" max="30000" step="250" value="2000"/>
+      <span id="scatter-label">2.0s</span>
+      <select id="scatter-voices"><option value="2">2</option><option value="3">3</option><option value="4" selected>4</option><option value="6">6</option><option value="8">8</option></select>
+      <input id="mv-rate" type="range" min="300" max="8000" step="100" value="2000"/>
+      <span id="mv-rate-label">2.0s</span>
+      <input id="mv-depth" type="range" min="2" max="5" step="1" value="2"/>
+      <span id="mv-depth-label">2</span>
+      <span id="mv-status"></span>
+      <button id="btn-cluster"></button>
+      <button id="btn-ring"></button>
+      <button id="btn-movement"></button>
+      <button id="mode-single"></button><button id="mode-cluster"></button><button id="mode-ring"></button>
+      <button id="mode-sweep"></button><button id="mode-scatter"></button>
+      <button id="mv-wave"></button><button id="mv-pulse"></button><button id="mv-orbit"></button><button id="mv-swing"></button>
+      <div id="mode-body-cluster"></div><div id="mode-body-ring"></div>
+      <div id="mode-body-scatter"></div><div id="mode-body-sweep"></div>
+    </div>
 
-        <!-- Cluster controls -->
-        <div id="mode-body-cluster" style="display:none;flex-direction:column;gap:3px;">
-          <button id="btn-cluster" onclick="toggleCluster()" class="rack-btn" style="width:100%;border-color:var(--teal);color:var(--teal);">⬡ START CLUSTER</button>
-          <div style="font-size:8px;color:var(--muted);text-align:center;padding:2px 0;">Groups by proximity · auto-assigns stems · 30s refresh</div>
-        </div>
+    <div class="sr-section-label" style="border-top:none;padding-top:6px;">SPATIAL</div>
 
-        <!-- Ring controls -->
-        <div id="mode-body-ring" style="display:none;flex-direction:column;gap:4px;">
-          <div class="rack-knob-row">
-            <span class="rack-knob-label">Rings</span>
-            <input type="range" class="rack-slider" id="ring-count" min="2" max="5" step="1" value="3" style="accent-color:var(--orange);" oninput="document.getElementById('ring-count-label').textContent=this.value"/>
-            <span class="rack-val" id="ring-count-label">3</span>
-          </div>
-          <button id="btn-ring" onclick="toggleRing()" class="rack-btn" style="width:100%;border-color:var(--orange);color:var(--orange);">⊚ START RING</button>
-          <div style="font-size:8px;color:var(--muted);text-align:center;">Inner = C · outward by dist · recomputes 15s</div>
-        </div>
+    <!-- SINGLE -->
+    <div class="sr-row" id="sr-single">
+      <button class="sr-fire" onclick="fireMode('single')">SINGLE</button>
+      <span class="sr-hint">everyone same track</span>
+    </div>
 
-        <!-- Scatter controls -->
-        <div id="mode-body-scatter" style="display:none;flex-direction:column;gap:4px;">
-          <div class="rack-knob-row">
-            <span class="rack-knob-label">Spread</span>
-            <input type="range" class="rack-slider" id="scatter-ms" min="0" max="30000" step="250" value="2000" oninput="updateScatterLabel()"/>
-            <span class="rack-val" id="scatter-label">2.0s</span>
-          </div>
-          <select id="scatter-voices" style="width:100%;background:#1a1a1a;border:1px solid var(--rim);border-radius:4px;padding:4px 6px;color:var(--cream);font-size:10px;outline:none;">
-            <option value="2">2 voices</option><option value="3">3 voices</option><option value="4" selected>4 voices</option><option value="6">6 voices</option><option value="8">8 voices</option>
-          </select>
-          <div class="rack-btn-row">
-            <button class="rack-btn hot" onclick="scatterSpeakers()">♪ SCATTER</button>
-            <button class="rack-btn active" onclick="snapSpeakers()">⚡ SNAP</button>
-          </div>
-        </div>
-
-        <!-- Sweep controls -->
-        <div id="mode-body-sweep" style="display:none;flex-direction:column;gap:3px;">
-          <div class="rack-sweep-grid">
-            <button class="rack-btn" onclick="startCircularSweep(2,1)"  style="color:var(--teal);border-color:var(--teal);">↻ 2 RPM</button>
-            <button class="rack-btn" onclick="startCircularSweep(4,1)"  style="color:var(--teal);border-color:var(--teal);">↻ 4 RPM</button>
-            <button class="rack-btn" onclick="startCircularSweep(8,1)"  style="color:var(--teal);border-color:var(--teal);">↻ 8 RPM</button>
-            <button class="rack-btn" onclick="startCircularSweep(4,-1)" style="color:var(--orange);border-color:var(--orange);">↺ REV</button>
-          </div>
-          <button class="rack-btn danger" onclick="stopCircularSweep()" style="width:100%;">◼ STOP</button>
-        </div>
-
-        <button onclick="triggerResync()" class="rack-btn" style="width:100%;margin-top:4px;color:var(--teal);border-color:var(--teal);">🔄 Sync All</button>
+    <!-- CLUSTER -->
+    <div class="sr-row" id="sr-cluster">
+      <button class="sr-fire" onclick="fireMode('cluster')">CLUSTER</button>
+      <div class="sr-params">
+        <span class="sr-label">k</span>
+        <select id="sr-cluster-k" class="sr-select" onclick="event.stopPropagation()">
+          <option value="2">2</option><option value="3" selected>3</option><option value="4">4</option><option value="5">5</option>
+        </select>
+        <span class="sr-label" style="margin-left:2px;">groups</span>
+        <button class="sr-stop" onclick="event.stopPropagation();if(_clusterActive)toggleCluster()">■</button>
       </div>
     </div>
 
-    <!-- MOVEMENT section -->
-    <div class="rack-section open" id="rack-movement">
-      <div class="rack-header" onclick="toggleRack('rack-movement')">
-        <span class="rack-header-label">Movement</span>
-        <span class="rack-header-arrow">▶</span>
-      </div>
-      <div class="rack-body" style="padding:4px 6px 6px;">
-        <div class="mode-strip" style="grid-template-columns:repeat(4,1fr);margin-bottom:4px;">
-          <button class="mode-pill active" id="mv-wave"  onclick="setMovement('wave')">WAVE</button>
-          <button class="mode-pill"        id="mv-pulse" onclick="setMovement('pulse')">PULSE</button>
-          <button class="mode-pill"        id="mv-orbit" onclick="setMovement('orbit')">ORBIT</button>
-          <button class="mode-pill"        id="mv-swing" onclick="setMovement('swing')">SWING</button>
-        </div>
-        <div class="rack-knob-row">
-          <span class="rack-knob-label">Rate</span>
-          <input type="range" class="rack-slider" id="mv-rate" min="300" max="8000" step="100" value="2000" style="accent-color:#a78bfa;" oninput="updateMvLabel()"/>
-          <span class="rack-val" id="mv-rate-label">2.0s</span>
-        </div>
-        <div class="rack-knob-row">
-          <span class="rack-knob-label">Stems</span>
-          <input type="range" class="rack-slider" id="mv-depth" min="2" max="5" step="1" value="2" style="accent-color:#a78bfa;" oninput="document.getElementById('mv-depth-label').textContent=this.value"/>
-          <span class="rack-val" id="mv-depth-label">2</span>
-        </div>
-        <div class="rack-btn-row">
-          <button class="rack-btn" id="btn-movement" onclick="toggleMovement()" style="border-color:#a78bfa;color:#a78bfa;">▶ START</button>
-          <button class="rack-btn" onclick="snapSpeakers()">⚡ SNAP</button>
-        </div>
-        <div style="font-size:8px;color:var(--muted);text-align:center;margin-top:2px;" id="mv-status"></div>
+    <!-- RING -->
+    <div class="sr-row" id="sr-ring">
+      <button class="sr-fire" onclick="fireMode('ring')">RING</button>
+      <div class="sr-params">
+        <input type="range" class="sr-slider" id="sr-ring-n" min="2" max="5" value="3"
+          oninput="document.getElementById('sr-ring-v').textContent=this.value;document.getElementById('ring-count').value=this.value"
+          onclick="event.stopPropagation()"/>
+        <span class="sr-val" id="sr-ring-v">3</span>
+        <button class="sr-stop" onclick="event.stopPropagation();if(_ringActive)toggleRing()">■</button>
       </div>
     </div>
 
-    <!-- overflow spacer -->
-    <div style="flex:1;overflow-y:auto;"></div>
+    <!-- SWEEP -->
+    <div class="sr-row" id="sr-sweep" style="flex-wrap:wrap;align-items:flex-start;padding:4px 0;">
+      <button class="sr-fire" onclick="fireMode('sweep')" style="align-self:center;">SWEEP</button>
+      <div class="sr-params" style="flex-wrap:wrap;row-gap:4px;">
+        <div style="display:flex;align-items:center;gap:3px;">
+          <input type="number" id="sr-bpm" class="sr-num" value="120" min="40" max="220" title="BPM" onclick="event.stopPropagation()"/>
+          <span class="sr-label">BPM</span>
+        </div>
+        <div class="sr-bars" onclick="event.stopPropagation()" title="bars per full rotation">
+          <button class="sr-bar active" id="sr-bars-1" onclick="setSweepBars(1,this)">1</button>
+          <button class="sr-bar"        id="sr-bars-2" onclick="setSweepBars(2,this)">2</button>
+          <button class="sr-bar"        id="sr-bars-4" onclick="setSweepBars(4,this)">4</button>
+          <button class="sr-bar"        id="sr-bars-8" onclick="setSweepBars(8,this)">8</button>
+          <span class="sr-label" style="margin-left:3px;">bars</span>
+        </div>
+        <button class="sr-dir" id="sr-sweep-dir" onclick="event.stopPropagation();toggleSweepDir(this)">↻</button>
+        <button class="sr-stop" onclick="event.stopPropagation();stopCircularSweep()">■</button>
+      </div>
+    </div>
+
+    <!-- SCATTER -->
+    <div class="sr-row" id="sr-scatter">
+      <button class="sr-fire" onclick="fireMode('scatter')">SCATTER</button>
+      <div class="sr-params">
+        <input type="range" class="sr-slider" id="sr-scatter-ms" min="0" max="20000" step="500" value="2000"
+          oninput="document.getElementById('sr-scatter-v').textContent=(this.value/1000).toFixed(1)+'s'"
+          onclick="event.stopPropagation()"/>
+        <span class="sr-val" id="sr-scatter-v">2.0s</span>
+        <select id="sr-scatter-v2" class="sr-select" onclick="event.stopPropagation()">
+          <option value="2">2v</option><option value="3">3v</option><option value="4" selected>4v</option><option value="6">6v</option><option value="8">8v</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="sr-section-label">MOTION <span style="font-size:7px;color:var(--muted2);font-weight:400;letter-spacing:.05em;text-transform:none;">— time-animates stem rotation</span></div>
+
+    <!-- WAVE -->
+    <div class="sr-row" id="sr-wave">
+      <button class="sr-fire" onclick="fireMotion('wave')">WAVE</button>
+      <div class="sr-params">
+        <input type="range" class="sr-slider" id="sr-wave-rate" min="300" max="8000" step="100" value="2000"
+          oninput="document.getElementById('sr-wave-v').textContent=(this.value/1000).toFixed(1)+'s'"
+          onclick="event.stopPropagation()"/>
+        <span class="sr-val" id="sr-wave-v">2.0s</span>
+        <button class="sr-stop" onclick="event.stopPropagation();stopMotion()">■</button>
+      </div>
+    </div>
+
+    <!-- PULSE -->
+    <div class="sr-row" id="sr-pulse">
+      <button class="sr-fire" onclick="fireMotion('pulse')">PULSE</button>
+      <div class="sr-params">
+        <input type="range" class="sr-slider" id="sr-pulse-rate" min="300" max="8000" step="100" value="2000"
+          oninput="document.getElementById('sr-pulse-v').textContent=(this.value/1000).toFixed(1)+'s'"
+          onclick="event.stopPropagation()"/>
+        <span class="sr-val" id="sr-pulse-v">2.0s</span>
+        <button class="sr-stop" onclick="event.stopPropagation();stopMotion()">■</button>
+      </div>
+    </div>
+
+    <!-- ORBIT -->
+    <div class="sr-row" id="sr-orbit">
+      <button class="sr-fire" onclick="fireMotion('orbit')">ORBIT</button>
+      <div class="sr-params">
+        <input type="range" class="sr-slider" id="sr-orbit-rate" min="300" max="8000" step="100" value="3000"
+          oninput="document.getElementById('sr-orbit-v').textContent=(this.value/1000).toFixed(1)+'s'"
+          onclick="event.stopPropagation()"/>
+        <span class="sr-val" id="sr-orbit-v">3.0s</span>
+        <button class="sr-stop" onclick="event.stopPropagation();stopMotion()">■</button>
+      </div>
+    </div>
+
+    <!-- SWING -->
+    <div class="sr-row" id="sr-swing">
+      <button class="sr-fire" onclick="fireMotion('swing')">SWING</button>
+      <div class="sr-params">
+        <input type="range" class="sr-slider" id="sr-swing-rate" min="300" max="8000" step="100" value="4000"
+          oninput="document.getElementById('sr-swing-v').textContent=(this.value/1000).toFixed(1)+'s'"
+          onclick="event.stopPropagation()"/>
+        <span class="sr-val" id="sr-swing-v">4.0s</span>
+        <button class="sr-stop" onclick="event.stopPropagation();stopMotion()">■</button>
+      </div>
+    </div>
+
+    <div style="padding:6px 8px 8px;margin-top:4px;border-top:1px solid var(--rim);">
+      <button onclick="triggerResync()" class="rack-btn" style="width:100%;color:var(--teal);border-color:var(--teal);">🔄 SYNC ALL</button>
+      <button onclick="snapSpeakers()" class="rack-btn" style="width:100%;margin-top:4px;">⚡ SNAP</button>
+    </div>
+
   </div>
 
   <!-- BOTTOM HANDLE -->
@@ -2621,6 +2694,74 @@ let _sweepAngle  = 0;   // current beam angle degrees
 let _sweepRpm    = 4;   // rotations per minute
 let _sweepDir    = 1;   // 1=clockwise, -1=counter
 let _sweepRaf    = null;
+
+// ── Launcher row helpers ──────────────────────────────────
+window._sweepBars = 1;
+
+function setActiveRow(name) {
+  document.querySelectorAll('.sr-row').forEach(r => r.classList.remove('active'));
+  document.getElementById('sr-'+name)?.classList.add('active');
+}
+
+function getSweepRpm() {
+  const bpm  = parseFloat(document.getElementById('sr-bpm')?.value  || 120);
+  const bars = window._sweepBars || 1;
+  return bpm / (bars * 4); // full rotation = bars × 4 beats
+}
+
+function setSweepBars(n, btn) {
+  window._sweepBars = n;
+  document.querySelectorAll('.sr-bar').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+function toggleSweepDir(btn) {
+  _sweepDir = -_sweepDir;
+  btn.textContent = _sweepDir === 1 ? '↻' : '↺';
+}
+
+function stopMotion() {
+  if(window._movActive) toggleMovement();
+}
+
+function fireMode(name) {
+  if(_clusterActive) toggleCluster();
+  if(_ringActive)    toggleRing();
+  if(_sweepActive)   stopCircularSweep();
+  setMode(name);
+  setActiveRow(name);
+  if(name === 'cluster') {
+    const k = parseInt(document.getElementById('sr-cluster-k')?.value || 3);
+    window._clusterK = k;
+    toggleCluster();
+  } else if(name === 'ring') {
+    const n = document.getElementById('sr-ring-n')?.value || 3;
+    document.getElementById('ring-count').value = n;
+    document.getElementById('ring-count-label').textContent = n;
+    toggleRing();
+  } else if(name === 'sweep') {
+    const rpm = getSweepRpm();
+    startCircularSweep(rpm, _sweepDir);
+  } else if(name === 'scatter') {
+    const ms = document.getElementById('sr-scatter-ms')?.value || 2000;
+    const v  = document.getElementById('sr-scatter-v2')?.value || 4;
+    document.getElementById('scatter-ms').value = ms;
+    document.getElementById('scatter-voices').value = v;
+    scatterSpeakers();
+  }
+}
+
+function fireMotion(name) {
+  stopMotion();
+  const rateEl = document.getElementById('sr-'+name+'-rate');
+  if(rateEl) {
+    document.getElementById('mv-rate').value = rateEl.value;
+    document.getElementById('mv-rate-label').textContent = (rateEl.value/1000).toFixed(1)+'s';
+  }
+  setMovement(name);
+  setActiveRow(name);
+  if(!window._movActive) toggleMovement();
+}
 
 function startCircularSweep(rpm,dir){
   if(!activeZone){ showToast('Create a zone first'); return; }
