@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>BYOB CAPTURE</title>
 <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
@@ -262,6 +263,95 @@ header {
 @keyframes kp { to { border-color:#002a14; color:#002a14; } }
 .modal-cancel { padding:6px 16px; border:1px solid var(--b2); background:none; color:var(--dim); font-family:'IBM Plex Mono',monospace; font-size:9px; cursor:pointer; border-radius:1px; }
 
+/* ── EDITOR PANEL ──────────────────────────────────── */
+#editor-panel {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 800;
+  background: #080808; border-top: 1px solid var(--purple);
+  transform: translateY(100%); transition: transform .28s cubic-bezier(.2,.8,.3,1);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+#editor-panel.open { transform: translateY(0); }
+.ed-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px; border-bottom: 1px solid var(--b1);
+}
+.ed-title { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 4px; color: var(--purple); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+.ed-close { background: none; border: 1px solid var(--b2); color: var(--dim); font-size: 9px; letter-spacing: 1px; padding: 4px 10px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; }
+.ed-close:hover { border-color: var(--red); color: var(--red); }
+
+.ed-wv-wrap {
+  position: relative; margin: 10px 14px 0; height: 100px;
+  background: var(--surf); border: 1px solid var(--b1);
+  cursor: crosshair; overflow: hidden; border-radius: 2px; touch-action: none;
+}
+#ed-canvas { width: 100%; height: 100%; display: block; }
+.ed-region {
+  position: absolute; top: 0; bottom: 0;
+  background: rgba(187,119,255,.15);
+  border-left: 2px solid var(--purple);
+  border-right: 2px solid var(--purple);
+  pointer-events: none;
+}
+.ed-handle {
+  position: absolute; top: 0; bottom: 0; width: 20px;
+  cursor: ew-resize; z-index: 2; touch-action: none;
+  display: flex; align-items: center; justify-content: center;
+}
+.ed-handle::after {
+  content: ''; display: block; width: 3px; height: 60%;
+  background: var(--purple); border-radius: 2px;
+}
+#ed-playhead {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  background: rgba(255,255,255,.7); pointer-events: none; left: 0;
+}
+
+.ed-times {
+  display: flex; justify-content: space-between;
+  padding: 4px 14px; font-size: 8px; letter-spacing: 2px; color: var(--dim);
+}
+.ed-transport {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 14px; border-top: 1px solid var(--b1);
+}
+.ed-dur { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 2px; color: #fff; min-width: 80px; }
+.ed-cut-btn {
+  padding: 9px 22px; border: 2px solid var(--purple); background: none;
+  color: var(--purple); font-family: 'Share Tech Mono', monospace;
+  font-size: 13px; letter-spacing: 4px; cursor: pointer; transition: all .1s;
+}
+.ed-cut-btn:hover { background: var(--purple); color: #000; }
+.loop-btn { padding: 7px 12px; border: 1px solid var(--b2); background: none; color: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 2px; cursor: pointer; }
+.loop-btn.on { background: var(--amber); border-color: var(--amber); color: #000; }
+
+/* ── SUPABASE AUTH HEADER ───────────────────────────── */
+.auth-pill {
+  font-size: 8px; letter-spacing: 2px; padding: 4px 10px;
+  border: 1px solid var(--b2); color: var(--dim); border-radius: 20px;
+  cursor: pointer; background: none; font-family: 'IBM Plex Mono', monospace;
+  touch-action: manipulation; transition: all .15s;
+}
+.auth-pill.signed-in { border-color: var(--green); color: var(--green); }
+.auth-pill:hover { border-color: var(--text); color: var(--text); }
+#auth-form {
+  display: none; position: fixed; top: 44px; right: 10px; z-index: 900;
+  background: #0d0d0d; border: 1px solid var(--b2); padding: 16px;
+  width: 240px; gap: 8px; flex-direction: column;
+}
+#auth-form.show { display: flex; }
+#auth-form input {
+  background: var(--surf); border: 1px solid var(--b2); color: var(--text);
+  font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 1px;
+  padding: 7px 10px; outline: none; border-radius: 1px;
+}
+#auth-form input:focus { border-color: var(--green); }
+.auth-submit {
+  padding: 8px; background: var(--green); border: none; color: #000;
+  font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 3px;
+  cursor: pointer;
+}
+#auth-err { font-size: 8px; color: var(--red); letter-spacing: 1px; display: none; }
+
 /* ── TOAST ──────────────────────────────────────────── */
 #toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%) translateY(12px); background:#111; border:1px solid var(--b2); color:var(--text); font-size:9px; letter-spacing:2px; padding:6px 14px; opacity:0; pointer-events:none; transition:opacity .2s,transform .2s; z-index:9999; white-space:nowrap; border-radius:2px; }
 #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
@@ -276,8 +366,44 @@ header {
   <div class="hdr-right">
     <button class="mode-pill active" id="live-pill">LIVE</button>
     <button class="mode-pill" id="sr-pill">📱 SCREEN REC</button>
+    <button class="auth-pill" id="auth-pill" onclick="toggleAuthForm()">BYOB ↗</button>
   </div>
 </header>
+
+<!-- AUTH FORM -->
+<div id="auth-form">
+  <div style="font-size:8px;letter-spacing:3px;color:var(--green);margin-bottom:4px;">BYOB SIGN IN</div>
+  <input type="email"    id="auth-email"    placeholder="email"/>
+  <input type="password" id="auth-password" placeholder="password"/>
+  <div id="auth-err"></div>
+  <button class="auth-submit" onclick="doAuth()">SIGN IN →</button>
+</div>
+
+<!-- EDITOR PANEL -->
+<div id="editor-panel">
+  <div class="ed-bar">
+    <div class="ed-title" id="ed-clip-name">—</div>
+    <button class="ed-close" onclick="closeEditor()">✕ CLOSE</button>
+  </div>
+  <div class="ed-wv-wrap" id="ed-wv-wrap">
+    <canvas id="ed-canvas"></canvas>
+    <div class="ed-region"  id="ed-region"></div>
+    <div class="ed-handle"  id="ed-handle-l" style="left:0"></div>
+    <div class="ed-handle"  id="ed-handle-r" style="right:0"></div>
+    <div id="ed-playhead"></div>
+  </div>
+  <div class="ed-times">
+    <span id="ed-start-label">0:00.0</span>
+    <span id="ed-sel-dur">—</span>
+    <span id="ed-end-label">0:00.0</span>
+  </div>
+  <div class="ed-transport">
+    <div class="ed-dur" id="ed-pos">0:00.0</div>
+    <button class="tbtn" id="ed-play-btn" onclick="edPlayToggle()">▶ PREVIEW</button>
+    <button class="loop-btn" id="ed-loop-btn" onclick="edToggleLoop()">⟳ LOOP</button>
+    <button class="ed-cut-btn" onclick="edCut()">✂ CUT</button>
+  </div>
+</div>
 
 <!-- ═══ LIVE CAPTURE ZONE ═══ -->
 <div id="capture-zone">
@@ -904,7 +1030,9 @@ function renderClip(clip) {
     </div>
     <div class="clip-foot">
       <button class="c-btn" id="cplay-${clip.id}">▶</button>
-      <button class="c-btn dl">↓</button>
+      <button class="c-btn chop" title="Open in editor">✂</button>
+      <button class="c-btn dl" title="Download">↓</button>
+      <button class="c-btn byob" title="Send to BYOB stems">↑</button>
       <button class="c-btn del">✕</button>
     </div>`;
 
@@ -927,6 +1055,10 @@ function renderClip(clip) {
     raf = requestAnimationFrame(anim);
     src.onended = () => { ps = null; btn.textContent = '▶'; btn.classList.remove('playing'); bar.style.width = '0%'; cancelAnimationFrame(raf); };
   });
+
+  el.querySelector('.chop').addEventListener('click', () => openEditor(clip));
+
+  el.querySelector('.byob').addEventListener('click', () => uploadToByob(clip));
 
   el.querySelector('.dl').addEventListener('click', () => {
     const url = URL.createObjectURL(clip.blob);
@@ -985,8 +1117,259 @@ function bufToWav(buf) {
 }
 
 // ── Misc ──────────────────────────────────────────────────────
-function fmt(s) { if (!isFinite(s)) return '0:00'; return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`; }
-function ts()   { return new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+function fmt(s)  { if (!isFinite(s)) return '0:00'; return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`; }
+function fmtMs(s){ if (!isFinite(s)) return '0:00.0'; return `${Math.floor(s/60)}:${(s%60).toFixed(1).padStart(4,'0')}`; }
+function ts()    { return new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+
+// ══════════════════════════════════════════════════════════════
+//  SUPABASE — auth + upload
+// ══════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://ohacvuwzvuifpyqckise.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let sbUser = null;
+
+(async () => {
+  const { data } = await sb.auth.getSession();
+  if (data?.session?.user) signedIn(data.session.user);
+})();
+
+function toggleAuthForm() {
+  const f = document.getElementById('auth-form');
+  f.classList.toggle('show');
+  if (f.classList.contains('show') && sbUser) {
+    // Already signed in — show sign-out option
+    f.innerHTML = `<div style="font-size:8px;letter-spacing:2px;color:var(--green);">${sbUser.email}</div>
+      <button class="auth-submit" style="background:var(--red);" onclick="doSignOut()">SIGN OUT</button>`;
+  }
+}
+
+async function doAuth() {
+  const email = document.getElementById('auth-email')?.value.trim();
+  const pass  = document.getElementById('auth-password')?.value;
+  const errEl = document.getElementById('auth-err');
+  if (!email || !pass) return;
+  errEl.style.display = 'none';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+  signedIn(data.user);
+}
+
+function signedIn(user) {
+  sbUser = user;
+  const pill = document.getElementById('auth-pill');
+  if (pill) { pill.textContent = '✓ BYOB'; pill.classList.add('signed-in'); }
+  document.getElementById('auth-form').classList.remove('show');
+  toast('SIGNED IN · BYOB READY');
+}
+
+async function doSignOut() {
+  await sb.auth.signOut(); sbUser = null;
+  const pill = document.getElementById('auth-pill');
+  if (pill) { pill.textContent = 'BYOB ↗'; pill.classList.remove('signed-in'); }
+  document.getElementById('auth-form').classList.remove('show');
+}
+
+document.addEventListener('click', e => {
+  const form = document.getElementById('auth-form');
+  if (form.classList.contains('show') && !form.contains(e.target) && e.target.id !== 'auth-pill') {
+    form.classList.remove('show');
+  }
+});
+
+async function uploadToByob(clip) {
+  if (!sbUser) { toggleAuthForm(); toast('SIGN IN TO BYOB FIRST'); return; }
+  const btn = document.querySelector(`#clip-${clip.id} .byob`);
+  if (btn) { btn.textContent = '…'; btn.style.pointerEvents = 'none'; }
+
+  // Convert to WAV for broad compatibility
+  const wavBlob = clip.mime.includes('wav') ? clip.blob : bufToWav(clip.buffer);
+  const safeName = clip.name.replace(/[^a-z0-9]/gi, '_').slice(0, 40);
+  const path = `stems/${sbUser.id}/${Date.now()}_${safeName}.wav`;
+
+  const { error: upErr } = await sb.storage.from('boombox').upload(path, wavBlob, { contentType: 'audio/wav', upsert: false });
+  if (upErr) { toast(`UPLOAD FAILED: ${upErr.message}`); if (btn) { btn.textContent = '↑'; btn.style.pointerEvents = ''; } return; }
+
+  const { data: urlData } = sb.storage.from('boombox').getPublicUrl(path);
+  await sb.from('tracks').insert({ user_id: sbUser.id, title: clip.name, file_path: path, public_url: urlData.publicUrl });
+
+  if (btn) { btn.textContent = '✓'; btn.style.color = 'var(--green)'; }
+  toast(`↑ ${clip.name} → BYOB STEMS`);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EDITOR
+// ══════════════════════════════════════════════════════════════
+let edClip     = null;
+let edStart    = 0;      // seconds
+let edEnd      = 0;      // seconds
+let edPs       = null;   // playing AudioBufferSourceNode
+let edLoop     = false;
+let edRafId    = null;
+let edDragging = null;   // 'l' | 'r' | null
+
+function openEditor(clip) {
+  edClip  = clip;
+  edStart = 0;
+  edEnd   = clip.duration;
+  document.getElementById('ed-clip-name').textContent = clip.name;
+  document.getElementById('editor-panel').classList.add('open');
+  requestAnimationFrame(() => { drawEditorWaveform(); updateEdHandles(); });
+}
+
+function closeEditor() {
+  edStop();
+  document.getElementById('editor-panel').classList.remove('open');
+  edClip = null;
+}
+
+function drawEditorWaveform() {
+  const canvas = document.getElementById('ed-canvas');
+  const wrap   = document.getElementById('ed-wv-wrap');
+  if (!canvas || !edClip) return;
+  const w = wrap.offsetWidth, h = wrap.offsetHeight || 100;
+  canvas.width = w; canvas.height = h;
+  const ctx  = canvas.getContext('2d');
+  const data = edClip.buffer.getChannelData(0);
+  const step = Math.max(1, Math.ceil(data.length / w));
+  const amp  = h / 2;
+
+  ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, w, h);
+  // Grid lines every 1s
+  ctx.strokeStyle = '#181818'; ctx.lineWidth = 1;
+  for (let t = 1; t < edClip.duration; t++) {
+    const x = (t / edClip.duration) * w;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
+  ctx.strokeStyle = '#BB77FF'; ctx.lineWidth = 1; ctx.globalAlpha = .75;
+  ctx.beginPath();
+  for (let i = 0; i < w; i++) {
+    let mn = 1, mx = -1;
+    for (let j = 0; j < step; j++) { const v = data[i * step + j] || 0; if (v < mn) mn = v; if (v > mx) mx = v; }
+    ctx.moveTo(i, amp + mn * amp * .9); ctx.lineTo(i, amp + mx * amp * .9);
+  }
+  ctx.stroke(); ctx.globalAlpha = 1;
+}
+
+function updateEdHandles() {
+  if (!edClip) return;
+  const wrap = document.getElementById('ed-wv-wrap');
+  const w    = wrap.offsetWidth;
+  const lPct = edStart / edClip.duration;
+  const rPct = edEnd   / edClip.duration;
+  const lPx  = lPct * w;
+  const rPx  = rPct * w;
+  document.getElementById('ed-handle-l').style.left  = `${lPx - 10}px`;
+  document.getElementById('ed-handle-r').style.left  = `${rPx - 10}px`;
+  const reg = document.getElementById('ed-region');
+  reg.style.left  = `${lPx}px`;
+  reg.style.width = `${rPx - lPx}px`;
+  document.getElementById('ed-start-label').textContent = fmtMs(edStart);
+  document.getElementById('ed-end-label').textContent   = fmtMs(edEnd);
+  document.getElementById('ed-sel-dur').textContent     = fmtMs(edEnd - edStart) + ' sel';
+}
+
+// ── Drag handles ──────────────────────────────────────────────
+function edPxToTime(clientX) {
+  const wrap = document.getElementById('ed-wv-wrap');
+  const r    = wrap.getBoundingClientRect();
+  return Math.max(0, Math.min(edClip?.duration || 0, ((clientX - r.left) / r.width) * (edClip?.duration || 1)));
+}
+
+function edPointerMove(e) {
+  if (!edDragging || !edClip) return;
+  const t = edPxToTime(e.touches ? e.touches[0].clientX : e.clientX);
+  if (edDragging === 'l') edStart = Math.min(t, edEnd - 0.05);
+  else                    edEnd   = Math.max(t, edStart + 0.05);
+  updateEdHandles();
+}
+
+['ed-handle-l','ed-handle-r'].forEach(id => {
+  const el = document.getElementById(id);
+  const side = id.endsWith('-l') ? 'l' : 'r';
+  el.addEventListener('mousedown',  e => { edDragging = side; e.preventDefault(); });
+  el.addEventListener('touchstart', e => { edDragging = side; e.preventDefault(); }, { passive: false });
+});
+
+document.addEventListener('mousemove',  edPointerMove);
+document.addEventListener('touchmove',  edPointerMove, { passive: false });
+document.addEventListener('mouseup',    () => { edDragging = null; });
+document.addEventListener('touchend',   () => { edDragging = null; });
+
+// Click waveform to set start point
+document.getElementById('ed-wv-wrap').addEventListener('click', e => {
+  if (!edClip || edDragging) return;
+  const t = edPxToTime(e.clientX);
+  // Snap to whichever handle is closer
+  if (Math.abs(t - edStart) < Math.abs(t - edEnd)) edStart = Math.min(t, edEnd - 0.05);
+  else edEnd = Math.max(t, edStart + 0.05);
+  updateEdHandles();
+});
+
+// ── Playback ──────────────────────────────────────────────────
+function edPlayToggle() {
+  if (edPs) { edStop(); return; }
+  edPlay();
+}
+
+function edPlay() {
+  if (!edClip) return;
+  edStop();
+  const ac  = getCtx();
+  const src = ac.createBufferSource();
+  src.buffer = edClip.buffer;
+  src.loop   = edLoop;
+  if (edLoop) { src.loopStart = edStart; src.loopEnd = edEnd; }
+  src.connect(ac.destination);
+  src.start(0, edStart, edLoop ? undefined : (edEnd - edStart));
+  edPs = src;
+  const btn = document.getElementById('ed-play-btn');
+  btn.textContent = '■ STOP'; btn.classList.add('on');
+  const t0 = ac.currentTime - edStart;
+  cancelAnimationFrame(edRafId);
+  const tick = () => {
+    if (!edPs) return;
+    const pos = (ac.currentTime - t0 + edStart);
+    const cur = edLoop ? edStart + ((pos - edStart) % (edEnd - edStart)) : Math.min(pos, edEnd);
+    document.getElementById('ed-pos').textContent = fmtMs(cur);
+    const pct = cur / (edClip?.duration || 1);
+    document.getElementById('ed-playhead').style.left = `${pct * 100}%`;
+    edRafId = requestAnimationFrame(tick);
+  };
+  edRafId = requestAnimationFrame(tick);
+  src.onended = () => { if (!edLoop) edStop(); };
+}
+
+function edStop() {
+  try { edPs?.stop(); } catch {}
+  edPs = null;
+  cancelAnimationFrame(edRafId);
+  const btn = document.getElementById('ed-play-btn');
+  if (btn) { btn.textContent = '▶ PREVIEW'; btn.classList.remove('on'); }
+}
+
+function edToggleLoop() {
+  edLoop = !edLoop;
+  document.getElementById('ed-loop-btn').classList.toggle('on', edLoop);
+  if (edPs) { edStop(); edPlay(); }
+}
+
+async function edCut() {
+  if (!edClip) return;
+  edStop();
+  const duration = edEnd - edStart;
+  if (duration < 0.05) { toast('SELECTION TOO SHORT'); return; }
+  const buf  = edClip.buffer;
+  const off  = new OfflineAudioContext(buf.numberOfChannels, Math.ceil(duration * buf.sampleRate), buf.sampleRate);
+  const src  = off.createBufferSource();
+  src.buffer = buf;
+  src.connect(off.destination);
+  src.start(0, edStart, duration);
+  const rendered = await off.startRendering();
+  const wav = bufToWav(rendered);
+  await addClip(wav, `CUT ${ts()}`, 'audio/wav');
+  toast(`✂ CUT · ${duration.toFixed(2)}s`);
+}
 
 document.getElementById('clear-btn').addEventListener('click', () => {
   if (!clips.length || !confirm('Clear all clips?')) return;
