@@ -2348,10 +2348,33 @@ async function loadFromLibrary(filename){
   if(!data?.publicUrl){showToast('Could not load track');return;}
   const url=data.publicUrl,name=filename.replace(/\.[^/.]+$/,'');
   if(selectedSlot){assignTrackToZone(selectedSlot,url,name);document.getElementById('library-modal').style.display='none';return;}
-  audio.src=url;audio.load();
+  audio.src=url; audio.load();
+  window._lastPublicUrl=url;
   document.getElementById('track-name').textContent=name;
   document.getElementById('library-modal').style.display='none';
-  showToast('Track loaded — select a zone slot or Go Live ⚡');
+  // If Go Live is already active, push new track to DB immediately so refresh restores correctly
+  const isLive=document.getElementById('btn-go-live')?.classList.contains('active');
+  if(isLive && activeZone?.id){
+    const startedAt=new Date(serverNow()).toISOString();
+    const playAt=serverNow()+800;
+    db.from('zones').update({
+      current_track_url:url, track_name:name,
+      playback_started_at:startedAt, play_at:playAt, play_from_s:0
+    }).eq('id',activeZone.id).then(()=>{});
+    if(window._djSyncChannel){
+      setTimeout(()=>window._djSyncChannel.send({
+        type:'broadcast',event:'hard_sync',
+        payload:{resyncAt:serverNow()+800,playback_started_at:startedAt,track_url:url,track_name:name,resetOffsets:false}
+      }),900);
+    }
+    audio.play().catch(()=>{});
+    isPlaying=true;
+    document.getElementById('btn-play').textContent='⏸';
+    document.getElementById('btn-play').classList.add('playing');
+    showToast('Now live: '+name+' ⚡');
+  } else {
+    showToast('Track loaded — tap Go Live to broadcast ⚡');
+  }
 }
 
 // ── ZONE SLOT SYSTEM ──────────────────────────────────────
