@@ -557,14 +557,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
   <!-- LEFT: Compact track library -->
   <div class="sp-stems" style="background:#111;">
-    <div class="sp-stems-bar" style="justify-content:space-between;">
-      <div style="display:flex;gap:2px;">
-        <button id="sp-crate-all" onclick="setSpCrate('all',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--orange);background:var(--orange);color:#000;cursor:pointer;">ALL</button>
-        <button id="sp-crate-stems" onclick="setSpCrate('stems',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--muted);background:transparent;color:var(--muted);cursor:pointer;">STEMS</button>
-      </div>
-      <button onclick="document.getElementById('stem-file-input').click()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">+ UPLOAD</button>
+    <div class="sp-stems-bar" style="gap:3px;padding:4px 6px;">
+      <button id="sp-crate-stems" onclick="setSpCrate('stems',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--teal);background:var(--teal);color:#000;cursor:pointer;flex-shrink:0;">STEMS</button>
+      <button id="sp-crate-songs" onclick="setSpCrate('songs',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--muted);background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0;">SONGS</button>
+      <button id="sp-crate-all" onclick="setSpCrate('all',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--muted);background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0;">ALL</button>
+      <input class="sp-stems-search" id="stems-search" placeholder="search…" oninput="buildSpaceLib(this.value)" style="flex:1;min-width:0;font-size:9px;padding:2px 5px;"/>
+      <button onclick="document.getElementById('stem-file-input').click()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 5px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;flex-shrink:0;">+</button>
     </div>
-    <input class="sp-stems-search" id="stems-search" placeholder="search…" oninput="buildSpaceLib(this.value)"/>
     <div class="sp-stems-list" id="sp-stems-list"></div>
     <!-- hidden legacy stubs for JS compat -->
     <div style="display:none">
@@ -3479,7 +3478,7 @@ function quickSlot(id){
 
 // Real library — fetches from Supabase tracks table, falls back to demo TRACKS
 let _realTracks = [];  // cache
-let _libCrate = 'all'; // 'all' | 'songs' | 'stems'
+let _libCrate = 'stems'; // 'all' | 'songs' | 'stems'
 let _libFilter = '';
 
 async function fetchRealTracks() {
@@ -3563,13 +3562,14 @@ function filterStems(v){ buildStemsPanel(v); }
 function setCrate(crate, btn){ _libCrate=crate; crateActive(btn); buildLibs(_libFilter); }
 
 // Compact stems panel for left column
-let _spCrate = 'all';
+let _spCrate = 'stems';
 function setSpCrate(crate, btn) {
   _spCrate = crate;
-  document.querySelectorAll('#sp-crate-all,#sp-crate-stems').forEach(b => {
+  document.querySelectorAll('#sp-crate-all,#sp-crate-stems,#sp-crate-songs').forEach(b => {
     b.style.background = 'transparent'; b.style.color = 'var(--muted)'; b.style.borderColor = 'var(--muted)';
   });
-  btn.style.background = 'var(--orange)'; btn.style.color = '#000'; btn.style.borderColor = 'var(--orange)';
+  const activeColor = crate==='stems' ? 'var(--teal)' : crate==='songs' ? 'var(--orange)' : '#888';
+  btn.style.background = activeColor; btn.style.color = '#000'; btn.style.borderColor = activeColor;
   buildSpaceLib(document.getElementById('stems-search')?.value || '');
 }
 function buildSpaceLib(filter='') {
