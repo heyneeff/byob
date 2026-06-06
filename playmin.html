@@ -2999,7 +2999,7 @@ function switchPanel(name,btn){
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
-  if(name==='spatial'){ initSpatialMap(); initOrchestra(); }
+  if(name==='spatial'){ initSpatialMap(); }
   if(name==='crowd') initCrowdMap();
   if(name==='deck' || name==='spatial'){ buildLibs(); }
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}

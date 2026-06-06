@@ -213,6 +213,7 @@ class SpatialOrchestra {
 
   _draw(now) {
     const { ctx, W, H, cx, cy, R } = this;
+    if (R <= 0) return;
     ctx.clearRect(0, 0, W, H);
 
     // Background
