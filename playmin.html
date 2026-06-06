@@ -1289,7 +1289,7 @@ function restoreZone(z){
     audio.src=z.current_track_url;
     window._lastPublicUrl=z.current_track_url;
     audio.addEventListener('loadedmetadata',()=>{
-      const elapsed=(syncedNow()-new Date(z.playback_started_at).getTime())/1000;
+      const elapsed=(serverNow()-new Date(z.playback_started_at).getTime())/1000;
       if(elapsed>0&&elapsed<audio.duration){audio.currentTime=elapsed;}
       audio.play().catch(()=>{});
       isPlaying=true;
