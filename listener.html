@@ -550,7 +550,7 @@ audio{display:none;}
 @keyframes ssDot{0%,100%{opacity:1}50%{opacity:.15}}
 
  /* ── SYNC DEBUG HUD ── */
-#hud-btn{position:fixed;bottom:80px;left:12px;z-index:9999;width:36px;height:36px;background:#111;border:1px solid var(--teal);border-radius:8px;color:var(--teal);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+#hud-btn{display:none!important;}
 #hud{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.92);display:none;flex-direction:column;padding:20px;font-family:'Roboto Mono',monospace;font-size:12px;color:#0f0;overflow-y:auto;}
 #hud.open{display:flex;}
 #hud-rows{flex:1;display:flex;flex-direction:column;gap:4px;}
@@ -2550,7 +2550,7 @@ function updateGuestMapMarkers() {
   Object.values(liveGuests).forEach(g => {
     if (g.bearing == null) return;
     seen.add(g.id);
-    const pos = destFromBearing(activeZone.lat, activeZone.lng, g.bearing, g.dist);
+    const pos = destFromBearing(activeZone.lat, activeZone.lng, g.bearing, g.dist * 1609.34); // dist is miles → meters
     const isFriend = !!(g.userId && _friends[g.userId]);
     const friendName = isFriend ? (g.name || _friends[g.userId]?.name || '') : '';
     const hasSignal = !!g.signal;

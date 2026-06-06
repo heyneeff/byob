@@ -1353,6 +1353,8 @@ async function confirmZone(){
   const name=document.getElementById('zdp-name').value.trim()||'Unnamed Zone';
   const tipUrl=document.getElementById('zdp-tip-url').value.trim()||null;
   try{
+    // Deactivate any previous zones by this host so listener map stays clean
+    await db.from('zones').update({active:false}).eq('host_id',currentUser.id);
     const {data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0,tip_url:tipUrl}).select().single();
     if(error)throw error;
     activeZone=data;
