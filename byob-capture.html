@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>BYOB CAPTURE</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=IBM+Plex+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:     #040404;
+  --surf:   #0a0a0a;
+  --b1:     #181818;
+  --b2:     #252525;
+  --text:   #c0c0c0;
+  --dim:    #3a3a3a;
+  --green:  #00FF7F;
+  --red:    #FF3030;
+  --amber:  #FFAA00;
+  --blue:   #00AAFF;
+  --purple: #BB77FF;
+  --gdim:   rgba(0,255,127,.08);
+}
+html, body {
+  background: var(--bg); color: var(--text);
+  font-family: 'IBM Plex Mono', monospace;
+  height: 100%; min-height: 100vh;
+  -webkit-tap-highlight-color: transparent;
+  overflow-x: hidden;
+}
+
+/* ── LAYOUT ────────────────────────────────────────── */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+
+/* ── HEADER ────────────────────────────────────────── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: 1px solid var(--b2);
+  position: sticky; top: 0; background: var(--bg); z-index: 100;
+  flex-wrap: wrap; gap: 8px;
+}
+.logo { font-family: 'Share Tech Mono', monospace; font-size: 14px; letter-spacing: 6px; color: #fff; }
+.logo em { color: var(--green); font-style: normal; }
+.hdr-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mode-pill {
+  font-size: 8px; letter-spacing: 2px; padding: 4px 10px;
+  border: 1px solid var(--b2); color: var(--dim);
+  border-radius: 20px; cursor: pointer; user-select: none;
+  transition: all .15s; touch-action: manipulation;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.mode-pill.active { border-color: var(--purple); color: var(--purple); }
+.mode-pill:hover  { border-color: var(--text);   color: var(--text); }
+
+/* ── MAIN CAPTURE ZONE ─────────────────────────────── */
+#capture-zone {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; padding: 36px 20px 24px;
+  gap: 0;
+}
+
+/* THE KEY — the whole UI */
+.key-block {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 20px; cursor: pointer; user-select: none;
+  touch-action: manipulation;
+}
+
+.big-key {
+  position: relative;
+  width: 140px; height: 140px;
+  display: flex; align-items: center; justify-content: center;
+}
+/* Outer ring SVG */
+.big-key svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ring-bg { fill: none; stroke: var(--b2); stroke-width: 2; }
+.ring-arc {
+  fill: none; stroke: var(--green); stroke-width: 2.5;
+  stroke-linecap: round; stroke-dasharray: 408; stroke-dashoffset: 408;
+  transform-origin: center; transform: rotate(-90deg);
+  transition: stroke-dashoffset .1s linear, stroke .15s;
+}
+
+.key-face {
+  width: 100px; height: 100px; border-radius: 12px;
+  border: 2px solid var(--b2);
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 2px;
+  background: var(--surf);
+  transition: border-color .15s, background .15s, transform .08s;
+  position: relative; z-index: 1;
+}
+.key-face:active, .key-face.pressed { transform: scale(0.93); }
+.key-char {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 36px; color: #fff; line-height: 1;
+  transition: color .15s;
+}
+.key-sub {
+  font-size: 7px; letter-spacing: 3px; color: var(--dim);
+  transition: color .15s;
+}
+
+/* States */
+.key-block[data-state="idle"] .key-face     { border-color: var(--b2); }
+.key-block[data-state="idle"] .key-char     { color: var(--dim); }
+.key-block[data-state="idle"] .key-sub      { color: var(--dim); }
+
+.key-block[data-state="waiting"] .key-face  { border-color: var(--amber); }
+.key-block[data-state="waiting"] .key-char  { color: var(--amber); animation: spin-fade .6s infinite alternate; }
+.key-block[data-state="waiting"] .ring-arc  { stroke: var(--amber); }
+
+.key-block[data-state="ready"] .key-face    { border-color: var(--green); background: var(--gdim); }
+.key-block[data-state="ready"] .key-char    { color: var(--green); }
+.key-block[data-state="ready"] .key-sub     { color: var(--green); }
+.key-block[data-state="ready"] .ring-arc    { stroke: var(--green); stroke-dashoffset: 0; }
+
+.key-block[data-state="recording"] .key-face { border-color: var(--red); background: rgba(255,48,48,.07); }
+.key-block[data-state="recording"] .key-char { color: var(--red); }
+.key-block[data-state="recording"] .key-sub  { color: var(--red); }
+.key-block[data-state="recording"] .ring-arc { stroke: var(--red); stroke-dashoffset: 0; }
+
+@keyframes spin-fade { to { opacity: .3; } }
+
+/* Status line */
+.status-line {
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  margin-top: 18px;
+}
+.status-main {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 11px; letter-spacing: 4px; color: var(--dim);
+  min-height: 18px; text-align: center;
+  transition: color .2s;
+}
+.status-timer {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 22px; letter-spacing: 4px; color: #fff;
+  min-height: 30px; text-align: center;
+}
+.status-sub {
+  font-size: 8px; letter-spacing: 2px; color: var(--dim);
+  text-align: center; line-height: 1.9; max-width: 320px;
+  min-height: 30px;
+}
+
+/* Source badge */
+.source-badge {
+  display: none; align-items: center; gap: 7px;
+  margin-top: 10px;
+  font-size: 8px; letter-spacing: 2px; color: var(--green);
+  border: 1px solid rgba(0,255,127,.25); padding: 4px 12px; border-radius: 20px;
+}
+.source-badge.show { display: flex; }
+.src-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+.eject-btn {
+  background: none; border: none; color: var(--dim); font-size: 10px;
+  cursor: pointer; padding: 0 0 0 6px; font-family: 'IBM Plex Mono', monospace;
+  letter-spacing: 1px; touch-action: manipulation;
+}
+.eject-btn:hover { color: var(--red); }
+
+/* Key config row */
+.key-config-row {
+  display: flex; align-items: center; gap: 8px; margin-top: 14px;
+  font-size: 8px; color: var(--dim); letter-spacing: 2px;
+}
+.change-key-btn {
+  font-size: 8px; letter-spacing: 1px; color: var(--dim);
+  border: 1px solid var(--b2); padding: 3px 8px; border-radius: 3px;
+  cursor: pointer; background: none; font-family: 'IBM Plex Mono', monospace;
+  touch-action: manipulation; transition: border-color .12s, color .12s;
+}
+.change-key-btn:hover { border-color: var(--green); color: var(--green); }
+
+/* ── SCREEN REC MODE ───────────────────────────────── */
+#scrub-zone { display: none; padding: 0 0 12px; }
+#scrub-zone.show { display: block; }
+
+#sr-drop {
+  margin: 20px 16px; border: 2px dashed var(--b2); padding: 32px;
+  text-align: center; cursor: pointer; transition: border-color .15s;
+  border-radius: 2px;
+}
+#sr-drop:hover, #sr-drop.over { border-color: var(--purple); }
+#sr-drop .di   { font-size: 28px; display: block; margin-bottom: 10px; opacity: .35; }
+#sr-drop .dt   { font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 5px; color: var(--purple); margin-bottom: 6px; }
+#sr-drop .ds   { font-size: 8px; color: var(--dim); letter-spacing: 2px; line-height: 2.2; }
+#sr-file-inp   { display: none; }
+
+#sr-player { display: none; }
+#sr-player.show { display: block; }
+
+.sr-file-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 16px; font-size: 9px; letter-spacing: 2px; color: var(--purple);
+  border-bottom: 1px solid var(--b1);
+}
+.sr-eject { background: none; border: 1px solid var(--b2); color: var(--dim); font-size: 9px; letter-spacing: 1px; padding: 3px 8px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; border-radius: 1px; }
+.sr-eject:hover { border-color: var(--red); color: var(--red); }
+
+.wv-wrap { position: relative; margin: 12px 16px 0; height: 72px; cursor: crosshair; background: var(--surf); border: 1px solid var(--b1); overflow: hidden; border-radius: 2px; }
+#sr-waveform { width: 100%; height: 100%; display: block; }
+.playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: rgba(255,255,255,.8); pointer-events: none; left: 0; will-change: left; }
+.grab-rgn { position: absolute; top: 0; bottom: 0; background: rgba(187,119,255,.18); border-left: 1px solid var(--purple); border-right: 1px solid var(--purple); pointer-events: none; display: none; }
+
+.sr-transport { display: flex; align-items: center; gap: 8px; padding: 10px 16px; flex-wrap: wrap; }
+.sr-time { font-family: 'Share Tech Mono', monospace; font-size: 12px; letter-spacing: 2px; color: #fff; min-width: 100px; }
+.tbtn { padding: 7px 12px; border: 1px solid var(--b2); background: none; color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 9px; font-weight: 700; letter-spacing: 2px; cursor: pointer; touch-action: manipulation; border-radius: 1px; transition: all .1s; white-space: nowrap; }
+.tbtn:active { transform: scale(.94); }
+.tbtn.on { background: var(--green); border-color: var(--green); color: #000; }
+.speed-wrap { display: flex; align-items: center; gap: 5px; font-size: 9px; color: var(--dim); }
+#sr-speed { background: var(--surf); border: 1px solid var(--b2); color: var(--text); font-family: 'IBM Plex Mono', monospace; font-size: 9px; padding: 3px 6px; }
+
+.grab-row {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  padding: 10px 16px; border-top: 1px solid var(--b1); border-bottom: 1px solid var(--b1); flex-wrap: wrap;
+}
+.grab-btn { padding: 11px 24px; border: 2px solid var(--purple); background: none; color: var(--purple); font-family: 'Share Tech Mono', monospace; font-size: 13px; letter-spacing: 4px; cursor: pointer; touch-action: manipulation; transition: all .1s; border-radius: 1px; }
+.grab-btn:hover  { background: var(--purple); color: #000; }
+.grab-btn.active { background: var(--red); border-color: var(--red); color: #fff; animation: blink .35s infinite alternate; }
+@keyframes blink { to { opacity: .4; } }
+.grab-side { display: flex; flex-direction: column; gap: 6px; }
+.grab-hint { font-size: 8px; color: var(--dim); letter-spacing: 1px; }
+.kb { display: inline-block; background: var(--b2); padding: 1px 5px; border-radius: 2px; font-family: 'Share Tech Mono', monospace; font-size: 9px; color: #fff; }
+.extract-btn { padding: 6px 12px; border: 1px solid var(--b2); background: none; color: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 1px; cursor: pointer; border-radius: 1px; touch-action: manipulation; }
+.extract-btn:hover { border-color: var(--blue); color: var(--blue); }
+
+/* ── CLIPS ──────────────────────────────────────────── */
+#clips-section { padding: 10px 16px 32px; }
+.clips-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding-bottom: 6px; border-top: 1px solid var(--b1); padding-top: 10px; }
+.clips-title { font-size: 8px; letter-spacing: 4px; color: var(--dim); }
+.clips-acts { display: flex; gap: 6px; }
+.sm-btn { padding: 4px 10px; border: 1px solid var(--b2); background: none; color: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 1px; cursor: pointer; border-radius: 1px; touch-action: manipulation; }
+.sm-btn:hover { border-color: var(--green); color: var(--green); }
+
+.clips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); gap: 5px; }
+.clip { border: 1px solid var(--b2); background: var(--surf); border-radius: 2px; overflow: hidden; }
+.clip.flash { animation: flash .5s; }
+@keyframes flash { 0%{border-color:var(--green);box-shadow:0 0 10px var(--green);}100%{border-color:var(--b2);box-shadow:none;} }
+.clip-wv { height: 40px; background: var(--bg); position: relative; overflow: hidden; }
+.clip-wv canvas { width: 100%; height: 100%; display: block; }
+.clip-pb { position: absolute; top:0; left:0; bottom:0; width:0%; background: rgba(0,255,127,.15); pointer-events: none; }
+.clip-body { padding: 5px 7px; }
+.clip-name { font-size: 8px; letter-spacing: 1px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+.clip-meta { font-size: 7px; color: var(--dim); letter-spacing: 1px; }
+.clip-foot { display: flex; gap: 3px; padding: 3px 5px; border-top: 1px solid var(--b1); }
+.c-btn { flex:1; padding: 4px 2px; border: 1px solid var(--b2); background: none; color: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 8px; cursor: pointer; border-radius: 1px; touch-action: manipulation; transition: all .1s; }
+.c-btn:hover { border-color: var(--green); color: var(--green); }
+.c-btn.playing { background: var(--green); border-color: var(--green); color: #000; }
+.c-btn.dl:hover  { border-color: var(--blue); color: var(--blue); }
+.c-btn.del:hover { border-color: var(--red);  color: var(--red); }
+.no-clips { grid-column:1/-1; text-align:center; padding:24px; font-size:9px; letter-spacing:2px; color:var(--dim); border:1px dashed var(--b2); border-radius:2px; }
+
+/* ── KEY MODAL ──────────────────────────────────────── */
+.modal-bg { display:none; position:fixed; inset:0; background:rgba(0,0,0,.85); z-index:999; align-items:center; justify-content:center; }
+.modal-bg.show { display:flex; }
+.modal-box { background:#0d0d0d; border:1px solid var(--b2); padding:28px 32px; max-width:300px; width:90%; text-align:center; }
+.modal-title { font-size:10px; letter-spacing:4px; color:var(--green); margin-bottom:8px; }
+.modal-sub   { font-size:8px; color:var(--dim); letter-spacing:1px; line-height:2; margin-bottom:18px; }
+.big-key-display { width:70px; height:70px; border:2px solid var(--green); border-radius:8px; display:flex; align-items:center; justify-content:center; font-family:'Share Tech Mono',monospace; font-size:28px; color:var(--green); margin:0 auto 18px; animation:kp 1s infinite alternate; }
+@keyframes kp { to { border-color:#002a14; color:#002a14; } }
+.modal-cancel { padding:6px 16px; border:1px solid var(--b2); background:none; color:var(--dim); font-family:'IBM Plex Mono',monospace; font-size:9px; cursor:pointer; border-radius:1px; }
+
+/* ── TOAST ──────────────────────────────────────────── */
+#toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%) translateY(12px); background:#111; border:1px solid var(--b2); color:var(--text); font-size:9px; letter-spacing:2px; padding:6px 14px; opacity:0; pointer-events:none; transition:opacity .2s,transform .2s; z-index:9999; white-space:nowrap; border-radius:2px; }
+#toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- HEADER -->
+<header>
+  <div class="logo">BY<em>O</em>B <span style="color:var(--dim);font-size:9px;letter-spacing:3px;">CAPTURE</span></div>
+  <div class="hdr-right">
+    <button class="mode-pill active" id="live-pill">LIVE</button>
+    <button class="mode-pill" id="sr-pill">📱 SCREEN REC</button>
+  </div>
+</header>
+
+<!-- ═══ LIVE CAPTURE ZONE ═══ -->
+<div id="capture-zone">
+
+  <div class="key-block" id="key-block" data-state="idle">
+    <div class="big-key" id="big-key-wrap">
+      <svg viewBox="0 0 140 140">
+        <circle class="ring-bg"  cx="70" cy="70" r="65"/>
+        <circle class="ring-arc" id="ring-arc" cx="70" cy="70" r="65"/>
+      </svg>
+      <div class="key-face" id="key-face">
+        <div class="key-char" id="key-char">R</div>
+        <div class="key-sub"  id="key-sub">CAPTURE</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="status-line">
+    <div class="status-main"  id="status-main">PRESS KEY TO BEGIN</div>
+    <div class="status-timer" id="status-timer"></div>
+    <div class="status-sub"   id="status-sub">
+      On first press, your browser asks what to capture.<br>
+      Video is discarded immediately — audio only.
+    </div>
+  </div>
+
+  <div class="source-badge" id="source-badge">
+    <div class="src-dot"></div>
+    <span id="source-label">AUDIO SOURCE LIVE</span>
+    <button class="eject-btn" id="eject-btn">✕ eject</button>
+  </div>
+
+  <div class="key-config-row">
+    SHORTCUT KEY
+    <button class="change-key-btn" id="change-key-btn">
+      CHANGE · <span id="key-label-inline">R</span>
+    </button>
+  </div>
+
+</div>
+
+<!-- ═══ SCREEN REC ZONE ═══ -->
+<div id="scrub-zone">
+  <div id="sr-drop">
+    <span class="di">📱</span>
+    <div class="dt">LOAD SCREEN RECORDING</div>
+    <div class="ds">
+      iOS: Control Center → ⏺ Screen Recording → play your audio → stop<br>
+      Saves to Photos as .mov → share to Files → load here<br>
+      Also accepts .mp4 · .m4a · .wav · .mp3
+    </div>
+    <input type="file" id="sr-file-inp" accept="video/*,audio/*,.mov,.mp4,.m4a">
+  </div>
+
+  <div id="sr-player">
+    <div class="sr-file-bar">
+      <span id="sr-fname">—</span>
+      <button class="sr-eject" id="sr-eject-btn">✕ EJECT</button>
+    </div>
+    <div class="wv-wrap" id="wv-wrap">
+      <canvas id="sr-waveform"></canvas>
+      <div class="playhead"  id="sr-playhead"></div>
+      <div class="grab-rgn"  id="grab-rgn"></div>
+    </div>
+    <div class="sr-transport">
+      <div class="sr-time" id="sr-time">0:00 / 0:00</div>
+      <button class="tbtn" id="sr-play-btn">▶ PLAY</button>
+      <button class="tbtn" id="sr-restart-btn">↩</button>
+      <div class="speed-wrap">SPEED
+        <select id="sr-speed">
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+      </div>
+    </div>
+    <div class="grab-row">
+      <button class="grab-btn" id="sr-grab-btn">⬤ GRAB</button>
+      <div class="grab-side">
+        <div class="grab-hint">shortcut key also works: <span class="kb" id="sr-key-hint">R</span></div>
+        <button class="extract-btn" id="extract-all-btn">↓ EXTRACT FULL AUDIO AS WAV</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CLIPS -->
+<div id="clips-section">
+  <div class="clips-hdr">
+    <div class="clips-title">CAPTURED CLIPS</div>
+    <div class="clips-acts">
+      <button class="sm-btn" id="load-files-btn">+ FILES</button>
+      <button class="sm-btn" id="clear-btn">✕ CLEAR</button>
+      <input type="file" id="load-files-inp" multiple accept="audio/*" style="display:none">
+    </div>
+  </div>
+  <div class="clips-grid" id="clips-grid">
+    <div class="no-clips" id="no-clips">— NO CLIPS YET —</div>
+  </div>
+</div>
+
+</div><!-- .app -->
+
+<!-- KEY MODAL -->
+<div class="modal-bg" id="key-modal">
+  <div class="modal-box">
+    <div class="modal-title">SET SHORTCUT KEY</div>
+    <div class="modal-sub">Press any key. It will trigger capture<br>in both live and screen-rec modes.</div>
+    <div class="big-key-display" id="key-display">?</div>
+    <button class="modal-cancel" id="key-cancel-btn">CANCEL</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+//  BYOB CAPTURE
+//  Shortcut key → getDisplayMedia → video tracks stopped instantly
+//  → audio-only stream → record → clip
+// ═══════════════════════════════════════════════════════════════
+
+// ── State ─────────────────────────────────────────────────────
+let audioCtx    = null;
+let clips       = [];
+let shortcutKey = 'r';       // default
+let settingKey  = false;
+let mode        = 'live';    // 'live' | 'scrub'
+
+// Live capture
+let liveStream  = null;   // audio-only MediaStream (video already stopped)
+let liveRec     = null;
+let liveChunks  = [];
+let liveState   = 'idle'; // 'idle' | 'waiting' | 'ready' | 'recording'
+let liveTimerInt = null;
+let liveStart    = 0;
+
+// Scrub
+let srVideo     = null;
+let srMediaSrc  = null;
+let srDst       = null;
+let srBuffer    = null;
+let srRec       = null;
+let srChunks    = [];
+let srGrabbing  = false;
+let srGrabStart = 0;
+let srRafId     = null;
+
+// ── Audio ─────────────────────────────────────────────────────
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  return audioCtx;
+}
+
+// ── Toast ─────────────────────────────────────────────────────
+function toast(msg, dur = 2600) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ── Mode tabs ─────────────────────────────────────────────────
+document.getElementById('live-pill').addEventListener('click', () => setMode('live'));
+document.getElementById('sr-pill').addEventListener('click',   () => setMode('scrub'));
+
+function setMode(m) {
+  mode = m;
+  document.getElementById('live-pill').classList.toggle('active', m === 'live');
+  document.getElementById('sr-pill').classList.toggle('active',   m === 'scrub');
+  document.getElementById('capture-zone').style.display = m === 'live'  ? '' : 'none';
+  document.getElementById('scrub-zone').classList.toggle('show', m === 'scrub');
+}
+
+// ── Key label ─────────────────────────────────────────────────
+function kLabel(k) {
+  if (k === ' ')         return 'SPC';
+  if (k === 'Escape')    return 'ESC';
+  if (k === 'Enter')     return 'ENT';
+  if (k === 'Backspace') return '⌫';
+  if (k === 'Tab')       return 'TAB';
+  return k.length === 1 ? k.toUpperCase() : k;
+}
+
+function updateKeyUI() {
+  const l = kLabel(shortcutKey);
+  document.getElementById('key-char').textContent         = l;
+  document.getElementById('key-label-inline').textContent  = l;
+  document.getElementById('key-display').textContent       = l;
+  document.getElementById('sr-key-hint').textContent       = l;
+}
+updateKeyUI();
+
+// ── Key config modal ──────────────────────────────────────────
+document.getElementById('change-key-btn').addEventListener('click', () => {
+  settingKey = true;
+  document.getElementById('key-modal').classList.add('show');
+});
+document.getElementById('key-cancel-btn').addEventListener('click', () => {
+  settingKey = false;
+  document.getElementById('key-modal').classList.remove('show');
+});
+
+// ── Global keydown ────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (settingKey) {
+    e.preventDefault();
+    if (e.key === 'Escape') {
+      settingKey = false;
+      document.getElementById('key-modal').classList.remove('show');
+      return;
+    }
+    shortcutKey = e.key;
+    updateKeyUI();
+    settingKey = false;
+    document.getElementById('key-modal').classList.remove('show');
+    toast(`SHORTCUT → ${kLabel(shortcutKey)}`);
+    return;
+  }
+
+  if (e.key === shortcutKey) {
+    if (e.key === ' ') e.preventDefault();
+    handleShortcut();
+  }
+});
+
+// ── Shortcut dispatches by mode ───────────────────────────────
+function handleShortcut() {
+  if (mode === 'scrub' && srDst) {
+    toggleScrubGrab();
+  } else {
+    handleLiveShortcut();
+  }
+}
+
+// ── Big key tap (mobile / mouse) ──────────────────────────────
+document.getElementById('key-face').addEventListener('click', handleShortcut);
+document.getElementById('key-face').addEventListener('touchstart', e => {
+  e.preventDefault(); handleShortcut();
+}, { passive: false });
+
+// ══════════════════════════════════════════════════════════════
+//  LIVE CAPTURE — the main workflow
+// ══════════════════════════════════════════════════════════════
+
+async function handleLiveShortcut() {
+  if (liveState === 'idle') {
+    await acquireStream();          // first press → getDisplayMedia
+  } else if (liveState === 'ready') {
+    startRecording();               // stream ready → start recording
+  } else if (liveState === 'recording') {
+    stopRecording(true);            // recording → stop & save
+  }
+  // 'waiting' state: getDisplayMedia dialog is open, ignore
+}
+
+// ── Acquire stream: getDisplayMedia, kill video instantly ──────
+async function acquireStream() {
+  if (liveState === 'waiting') return;
+  setLiveState('waiting');
+  getCtx();
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({
+      audio: {
+        echoCancellation:  false,
+        noiseSuppression:  false,
+        autoGainControl:   false,
+        sampleRate:        44100
+      },
+      video: {
+        // Minimum possible — browser needs this in the request
+        // We stop these tracks the moment we get them
+        width:     { ideal: 1, max: 1 },
+        height:    { ideal: 1, max: 1 },
+        frameRate: { ideal: 1, max: 1 }
+      }
+    });
+  } catch (err) {
+    setLiveState('idle');
+    if (err.name === 'NotAllowedError') toast('CANCELLED OR DENIED');
+    else if (err.name === 'NotSupportedError') toast('USE CHROME OR EDGE ON MAC');
+    else toast(`ERROR: ${err.message}`);
+    return;
+  }
+
+  // ── KILL VIDEO IMMEDIATELY ──────────────────────────────────
+  const videoTracks = stream.getVideoTracks();
+  videoTracks.forEach(track => {
+    track.stop();          // stop the track (releases camera/screen capture)
+    stream.removeTrack(track);  // remove from stream
+  });
+  // ───────────────────────────────────────────────────────────
+
+  const audioTracks = stream.getAudioTracks();
+  if (!audioTracks.length) {
+    setLiveState('idle');
+    toast('NO AUDIO — CHECK "SHARE AUDIO" IN THE DIALOG');
+    return;
+  }
+
+  liveStream = new MediaStream(audioTracks);
+
+  // Handle source ending (user stops sharing)
+  audioTracks[0].addEventListener('ended', () => {
+    stopRecording(false);
+    ejectLiveStream();
+    toast('SOURCE ENDED');
+  });
+
+  // Source label
+  const trackLabel = audioTracks[0].label || 'AUDIO SOURCE';
+  document.getElementById('source-label').textContent =
+    trackLabel.length > 32 ? trackLabel.slice(0, 30) + '…' : trackLabel.toUpperCase();
+  document.getElementById('source-badge').classList.add('show');
+
+  setLiveState('ready');
+  // Auto-start recording immediately on acquisition
+  startRecording();
+}
+
+// ── Eject stream ──────────────────────────────────────────────
+document.getElementById('eject-btn').addEventListener('click', () => {
+  stopRecording(false);
+  ejectLiveStream();
+});
+
+function ejectLiveStream() {
+  liveStream?.getTracks().forEach(t => t.stop());
+  liveStream = null;
+  document.getElementById('source-badge').classList.remove('show');
+  setLiveState('idle');
+}
+
+// ── Record from live stream ───────────────────────────────────
+function getMime() {
+  return ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/ogg']
+    .find(t => MediaRecorder.isTypeSupported(t)) || '';
+}
+
+function startRecording() {
+  if (!liveStream || liveState === 'recording') return;
+  const mime = getMime();
+  try { liveRec = mime ? new MediaRecorder(liveStream, { mimeType: mime }) : new MediaRecorder(liveStream); }
+  catch { liveRec = new MediaRecorder(liveStream); }
+  liveChunks = [];
+  liveRec.ondataavailable = e => { if (e.data.size > 0) liveChunks.push(e.data); };
+  liveRec.onstop = finalizeRecording;
+  liveRec.start(100);
+  liveStart = Date.now();
+  setLiveState('recording');
+  liveTimerInt = setInterval(updateTimer, 80);
+}
+
+function stopRecording(save) {
+  if (liveState !== 'recording') return;
+  clearInterval(liveTimerInt);
+  if (!save) { liveRec.ondataavailable = null; liveRec.onstop = null; }
+  if (liveRec?.state !== 'inactive') liveRec.stop();
+  document.getElementById('status-timer').textContent = '';
+  setLiveState(liveStream ? 'ready' : 'idle');
+}
+
+function updateTimer() {
+  const s = (Date.now() - liveStart) / 1000;
+  const m = Math.floor(s / 60);
+  document.getElementById('status-timer').textContent =
+    `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+
+  // Ring progress (visual only, loops at 60s)
+  const pct = (s % 60) / 60;
+  document.getElementById('ring-arc').style.strokeDashoffset = 408 - pct * 408;
+}
+
+async function finalizeRecording() {
+  if (!liveChunks.length) return;
+  const blob = new Blob(liveChunks, { type: liveChunks[0]?.type });
+  await addClip(blob, `LIVE ${ts()}`);
+}
+
+// ── Live state machine ────────────────────────────────────────
+function setLiveState(s) {
+  liveState = s;
+  const block = document.getElementById('key-block');
+  block.dataset.state = s;
+
+  const msgs = {
+    idle:      ['PRESS KEY TO BEGIN',   '', 'On first press, browser asks what to capture.\nVideo is discarded immediately — audio only.'],
+    waiting:   ['CHOOSE YOUR SOURCE…',  '', 'Pick a tab or screen in the dialog.\nCheck "Share audio" or "Share tab audio".'],
+    ready:     ['PRESS KEY TO RECORD',  '', 'Stream is live. Press key to start capturing.'],
+    recording: ['PRESS KEY TO STOP',    '', 'Recording… press key again to save clip.'],
+  };
+  const [main, , sub] = msgs[s] || ['', '', ''];
+  document.getElementById('status-main').textContent = main;
+  document.getElementById('status-sub').textContent  = sub;
+  if (s !== 'recording') {
+    document.getElementById('status-timer').textContent = '';
+    document.getElementById('ring-arc').style.strokeDashoffset = s === 'ready' ? 0 : 408;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SCREEN REC SCRUB MODE
+// ══════════════════════════════════════════════════════════════
+
+const srDrop = document.getElementById('sr-drop');
+const srInp  = document.getElementById('sr-file-inp');
+
+srDrop.addEventListener('click', () => srInp.click());
+srDrop.addEventListener('dragover',  e => { e.preventDefault(); srDrop.classList.add('over'); });
+srDrop.addEventListener('dragleave', ()  => srDrop.classList.remove('over'));
+srDrop.addEventListener('drop', e => { e.preventDefault(); srDrop.classList.remove('over'); const f = e.dataTransfer?.files?.[0]; if (f) loadSR(f); });
+srInp.addEventListener('change', e => { const f = e.target.files?.[0]; if (f) loadSR(f); e.target.value = ''; });
+
+async function loadSR(file) {
+  toast('LOADING…');
+  ejectSR(false);
+  const url = URL.createObjectURL(file);
+
+  srVideo = document.createElement('video');
+  srVideo.src = url;
+  srVideo.playsInline = true;
+
+  await new Promise(res => {
+    srVideo.onloadedmetadata = res;
+    srVideo.onerror = res;
+    setTimeout(res, 5000);
+  });
+
+  const ac = getCtx();
+  try {
+    srMediaSrc = ac.createMediaElementSource(srVideo);
+    srDst      = ac.createMediaStreamDestination();
+    srMediaSrc.connect(ac.destination);
+    srMediaSrc.connect(srDst);
+  } catch (err) {
+    toast(`ROUTING ERROR: ${err.message}`); return;
+  }
+
+  // Decode copy for waveform
+  try {
+    const ab = await file.arrayBuffer();
+    srBuffer  = await ac.decodeAudioData(ab);
+    drawSRWaveform();
+  } catch { /* waveform is optional */ }
+
+  const fname = file.name;
+  document.getElementById('sr-fname').textContent = fname.length > 42 ? '…' + fname.slice(-40) : fname;
+  document.getElementById('sr-drop').style.display = 'none';
+  document.getElementById('sr-player').classList.add('show');
+
+  bindSRTransport();
+  startSRRaf();
+  toast('LOADED · PLAY → GRAB MOMENTS → EXTRACT');
+}
+
+function ejectSR(showDrop = true) {
+  stopScrubGrab(false);
+  srVideo?.pause();
+  if (srMediaSrc) { try { srMediaSrc.disconnect(); } catch {} srMediaSrc = null; }
+  srDst = null; srBuffer = null;
+  cancelAnimationFrame(srRafId);
+  if (showDrop) {
+    document.getElementById('sr-drop').style.display = '';
+    document.getElementById('sr-player').classList.remove('show');
+  }
+}
+
+document.getElementById('sr-eject-btn').addEventListener('click', () => ejectSR(true));
+
+function bindSRTransport() {
+  const playBtn = document.getElementById('sr-play-btn');
+  playBtn.onclick = () => {
+    getCtx();
+    if (!srVideo) return;
+    if (srVideo.paused) { srVideo.play(); playBtn.textContent = '■ PAUSE'; playBtn.classList.add('on'); }
+    else { srVideo.pause(); playBtn.textContent = '▶ PLAY'; playBtn.classList.remove('on'); }
+  };
+  srVideo.onended = () => {
+    playBtn.textContent = '▶ PLAY'; playBtn.classList.remove('on');
+    if (srGrabbing) stopScrubGrab(true);
+  };
+  document.getElementById('sr-restart-btn').onclick = () => { if (srVideo) srVideo.currentTime = 0; };
+  document.getElementById('sr-speed').onchange = e => { if (srVideo) srVideo.playbackRate = +e.target.value; };
+
+  // Seek by clicking waveform
+  document.getElementById('wv-wrap').addEventListener('click', e => {
+    if (!srVideo) return;
+    const r = document.getElementById('wv-wrap').getBoundingClientRect();
+    srVideo.currentTime = ((e.clientX - r.left) / r.width) * (srVideo.duration || 0);
+  });
+
+  document.getElementById('sr-grab-btn').addEventListener('click', toggleScrubGrab);
+  document.getElementById('extract-all-btn').addEventListener('click', extractFullAudio);
+}
+
+function startSRRaf() {
+  cancelAnimationFrame(srRafId);
+  function tick() {
+    if (!srVideo) return;
+    const t = srVideo.currentTime, d = srVideo.duration || 1;
+    const pct = t / d;
+    document.getElementById('sr-playhead').style.left = `${pct * 100}%`;
+    document.getElementById('sr-time').textContent = `${fmt(t)} / ${fmt(d)}`;
+    if (srGrabbing) {
+      const sp = srGrabStart / d;
+      const lo = Math.min(sp, pct), w = Math.abs(pct - sp);
+      const gr = document.getElementById('grab-rgn');
+      gr.style.left = `${lo * 100}%`; gr.style.width = `${w * 100}%`; gr.style.display = '';
+    }
+    srRafId = requestAnimationFrame(tick);
+  }
+  srRafId = requestAnimationFrame(tick);
+}
+
+function toggleScrubGrab() { if (!srGrabbing) startScrubGrab(); else stopScrubGrab(true); }
+
+function startScrubGrab() {
+  if (!srDst) return;
+  getCtx();
+  if (srVideo?.paused) srVideo.play();
+  const mime = getMime();
+  try { srRec = mime ? new MediaRecorder(srDst.stream, { mimeType: mime }) : new MediaRecorder(srDst.stream); }
+  catch { srRec = new MediaRecorder(srDst.stream); }
+  srChunks = []; srGrabbing = true; srGrabStart = srVideo?.currentTime || 0;
+  srRec.ondataavailable = e => { if (e.data.size > 0) srChunks.push(e.data); };
+  srRec.onstop = finalizeScrubGrab;
+  srRec.start(100);
+  const btn = document.getElementById('sr-grab-btn');
+  btn.textContent = '■ STOP'; btn.classList.add('active');
+}
+
+function stopScrubGrab(save) {
+  if (!srGrabbing) return;
+  srGrabbing = false;
+  if (srRec?.state !== 'inactive') {
+    if (!save) { srRec.ondataavailable = null; srRec.onstop = null; }
+    srRec.stop();
+  }
+  document.getElementById('grab-rgn').style.display = 'none';
+  const btn = document.getElementById('sr-grab-btn');
+  btn.textContent = '⬤ GRAB'; btn.classList.remove('active');
+}
+
+async function finalizeScrubGrab() {
+  if (!srChunks.length) return;
+  const blob = new Blob(srChunks, { type: srChunks[0]?.type });
+  const dur  = srVideo ? (srVideo.currentTime - srGrabStart).toFixed(1) : '?';
+  await addClip(blob, `GRAB ${ts()} · ${dur}s`);
+}
+
+async function extractFullAudio() {
+  if (!srBuffer) { toast('NO AUDIO DATA'); return; }
+  toast('RENDERING…');
+  const ac  = getCtx();
+  const off = new OfflineAudioContext(srBuffer.numberOfChannels, srBuffer.length, srBuffer.sampleRate);
+  const src = off.createBufferSource();
+  src.buffer = srBuffer; src.connect(off.destination); src.start();
+  const rendered = await off.startRendering();
+  await addClip(bufToWav(rendered), `FULL ${ts()}`, 'audio/wav');
+  toast('EXTRACTED AS WAV');
+}
+
+function drawSRWaveform() {
+  if (!srBuffer) return;
+  const canvas = document.getElementById('sr-waveform');
+  const wrap   = document.getElementById('wv-wrap');
+  const w = wrap.offsetWidth || 500, h = 72;
+  canvas.width = w; canvas.height = h;
+  const ctx  = canvas.getContext('2d');
+  const data = srBuffer.getChannelData(0);
+  const step = Math.ceil(data.length / w);
+  const amp  = h / 2;
+  const dur  = srBuffer.duration;
+
+  ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, w, h);
+
+  // 30s grid lines
+  ctx.strokeStyle = '#181818'; ctx.lineWidth = 1;
+  for (let t = 30; t < dur; t += 30) {
+    const x = (t / dur) * w;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#BB77FF'; ctx.lineWidth = 1; ctx.globalAlpha = .7;
+  ctx.beginPath();
+  for (let i = 0; i < w; i++) {
+    let mn = 1, mx = -1;
+    for (let j = 0; j < step; j++) { const v = data[i * step + j] || 0; if (v < mn) mn = v; if (v > mx) mx = v; }
+    ctx.moveTo(i, amp + mn * amp * .9); ctx.lineTo(i, amp + mx * amp * .9);
+  }
+  ctx.stroke(); ctx.globalAlpha = 1;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CLIPS
+// ══════════════════════════════════════════════════════════════
+
+async function addClip(blob, name, forceMime) {
+  const mime = forceMime || blob.type || 'audio/webm';
+  let buffer;
+  try { buffer = await getCtx().decodeAudioData(await blob.arrayBuffer()); }
+  catch { toast('DECODE FAILED — TRY CHROME/EDGE'); return; }
+  const clip = { id: `c${Date.now()}${Math.random()}`, name: name.toUpperCase(), buffer, blob, mime, duration: buffer.duration };
+  clips.push(clip);
+  document.getElementById('no-clips')?.remove();
+  renderClip(clip);
+  toast(`SAVED · ${buffer.duration.toFixed(1)}s`);
+}
+
+function renderClip(clip) {
+  const grid = document.getElementById('clips-grid');
+  const ext  = clip.mime.includes('wav') ? 'wav' : clip.mime.includes('mp4') ? 'mp4' : 'webm';
+  const el   = document.createElement('div');
+  el.className = 'clip flash'; el.id = `clip-${clip.id}`;
+  el.innerHTML = `
+    <div class="clip-wv"><canvas id="cwv-${clip.id}"></canvas><div class="clip-pb" id="cpb-${clip.id}"></div></div>
+    <div class="clip-body">
+      <div class="clip-name" id="cn-${clip.id}">${clip.name}</div>
+      <div class="clip-meta">${clip.duration.toFixed(1)}s</div>
+    </div>
+    <div class="clip-foot">
+      <button class="c-btn" id="cplay-${clip.id}">▶</button>
+      <button class="c-btn dl">↓</button>
+      <button class="c-btn del">✕</button>
+    </div>`;
+
+  el.querySelector(`#cn-${clip.id}`).addEventListener('dblclick', () => {
+    const n = prompt('Rename:', clip.name);
+    if (n?.trim()) { clip.name = n.trim().toUpperCase(); el.querySelector(`#cn-${clip.id}`).textContent = clip.name; }
+  });
+
+  let ps = null;
+  el.querySelector(`#cplay-${clip.id}`).addEventListener('click', () => {
+    const btn = el.querySelector(`#cplay-${clip.id}`);
+    if (ps) { ps.stop(); ps = null; btn.textContent = '▶'; btn.classList.remove('playing'); return; }
+    const ac = getCtx(), src = ac.createBufferSource();
+    src.buffer = clip.buffer; src.connect(ac.destination);
+    const t0 = ac.currentTime; src.start(); ps = src;
+    btn.textContent = '■'; btn.classList.add('playing');
+    const bar = document.getElementById(`cpb-${clip.id}`);
+    let raf;
+    const anim = () => { const p = Math.min((ac.currentTime - t0) / clip.duration, 1); bar.style.width = `${p * 100}%`; if (p < 1) raf = requestAnimationFrame(anim); };
+    raf = requestAnimationFrame(anim);
+    src.onended = () => { ps = null; btn.textContent = '▶'; btn.classList.remove('playing'); bar.style.width = '0%'; cancelAnimationFrame(raf); };
+  });
+
+  el.querySelector('.dl').addEventListener('click', () => {
+    const url = URL.createObjectURL(clip.blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${clip.name.replace(/[^a-z0-9]/gi, '_')}.${ext}`; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  el.querySelector('.del').addEventListener('click', () => {
+    if (ps) ps.stop();
+    clips = clips.filter(c => c.id !== clip.id); el.remove();
+    if (!clips.length) {
+      const m = document.createElement('div');
+      m.className = 'no-clips'; m.id = 'no-clips'; m.textContent = '— NO CLIPS YET —';
+      grid.appendChild(m);
+    }
+  });
+
+  grid.appendChild(el);
+  requestAnimationFrame(() => drawClipWaveform(clip, `cwv-${clip.id}`));
+}
+
+function drawClipWaveform(clip, id) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  const w = canvas.offsetWidth || 130, h = 40;
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d'), data = clip.buffer.getChannelData(0);
+  const step = Math.ceil(data.length / w), amp = h / 2;
+  ctx.fillStyle = '#040404'; ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = '#00FF7F'; ctx.lineWidth = 1; ctx.globalAlpha = .7;
+  ctx.beginPath();
+  for (let i = 0; i < w; i++) {
+    let mn = 1, mx = -1;
+    for (let j = 0; j < step; j++) { const v = data[i * step + j] || 0; if (v < mn) mn = v; if (v > mx) mx = v; }
+    ctx.moveTo(i, amp + mn * amp * .9); ctx.lineTo(i, amp + mx * amp * .9);
+  }
+  ctx.stroke();
+}
+
+// ── WAV encoder ───────────────────────────────────────────────
+function bufToWav(buf) {
+  const nc = buf.numberOfChannels, sr = buf.sampleRate, len = buf.length;
+  const data = new Float32Array(len * nc);
+  for (let c = 0; c < nc; c++) { const d = buf.getChannelData(c); for (let i = 0; i < len; i++) data[i * nc + c] = d[i]; }
+  const pcm = new Int16Array(data.length);
+  for (let i = 0; i < data.length; i++) pcm[i] = Math.max(-32768, Math.min(32767, data[i] * 32767));
+  const ab = new ArrayBuffer(44 + pcm.byteLength), v = new DataView(ab);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0,'RIFF'); v.setUint32(4, 36 + pcm.byteLength, true); w(8,'WAVEfmt ');
+  v.setUint32(16,16,true); v.setUint16(20,1,true); v.setUint16(22,nc,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*nc*2,true);
+  v.setUint16(32,nc*2,true); v.setUint16(34,16,true); w(36,'data');
+  v.setUint32(40, pcm.byteLength, true); new Int16Array(ab, 44).set(pcm);
+  return new Blob([ab], { type: 'audio/wav' });
+}
+
+// ── Misc ──────────────────────────────────────────────────────
+function fmt(s) { if (!isFinite(s)) return '0:00'; return `${Math.floor(s/60)}:${Math.floor(s%60).toString().padStart(2,'0')}`; }
+function ts()   { return new Date().toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  if (!clips.length || !confirm('Clear all clips?')) return;
+  clips = [];
+  document.getElementById('clips-grid').innerHTML = '<div class="no-clips" id="no-clips">— NO CLIPS YET —</div>';
+});
+document.getElementById('load-files-btn').addEventListener('click', () => document.getElementById('load-files-inp').click());
+document.getElementById('load-files-inp').addEventListener('change', async e => {
+  for (const f of Array.from(e.target.files)) {
+    try {
+      const ab = await f.arrayBuffer();
+      const buf = await getCtx().decodeAudioData(ab.slice(0));
+      await addClip(new Blob([ab], { type: f.type }), f.name.replace(/\.[^.]+$/, '').toUpperCase().slice(0, 28), f.type);
+    } catch { toast(`COULD NOT LOAD: ${f.name}`); }
+  }
+  e.target.value = '';
+});
+</script>
+</body>
+</html>
