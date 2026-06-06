@@ -754,9 +754,9 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <!-- BOTTOM: Scene launcher (sp-lib kept as ID for legacy JS, actual lib HTML goes to sp-lib-inner) -->
   <div class="sp-library" style="flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-bottom:1px solid var(--rim);flex-shrink:0;background:#141414;">
-      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;flex:1;">SCENES</span>
-      <button onclick="addSlot()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 7px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">+ SLOT</button>
-      <button onclick="removeSlot()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 7px;border:1px solid var(--red);border-radius:3px;background:transparent;color:var(--red);cursor:pointer;">− SLOT</button>
+      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;flex:1;">SCENES &nbsp;<span id="slot-count-lbl" style="color:var(--teal);">C+4</span></span>
+      <button onclick="openSlotPicker()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">SLOTS</button>
+      <button onclick="slAddScene()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;">+ SCENE</button>
     </div>
     <div class="sl-wrap" style="min-width:0;">
       <div class="sl-scroll" id="scene-launcher-scroll">
@@ -2682,7 +2682,10 @@ let _activeSceneId=null;
 
 function _slLoad(){
   try{ _scenes=JSON.parse(localStorage.getItem(_SL_KEY)||'[]'); }catch(e){ _scenes=[]; }
-  if(!_scenes.length){ _scenes=[{id:Date.now(),name:'Scene 1',tracks:{}}]; _slSave(); }
+  if(!_scenes.length){
+    _scenes=Array.from({length:10},(_,i)=>({id:Date.now()+i,name:'Scene '+(i+1),tracks:{}}));
+    _slSave();
+  }
 }
 function _slSave(){ localStorage.setItem(_SL_KEY,JSON.stringify(_scenes)); }
 
@@ -2808,6 +2811,34 @@ function renderSceneLauncher(){
   </div>`;
 }
 
+function _updateSlotLbl(){ const el=document.getElementById('slot-count-lbl'); if(el) el.textContent='C+'+ _slotCount; }
+
+function openSlotPicker(){
+  document.getElementById('slot-count-popup')?.remove();
+  const popup=document.createElement('div');
+  popup.id='slot-count-popup';
+  popup.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#111;border-top:3px solid var(--teal);padding:14px 16px 36px;';
+  const presets=[2,4,6,8,12,16];
+  popup.innerHTML=`
+    <div style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-bottom:12px;font-family:'Barlow Condensed',sans-serif;">Set stem slot count (currently C + ${_slotCount})</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:12px;">
+      ${presets.map(n=>`<button onclick="setSlotCount(${n});document.getElementById('slot-count-popup').remove();" style="padding:12px 0;background:${_slotCount===n?'var(--teal)':'#1a1a1a'};color:${_slotCount===n?'#000':'var(--cream)'};border:1px solid ${_slotCount===n?'var(--teal)':'var(--rim)'};border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;cursor:pointer;">C+${n}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;">
+      <button onclick="removeSlot()" style="flex:1;padding:10px;background:transparent;color:var(--red);border:1px solid var(--red);border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;cursor:pointer;">− Remove</button>
+      <button onclick="addSlot()" style="flex:1;padding:10px;background:transparent;color:var(--teal);border:1px solid var(--teal);border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;cursor:pointer;">+ Add</button>
+    </div>
+    <button onclick="document.getElementById('slot-count-popup').remove()" style="width:100%;padding:10px;background:transparent;border:1px solid #333;border-radius:7px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:14px;cursor:pointer;">Done</button>`;
+  document.body.appendChild(popup);
+}
+
+function setSlotCount(target){
+  while(_slotCount < target) addSlot();
+  while(_slotCount > target) removeSlot();
+  _updateSlotLbl();
+  renderSceneLauncher();
+}
+
 function slAddRemoveSlotMenu(){
   document.getElementById('sl-slot-menu')?.remove();
   const m=document.createElement('div');
@@ -2837,6 +2868,7 @@ function addSlot(){
   document.getElementById('zone-slots')?.insertBefore(clip, document.getElementById('slot-add-row'));
   // Add stem panel button
   rebuildStemBtns();
+  _updateSlotLbl();
   renderSceneLauncher();
   showToast('Slot '+key+' added');
 }
@@ -2849,6 +2881,7 @@ function removeSlot(){
   document.getElementById('slot-'+key)?.remove();
   _slotCount--;
   rebuildStemBtns();
+  _updateSlotLbl();
   renderSceneLauncher();
   showToast('Slot '+key+' removed');
 }
