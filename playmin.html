@@ -808,6 +808,21 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     </div>
     <button class="btn-message" onclick="openMsgModal()" style="margin-top:8px;">Message <img class="lips-icon" id="lips-img" alt="msg"/></button>
   </div>
+
+  <!-- ZONE CHAT -->
+  <div style="width:100%;margin-top:16px;">
+    <div class="cv-head" style="margin-bottom:8px;">Zone Chat <span id="dj-chat-count" style="font-weight:400;color:var(--muted);font-size:11px;"></span></div>
+    <div id="dj-chat-messages" style="background:var(--surface2);border-radius:10px;padding:10px;max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px;min-height:60px;">
+      <div style="font-size:11px;color:var(--muted);">Chat appears when zone is live</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <input id="dj-chat-input" type="text" maxlength="120" placeholder="Message the crowd…" autocomplete="off"
+        style="flex:1;background:var(--surface2);border:1px solid var(--rim);border-radius:8px;padding:9px 12px;color:#fff;font-size:14px;font-family:'Roboto',sans-serif;outline:none;"
+        onkeydown="if(event.key==='Enter')djSendChat()"/>
+      <button onclick="djSendChat()" style="background:var(--orange);color:#000;border:none;border-radius:8px;padding:9px 14px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;letter-spacing:.06em;cursor:pointer;white-space:nowrap;">SEND</button>
+    </div>
+  </div>
+
   <div class="crowd-footer"><button class="ff-btn">🫂 Friend Mode — Find Someone Nearby</button></div>
 </div>
 </div>
@@ -1251,6 +1266,7 @@ async function confirmZone(){
     document.getElementById('btn-create-zone').classList.add('has-zone');
     startListenerTracking(data.id);
     startDJPresenceBroadcast(data);
+    subscribeDJChat(data.id);
     showToast('Zone "'+name+'" created 📡');
   }catch(err){showToast('Error: '+err.message,true);console.error(err);}
 }
@@ -1334,6 +1350,7 @@ function restoreZone(z){
   }
   startListenerTracking(z.id);
   startDJPresenceBroadcast(z);
+  subscribeDJChat(z.id);
   showToast('Zone "'+z.name+'" restored 📡');
 }
 
@@ -1868,16 +1885,78 @@ function openVisuals(){window.open('mandalforge_sync.html?zone='+(activeZone?.id
 function openMsgModal(){updateMsgSub();document.getElementById('msg-modal').classList.add('open');}
 function closeMsgModal(e){if(e.target===document.getElementById('msg-modal'))document.getElementById('msg-modal').classList.remove('open');}
 function setTarget(t){msgTarget=t;['all','present','approaching'].forEach(k=>document.getElementById('target-'+k).classList.toggle('selected',k===t));updateMsgSub();}
-function updateMsgSub(){const counts={all:DEMO_GUESTS.length,present:DEMO_GUESTS.filter(g=>g.status==='present').length,approaching:DEMO_GUESTS.filter(g=>g.status==='approaching').length};document.getElementById('msg-sub').textContent='Sending to '+counts[msgTarget]+' guest'+(counts[msgTarget]!==1?'s':'');}
+function updateMsgSub(){
+  const all=Object.values(liveListeners||{}).filter(l=>!l.isDJ);
+  const counts={all:all.length,present:all.filter(g=>g.status==='present').length,approaching:all.filter(g=>g.status==='approaching').length};
+  document.getElementById('msg-sub').textContent='Sending to '+counts[msgTarget]+' guest'+(counts[msgTarget]!==1?'s':'');
+}
 async function sendMessage(){
   const text=document.getElementById('msg-text').value.trim();
   if(!text){showToast('Type a message first');return;}
-  const targets=msgTarget==='all'?DEMO_GUESTS:DEMO_GUESTS.filter(g=>g.status===msgTarget);
+  const all=Object.values(liveListeners||{}).filter(l=>!l.isDJ);
+  const targets=msgTarget==='all'?all:all.filter(g=>g.status===msgTarget);
   if(activeZone)await db.from('zones').update({last_message:text,last_message_at:new Date().toISOString()}).eq('id',activeZone.id);
   document.getElementById('msg-modal').classList.remove('open');
   document.getElementById('msg-text').value='';
   showToast('✓ Sent to '+targets.length+' guest'+(targets.length!==1?'s':''));
 }
+
+// ── DJ ZONE CHAT ──────────────────────────────────────────
+let _djChatChannel = null;
+let _djChatMsgs    = [];
+let _djLastSentMs  = 0;
+
+function subscribeDJChat(zoneId){
+  if(_djChatChannel){ _djChatChannel.unsubscribe(); _djChatChannel=null; }
+  _djChatMsgs=[];
+  _djChatChannel=db.channel('chat_'+zoneId)
+    .on('broadcast',{event:'msg'},({payload})=>{
+      _djChatMsgs.push(payload);
+      if(_djChatMsgs.length>60) _djChatMsgs.shift();
+      renderDJChat();
+    })
+    .subscribe();
+}
+
+function unsubscribeDJChat(){
+  if(_djChatChannel){ _djChatChannel.unsubscribe(); _djChatChannel=null; }
+  _djChatMsgs=[];
+  const el=document.getElementById('dj-chat-messages');
+  if(el) el.innerHTML='<div style="font-size:11px;color:var(--muted);">Chat appears when zone is live</div>';
+}
+
+function djSendChat(){
+  const inp=document.getElementById('dj-chat-input');
+  const text=(inp?.value||'').trim();
+  if(!text||!_djChatChannel||!activeZone){showToast('No active zone');return;}
+  const now=Date.now();
+  if(now-_djLastSentMs<1200){showToast('Slow down');return;}
+  _djLastSentMs=now;
+  const name=currentUser?.user_metadata?.display_name||currentUser?.email?.split('@')[0]||'DJ';
+  _djChatChannel.send({type:'broadcast',event:'msg',payload:{id:currentUser.id,name,emoji:'🎛️',text,ts:now,isDJ:true}});
+  inp.value='';
+}
+
+function renderDJChat(){
+  const el=document.getElementById('dj-chat-messages');
+  const cEl=document.getElementById('dj-chat-count');
+  if(!el) return;
+  if(cEl) cEl.textContent=_djChatMsgs.length?`· ${_djChatMsgs.length} msgs`:'';
+  const recent=_djChatMsgs.slice(-40);
+  el.innerHTML=recent.map(m=>{
+    const isSelf=m.id===currentUser?.id;
+    const isDJ=!!m.isDJ;
+    const color=isSelf?'var(--orange)':isDJ?'var(--orange)':'var(--teal)';
+    const label=isSelf?'You (DJ)':(isDJ?`🎛️ ${m.name}`:`${m.emoji||'🎧'} ${m.name||'Guest'}`);
+    return `<div style="border-left:2px solid ${color};padding:5px 8px;border-radius:4px;background:rgba(255,255,255,.04);">
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:12px;color:${color};font-weight:700;letter-spacing:.04em;">${label}</div>
+      <div style="font-size:13px;color:#fff;margin-top:1px;word-break:break-word;">${djEscHtml(m.text)}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop=el.scrollHeight;
+}
+
+function djEscHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 // ── REAL LISTENER TRACKING ───────────────────────────────
 let liveListeners={};
@@ -2000,6 +2079,7 @@ async function killStream(){
     await db.from('zones').update({active:false,current_track_url:null,track_name:null,playback_started_at:null}).eq('id',activeZone.id);
     if(zoneCircles[activeZone.id]){zoneCircles[activeZone.id].remove();delete zoneCircles[activeZone.id];}
     if(presenceChannel){presenceChannel.unsubscribe();presenceChannel=null;}
+    unsubscribeDJChat();
     activeZone=null;
   }
   document.getElementById('btn-create-zone').textContent='Create Zone';
