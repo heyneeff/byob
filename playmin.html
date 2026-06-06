@@ -2273,16 +2273,15 @@ async function triggerResync() {
   if (!activeZone) return showToast('No active zone');
   if (!audio.src || !audio.duration) return showToast('No track loaded');
 
-  const resyncAt = serverNow() + 3000;
+  const resyncAt = serverNow() + 2000;
   const freshStartedAt = new Date(serverNow() - audio.currentTime * 1000).toISOString();
 
-  // Use existing channel — never fails due to subscribe timing
   const ch = window._djSyncChannel || db.channel('sync_' + activeZone.id);
   ch.send({
     type: 'broadcast', event: 'hard_sync',
-    payload: { resyncAt, playback_started_at: freshStartedAt, resetOffsets: false }
+    payload: { resyncAt, playback_started_at: freshStartedAt, resetOffsets: false, clearScatter: true }
   });
-  showToast('🔄 Sync in 3s — locking all speakers…');
+  showToast('⟳ Sync in 2s…');
 }
 
 async function killStream(){
