@@ -792,6 +792,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div class="cstat"><div class="cstat-v" id="stat-approaching">0</div><div class="cstat-l">Approaching</div></div>
     <div class="cstat"><div class="cstat-v" id="stat-speakers">0</div><div class="cstat-l">Speakers</div></div>
   </div>
+
+  <!-- CROWD MAP -->
+  <div style="width:100%;margin-bottom:14px;">
+    <div class="cv-head" style="margin-bottom:6px;">Find Each Other</div>
+    <div id="crowd-map" style="width:100%;height:240px;border-radius:10px;overflow:hidden;background:#111;border:1px solid var(--rim);"></div>
+  </div>
+
   <div class="crowd-left">
     <div class="cv-head">Guest List</div>
     <div class="crowd-glist" id="guest-list"><div style="font-size:11px;color:var(--muted);padding:8px 0">No listeners yet — create a zone to start</div></div>
@@ -1958,6 +1965,71 @@ function renderDJChat(){
 
 function djEscHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
+// ── CROWD MAP ─────────────────────────────────────────────
+let _crowdMap = null;
+let _crowdMarkers = {};
+
+function destFromBearing(lat, lng, bearingDeg, distMeters) {
+  const R = 6371000, br = bearingDeg * Math.PI / 180;
+  const lat1 = lat * Math.PI / 180, lng1 = lng * Math.PI / 180;
+  const d = distMeters / R;
+  const lat2 = Math.asin(Math.sin(lat1)*Math.cos(d) + Math.cos(lat1)*Math.sin(d)*Math.cos(br));
+  const lng2 = lng1 + Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(lat1), Math.cos(d)-Math.sin(lat1)*Math.sin(lat2));
+  return [lat2*180/Math.PI, lng2*180/Math.PI];
+}
+
+function initCrowdMap() {
+  if (_crowdMap) { setTimeout(()=>_crowdMap.invalidateSize(), 80); return; }
+  if (!activeZone?.lat) return;
+  _crowdMap = L.map('crowd-map', {zoomControl:false, attributionControl:false, preferCanvas:true})
+    .setView([activeZone.lat, activeZone.lng], 17);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {subdomains:'abcd', maxZoom:19}).addTo(_crowdMap);
+  L.control.zoom({position:'bottomright'}).addTo(_crowdMap);
+  // Zone ring
+  L.circle([activeZone.lat, activeZone.lng], {radius:activeZone.radius_m, color:'#f57e20', fillColor:'#f57e20', fillOpacity:.04, weight:1.5}).addTo(_crowdMap);
+  // DJ marker at center
+  L.marker([activeZone.lat, activeZone.lng], {
+    icon: L.divIcon({html:'<div style="font-size:22px;text-align:center;line-height:1;">🎛️</div><div style="font-size:9px;color:#f57e20;text-align:center;font-weight:700;letter-spacing:.04em;">DJ</div>', iconSize:[32,32], iconAnchor:[16,16], className:''})
+  }).addTo(_crowdMap);
+  setTimeout(()=>_crowdMap.invalidateSize(), 120);
+  renderCrowdMapMarkers();
+}
+
+function renderCrowdMapMarkers() {
+  if (!_crowdMap || !activeZone?.lat) return;
+  const seen = new Set();
+  Object.entries(liveListeners || {}).forEach(([id, l]) => {
+    if (l.isDJ || l.bearing == null || l.dist == null) return;
+    seen.add(id);
+    const pos = destFromBearing(activeZone.lat, activeZone.lng, l.bearing, l.dist * 1609.34);
+    const icon = l.signal || l.emoji || '🎧';
+    const hasSignal = !!l.signal;
+    const html = `<div style="text-align:center;cursor:pointer;">
+      <div style="font-size:${hasSignal?'22':'16'}px;line-height:1;">${icon}</div>
+      ${hasSignal ? `<div style="font-size:8px;background:#f57e20;color:#000;border-radius:4px;padding:1px 4px;font-weight:900;letter-spacing:.04em;margin-top:1px;">SIGNAL</div>` : ''}
+    </div>`;
+    const sz = hasSignal ? 40 : 24;
+    if (_crowdMarkers[id]) {
+      _crowdMarkers[id].setLatLng(pos);
+      _crowdMarkers[id].setIcon(L.divIcon({html, iconSize:[sz,sz], iconAnchor:[sz/2,sz/2], className:''}));
+    } else {
+      const m = L.marker(pos, {icon: L.divIcon({html, iconSize:[sz,sz], iconAnchor:[sz/2,sz/2], className:''})});
+      m.on('click', () => showCrowdGuestCard(id, l));
+      m.addTo(_crowdMap);
+      _crowdMarkers[id] = m;
+    }
+  });
+  // Remove stale markers
+  Object.keys(_crowdMarkers).forEach(id => {
+    if (!seen.has(id)) { _crowdMarkers[id].remove(); delete _crowdMarkers[id]; }
+  });
+}
+
+function showCrowdGuestCard(id, l) {
+  const signal = l.signal ? `<div style="font-size:13px;color:var(--orange);margin-top:4px;">📡 Signaling: ${l.signal}</div>` : '';
+  showToast(`${l.emoji||'🎧'} ${l.name||'Guest'}${signal ? ' · has a signal' : ''}`);
+}
+
 // ── REAL LISTENER TRACKING ───────────────────────────────
 let liveListeners={};
 let presenceChannel=null;
@@ -1968,10 +2040,8 @@ function startListenerTracking(zoneId){
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-                         liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,status,updated:Date.now()};
-      console.log('PING received:',payload.name,'keys in liveListeners:',Object.keys(liveListeners).length);
-
-            renderLiveGuestList();
+      liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',signal:payload.signal||'',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,status,updated:Date.now()};
+      renderLiveGuestList();
       if(window._spMap) renderSpatialDots(window._spMap);
     })
     .subscribe((status, err) => {
@@ -1983,8 +2053,7 @@ function startListenerTracking(zoneId){
           presenceChannel = db.channel('presence_'+zoneId)
             .on('broadcast',{event:'proximity'},({payload})=>{
               const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
-                    liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,status,updated:Date.now()};
-      document.title = 'L:'+Object.keys(liveListeners).length+' '+Date.now();
+              liveListeners[payload.id]={name:payload.name||'Anonymous',emoji:payload.emoji||'🎧',signal:payload.signal||'',phone:payload.phone||'',dist:payload.dist,bearing:payload.bearing,isDJ:!!payload.isDJ,status,updated:Date.now()};
 
               renderLiveGuestList();
               if(window._spMap) renderSpatialDots(window._spMap);
@@ -2036,10 +2105,12 @@ function renderLiveGuestList(){
   listeners.forEach(l=>{
     const distStr=l.dist<0.1?Math.round(l.dist*5280)+' ft':l.dist.toFixed(2)+' mi';
     const phone=l.phone?'<span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+l.phone+'</span>':'';
+    const signal = l.signal ? `<span style="font-size:13px;margin-left:4px;" title="Signal">${l.signal}</span>` : '';
     const row=document.createElement('div');row.className='guest-row';
-    row.innerHTML='<span style="font-size:16px;margin-right:4px">'+l.emoji+'</span><span class="guest-name">'+l.name+'</span><span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+distStr+' away</span>'+phone+'<span class="guest-status '+l.status+'">'+l.status+'</span>';
+    row.innerHTML='<span style="font-size:16px;margin-right:4px">'+l.emoji+'</span>'+signal+'<span class="guest-name">'+l.name+'</span><span class="guest-dot">•</span><span style="font-size:10px;color:var(--muted)">'+distStr+' away</span>'+phone+'<span class="guest-status '+l.status+'">'+l.status+'</span>';
     el.appendChild(row);
   });
+  renderCrowdMapMarkers();
 }
  
 
@@ -2703,6 +2774,7 @@ function switchPanel(name,btn){
     }
   }
     if(name==='spatial') initSpatialMap();
+  if(name==='crowd') initCrowdMap();
 
 
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
