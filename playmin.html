@@ -561,8 +561,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button id="sp-crate-stems" onclick="setSpCrate('stems',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--teal);background:var(--teal);color:#000;cursor:pointer;flex-shrink:0;">STEMS</button>
       <button id="sp-crate-songs" onclick="setSpCrate('songs',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--muted);background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0;">SONGS</button>
       <button id="sp-crate-all" onclick="setSpCrate('all',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--muted);background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0;">ALL</button>
-      <input class="sp-stems-search" id="stems-search" placeholder="search…" oninput="buildSpaceLib(this.value)" style="flex:1;min-width:0;font-size:9px;padding:2px 5px;"/>
-      <button onclick="openUploadPicker()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 5px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;flex-shrink:0;">+ UPLOAD</button>
+      <button onclick="openUploadPicker()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 5px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;flex-shrink:0;margin-left:auto;">+ UPLOAD</button>
+    </div>
+    <div style="padding:3px 6px;flex-shrink:0;">
+      <input class="sp-stems-search" id="stems-search" placeholder="search tracks…" oninput="buildSpaceLib(this.value)" style="width:100%;box-sizing:border-box;font-size:10px;padding:4px 7px;"/>
     </div>
     <div class="sp-stems-list" id="sp-stems-list"></div>
     <!-- hidden legacy stubs for JS compat -->
@@ -2234,8 +2236,8 @@ let liveListeners={};
 let presenceChannel=null;
 function startListenerTracking(zoneId){
   if(presenceChannel)presenceChannel.unsubscribe();
-  // Don't wipe liveListeners here — reconnects would clear the map
-  if(!liveListeners) liveListeners={};
+  // Only wipe listeners when tracking a new zone (not on reconnect within same zone)
+  if(window._trackingZoneId !== zoneId){ liveListeners={}; window._trackingZoneId=zoneId; }
   presenceChannel=db.channel('presence_'+zoneId)
     .on('broadcast',{event:'proximity'},({payload})=>{
       const status=payload.dist<=(activeZone?.radius_m*0.000621371||0.12)?'present':'approaching';
@@ -3319,13 +3321,19 @@ function setLight(btn,col){
 // Open on Setup by default
 
 function switchPanel(name,btn){
+  // Clear spatial dot interval when leaving spatial panel
+  if(name!=='spatial' && window._spDotInterval){
+    clearInterval(window._spDotInterval);
+    window._spDotInterval = null;
+  }
 
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
   document.getElementById('panel-'+name)?.classList.add('active');
   document.querySelectorAll('.rnbtn').forEach(b=>b.classList.remove('active'));
   (btn||document.querySelector('[data-panel="'+name+'"]'))?.classList.add('active');
   window.scrollTo(0,0);
-   if(name==='setup'){
+
+  if(name==='setup'){
     if(!window._mapInited && currentUser){
       window._mapInited=true;
       setTimeout(()=>{
@@ -3337,9 +3345,16 @@ function switchPanel(name,btn){
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
-  if(name==='spatial'){ initSpatialMap(); renderSceneLauncher(); buildSpaceLib(); }
+
+  if(name==='spatial'){
+    initSpatialMap();
+    renderSceneLauncher();
+    // Build library then refresh left panel — await ensures tracks are loaded first
+    buildLibs().then(()=>buildSpaceLib());
+  }
+
   if(name==='crowd') initCrowdMap();
-  if(name==='deck' || name==='spatial'){ buildLibs(); }
+  if(name==='deck'){ buildLibs(); }
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
 }
 
@@ -3546,14 +3561,17 @@ function libHTML(tracks, filter='') {
 }
 
 async function buildLibs(filter='') {
-  // Use cached real tracks, or fetch fresh
   if (!_realTracks.length) {
     const real = await fetchRealTracks();
-    _realTracks = real.length ? real : TRACKS;  // fall back to demo
+    _realTracks = real.length ? real : TRACKS;
   }
   const html = libHTML(_realTracks, filter);
   const dl = document.getElementById('deck-lib'); if(dl) dl.innerHTML = html;
-  buildSpaceLib(document.getElementById('stems-search')?.value || '');
+  // Only refresh spatial lib here if switchPanel isn't about to do it with .then()
+  // (avoids double render — switchPanel calls buildLibs().then(buildSpaceLib) for spatial)
+  if(document.getElementById('panel-spatial')?.classList.contains('active')){
+    buildSpaceLib(document.getElementById('stems-search')?.value || '');
+  }
   buildStemsPanel();
 }
 
