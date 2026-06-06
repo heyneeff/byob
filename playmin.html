@@ -562,7 +562,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button id="sp-crate-songs" onclick="setSpCrate('songs',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--muted);background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0;">SONGS</button>
       <button id="sp-crate-all" onclick="setSpCrate('all',this)" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border-radius:3px;border:1px solid var(--muted);background:transparent;color:var(--muted);cursor:pointer;flex-shrink:0;">ALL</button>
       <input class="sp-stems-search" id="stems-search" placeholder="search…" oninput="buildSpaceLib(this.value)" style="flex:1;min-width:0;font-size:9px;padding:2px 5px;"/>
-      <button onclick="document.getElementById('stem-file-input').click()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 5px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;flex-shrink:0;">+</button>
+      <button onclick="openUploadPicker()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 5px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;flex-shrink:0;">+ UPLOAD</button>
     </div>
     <div class="sp-stems-list" id="sp-stems-list"></div>
     <!-- hidden legacy stubs for JS compat -->
@@ -3686,6 +3686,27 @@ if(_origFileInput){
   _origFileInput.addEventListener('change', ()=>{
     setTimeout(()=>{ _realTracks=[]; buildLibs(); }, 3000);
   });
+}
+
+function openUploadPicker(){
+  document.getElementById('upload-picker')?.remove();
+  const p=document.createElement('div');
+  p.id='upload-picker';
+  p.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#111;border-top:3px solid var(--teal);padding:16px 16px 40px;';
+  p.innerHTML=`
+    <div style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--teal);margin-bottom:14px;font-family:'Barlow Condensed',sans-serif;">Upload as…</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+      <button onclick="document.getElementById('stem-file-input').click();document.getElementById('upload-picker').remove();"
+        style="padding:18px 0;background:transparent;color:var(--teal);border:2px solid var(--teal);border-radius:12px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;cursor:pointer;">
+        ◈ STEM<br><span style="font-size:10px;font-weight:400;color:var(--muted);">spatial / slot</span>
+      </button>
+      <button onclick="document.getElementById('file-input').click();document.getElementById('upload-picker').remove();"
+        style="padding:18px 0;background:transparent;color:var(--orange);border:2px solid var(--orange);border-radius:12px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;cursor:pointer;">
+        ♪ SONG<br><span style="font-size:10px;font-weight:400;color:var(--muted);">full track / DJ</span>
+      </button>
+    </div>
+    <button onclick="document.getElementById('upload-picker').remove()" style="width:100%;padding:11px;background:transparent;border:1px solid #333;border-radius:8px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:14px;cursor:pointer;">Cancel</button>`;
+  document.body.appendChild(p);
 }
 
 // Stem upload handler
