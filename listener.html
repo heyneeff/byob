@@ -616,6 +616,11 @@ audio{display:none;}
       <div id="vibe-grid" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;"></div>
     </div>
     <input type="hidden" id="selected-vibe" value=""/>
+    <div style="width:100%;border-top:1px solid #333;padding-top:14px;margin-top:4px;">
+      <div style="font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;text-align:center;">Connect info <span style="color:#555;font-weight:400;">(optional — only shared when you say hey)</span></div>
+      <input class="profile-inp" id="profile-phone" type="tel" placeholder="Phone number" autocomplete="tel" style="margin-bottom:8px;"/>
+      <input class="profile-inp" id="profile-instagram" type="text" placeholder="Instagram handle" maxlength="40"/>
+    </div>
     <button class="btn-profile-save" onclick="saveProfile()">Let's Go →</button>
   </div>
 </div>
@@ -695,11 +700,23 @@ audio{display:none;}
 
     <!-- GUEST LIST -->
     <div style="margin-top:14px" id="guest-list-section">
-      <div class="section-label" style="font-size:13px;margin-bottom:8px">
-        WHO'S HERE
-        <span id="guest-count" style="color:var(--muted);font-weight:400;font-size:11px;text-transform:none;letter-spacing:0;margin-left:6px"></span>
+      <div class="section-label" style="font-size:13px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
+        <span>WHO'S HERE <span id="guest-count" style="color:var(--muted);font-weight:400;font-size:11px;text-transform:none;letter-spacing:0;"></span></span>
+        <button onclick="openContactEdit()" style="background:transparent;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:0 2px;letter-spacing:.04em;">✎ my info</button>
       </div>
       <div id="guest-list-ul"></div>
+    </div>
+
+    <!-- ZONE CHAT -->
+    <div id="zone-chat-section" style="margin-top:16px;display:none">
+      <div class="section-label" style="font-size:13px;margin-bottom:8px;">ZONE CHAT</div>
+      <div id="chat-messages" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <input id="chat-input" type="text" maxlength="120" placeholder="Say something…" autocomplete="off"
+          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--white);font-size:14px;font-family:'Roboto',sans-serif;outline:none;"
+          onkeydown="if(event.key==='Enter')sendChatMsg()"/>
+        <button onclick="sendChatMsg()" style="background:var(--teal);color:#000;border:none;border-radius:8px;padding:10px 14px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:.06em;cursor:pointer;">SEND</button>
+      </div>
     </div>
 
   </div>
@@ -714,6 +731,16 @@ audio{display:none;}
   <div id="gc-contact" style="display:none;gap:8px;flex-direction:column;"></div>
   <button class="btn-star-friend" id="gc-star-btn"></button>
   <button class="btn-card-close" onclick="closeGuestCard()">Close</button>
+</div>
+
+<!-- CONTACT EDIT PANEL -->
+<div id="contact-edit-panel" style="position:fixed;bottom:0;left:0;right:0;z-index:862;background:var(--surface2);border-top:2px solid var(--teal);border-radius:20px 20px 0 0;padding:24px 20px 44px;transform:translateY(100%);transition:transform .3s cubic-bezier(.2,.8,.3,1);display:flex;flex-direction:column;gap:12px;">
+  <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;letter-spacing:.06em;color:var(--white);text-align:center;">My Connect Info</div>
+  <div style="font-size:11px;color:var(--muted);text-align:center;letter-spacing:.06em;">Only visible to people you connect with</div>
+  <input class="profile-inp" id="ce-phone" type="tel" placeholder="Phone number" autocomplete="tel"/>
+  <input class="profile-inp" id="ce-instagram" type="text" placeholder="Instagram handle" maxlength="40"/>
+  <button class="btn-profile-save" onclick="saveContactEdit()">Save</button>
+  <button class="btn-card-close" onclick="closeContactEdit()">Cancel</button>
 </div>
 
 <!-- INCOMING FRIEND REQUEST CARD -->
@@ -2143,14 +2170,16 @@ function enterApp() {
 }
 
 async function saveProfile() {
-  const name  = document.getElementById('profile-name').value.trim();
-  const vibe  = document.getElementById('selected-vibe').value;
-  const emoji = document.getElementById('profile-emoji').textContent;
+  const name      = document.getElementById('profile-name').value.trim();
+  const vibe      = document.getElementById('selected-vibe').value;
+  const emoji     = document.getElementById('profile-emoji').textContent;
+  const phone     = (document.getElementById('profile-phone')?.value || '').trim();
+  const instagram = (document.getElementById('profile-instagram')?.value || '').trim().replace(/^@/, '');
 
   if (!name) { document.getElementById('profile-name').style.borderColor='var(--red)'; return; }
 
   await db.auth.updateUser({
-    data: { display_name: name, emoji, vibe_tag: vibe, role: userRole }
+    data: { display_name: name, emoji, vibe_tag: vibe, role: userRole, phone, instagram }
   });
 
   await db.from('profiles').upsert({
@@ -2703,6 +2732,88 @@ async function loadFriendships() {
   } catch(e) { console.warn('loadFriendships:', e.message); }
 }
 
+// ── CONTACT EDIT PANEL ─────────────────────────────────────
+function openContactEdit() {
+  const phone     = currentUser?.user_metadata?.phone || '';
+  const instagram = currentUser?.user_metadata?.instagram || '';
+  document.getElementById('ce-phone').value     = phone;
+  document.getElementById('ce-instagram').value = instagram;
+  document.getElementById('contact-edit-panel').style.transform = 'translateY(0)';
+}
+function closeContactEdit() {
+  document.getElementById('contact-edit-panel').style.transform = 'translateY(100%)';
+}
+async function saveContactEdit() {
+  const phone     = document.getElementById('ce-phone').value.trim();
+  const instagram = document.getElementById('ce-instagram').value.trim().replace(/^@/, '');
+  await db.auth.updateUser({ data: { ...currentUser.user_metadata, phone, instagram } });
+  const { data: freshUser } = await db.auth.getUser();
+  if (freshUser?.user) currentUser = freshUser.user;
+  closeContactEdit();
+  showToast('Contact info saved');
+}
+
+// ── ZONE CHAT ───────────────────────────────────────────────
+let _chatChannel    = null;
+let _chatMessages   = [];
+let _lastChatSentMs = 0;
+
+function subscribeChatChannel(zoneId) {
+  if (_chatChannel) { _chatChannel.unsubscribe(); _chatChannel = null; }
+  _chatMessages = [];
+  renderChatMessages();
+  document.getElementById('zone-chat-section').style.display = 'block';
+  _chatChannel = db.channel('chat_' + zoneId)
+    .on('broadcast', { event: 'msg' }, ({ payload }) => {
+      _chatMessages.push(payload);
+      if (_chatMessages.length > 60) _chatMessages.shift();
+      renderChatMessages();
+    })
+    .subscribe();
+}
+
+function unsubscribeChatChannel() {
+  if (_chatChannel) { _chatChannel.unsubscribe(); _chatChannel = null; }
+  _chatMessages = [];
+  document.getElementById('zone-chat-section').style.display = 'none';
+}
+
+function sendChatMsg() {
+  const inp = document.getElementById('chat-input');
+  const text = inp.value.trim();
+  if (!text || !_chatChannel || !activeZone) return;
+  const now = Date.now();
+  if (now - _lastChatSentMs < 1500) { showToast('Slow down a bit'); return; }
+  _lastChatSentMs = now;
+  const name  = currentUser?.user_metadata?.display_name || 'Someone';
+  const emoji = currentUser?.user_metadata?.emoji || '🎧';
+  _chatChannel.send({ type: 'broadcast', event: 'msg', payload: {
+    id: currentUser.id, name, emoji, text, ts: now
+  }});
+  inp.value = '';
+}
+
+function renderChatMessages() {
+  const el = document.getElementById('chat-messages');
+  if (!el) return;
+  const recent = _chatMessages.slice(-30);
+  el.innerHTML = recent.map(m => {
+    const isSelf   = m.id === currentUser?.id;
+    const isFriend = !isSelf && !!_friends[m.id];
+    const dispName = isSelf ? 'You' : (isFriend ? (m.name || 'Friend') : 'Someone');
+    const color    = isSelf ? 'var(--orange)' : (isFriend ? 'var(--teal)' : 'var(--muted)');
+    return `<div style="background:var(--surface2);border-radius:8px;padding:8px 10px;border-left:2px solid ${color};">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:700;color:${color};letter-spacing:.04em;">${m.emoji} ${dispName}</span>
+      <div style="font-size:14px;color:var(--white);margin-top:2px;word-break:break-word;">${escapeHtml(m.text)}</div>
+    </div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 // Phase C: announce friends who RSVPed to the event at this zone
 async function checkFriendsGoingToEvent(zoneId) {
   try {
@@ -2970,6 +3081,7 @@ function spawnHeroNotes(){
   if (btnZone){ btnZone.classList.remove('in-zone'); btnZone.textContent='⚡ FIND NEAREST ZONE'; }
   ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
   activeZone = null;
+  unsubscribeChatChannel();
 }
 
 async function loadZones(autoJoin=false) {
@@ -3046,6 +3158,7 @@ async function activateZone(z) {
 
   // Phase C: check if any friends are going to the event at this zone
   checkFriendsGoingToEvent(z.id);
+  subscribeChatChannel(z.id);
 
   await db.from('zones').update({ listeners:(z.listeners||0)+1 }).eq('id',z.id);
   await measureClockOffset();
