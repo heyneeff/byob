@@ -555,17 +555,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="panel active" id="panel-spatial">
 <div class="spatial-panel" id="spatial-panel">
 
-  <!-- LEFT: Stems library -->
+  <!-- LEFT: Full library -->
   <div class="sp-stems" style="background:#111;">
-    <div class="sp-stems-bar" style="justify-content:space-between;">
-      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">STEMS</span>
-      <button onclick="document.getElementById('stem-file-input').click()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 6px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">+ UPLOAD</button>
-    </div>
-    <input class="sp-stems-search" id="stems-search" placeholder="search stems…" oninput="filterStems(this.value)"/>
-    <div class="sp-stems-list" id="sp-stems-list"></div>
-
+    <div id="sp-lib" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
     <!-- hidden legacy stubs for JS compat -->
     <div style="display:none">
+      <input class="sp-stems-search" id="stems-search"/>
+      <div class="sp-stems-list" id="sp-stems-list"></div>
       <div id="zone-slots"></div>
       <div id="slot-add-row"></div>
       <div id="clip-C"><span id="clip-C-name"></span></div>
@@ -750,7 +746,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
   <!-- BOTTOM: Scene launcher (sp-lib kept as ID for legacy JS, actual lib HTML goes to sp-lib-inner) -->
   <div class="sp-library" style="flex-direction:column;overflow:hidden;">
-    <div id="sp-lib" style="display:none;"></div><!-- buildLibs target — hidden here, deck-lib handles deck panel -->
     <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-bottom:1px solid var(--rim);flex-shrink:0;background:#141414;">
       <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;flex:1;">SCENES</span>
       <button onclick="addSlot()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 7px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">+ SLOT</button>
@@ -3503,9 +3498,9 @@ function libHTML(tracks, filter='') {
         <div class="tr-key">${t.key}</div>
         <div class="tr-dur">${t.dur}</div>
         <div class="tr-acts">
-          <button class="tr-btn" onclick="loadDeck('a','${t.id}')" title="Load to Deck A · plays now">A</button>
-          <button class="tr-btn b" onclick="loadDeck('b','${t.id}')" title="Load to Deck B · plays now">B</button>
-          <button class="tr-btn" onclick="quickSlot('${t.id}')" title="Add to queue" style="background:var(--card2);color:var(--orange);border-color:var(--orange);">Q</button>
+          <button class="tr-btn" onclick="loadDeck('a','${t.id}')" title="Load to Deck A">A</button>
+          <button class="tr-btn b" onclick="loadDeck('b','${t.id}')" title="Load to Deck B">B</button>
+          <button class="tr-btn" onclick="showSlotPickerFor('${t.id}',event)" title="Assign to spatial slot" style="background:var(--card2);color:var(--orange);border-color:var(--orange);">→</button>
         </div>
       </div>`).join('')}
     </div>`;
@@ -3542,16 +3537,38 @@ function buildStemsPanel(filter='') {
       <div class="stem-dot" style="background:${t.col||'#555'}"></div>
       <div class="stem-title">${t.name}</div>
       <div class="stem-btns">
-        ${getSlotKeys().map(s=>`<button class="stem-btn" onclick="assignStemToSlot(event,'${t.id}','${s}')" title="→ Slot ${s}">${s}</button>`).join('')}
+        <button class="stem-btn" onclick="showSlotPickerFor('${t.id}',event)" title="Assign to slot" style="width:auto;padding:0 5px;color:var(--orange);">→</button>
       </div>
     </div>`).join('');
 }
 
 function assignStemToSlot(e, id, slot) {
-  e.stopPropagation();
+  if(e) e.stopPropagation();
   const t = (_realTracks||[]).find(t=>t.id===id) || TRACKS.find(t=>t.id===id);
   if (!t) return;
   assignTrackToZone(slot, t.url||t.id, t.name);
+}
+
+function showSlotPickerFor(trackId, e) {
+  if(e) e.stopPropagation();
+  document.getElementById('slot-assign-popup')?.remove();
+  const t = (_realTracks||[]).find(t=>t.id===trackId) || TRACKS.find(t=>t.id===trackId);
+  if(!t) return;
+  const keys = getSlotKeys();
+  const popup = document.createElement('div');
+  popup.id = 'slot-assign-popup';
+  popup.style.cssText = 'position:fixed;bottom:0;left:0;right:0;z-index:9999;background:#111;border-top:3px solid var(--orange);padding:14px 16px 36px;';
+  const cols = Math.min(keys.length + 1, 5);
+  popup.innerHTML = `
+    <div style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--orange);margin-bottom:10px;font-family:'Barlow Condensed',sans-serif;">Assign to slot — ${t.name}</div>
+    <div style="display:grid;grid-template-columns:repeat(${cols},1fr);gap:6px;">
+      ${keys.map(k => {
+        const bg = slotColor(k).replace('var(--orange)','#f57e20').replace('var(--teal)','#00cc99').replace('var(--red)','#ef3c23');
+        return `<button onclick="assignStemToSlot(event,'${trackId}','${k}');document.getElementById('slot-assign-popup').remove();" style="padding:12px 0;background:${bg};color:#000;border:none;border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;cursor:pointer;">${k}</button>`;
+      }).join('')}
+      <button onclick="document.getElementById('slot-assign-popup').remove()" style="padding:12px 0;background:transparent;color:var(--muted);border:1px solid #333;border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:14px;cursor:pointer;">✕</button>
+    </div>`;
+  document.body.appendChild(popup);
 }
 
 // Resizable panel handles
