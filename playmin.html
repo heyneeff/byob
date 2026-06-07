@@ -176,7 +176,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .zslot-badge,.zslot-info,.zslot-name,.zslot-sub,.zslot-controls,.zslot-btn{display:contents;}
 .sact-col,.sact,.sact-scatter,.sact-snap,.scatter-voices-sel,.mbutton,.mode-grid{display:none;}
 /* DECK */
-.deck-panel{flex:1;display:grid;grid-template-rows:minmax(0,1fr) auto minmax(180px,35vh);overflow:hidden;}
+.deck-panel{flex:1;display:grid;grid-template-rows:minmax(200px,1fr) auto minmax(150px,38vh);overflow:hidden;}
+.deck-bottom{display:flex;flex-direction:column;overflow:hidden;}
 .deck-top{display:grid;grid-template-columns:1fr 118px 1fr;overflow:hidden;border-bottom:1px solid var(--rim);}
 .dhalf{display:flex;flex-direction:column;background:var(--card);overflow:hidden;}
 .dhalf-b{flex-direction:column;}
@@ -892,19 +893,23 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     </div>
   </div>
 
-  <!-- Queue strip -->
-  <div id="queue-strip" style="display:none;background:var(--card);border-top:1px solid var(--rim);padding:4px 8px;max-height:120px;overflow-y:auto;">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-      <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;letter-spacing:.1em;color:var(--muted);">UP NEXT</span>
-      <span id="queue-count" style="background:var(--orange);color:#000;border-radius:8px;padding:1px 6px;font-size:9px;font-weight:900;"></span>
-      <button id="btn-queue-loop" onclick="toggleQueueLoop()" style="margin-left:auto;background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">🔁 LOOP</button>
-      <button onclick="clearQueue()" style="background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">CLEAR</button>
-    </div>
-    <div id="queue-list"></div>
-  </div>
+  <!-- Queue + Library (always in grid row 3) -->
+  <div class="deck-bottom">
 
-  <!-- Library -->
-  <div class="deck-library" id="deck-lib"></div>
+    <div id="queue-strip" style="display:none;background:var(--card);border-top:1px solid var(--rim);padding:4px 8px;max-height:120px;overflow-y:auto;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;letter-spacing:.1em;color:var(--muted);">UP NEXT</span>
+        <span id="queue-count" style="background:var(--orange);color:#000;border-radius:8px;padding:1px 6px;font-size:9px;font-weight:900;"></span>
+        <button id="btn-queue-loop" onclick="toggleQueueLoop()" style="margin-left:auto;background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">🔁 LOOP</button>
+        <button onclick="clearQueue()" style="background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">CLEAR</button>
+      </div>
+      <div id="queue-list"></div>
+    </div>
+
+    <!-- Library -->
+    <div class="deck-library" id="deck-lib"></div>
+
+  </div><!-- /deck-bottom -->
 
 </div>
 </div>
@@ -1628,6 +1633,7 @@ function removeFromQueue(i) {
   renderQueue();
 }
 
+let _queueDragIdx = null;
 function renderQueue() {
   const strip = document.getElementById('queue-strip');
   const list  = document.getElementById('queue-list');
@@ -1638,12 +1644,24 @@ function renderQueue() {
   count.textContent = upcoming.length;
   list.innerHTML = upcoming.map((t,i)=>{
     const realIdx = queueIdx+1+i;
-    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--rim);">
+    return `<div draggable="true" data-ridx="${realIdx}" ondragstart="_qDragStart(event,${realIdx})" ondragover="_qDragOver(event)" ondrop="_qDrop(event,${realIdx})" ondragend="_qDragEnd()" style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--rim);cursor:grab;">
+      <span style="color:var(--muted);font-size:10px;padding:0 2px;cursor:grab;">⠿</span>
       <span style="color:var(--orange);font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;width:16px;">${i+1}</span>
       <span style="flex:1;font-size:11px;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.title||'—'}</span>
       <button onclick="removeFromQueue(${realIdx})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 4px;">×</button>
     </div>`;
   }).join('');
+}
+function _qDragStart(e, idx){ _queueDragIdx=idx; e.dataTransfer.effectAllowed='move'; e.currentTarget.style.opacity='0.4'; }
+function _qDragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.style.borderTop='2px solid var(--orange)'; }
+function _qDragEnd(){ _queueDragIdx=null; renderQueue(); }
+function _qDrop(e, targetIdx){
+  e.preventDefault();
+  if(_queueDragIdx==null || _queueDragIdx===targetIdx) return;
+  const [item]=playlist.splice(_queueDragIdx,1);
+  const insertAt = _queueDragIdx < targetIdx ? targetIdx-1 : targetIdx;
+  playlist.splice(insertAt,0,item);
+  renderQueue();
 }
 
 async function playNext() {
@@ -1765,16 +1783,6 @@ document.getElementById('volume').addEventListener('input',e=>audio.volume=e.tar
 document.getElementById('file-input').addEventListener('change',async(e)=>{
   const file=e.target.files[0];if(!file)return;
   const statusEl=document.getElementById('upload-status');
-  let playbackStartedAt=null;
-  audio.addEventListener('playing',()=>{if(!playbackStartedAt)playbackStartedAt=new Date(serverNow()).toISOString();},{once:true});
-  audio.src=URL.createObjectURL(file);
-  audio.loop=false;
-  audio.play().catch(()=>{});
-  isPlaying=true;
-  document.getElementById('btn-play').textContent='⏸';
-  document.getElementById('btn-play').classList.add('playing');
-  document.getElementById('track-name').textContent=file.name.replace(/\.[^/.]+$/,'');
-  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
   statusEl.textContent='Uploading…';statusEl.style.color='var(--teal)';
   try{
     const path='tracks/'+(currentUser?.id||'anon')+'/'+Date.now()+'_'+file.name;
@@ -1783,31 +1791,9 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
     await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
     _realTracks=[]; buildLibs('',true);
-    if(activeZone){
-      const bufferMs=2000;
-      const playAt=serverNow()+bufferMs;
-      const playFromS=audio.currentTime+(bufferMs/1000);
-      const startedAt=playbackStartedAt||new Date(serverNow()).toISOString();
-      await db.from('zones').update({current_track_url:urlData.publicUrl,track_name:file.name.replace(/\.[^/.]+$/,''),playback_started_at:startedAt,play_at:playAt,play_from_s:playFromS,active:true}).eq('id',activeZone.id);
-window._lastPublicUrl = urlData.publicUrl;
-      window._currentZone={playback_started_at:startedAt};
-    }
-    statusEl.textContent='● live';statusEl.style.color='var(--teal)';
-    showToast('Broadcasting 📡');
-    // Immediately hard-sync all subscribed listeners
-    if(window._djSyncChannel && audio.duration){
-      const freshAt=new Date(serverNow()-audio.currentTime*1000).toISOString();
-      setTimeout(()=>{
-        window._djSyncChannel.send({
-          type:'broadcast',event:'hard_sync',
-          payload:{resyncAt:serverNow()+1000,playback_started_at:freshAt,resetOffsets:false}
-        });
-      },1500);
-    }
-    if(window._autoResyncInterval)clearInterval(window._autoResyncInterval);
-    window._autoResyncInterval=setInterval(()=>{
-      if(activeZone&&audio.src&&!audio.paused&&!liveStream){triggerResync();}
-    },5*60*1000);
+    statusEl.textContent='✓ Added to library';statusEl.style.color='var(--teal)';
+    setTimeout(()=>{statusEl.textContent='';},3000);
+    showToast('Track added to library');
   }catch(err){
     console.error('Upload error:',err);
     statusEl.textContent='⚠ '+err.message;
@@ -3610,7 +3596,7 @@ function switchPanel(name,btn){
   }
 
   if(name==='crowd') initCrowdMap();
-  if(name==='deck'){ buildLibs(); }
+  if(name==='deck'){ buildLibs(_libFilter, true); }
   if(name==='deck'){setTimeout(()=>{const cv=document.getElementById('viz-canvas');const wrap=document.getElementById('visualizer');if(cv&&wrap){cv.width=wrap.offsetWidth;cv.height=wrap.offsetHeight;}},80);}
 }
 
