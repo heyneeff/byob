@@ -791,11 +791,6 @@ audio{display:none;}
     </div>
 
     <!-- BOOMY — in-flow, right below fellowship buttons -->
-    <div id="boomy-bar" onclick="onBoomyBarTap()">
-      <img id="boomy-bar-img" alt="Boomy"/>
-      <div id="boomy-bar-bubble"></div>
-    </div>
-
     <button id="btn-donate" onclick="openDonation()" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:12px 0 4px;padding:16px;background:var(--orange);border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#000;cursor:pointer;box-shadow:4px 4px 0 rgba(0,0,0,.4);transition:transform .1s,box-shadow .1s;" onmousedown="this.style.transform='translate(2px,2px)';this.style.boxShadow='2px 2px 0 rgba(0,0,0,.4)'" onmouseup="this.style.transform='';this.style.boxShadow='4px 4px 0 rgba(0,0,0,.4)'" ontouchstart="this.style.transform='translate(2px,2px)';this.style.boxShadow='2px 2px 0 rgba(0,0,0,.4)'" ontouchend="this.style.transform='';this.style.boxShadow='4px 4px 0 rgba(0,0,0,.4)'">
       💸 Make A Donation
     </button>
@@ -938,7 +933,6 @@ const EYE_B64  = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BS
 document.getElementById('login-logo').src = LOGO_B64;
 document.getElementById('login-boom').src  = BOOM_B64;
 document.getElementById('boom-popup-img').src = BOOM_B64;
-if(document.getElementById('boomy-bar-img')) document.getElementById('boomy-bar-img').src = BOOM_B64;
 document.getElementById('hdr-logo').src    = LOGO_B64;
 document.getElementById('hdr-boom').src    = BOOM_B64;
 document.getElementById('eye-img').src     = EYE_B64;
@@ -2664,19 +2658,36 @@ function _getSuggestedAmount() {
   return window._suggestedDonation || null;
 }
 
+function _openTipNow() {
+  const url = _getTipUrl();
+  if (!url) return;
+  const amt = _getSuggestedAmount() || '25';
+  const venmoMatch = url.match(/venmo\.com\/(?:u\/)?([^/?#]+)/);
+  if (venmoMatch) {
+    window.location.href = `venmo://paycharge?txn=pay&recipients=${venmoMatch[1]}&amount=${amt}&note=BYOB+donation`;
+    setTimeout(() => { window.open(url, '_blank'); }, 1500);
+  } else {
+    window.open(url, '_blank');
+  }
+}
+
 function openTip() {
   const url = _getTipUrl();
-  if (url) { window.open(url, '_blank'); return; }
+  if (url) { _openTipNow(); return; }
   boomSay('Ask the DJ for their tip link! 💸', 3500, false, 'regular');
 }
 
+const _DONATION_MSGS = [
+  amt => `Having fun! This is a pay what you can event — we suggest $${amt} 💸`,
+  amt => `The music keeps going because of YOU! Drop a donation if you're feeling it 🙏 $${amt} suggested`,
+  amt => `Enjoying the vibes? Keep the party alive — pay what you can, $${amt} 💸`
+];
+
 function openDonation() {
-  const url = _getTipUrl();
   const amt = _getSuggestedAmount() || '25';
-  if (url) {
-    window._boomyTapOverride = () => { window.open(url, '_blank'); window._boomyTapOverride = null; };
-  }
-  boomSay(`Having fun! This is a pay what you can event, we suggest $${amt} 💸 Tap me →`, 9000, true, 'devious');
+  const msg = _DONATION_MSGS[Math.floor(Math.random() * _DONATION_MSGS.length)](amt);
+  boomSay(msg, 5000, false, 'devious');
+  _openTipNow();
 }
 
 function showPlayerTipBtn() {
@@ -3746,6 +3757,15 @@ function buildSyncChannel(zoneId) {
         radius: 14, color: '#00cc99', fillColor: '#00cc99', fillOpacity: 0.25, weight: 2
       }).addTo(leafletMap).bindTooltip('🎯 Rally', { permanent: true, direction: 'top', className: 'rally-tooltip' });
     }
+  })
+  .on('broadcast', { event: 'tip_nudge' }, ({ payload }) => {
+    const amt = _getSuggestedAmount() || payload?.amount || '25';
+    const msg = _DONATION_MSGS[Math.floor(Math.random() * _DONATION_MSGS.length)](amt);
+    const url = _getTipUrl();
+    if (url) {
+      window._boomyTapOverride = () => { _openTipNow(); window._boomyTapOverride = null; };
+    }
+    boomSay(msg + (url ? ' — Tap me →' : ''), 9000, true, 'devious');
   })
   .subscribe((status) => {
     if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && activeZone?.id === zoneId) {

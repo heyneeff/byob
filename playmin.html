@@ -949,6 +949,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button class="lbtn" onclick="setLight(this,'pulse')">◎ Pulse</button>
     </div>
     <button class="btn-message" onclick="openMsgModal()" style="margin-top:8px;">Message <img class="lips-icon" id="lips-img" alt="msg"/></button>
+    <button onclick="broadcastTipNudge()" style="margin-top:6px;width:100%;padding:10px;background:transparent;border:2px solid var(--orange);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:.06em;color:var(--orange);cursor:pointer;" title="Send a random donation nudge to all listeners via Boomy">💸 TIP NUDGE</button>
   </div>
 
   <!-- ZONE CHAT -->
@@ -1210,6 +1211,13 @@ function snapSpeakers(){
   const resyncAt=serverNow()+1500;
   window._djSyncChannel.send({type:'broadcast',event:'hard_sync',payload:{resyncAt,playback_started_at:window._currentZone?.playback_started_at,resetOffsets:true}});
   showToast('⚡ SNAP in 1.5s…');
+}
+
+function broadcastTipNudge(){
+  if(!window._djSyncChannel){showToast('No active zone');return;}
+  const amt = window._currentZone?.suggested_donation || '25';
+  window._djSyncChannel.send({type:'broadcast',event:'tip_nudge',payload:{amount:amt}});
+  showToast('💸 Tip nudge sent');
 }
 
 function broadcastRally(){
