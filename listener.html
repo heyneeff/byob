@@ -1295,6 +1295,7 @@ function onBoomyTap(){
   }
 
   if(typeof _pendingStream !== 'undefined' && _pendingStream){
+    _rtcUserHasTapped = true;
     audio.srcObject = _pendingStream;
     _pendingStream = null;
     startFadedPlay();
@@ -2060,7 +2061,7 @@ function stopEverything() {
   audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
-  _pendingStream = null;
+  _pendingStream = null; _rtcUserHasTapped = false;
   hideTapBanner();
   clearInterval(_syncInterval); clearInterval(_driftInterval); clearInterval(_healthInterval);
   _webAudioPlaying = false;
@@ -2127,6 +2128,10 @@ function startSyncEngine() {
 }
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible' || !activeZone) return;
+  // WebRTC live — resume if OS suspended playback while screen was locked
+  if (audio.srcObject && _webAudioPlaying && audio.paused) {
+    audio.play().catch(() => {});
+  }
   // Instant memory-based resync — no network needed
   if (audio.duration && activeZone.playback_started_at && !audio.srcObject) {
     const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
@@ -2170,6 +2175,7 @@ async function getRTCConfig() {
 const listenerId = Math.random().toString(36).substr(2,9);
 let rtcPeer = null, rtcChannel = null;
 let _pendingStream = null;
+let _rtcUserHasTapped = false;
 
 async function joinWebRTCStream(zoneId) {
   if (rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -2209,12 +2215,22 @@ async function handleOffer(sdp) {
     if (candidate && rtcChannel) rtcChannel.send({ type:'broadcast', event:'ice-dj', payload:{ to:'dj', from:listenerId, candidate } });
   };
   rtcPeer.ontrack = ({ streams }) => {
-    _pendingStream = streams[0];
+    const stream = streams[0];
     audio.pause(); audio.src = ''; audio.srcObject = null; audio.load();
     _webAudioPlaying = false;
     document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='running');
-    showToast('🔴 LIVE ready');
-    showTapBanner();
+    if (_rtcUserHasTapped) {
+      audio.srcObject = stream;
+      audio.volume = 0;
+      audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(); }).catch(() => {
+        _pendingStream = stream; audio.srcObject = null; showTapBanner();
+      });
+      showToast('🔴 LIVE');
+    } else {
+      _pendingStream = stream;
+      showToast('🔴 LIVE ready');
+      showTapBanner();
+    }
   };
   rtcPeer.onconnectionstatechange = () => {
     const state = rtcPeer?.connectionState;
