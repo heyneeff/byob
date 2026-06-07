@@ -3496,12 +3496,14 @@ async function activateZone(z) {
       if (slotUrl) {
         loadTrack(slotUrl, 'Zone ' + mySlot, spatialSource.playback_started_at);
         showToast('🔊 Slot ' + mySlot);
-        return;
+        // fall through — must subscribe to channels below
+      } else {
+        loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
       }
+    } else {
+      loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
     }
-    loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
   }
-
 
   // Subscribe to zone updates — unsubscribe first to avoid duplicates
   if (window._zoneChannel) { window._zoneChannel.unsubscribe(); }
@@ -3521,7 +3523,7 @@ async function activateZone(z) {
                     setTimeout(() => {
             if (!activeZone || !audio.duration) return;
             const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
-            const target = elapsed % audio.duration;
+            const target = ((elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000) - (_scatterOffsetMs / 1000)) % audio.duration + audio.duration) % audio.duration;
             seekPreservingBT(target);
             setSyncIndicator('synced', 0);
           }, delay);
@@ -3585,8 +3587,8 @@ async function activateZone(z) {
       }
       if (!audio.duration) return;
       const elapsed = (syncedNow() - new Date(payload.playback_started_at).getTime()) / 1000;
-      // seek target matches seekToSync formula so syncZoneAudio drift check stays at 0
-      seekPreservingBT((elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000)) % audio.duration);
+      // seek target matches syncZoneAudio formula exactly
+      seekPreservingBT(((elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000) - (_scatterOffsetMs / 1000)) % audio.duration + audio.duration) % audio.duration);
       setSyncIndicator('synced', 0);
     }, delay);
   })
@@ -5055,9 +5057,7 @@ function getSpatialSlot(config){
   // Find listeners within 30m of me = my cluster
   const myCluster = allListeners.filter(l => {
     if(!l.dist) return false;
-    // Approximate position from dist+bearing
-    const lDist = l.dist * 1609.34; // miles to meters
-    return Math.abs(lDist - myDist) < 30; // within 30m radial distance
+    return Math.abs(l.dist - myDist) < 30; // within 30m radial distance (dist already in meters)
   });
 
   // Cluster center = average bearing of my cluster
