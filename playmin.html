@@ -1637,22 +1637,26 @@ function renderQueue() {
   const list  = document.getElementById('queue-list');
   const count = document.getElementById('queue-count');
   if(!strip || !list) return;
-  const upcoming = playlist.slice(queueIdx+1);
-  strip.style.display = upcoming.length ? '' : 'none';
-  count.textContent = upcoming.length;
-  list.innerHTML = upcoming.map((t,i)=>{
-    const realIdx = queueIdx+1+i;
-    return `<div draggable="true" data-ridx="${realIdx}" ondragstart="_qDragStart(event,${realIdx})" ondragover="_qDragOver(event)" ondrop="_qDrop(event,${realIdx})" ondragend="_qDragEnd()" style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--rim);">
+  strip.style.display = playlist.length ? '' : 'none';
+  const remaining = playlist.length - Math.max(0, queueIdx + 1);
+  count.textContent = remaining > 0 ? remaining : 0;
+  list.innerHTML = playlist.map((t, idx)=>{
+    const isCurrent = idx === queueIdx;
+    const isPast    = idx < queueIdx;
+    const numColor  = isCurrent ? 'var(--orange)' : isPast ? 'var(--muted)' : 'var(--teal)';
+    const txtColor  = isCurrent ? 'var(--orange)' : isPast ? 'var(--muted)' : 'var(--cream)';
+    const prefix    = isCurrent ? '▶' : (idx+1).toString();
+    return `<div draggable="true" data-ridx="${idx}" ondragstart="_qDragStart(event,${idx})" ondragover="_qDragOver(event)" ondrop="_qDrop(event,${idx})" ondragend="_qDragEnd()" style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--rim);opacity:${isPast?'0.38':'1'};">
       <span style="color:var(--muted);font-size:10px;padding:0 2px;cursor:grab;">⠿</span>
-      <span style="color:var(--orange);font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;width:16px;">${i+1}</span>
-      <span onclick="jumpToQueue(${realIdx})" style="flex:1;font-size:11px;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;padding:4px 0;">${t.title||'—'}</span>
-      <button onclick="removeFromQueue(${realIdx})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 4px;">×</button>
+      <span style="color:${numColor};font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;width:16px;">${prefix}</span>
+      <span onclick="jumpToQueue(${idx})" style="flex:1;font-size:11px;color:${txtColor};overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;padding:4px 0;">${t.title||'—'}</span>
+      <button onclick="removeFromQueue(${idx})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 4px;">×</button>
     </div>`;
   }).join('');
   savePlaylist();
 }
 async function jumpToQueue(idx){
-  queueIdx = idx - 1; // playNext will increment to idx
+  queueIdx = idx - 1;
   await playNext();
 }
 function _qDragStart(e, idx){ _queueDragIdx=idx; e.dataTransfer.effectAllowed='move'; e.currentTarget.style.opacity='0.4'; }
@@ -4111,7 +4115,7 @@ function onPitch(d,v){
   if(dk.track)dk.bpm=Math.round((dk.track.bpm||124)*rate);
 }
 
-function onXfader(v){ if(!_dkGraph.a)ensureDeckGraph('a'); if(!_dkGraph.b)ensureDeckGraph('b'); _applyDeckGains(); }
+function onXfader(v){ _applyDeckGains(); }
 function onVolume(v){ _applyDeckGains(); }
 
 function _applyDeckGains(){
