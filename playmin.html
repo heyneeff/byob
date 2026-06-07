@@ -3786,6 +3786,7 @@ function libHTML(tracks, filter='') {
         <div class="tr-acts">
           <button class="tr-btn" onclick="loadDeck('a','${t.id}')" title="Load to Deck A">A</button>
           <button class="tr-btn b" onclick="loadDeck('b','${t.id}')" title="Load to Deck B">B</button>
+          <button class="tr-btn" onclick="quickSlot('${t.id}')" title="Add to queue" style="background:var(--card2);color:var(--teal);border-color:var(--teal);">+</button>
           <button class="tr-btn" onclick="showSlotPickerFor('${t.id}',event)" title="Assign to spatial slot" style="background:var(--card2);color:var(--orange);border-color:var(--orange);">→</button>
         </div>
       </div>`).join('')}
