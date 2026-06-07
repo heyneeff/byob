@@ -2661,10 +2661,9 @@ function _getSuggestedAmount() {
 function _openTipNow() {
   const url = _getTipUrl();
   if (!url) return;
-  const amt = _getSuggestedAmount() || '25';
   const venmoMatch = url.match(/venmo\.com\/(?:u\/)?([^/?#]+)/);
   if (venmoMatch) {
-    window.location.href = `venmo://paycharge?txn=pay&recipients=${venmoMatch[1]}&amount=${amt}&note=BYOB+donation`;
+    window.location.href = `venmo://users/${venmoMatch[1]}`;
     setTimeout(() => { window.open(url, '_blank'); }, 1500);
   } else {
     window.open(url, '_blank');
