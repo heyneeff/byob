@@ -128,61 +128,81 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .hdr-boom:hover{opacity:1;}
 .hdr-boom.locked{opacity:.25;cursor:default;filter:grayscale(1);}
 
-.screen{padding:12px 14px 80px;}
+.screen{padding:12px 14px 40px;}
+
+/* ── NOW-PLAYING BAR (below header) ── */
+.now-playing-bar{
+  display:none;padding:8px 16px 6px;background:var(--surface);
+  border-bottom:1px solid var(--border);
+  position:sticky;top:53px;z-index:99;
+}
+.now-playing-bar.active{display:block;}
+.npb-zone{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--teal);line-height:1;}
+.npb-track{font-size:13px;font-weight:600;color:var(--white);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.npb-progress{height:2px;background:#222;border-radius:1px;margin-top:5px;}
+.npb-fill{height:100%;width:0%;background:var(--orange);border-radius:1px;transition:width .4s;}
 
 /* ── MAP ── */
-.map-frame{border:2px solid var(--teal);border-radius:14px;overflow:hidden;height:300px;margin-bottom:8px;position:relative;}
-#map{width:100%;height:300px;}
+.map-frame{border:2px solid var(--teal);border-radius:14px;overflow:hidden;height:380px;margin-bottom:10px;position:relative;}
+#map{width:100%;height:380px;}
 .leaflet-container{background:#000!important;}
 .leaflet-control-attribution{display:none!important;}
 .leaflet-control-zoom a{background:#111!important;color:#fff!important;border-color:#222!important;border-radius:3px!important;}
 .leaflet-tile-pane{opacity:.82;}
 .rally-tooltip{background:#001a14;border:1px solid var(--teal);border-radius:6px;color:var(--teal);font-size:11px;padding:3px 7px;box-shadow:0 0 8px rgba(0,204,153,.4);font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;white-space:nowrap;}
-.map-label{text-align:center;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding:5px 0 10px;}
-
-/* ── FELLOWSHIP SIDEBAR (left of map) ── */
-.fellowship-sidebar{
-  position:absolute;left:8px;top:50%;transform:translateY(-50%);
-  z-index:500;display:flex;flex-direction:column;gap:6px;
+/* zone name overlay on map */
+.map-zone-overlay{
+  position:absolute;top:10px;left:50%;transform:translateX(-50%);
+  z-index:500;pointer-events:none;
+  font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--white);
+  background:rgba(0,0,0,.72);border:1px solid rgba(0,204,153,.4);
+  border-radius:20px;padding:4px 14px;white-space:nowrap;
+  backdrop-filter:blur(6px);
+  opacity:0;transition:opacity .3s;
 }
-.fsb-btn{
-  width:38px;height:38px;border-radius:10px;border:none;cursor:pointer;
-  display:flex;align-items:center;justify-content:center;font-size:18px;
-  background:rgba(0,0,0,.75);backdrop-filter:blur(6px);
-  transition:transform .1s,background .15s;
-  box-shadow:0 2px 8px rgba(0,0,0,.5);
-}
-.fsb-btn:active{transform:scale(.9);}
-.fsb-btn.active{background:rgba(0,204,153,.25);box-shadow:0 0 0 2px var(--teal);}
-.fsb-btn.tip-btn{box-shadow:0 0 0 2px var(--orange);background:rgba(245,126,32,.18);}
-.fsb-btn.rally-btn{box-shadow:0 0 0 2px #a78bfa;background:rgba(167,139,250,.18);animation:rallyPulse 1.2s ease-in-out infinite;}
-@keyframes rallyPulse{0%,100%{box-shadow:0 0 0 2px #a78bfa,0 0 0 4px rgba(167,139,250,0);}50%{box-shadow:0 0 0 2px #a78bfa,0 0 8px 6px rgba(167,139,250,.35);}}
+.map-zone-overlay.visible{opacity:1;}
 
-/* ── BOOMY PERSISTENT BAR ── */
+/* ── FELLOWSHIP ROW (below map) ── */
+.fellowship-row{
+  display:flex;gap:8px;margin-bottom:10px;
+}
+.fellowship-btn{
+  flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:10px 6px 8px;border-radius:10px;border:1.5px solid #222;
+  background:var(--surface2);cursor:pointer;
+  font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+  transition:all .15s;
+}
+.fellowship-btn .fb-icon{font-size:22px;line-height:1;}
+.fellowship-btn:active{transform:translate(1px,1px);}
+.fellowship-btn.active{border-color:var(--teal);color:var(--teal);background:rgba(0,204,153,.08);}
+.fellowship-btn.tip-btn{border-color:var(--orange);color:var(--orange);background:rgba(245,126,32,.08);}
+.fellowship-btn.rally-btn{border-color:#a78bfa;color:#a78bfa;background:rgba(167,139,250,.08);animation:rallyPulse 1.2s ease-in-out infinite;}
+@keyframes rallyPulse{0%,100%{box-shadow:0 0 0 1px #a78bfa,0 0 0 0 rgba(167,139,250,0);}50%{box-shadow:0 0 0 1px #a78bfa,0 0 10px 4px rgba(167,139,250,.25);}}
+
+/* ── BOOMY IN-FLOW STRIP ── */
 #boomy-bar{
-  position:sticky;bottom:0;left:0;right:0;
   display:flex;align-items:center;gap:10px;
-  padding:8px 14px 14px;
-  background:linear-gradient(to top,#000 60%,transparent);
+  padding:8px 0 12px;
   pointer-events:none;
-  z-index:100;
-  margin-top:auto;
+  margin-bottom:4px;
 }
 #boomy-bar.has-msg{pointer-events:auto;}
 #boomy-bar-img{
-  height:52px;width:auto;flex-shrink:0;
+  height:56px;width:auto;flex-shrink:0;
   mix-blend-mode:screen;cursor:pointer;
   transition:transform .15s;
   filter:drop-shadow(0 0 8px rgba(245,126,32,.4));
 }
 #boomy-bar-img:active{transform:scale(.92);}
 #boomy-bar-bubble{
-  flex:1;min-height:32px;
-  background:rgba(20,20,20,.9);border:1px solid var(--orange);
-  border-radius:12px;padding:8px 12px;
+  flex:1;min-height:36px;
+  background:var(--surface2);border:1.5px solid var(--orange);
+  border-radius:12px;padding:9px 13px;
   font-size:13px;font-weight:500;color:var(--white);
   line-height:1.4;opacity:0;transition:opacity .3s;
-  backdrop-filter:blur(8px);
   cursor:pointer;
 }
 #boomy-bar-bubble.visible{opacity:1;}
@@ -236,7 +256,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .btn-star-friend.unstar{background:var(--surface2);color:var(--red);border:2px solid var(--red);}
 .btn-card-close{width:100%;padding:12px;background:transparent;border:1px solid #333;border-radius:10px;color:var(--muted);font-size:14px;cursor:pointer;}
 #boom-popup{
-  position:fixed;bottom:90px;left:12px;right:12px;z-index:850;
+  position:fixed;bottom:16px;left:12px;right:12px;z-index:850;
   display:none;align-items:flex-end;gap:12px;
 }
 #boom-popup.open{display:flex;animation:popupSlide .3s ease-out;}
@@ -453,12 +473,13 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 /* ── LOCKABLE ── */
 .lockable{position:relative;transition:opacity .35s;}
 .lockable.locked{opacity:.28;pointer-events:none;}
+.lockable.locked{opacity:.35;pointer-events:none;filter:grayscale(.6);}
 .lockable.locked::after{
-  content:'🔒 Enter a zone to unlock';
+  content:'Enter a zone to unlock';
   position:absolute;inset:0;
   display:flex;align-items:center;justify-content:center;
-  font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--white);background:rgba(0,0,0,.7);border-radius:inherit;
+  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);background:rgba(0,0,0,.5);border-radius:inherit;
   pointer-events:none;
 }
 
@@ -721,34 +742,29 @@ audio{display:none;}
     <div class="hdr-right">
       <span class="hdr-user" id="hdr-user"></span>
       <span class="hdr-role" id="hdr-role"></span>
-      <!-- boombox: clickable for DJ, locked for listeners -->
       <img class="hdr-boom" id="hdr-boom" alt="Menu" onclick="onBoomClick()"/>
     </div>
   </div>
+  <!-- NOW-PLAYING BAR — shows zone + track once in a zone -->
+  <div class="now-playing-bar" id="now-playing-bar">
+    <div class="npb-zone" id="npb-zone">—</div>
+    <div class="npb-track" id="npb-track">—</div>
+    <div class="npb-progress"><div class="npb-fill" id="npb-fill"></div></div>
+  </div>
 
   <div class="screen">
+
+    <!-- MAP — main feature, with zone name overlay -->
     <div class="map-frame">
       <div id="map"></div>
+      <div class="map-zone-overlay" id="map-zone-overlay"></div>
       <div class="btn-find-me" onclick="centerOnUser()" title="Find me">◎</div>
-      <!-- FELLOWSHIP SIDEBAR — left edge of map -->
-      <div class="fellowship-sidebar" id="fellowship-sidebar">
-        <button class="fsb-btn" id="fsb-crowd" onclick="toggleGuestList()" title="Who's here">👥</button>
-        <button class="fsb-btn" id="fsb-signal" onclick="toggleSignalPicker()" title="Set your signal">📡</button>
-        <button class="fsb-btn tip-btn" id="fsb-tip" onclick="openTip()" title="Support the DJ" style="display:none;">💸</button>
-        <button class="fsb-btn rally-btn" id="fsb-rally" onclick="zoomToRally()" title="Rally point" style="display:none;">🎯</button>
-      </div>
     </div>
 
-    <!-- ACTIVE ZONES - right under map -->
-    <div class="zones-section" style="margin-top:0;margin-bottom:12px;">
-      <div class="zones-title">Active Zones</div>
-      <div id="zone-list"><div style="font-size:11px;color:var(--muted)">Scanning...</div></div>
-    </div>
-
-    <!-- ZONE BUTTON — transforms from FIND to IN THE ZONE -->
+    <!-- ZONE BUTTON -->
     <button class="btn-zone" id="btn-zone" onclick="onZoneBtn()">⚡ FIND NEAREST ZONE</button>
 
-    <!-- ZONE NAVIGATION GUIDANCE -->
+    <!-- ZONE NAV ARROW -->
     <div class="zone-nav" id="zone-nav">
       <div class="nav-arrow" id="nav-arrow">➤</div>
       <div class="nav-info">
@@ -758,38 +774,40 @@ audio{display:none;}
       </div>
     </div>
 
-    <!-- MUSIC — no lock icon -->
-    <div class="section-label"><span>Music</span> — <span id="music-artist" style="color:var(--muted);font-weight:400;font-size:13px;text-transform:none;letter-spacing:0">—</span></div>
-    <div class="lockable locked" id="music-lockable">
-      <div class="player-card">
-                <canvas id="organism-canvas" style="width:100%;height:160px;display:block;border-radius:6px;background:#000;"></canvas>
-
-        <div class="progress-wrap" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
-        <div class="time-row"><span id="time-cur">0:00</span><span id="time-dur">0:00</span></div>
-        <div class="track-name-row" id="track-name">—</div>
-        <div class="sync-status" id="sync-status"></div>
-        <!-- TIP BUTTON — shown when zone has tip_url -->
-        <button class="btn-tip-player" id="btn-tip-player" style="display:none;" onclick="openTip()">
-          💸 Support the DJ<span class="tip-amount-badge" id="tip-amount-badge" style="display:none;"></span>
-        </button>
-      </div>
-
-        <div style="display:flex;justify-content:flex-end;margin-top:6px;">
-      <div class="visuals-card" onclick="openVisuals()" style="width:44px;height:44px;border-radius:8px;">
-        <img class="eye-icon" id="eye-img" alt="Open Visuals" style="height:24px;"/>
-      </div>
+    <!-- FELLOWSHIP BUTTONS — locked until in-zone -->
+    <div class="fellowship-row lockable locked" id="fellowship-lockable">
+      <button class="fellowship-btn" id="fsb-crowd" onclick="toggleGuestList()">
+        <span class="fb-icon">👥</span>WHO'S HERE
+      </button>
+      <button class="fellowship-btn" id="fsb-signal" onclick="toggleSignalPicker()">
+        <span class="fb-icon">📡</span>MY SIGNAL
+      </button>
+      <button class="fellowship-btn tip-btn" id="fsb-tip" onclick="openTip()" style="display:none;">
+        <span class="fb-icon">💸</span>TIP DJ
+      </button>
+      <button class="fellowship-btn rally-btn" id="fsb-rally" onclick="zoomToRally()" style="display:none;">
+        <span class="fb-icon">🎯</span>RALLY
+      </button>
     </div>
 
+    <!-- BOOMY — in-flow, right below fellowship buttons -->
+    <div id="boomy-bar" onclick="onBoomyBarTap()">
+      <img id="boomy-bar-img" alt="Boomy"/>
+      <div id="boomy-bar-bubble"></div>
+    </div>
 
-    <!-- GUEST LIST -->
-    <div style="margin-top:14px" id="guest-list-section">
-      <div class="section-label" style="font-size:13px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
-        <span>WHO'S HERE <span id="guest-count" style="color:var(--muted);font-weight:400;font-size:11px;text-transform:none;letter-spacing:0;"></span></span>
+    <!-- WHO'S HERE — fellowship / people present -->
+    <div id="guest-list-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--white);">
+          WHO'S HERE <span id="guest-count" style="color:var(--muted);font-weight:400;font-size:12px;text-transform:none;letter-spacing:0;"></span>
+        </div>
         <div style="display:flex;gap:8px;align-items:center;">
-          <button id="signal-btn" onclick="toggleSignalPicker()" style="background:transparent;border:1px solid #333;border-radius:8px;color:var(--white);font-size:14px;cursor:pointer;padding:2px 8px;letter-spacing:.04em;" title="Set a signal emoji">📡</button>
-          <button onclick="openContactEdit()" style="background:transparent;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:0 2px;letter-spacing:.04em;">✎ my info</button>
+          <button id="signal-btn" onclick="toggleSignalPicker()" style="background:transparent;border:1px solid #333;border-radius:8px;color:var(--white);font-size:14px;cursor:pointer;padding:2px 8px;" title="Set your signal">📡</button>
+          <button onclick="openContactEdit()" style="background:transparent;border:none;color:var(--muted);font-size:12px;cursor:pointer;padding:0 2px;letter-spacing:.04em;">✎ my info</button>
         </div>
       </div>
+      <div style="font-size:11px;color:var(--muted);letter-spacing:.06em;margin-bottom:10px;">Tap someone to add them — friends remember each other across zones.</div>
       <!-- SIGNAL PICKER -->
       <div id="signal-picker" style="display:none;background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;">
         <div style="font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px;">Set your signal — others can see + find you</div>
@@ -806,22 +824,20 @@ audio{display:none;}
       <div id="guest-list-ul"></div>
     </div>
 
-    <!-- ZONE CHAT -->
-    <div id="zone-chat-section" style="margin-top:16px;display:none">
-      <div class="section-label" style="font-size:13px;margin-bottom:8px;">ZONE CHAT</div>
-      <div id="chat-messages" style="max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px;"></div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <input id="chat-input" type="text" maxlength="120" placeholder="Say something…" autocomplete="off"
-          style="flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--white);font-size:14px;font-family:'Roboto',sans-serif;outline:none;"
-          onkeydown="if(event.key==='Enter')sendChatMsg()"/>
-        <button onclick="sendChatMsg()" style="background:var(--teal);color:#000;border:none;border-radius:8px;padding:10px 14px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:.06em;cursor:pointer;">SEND</button>
-      </div>
-    </div>
-
-    <!-- BOOMY PERSISTENT BAR -->
-    <div id="boomy-bar" onclick="onBoomyBarTap()">
-      <img id="boomy-bar-img" alt="Boomy"/>
-      <div id="boomy-bar-bubble"></div>
+    <!-- HIDDEN — preserve IDs for JS compatibility, no display -->
+    <div style="display:none" aria-hidden="true">
+      <canvas id="organism-canvas"></canvas>
+      <div id="music-lockable"></div>
+      <div id="visuals-lockable"></div>
+      <div id="progress-bar"><div id="progress-fill"></div></div>
+      <span id="time-cur">0:00</span><span id="time-dur">0:00</span>
+      <div id="track-name">—</div>
+      <div id="sync-status"></div>
+      <button id="btn-tip-player"><span id="tip-amount-badge"></span></button>
+      <span id="music-artist">—</span>
+      <div id="zone-list"></div>
+      <div id="zone-chat-section"><div id="chat-messages"></div><input id="chat-input"/></div>
+      <img id="eye-img" alt=""/>
     </div>
 
   </div>
@@ -1176,6 +1192,8 @@ function rafLoop() {
   if (_webAudioPlaying && audio.duration) {
     const pct = (audio.currentTime / audio.duration) * 100;
     document.getElementById('progress-fill').style.width = pct + '%';
+    const npbFill = document.getElementById('npb-fill');
+    if (npbFill) npbFill.style.width = pct + '%';
     document.getElementById('time-cur').textContent = fmt(audio.currentTime);
     document.getElementById('time-dur').textContent = fmt(audio.duration);
   }
@@ -1308,11 +1326,9 @@ function onBoomyBarTap() {
 function toggleGuestList() {
   const section = document.getElementById('guest-list-section');
   if (!section) return;
-  const isHidden = section.style.display === 'none' || getComputedStyle(section).display === 'none';
-  section.style.display = isHidden ? '' : 'none';
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const btn = document.getElementById('fsb-crowd');
-  if (btn) btn.classList.toggle('active', isHidden);
-  if (isHidden) section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (btn) { btn.classList.add('active'); setTimeout(() => btn.classList.remove('active'), 1200); }
 }
 
 function zoomToRally() {
@@ -1332,6 +1348,8 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
   document.getElementById('track-name').textContent = title || 'Live';
   document.getElementById('music-artist').textContent = title || 'Live';
+  const npbTrack = document.getElementById('npb-track');
+  if (npbTrack) npbTrack.textContent = title || 'Live';
 
   // Unmute and show playing state
   _isMuted = false;
@@ -2053,7 +2071,9 @@ function stopEverything() {
   document.getElementById('music-artist').textContent = '—';
   document.getElementById('btn-zone').classList.remove('in-zone'); document.getElementById('btn-zone').textContent='⚡ FIND NEAREST ZONE';
   document.querySelectorAll('.viz-bar').forEach(b => { b.style.animationPlayState='paused'; b.style.opacity='1'; });
-  ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
+  ['music','visuals','fellowship'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
+  document.getElementById('now-playing-bar')?.classList.remove('active');
+  const overlay = document.getElementById('map-zone-overlay'); if(overlay) overlay.classList.remove('visible');
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2422,7 +2442,7 @@ function onZoneBtn() {
     if (audio.src && audio.paused) {
       audio.play().catch(()=>{});
     }
-    document.getElementById('music-lockable')?.scrollIntoView({behavior:'smooth', block:'center'});
+    document.getElementById('fellowship-lockable')?.scrollIntoView({behavior:'smooth', block:'nearest'});
     return;
   }
 
@@ -3368,7 +3388,9 @@ function spawnHeroNotes(){
   setMuteBtn(true);
   const btnZone = document.getElementById('btn-zone');
   if (btnZone){ btnZone.classList.remove('in-zone'); btnZone.textContent='⚡ FIND NEAREST ZONE'; }
-  ['music','visuals'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
+  ['music','visuals','fellowship'].forEach(k => document.getElementById(k+'-lockable')?.classList.add('locked'));
+  document.getElementById('now-playing-bar')?.classList.remove('active');
+  const mapOverlay = document.getElementById('map-zone-overlay'); if(mapOverlay) mapOverlay.classList.remove('visible');
   activeZone = null;
   unsubscribeChatChannel();
 }
@@ -3646,12 +3668,23 @@ function unlockUI(z) {
   const btnZone = document.getElementById('btn-zone');
   if (btnZone){ btnZone.classList.add('in-zone'); btnZone.textContent='✦ YOU ARE IN THE ZONE'; }
 
-  // Unlock the cards — this is the critical step
-  ['music','visuals'].forEach(k => {
+  // Unlock lockable areas
+  ['music','visuals','fellowship'].forEach(k => {
     document.getElementById(k+'-lockable')?.classList.remove('locked');
   });
 
-  // Update UI labels
+  // Zone name overlay on map
+  const overlay = document.getElementById('map-zone-overlay');
+  if (overlay) { overlay.textContent = z.name || ''; overlay.classList.toggle('visible', !!(z.name)); }
+
+  // Now-playing bar
+  const npb = document.getElementById('now-playing-bar');
+  if (npb) npb.classList.add('active');
+  const setEl = (id, val) => { const e = document.getElementById(id); if(e) e.textContent = val; };
+  setEl('npb-zone', z.name || '—');
+  setEl('npb-track', z.track_name || '—');
+
+  // Legacy ID compat
   const setTxt = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
   setTxt('music-artist',  z.track_name || z.name);
   setTxt('stat-present',  Math.floor(Math.random()*40)+8);
