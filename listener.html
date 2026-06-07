@@ -4622,6 +4622,8 @@ function seekWithDuck(newTime) {
   _isDucking = true;
   const safeTime = Math.max(0, Math.min(newTime, (audio.duration || 9999) - 0.1));
   const targetVol = audio.volume || 1;
+  // Safety: if something throws mid-duck, release the flag so sync doesn't die silently
+  const _duckSafety = setTimeout(() => { _isDucking = false; audio.volume = targetVol; }, 5000);
   const duckStart = performance.now();
   (function duckRamp(now) {
     const t = Math.min((now - duckStart) / 1500, 1);
@@ -4637,6 +4639,7 @@ function seekWithDuck(newTime) {
         if (t < 1) { requestAnimationFrame(riseRamp); return; }
         audio.volume = targetVol;
         _isDucking = false;
+        clearTimeout(_duckSafety);
       })(performance.now());
     }, 80);
   })(performance.now());
