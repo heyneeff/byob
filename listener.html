@@ -1693,6 +1693,7 @@ const _BEATBOX_PATTERN = [
 ];
 
 function playBabble() {
+  return; // speech muted
   try {
     if (!window._sfxCtx) window._sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
     const ctx = window._sfxCtx;
