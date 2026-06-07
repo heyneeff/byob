@@ -1264,12 +1264,10 @@ function onBoomyTap(){
     audio.muted = false;
     audio.volume = 0;
     const playPromise = audio.play();
-    audio.volume = 0;
     if(playPromise){
       playPromise.then(()=>{
-        audio.volume = 0;
         _webAudioPlaying = true;
-        fadeAudioIn();
+        fadeAudioIn(3000);
       }).catch(e=>showToast('Play failed: ' + e.message));
     }
   };
@@ -1381,10 +1379,11 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
         navigator.mediaSession.setActionHandler('pause', () => { audio.muted = true; setMuteBtn(true); });
       }
     }, { once: true });
-    audio.volume = 0;
+    const _wasPlaying = _webAudioPlaying;
+    if (!_wasPlaying) audio.volume = 0;
     audio.play().then(() => {
       _webAudioPlaying = true;
-      fadeAudioIn(8000);
+      fadeAudioIn(_wasPlaying ? 800 : 5000);
       if (!orgReady) initOrganism();
     }).catch((e) => {
       console.warn('Play blocked:', e.message);
@@ -1420,19 +1419,19 @@ function seekToSync(startedAt, playAt, playFromS) {
 // ════════════════════════════════════════════════════════════
 // MUTE TOGGLE
 // ════════════════════════════════════════════════════════════
-function fadeAudioIn(durationMs = 6000) {
-  audio.volume = 0;
+function fadeAudioIn(durationMs = 4000) {
   audio.muted = false;
-  const start = performance.now();
-  function tick(now) {
-    const t = Math.min((now - start) / durationMs, 1);
-    // Ease in — cubic curve so it feels gradual not linear
-    const eased = t * t * (3 - 2 * t);
-    audio.volume = eased;
-    if (t < 1) requestAnimationFrame(tick);
-    else audio.volume = 1;
-  }
-  requestAnimationFrame(tick);
+  if (durationMs <= 0) { audio.volume = 1; return; }
+  audio.volume = 0;
+  const STEPS = 20;
+  const interval = Math.max(50, durationMs / STEPS);
+  let step = 0;
+  const timer = setInterval(() => {
+    step++;
+    const t = step / STEPS;
+    audio.volume = t * t * (3 - 2 * t); // smoothstep — works in background tabs
+    if (step >= STEPS) { audio.volume = 1; clearInterval(timer); }
+  }, interval);
 }
 
 function setMuteBtn(muted) {
@@ -2218,17 +2217,24 @@ async function handleOffer(sdp) {
     audio.pause(); audio.src = ''; audio.srcObject = null; audio.load();
     _webAudioPlaying = false;
     document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='running');
-    if (_rtcUserHasTapped) {
+    if (_rtcUserHasTapped || _webAudioPlaying) {
+      // Already unlocked — switch to live immediately
+      _rtcUserHasTapped = true;
       audio.srcObject = stream;
       audio.volume = 0;
-      audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(); }).catch(() => {
-        _pendingStream = stream; audio.srcObject = null; showTapBanner();
+      audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(1500); }).catch(() => {
+        _pendingStream = stream; audio.srcObject = null;
+        boomSay('Tap me — DJ is LIVE 🎛️', 9000, true, 'devious');
+        const wrap = document.getElementById('boom-popup-wrap');
+        if (wrap) wrap.classList.add('tappable');
       });
       showToast('🔴 LIVE');
     } else {
       _pendingStream = stream;
-      showToast('🔴 LIVE ready');
-      showTapBanner();
+      showToast('🔴 LIVE ready — tap Boomy');
+      boomSay('Tap me — DJ is LIVE 🎛️', 9000, true, 'devious');
+      const wrap = document.getElementById('boom-popup-wrap');
+      if (wrap) wrap.classList.add('tappable');
     }
   };
   rtcPeer.onconnectionstatechange = () => {
@@ -3441,15 +3447,14 @@ function startMusicWithFade(){
   if (playPromise) {
     playPromise.then(() => {
       _webAudioPlaying = true;
-      audio.volume = 0;  // belt and suspenders — set again right before fade
       setMuteBtn(false);
-      fadeAudioIn(8000);
+      fadeAudioIn(3000);
     }).catch(e => {
       console.warn('Auto-play blocked:', e.message);
       showToast('Tap anywhere to start music');
       document.body.addEventListener('click', () => {
         audio.volume = 0;
-        audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(8000); });
+        audio.play().then(() => { _webAudioPlaying = true; fadeAudioIn(3000); });
       }, { once: true });
     });
   }
@@ -3619,18 +3624,18 @@ async function activateZone(z) {
   if (window._zoneChannel) { window._zoneChannel.unsubscribe(); }
   window._zoneChannel = db.channel('zone_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
-      zones_cache[zn.id] = zn;
+      // Preserve _lastSeenMsg across cache updates so messages don't replay
+      const prevLastSeenMsg = zones_cache[zn.id]?._lastSeenMsg;
+      zones_cache[zn.id] = { ...zn, _lastSeenMsg: prevLastSeenMsg };
       if (!zn.active) { stopEverything(); showToast('Zone ended 🎤'); return; }
 
-      // DJ announcement — boombox delivers the message
-            // Coordinated resync — all phones seek simultaneously
-            if (zn.resync_at) {
+      // Coordinated resync — all phones seek simultaneously
+      if (zn.resync_at) {
         const waitMs = new Date(zn.resync_at).getTime() - syncedNow();
         if (Math.abs(waitMs) < 10000) {
           const delay = Math.max(0, waitMs);
-
           boomSay('Syncing all speakers…', waitMs, false, 'regular');
-                    setTimeout(() => {
+          setTimeout(() => {
             if (!activeZone || !audio.duration) return;
             const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
             const target = ((elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000) - (_scatterOffsetMs / 1000)) % audio.duration + audio.duration) % audio.duration;
@@ -3640,15 +3645,18 @@ async function activateZone(z) {
         }
       }
 
-      if (zn.last_message && zn.last_message !== zones_cache[zn.id]?._lastSeenMsg) {
+      // DJ message — only show if it changed
+      if (zn.last_message && zn.last_message !== prevLastSeenMsg) {
         zones_cache[zn.id]._lastSeenMsg = zn.last_message;
-        boomSay(`📣 ${zn.last_message}`, 5000, true, 'devious');
+        boomSay(`📣 ${zn.last_message}`, 6000, true, 'devious');
       }
 
       if (zn.current_track_url === 'webrtc-live') {
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
         if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is LIVE 🎛️'); }
       } else if (zn.current_track_url) {
+        // Update activeZone so fastDriftCorrect uses the new playback_started_at
+        activeZone = { ...activeZone, ...zn };
         // Prefer spatial slot from zone_tracks if available
         if (zn.zone_tracks) {
           const spatialSource = { zone_tracks: zn.zone_tracks, zone_lat: zn.lat||z.lat, zone_lng: zn.lng||z.lng, zone_radius_m: zn.radius_m||z.radius_m, playback_started_at: zn.playback_started_at };
@@ -3659,12 +3667,9 @@ async function activateZone(z) {
             showToast('🔊 Slot ' + mySlot);
           } else {
             loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-            showTapBanner();
           }
         } else {
           loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-          showTapBanner();
-          showToast('Track loaded — tap to play 🔊');
         }
       } else {
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
@@ -3765,6 +3770,9 @@ function buildSyncChannel(zoneId) {
       window._boomyTapOverride = () => { _openTipNow(); window._boomyTapOverride = null; };
     }
     boomSay(msg + (url ? ' — Tap me →' : ''), 9000, true, 'devious');
+  })
+  .on('broadcast', { event: 'message' }, ({ payload }) => {
+    if (payload?.text) boomSay(`📣 ${payload.text}`, 7000, true, 'devious');
   })
   .subscribe((status) => {
     if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && activeZone?.id === zoneId) {

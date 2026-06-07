@@ -467,6 +467,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button class="btn-send" onclick="sendMessage()">Send →</button>
       <button class="btn-msg-cancel" onclick="document.getElementById('msg-modal').classList.remove('open')">Cancel</button>
     </div>
+    <button onclick="broadcastTipNudge();document.getElementById('msg-modal').classList.remove('open');" style="width:100%;margin-top:10px;padding:12px;background:transparent;border:2px solid var(--orange);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;letter-spacing:.06em;color:var(--orange);cursor:pointer;">💸 PUSH DONATION LINK → BOOMY</button>
   </div>
 </div>
 
@@ -1112,6 +1113,7 @@ window.addEventListener('DOMContentLoaded', async()=>{
       loadDemoMode();
       measureClockOffset();setInterval(measureClockOffset,60000);
       initZonesGlobalSub();
+      getRTCConfig(); // pre-warm TURN credentials so Go Live is instant
       // Start GPS immediately so userLat/userLng is ready for spatial map
       setTimeout(()=>{
         startGPSTracking();
@@ -1687,7 +1689,7 @@ async function playNext() {
     if (activeZone?.id) {
       const startedAt = new Date(serverNow()).toISOString();
       const playAt = serverNow() + 1500;
-      await db.from('zones').update({
+      const { error: zErr } = await db.from('zones').update({
         current_track_url:   next.url,
         track_name:          next.title,
         playback_started_at: startedAt,
@@ -1695,12 +1697,19 @@ async function playNext() {
         play_from_s:         0,
         active:              true
       }).eq('id', activeZone.id);
-      if (window._djSyncChannel) {
-        setTimeout(() => window._djSyncChannel.send({
-          type: 'broadcast', event: 'hard_sync',
-          payload: { resyncAt: serverNow()+1000, playback_started_at: startedAt, resetOffsets: false, track_url: next.url || next.public_url, track_name: next.title }
-        }), 1600);
+      if (zErr) { showToast('⚠ Zone update failed: ' + zErr.message, true); }
+      else {
+        activeZone = { ...activeZone, current_track_url: next.url, track_name: next.title, playback_started_at: startedAt, play_at: playAt, play_from_s: 0 };
+        showToast('📡 Broadcasting: ' + next.title);
+        if (window._djSyncChannel) {
+          setTimeout(() => window._djSyncChannel.send({
+            type: 'broadcast', event: 'hard_sync',
+            payload: { resyncAt: serverNow()+1000, playback_started_at: startedAt, resetOffsets: false, track_url: next.url || next.public_url, track_name: next.title }
+          }), 1500);
+        }
       }
+    } else {
+      showToast('⚠ No active zone — listeners won\'t hear this');
     }
     return;
   }
@@ -2185,12 +2194,15 @@ function updateMsgSub(){
 async function sendMessage(){
   const text=document.getElementById('msg-text').value.trim();
   if(!text){showToast('Type a message first');return;}
+  if(!activeZone){showToast('No active zone — create a zone first');return;}
   const all=Object.values(liveListeners||{}).filter(l=>!l.isDJ);
   const targets=msgTarget==='all'?all:all.filter(g=>g.status===msgTarget);
-  if(activeZone)await db.from('zones').update({last_message:text,last_message_at:new Date().toISOString()}).eq('id',activeZone.id);
+  // Broadcast via realtime (fast path) AND update DB (catch-up for late joiners)
+  if(window._djSyncChannel){window._djSyncChannel.send({type:'broadcast',event:'message',payload:{text}});}
+  await db.from('zones').update({last_message:text,last_message_at:new Date().toISOString()}).eq('id',activeZone.id);
   document.getElementById('msg-modal').classList.remove('open');
   document.getElementById('msg-text').value='';
-  showToast('✓ Sent to '+targets.length+' guest'+(targets.length!==1?'s':''));
+  showToast('📣 Sent to '+targets.length+' guest'+(targets.length!==1?'s':''));
 }
 
 // ── CROWD MAP ─────────────────────────────────────────────
