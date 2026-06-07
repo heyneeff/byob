@@ -3253,19 +3253,20 @@ async function activateZone(z) {
     await joinWebRTCStream(z.id);
     showToast('Connecting to live stream… 🎛️');
    } else if (z.current_track_url) {
-    // Check if DJ already broadcast a spatial config — use slot track if available
-    if (window._spatialConfig?.zone_tracks) {
-      const mySlot = getSpatialSlot(window._spatialConfig);
-      const slotUrl = window._spatialConfig.zone_tracks[mySlot] || window._spatialConfig.zone_tracks['C'];
+    // Prefer spatial slot routing — try cached broadcast first, then DB zone_tracks
+    const spatialSource = window._spatialConfig?.zone_tracks ? window._spatialConfig
+                        : z.zone_tracks ? { zone_tracks: z.zone_tracks, zone_lat: z.lat, zone_lng: z.lng, zone_radius_m: z.radius_m, playback_started_at: z.playback_started_at }
+                        : null;
+    if (spatialSource) {
+      const mySlot = getSpatialSlot(spatialSource);
+      const slotUrl = spatialSource.zone_tracks[mySlot] || spatialSource.zone_tracks['C'];
       if (slotUrl) {
-        loadTrack(slotUrl, 'Zone ' + mySlot, window._spatialConfig.playback_started_at);
+        loadTrack(slotUrl, 'Zone ' + mySlot, spatialSource.playback_started_at);
         showToast('🔊 Slot ' + mySlot);
-      } else {
-        loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
+        return;
       }
-    } else {
-      loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
     }
+    loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
   }
 
 
@@ -3303,9 +3304,23 @@ async function activateZone(z) {
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
         if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is LIVE 🎛️'); }
       } else if (zn.current_track_url) {
-        loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-        showTapBanner();
-        showToast('Track loaded — tap to play 🔊');
+        // Prefer spatial slot from zone_tracks if available
+        if (zn.zone_tracks) {
+          const spatialSource = { zone_tracks: zn.zone_tracks, zone_lat: zn.lat||z.lat, zone_lng: zn.lng||z.lng, zone_radius_m: zn.radius_m||z.radius_m, playback_started_at: zn.playback_started_at };
+          const mySlot = getSpatialSlot(spatialSource);
+          const slotUrl = zn.zone_tracks[mySlot] || zn.zone_tracks['C'];
+          if (slotUrl) {
+            loadTrack(slotUrl, 'Zone ' + mySlot, zn.playback_started_at, zn.play_at, zn.play_from_s);
+            showToast('🔊 Slot ' + mySlot);
+          } else {
+            loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
+            showTapBanner();
+          }
+        } else {
+          loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
+          showTapBanner();
+          showToast('Track loaded — tap to play 🔊');
+        }
       } else {
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
         if (rtcPeer) { rtcPeer.close(); rtcPeer=null; }
