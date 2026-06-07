@@ -131,13 +131,63 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .screen{padding:12px 14px 80px;}
 
 /* ── MAP ── */
-.map-frame{border:2px solid var(--teal);border-radius:14px;overflow:hidden;height:220px;margin-bottom:8px;}
-#map{width:100%;height:220px;}
+.map-frame{border:2px solid var(--teal);border-radius:14px;overflow:hidden;height:300px;margin-bottom:8px;position:relative;}
+#map{width:100%;height:300px;}
 .leaflet-container{background:#000!important;}
 .leaflet-control-attribution{display:none!important;}
 .leaflet-control-zoom a{background:#111!important;color:#fff!important;border-color:#222!important;border-radius:3px!important;}
 .leaflet-tile-pane{opacity:.82;}
+.rally-tooltip{background:#001a14;border:1px solid var(--teal);border-radius:6px;color:var(--teal);font-size:11px;padding:3px 7px;box-shadow:0 0 8px rgba(0,204,153,.4);font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;white-space:nowrap;}
 .map-label{text-align:center;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);padding:5px 0 10px;}
+
+/* ── FELLOWSHIP SIDEBAR (left of map) ── */
+.fellowship-sidebar{
+  position:absolute;left:8px;top:50%;transform:translateY(-50%);
+  z-index:500;display:flex;flex-direction:column;gap:6px;
+}
+.fsb-btn{
+  width:38px;height:38px;border-radius:10px;border:none;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  background:rgba(0,0,0,.75);backdrop-filter:blur(6px);
+  transition:transform .1s,background .15s;
+  box-shadow:0 2px 8px rgba(0,0,0,.5);
+}
+.fsb-btn:active{transform:scale(.9);}
+.fsb-btn.active{background:rgba(0,204,153,.25);box-shadow:0 0 0 2px var(--teal);}
+.fsb-btn.tip-btn{box-shadow:0 0 0 2px var(--orange);background:rgba(245,126,32,.18);}
+.fsb-btn.rally-btn{box-shadow:0 0 0 2px #a78bfa;background:rgba(167,139,250,.18);animation:rallyPulse 1.2s ease-in-out infinite;}
+@keyframes rallyPulse{0%,100%{box-shadow:0 0 0 2px #a78bfa,0 0 0 4px rgba(167,139,250,0);}50%{box-shadow:0 0 0 2px #a78bfa,0 0 8px 6px rgba(167,139,250,.35);}}
+
+/* ── BOOMY PERSISTENT BAR ── */
+#boomy-bar{
+  position:sticky;bottom:0;left:0;right:0;
+  display:flex;align-items:center;gap:10px;
+  padding:8px 14px 14px;
+  background:linear-gradient(to top,#000 60%,transparent);
+  pointer-events:none;
+  z-index:100;
+  margin-top:auto;
+}
+#boomy-bar.has-msg{pointer-events:auto;}
+#boomy-bar-img{
+  height:52px;width:auto;flex-shrink:0;
+  mix-blend-mode:screen;cursor:pointer;
+  transition:transform .15s;
+  filter:drop-shadow(0 0 8px rgba(245,126,32,.4));
+}
+#boomy-bar-img:active{transform:scale(.92);}
+#boomy-bar-bubble{
+  flex:1;min-height:32px;
+  background:rgba(20,20,20,.9);border:1px solid var(--orange);
+  border-radius:12px;padding:8px 12px;
+  font-size:13px;font-weight:500;color:var(--white);
+  line-height:1.4;opacity:0;transition:opacity .3s;
+  backdrop-filter:blur(8px);
+  cursor:pointer;
+}
+#boomy-bar-bubble.visible{opacity:1;}
+.boomy-bar-mood-teal{border-color:var(--teal)!important;}
+.boomy-bar-mood-red{border-color:var(--red)!important;}
 
 /* ── PARTY INFO BUTTON ── */
 /* ── ZONE BUTTON ─────────────────────────────── */
@@ -677,11 +727,17 @@ audio{display:none;}
   </div>
 
   <div class="screen">
-    <div class="map-frame" style="position:relative;">
+    <div class="map-frame">
       <div id="map"></div>
       <div class="btn-find-me" onclick="centerOnUser()" title="Find me">◎</div>
+      <!-- FELLOWSHIP SIDEBAR — left edge of map -->
+      <div class="fellowship-sidebar" id="fellowship-sidebar">
+        <button class="fsb-btn" id="fsb-crowd" onclick="toggleGuestList()" title="Who's here">👥</button>
+        <button class="fsb-btn" id="fsb-signal" onclick="toggleSignalPicker()" title="Set your signal">📡</button>
+        <button class="fsb-btn tip-btn" id="fsb-tip" onclick="openTip()" title="Support the DJ" style="display:none;">💸</button>
+        <button class="fsb-btn rally-btn" id="fsb-rally" onclick="zoomToRally()" title="Rally point" style="display:none;">🎯</button>
+      </div>
     </div>
-    <div class="map-label">Nearby Activity</div>
 
     <!-- ACTIVE ZONES - right under map -->
     <div class="zones-section" style="margin-top:0;margin-bottom:12px;">
@@ -760,6 +816,12 @@ audio{display:none;}
           onkeydown="if(event.key==='Enter')sendChatMsg()"/>
         <button onclick="sendChatMsg()" style="background:var(--teal);color:#000;border:none;border-radius:8px;padding:10px 14px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:.06em;cursor:pointer;">SEND</button>
       </div>
+    </div>
+
+    <!-- BOOMY PERSISTENT BAR -->
+    <div id="boomy-bar" onclick="onBoomyBarTap()">
+      <img id="boomy-bar-img" alt="Boomy"/>
+      <div id="boomy-bar-bubble"></div>
     </div>
 
   </div>
@@ -856,6 +918,7 @@ const EYE_B64  = "data:image/png;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BS
 document.getElementById('login-logo').src = LOGO_B64;
 document.getElementById('login-boom').src  = BOOM_B64;
 document.getElementById('boom-popup-img').src = BOOM_B64;
+if(document.getElementById('boomy-bar-img')) document.getElementById('boomy-bar-img').src = BOOM_B64;
 document.getElementById('hdr-logo').src    = LOGO_B64;
 document.getElementById('hdr-boom').src    = BOOM_B64;
 document.getElementById('eye-img').src     = EYE_B64;
@@ -1237,6 +1300,27 @@ function onBoomyTap(){
     }, 250);
   }, 200);
 }
+
+function onBoomyBarTap() {
+  onBoomyTap();
+}
+
+function toggleGuestList() {
+  const section = document.getElementById('guest-list-section');
+  if (!section) return;
+  const isHidden = section.style.display === 'none' || getComputedStyle(section).display === 'none';
+  section.style.display = isHidden ? '' : 'none';
+  const btn = document.getElementById('fsb-crowd');
+  if (btn) btn.classList.toggle('active', isHidden);
+  if (isHidden) section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function zoomToRally() {
+  if (!leafletMap || !window._rallyPoint) return;
+  leafletMap.flyTo([window._rallyPoint.lat, window._rallyPoint.lng], 17, { animate: true, duration: 0.8 });
+  boomSay('📍 Rally point!', 2500, false, 'regular');
+}
+
 // ════════════════════════════════════════════════════════════
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
@@ -1414,6 +1498,20 @@ if(wrap){
   requestAnimationFrame(animFrame);
 
   _boomPopupTimer = setTimeout(closeBoomPopup, autoDismissMs + safeText.length * MS_PER_CHAR + 500);
+
+  // Mirror to persistent Boomy bar
+  const barBubble = document.getElementById('boomy-bar-bubble');
+  const boomyBar  = document.getElementById('boomy-bar');
+  if (barBubble && boomyBar) {
+    barBubble.textContent = safeText;
+    barBubble.classList.add('visible');
+    boomyBar.classList.add('has-msg');
+    clearTimeout(window._boomyBarTimer);
+    window._boomyBarTimer = setTimeout(() => {
+      barBubble.classList.remove('visible');
+      boomyBar.classList.remove('has-msg');
+    }, autoDismissMs + safeText.length * MS_PER_CHAR + 800);
+  }
 }
 
 function closeBoomPopup() {
@@ -2464,13 +2562,14 @@ function showPlayerTipBtn() {
   const btn = document.getElementById('btn-tip-player');
   const badge = document.getElementById('tip-amount-badge');
   if (!btn) return;
-  if (_getTipUrl()) {
-    btn.style.display = 'flex';
+  const hasTip = !!_getTipUrl();
+  btn.style.display = hasTip ? 'flex' : 'none';
+  if (hasTip) {
     const amt = _getSuggestedAmount();
     if (badge) { badge.textContent = amt ? '$'+amt+' suggested' : ''; badge.style.display = amt ? 'inline' : 'none'; }
-  } else {
-    btn.style.display = 'none';
   }
+  const fsbTip = document.getElementById('fsb-tip');
+  if (fsbTip) fsbTip.style.display = hasTip ? 'flex' : 'none';
 }
 
 let _tipNudgeFired = false;
@@ -3519,6 +3618,20 @@ async function activateZone(z) {
       loadTrack(trackUrl, label, payload.playback_started_at);
       boomSay('⬡ ' + (mySlot || 'C'), 2000, false, 'regular');
     }, waitMs);
+  })
+  .on('broadcast', { event: 'rally' }, ({ payload }) => {
+    if (!payload?.lat || !payload?.lng) return;
+    window._rallyPoint = { lat: payload.lat, lng: payload.lng, label: payload.label || '' };
+    const rallyBtn = document.getElementById('fsb-rally');
+    if (rallyBtn) rallyBtn.style.display = 'flex';
+    const label = payload.label ? `Rally at ${payload.label}!` : 'Everyone gather up! 🎯';
+    boomSay(label, 6000, true, 'devious');
+    if (leafletMap) {
+      if (window._rallyMarker) window._rallyMarker.remove();
+      window._rallyMarker = L.circleMarker([payload.lat, payload.lng], {
+        radius: 14, color: '#00cc99', fillColor: '#00cc99', fillOpacity: 0.25, weight: 2
+      }).addTo(leafletMap).bindTooltip('🎯 Rally', { permanent: true, direction: 'top', className: 'rally-tooltip' });
+    }
   }).subscribe();
 }
  

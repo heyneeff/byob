@@ -766,6 +766,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button onclick="snapSpeakers()" class="rack-btn" style="width:100%;margin-top:4px;">⚡ SNAP</button>
     </div>
 
+    <div class="sr-section-label" style="color:var(--teal);">RALLY POINT <span style="font-size:7px;color:var(--muted2);font-weight:400;text-transform:none;">— summon the crowd</span></div>
+    <div style="padding:4px 8px 8px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid var(--rim);">
+      <input id="rally-label" type="text" placeholder="Location label (optional)" maxlength="40"
+        style="background:#1a1a1a;border:1px solid var(--rim);border-radius:5px;color:var(--cream);font-family:'DM Mono',monospace;font-size:11px;padding:5px 7px;outline:none;width:100%;box-sizing:border-box;"/>
+      <button onclick="broadcastRally()" class="rack-btn" style="width:100%;color:var(--teal);border-color:var(--teal);">🎯 RALLY</button>
+    </div>
+
   </div>
 
   <!-- BOTTOM HANDLE -->
@@ -1203,6 +1210,18 @@ function snapSpeakers(){
   const resyncAt=serverNow()+1500;
   window._djSyncChannel.send({type:'broadcast',event:'hard_sync',payload:{resyncAt,playback_started_at:window._currentZone?.playback_started_at,resetOffsets:true}});
   showToast('⚡ SNAP in 1.5s…');
+}
+
+function broadcastRally(){
+  if(!window._djSyncChannel){showToast('No active zone');return;}
+  const zone = window._currentZone || activeZone;
+  if(!zone?.lat){showToast('No zone location');return;}
+  const label = document.getElementById('rally-label')?.value?.trim() || '';
+  window._djSyncChannel.send({
+    type:'broadcast', event:'rally',
+    payload:{ lat: zone.lat, lng: zone.lng, label }
+  });
+  showToast('🎯 Rally sent'+(label?' — '+label:''));
 }
 
 // ── DEMO MODE ─────────────────────────────────────────────
