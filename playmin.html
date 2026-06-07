@@ -900,6 +900,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
         <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;letter-spacing:.1em;color:var(--muted);">UP NEXT</span>
         <span id="queue-count" style="background:var(--orange);color:#000;border-radius:8px;padding:1px 6px;font-size:9px;font-weight:900;"></span>
+        <button onclick="playNext()" style="background:var(--orange);color:#000;border:none;padding:2px 10px;font-size:11px;font-weight:900;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;">▶ PLAY</button>
         <button id="btn-queue-loop" onclick="toggleQueueLoop()" style="margin-left:auto;background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">🔁 LOOP</button>
         <button onclick="clearQueue()" style="background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">CLEAR</button>
       </div>
@@ -1563,6 +1564,11 @@ function togglePlay(){
     audio.play().catch(()=>{});
     return;
   }
+  // Nothing loaded yet — kick off the queue if there are tracks waiting
+  if(!audio.src && playlist.length > 0 && queueIdx + 1 < playlist.length){
+    playNext();
+    return;
+  }
   isPlaying=!isPlaying;
   const btn=document.getElementById('btn-play');
   btn.textContent=isPlaying?'⏸':'▶';
@@ -1636,14 +1642,18 @@ function renderQueue() {
   count.textContent = upcoming.length;
   list.innerHTML = upcoming.map((t,i)=>{
     const realIdx = queueIdx+1+i;
-    return `<div draggable="true" data-ridx="${realIdx}" ondragstart="_qDragStart(event,${realIdx})" ondragover="_qDragOver(event)" ondrop="_qDrop(event,${realIdx})" ondragend="_qDragEnd()" style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--rim);cursor:grab;">
+    return `<div draggable="true" data-ridx="${realIdx}" ondragstart="_qDragStart(event,${realIdx})" ondragover="_qDragOver(event)" ondrop="_qDrop(event,${realIdx})" ondragend="_qDragEnd()" style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid var(--rim);">
       <span style="color:var(--muted);font-size:10px;padding:0 2px;cursor:grab;">⠿</span>
       <span style="color:var(--orange);font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;width:16px;">${i+1}</span>
-      <span style="flex:1;font-size:11px;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.title||'—'}</span>
+      <span onclick="jumpToQueue(${realIdx})" style="flex:1;font-size:11px;color:var(--cream);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;padding:4px 0;">${t.title||'—'}</span>
       <button onclick="removeFromQueue(${realIdx})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 4px;">×</button>
     </div>`;
   }).join('');
   savePlaylist();
+}
+async function jumpToQueue(idx){
+  queueIdx = idx - 1; // playNext will increment to idx
+  await playNext();
 }
 function _qDragStart(e, idx){ _queueDragIdx=idx; e.dataTransfer.effectAllowed='move'; e.currentTarget.style.opacity='0.4'; }
 function _qDragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.style.borderTop='2px solid var(--orange)'; }
