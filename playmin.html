@@ -2875,6 +2875,15 @@ function _doFireScene(sceneId){
   renderSceneLauncher();
   _updateWarpStatus();
   broadcastAllZones();
+  // Monitor: play Center slot (or first assigned slot) locally through the DJ audio element
+  const monitorTrack = zoneTracks['C'] || Object.values(zoneTracks)[0];
+  if(monitorTrack?.url && audio.src !== monitorTrack.url){
+    audio.src = monitorTrack.url;
+    audio.loop = true;
+    audio.play().catch(()=>{});
+  } else if(monitorTrack?.url){
+    audio.play().catch(()=>{});
+  }
   showToast('▶ '+s.name);
 }
 let _slPickerCrate = 'all';
