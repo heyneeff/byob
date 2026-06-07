@@ -2058,6 +2058,9 @@ function stopEverything() {
   audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
+  if (window._zoneChannel) { window._zoneChannel.unsubscribe(); window._zoneChannel = null; }
+  if (window._syncChannel) { window._syncChannel.unsubscribe(); window._syncChannel = null; }
+  clearTimeout(_zoneChannelRetryTimer); clearTimeout(_syncChannelRetryTimer);
   _pendingStream = null; _rtcUserHasTapped = false;
   hideTapBanner();
   clearInterval(_syncInterval); clearInterval(_driftInterval); clearInterval(_healthInterval);
@@ -3620,66 +3623,73 @@ async function activateZone(z) {
     }
   }
 
-  // Subscribe to zone updates — unsubscribe first to avoid duplicates
-  if (window._zoneChannel) { window._zoneChannel.unsubscribe(); }
+  buildZoneChannel(z);
+  buildSyncChannel(z.id);
+}
+
+// ── ZONE CHANNEL — postgres changes on zones table; rebuilt on disconnect ────
+let _zoneChannelRetryTimer = null;
+function buildZoneChannel(z) {
+  if (window._zoneChannel) { window._zoneChannel.unsubscribe(); window._zoneChannel = null; }
   window._zoneChannel = db.channel('zone_'+z.id)
     .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:'id=eq.'+z.id},({new:zn})=>{
-      // Preserve _lastSeenMsg across cache updates so messages don't replay
       const prevLastSeenMsg = zones_cache[zn.id]?._lastSeenMsg;
       zones_cache[zn.id] = { ...zn, _lastSeenMsg: prevLastSeenMsg };
       if (!zn.active) { stopEverything(); showToast('Zone ended 🎤'); return; }
 
-      // Coordinated resync — all phones seek simultaneously
+      // Coordinated resync
       if (zn.resync_at) {
         const waitMs = new Date(zn.resync_at).getTime() - syncedNow();
         if (Math.abs(waitMs) < 10000) {
-          const delay = Math.max(0, waitMs);
-          boomSay('Syncing all speakers…', waitMs, false, 'regular');
+          boomSay('Syncing all speakers…', Math.max(0,waitMs), false, 'regular');
           setTimeout(() => {
             if (!activeZone || !audio.duration) return;
             const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
-            const target = ((elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000) - (_scatterOffsetMs / 1000)) % audio.duration + audio.duration) % audio.duration;
-            seekPreservingBT(target);
+            seekPreservingBT(((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration);
             setSyncIndicator('synced', 0);
-          }, delay);
+          }, Math.max(0, waitMs));
         }
       }
 
-      // DJ message — only show if it changed
+      // DJ message — only fire when it actually changes
       if (zn.last_message && zn.last_message !== prevLastSeenMsg) {
         zones_cache[zn.id]._lastSeenMsg = zn.last_message;
         boomSay(`📣 ${zn.last_message}`, 6000, true, 'devious');
       }
 
       if (zn.current_track_url === 'webrtc-live') {
+        activeZone = { ...activeZone, ...zn };
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
+        _webAudioPlaying = false;
         if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is LIVE 🎛️'); }
       } else if (zn.current_track_url) {
-        // Update activeZone so fastDriftCorrect uses the new playback_started_at
-        activeZone = { ...activeZone, ...zn };
-        // Prefer spatial slot from zone_tracks if available
+        activeZone = { ...activeZone, ...zn }; // keep fastDriftCorrect accurate
         if (zn.zone_tracks) {
-          const spatialSource = { zone_tracks: zn.zone_tracks, zone_lat: zn.lat||z.lat, zone_lng: zn.lng||z.lng, zone_radius_m: zn.radius_m||z.radius_m, playback_started_at: zn.playback_started_at };
-          const mySlot = getSpatialSlot(spatialSource);
+          const src = { zone_tracks: zn.zone_tracks, zone_lat: zn.lat||z.lat, zone_lng: zn.lng||z.lng, zone_radius_m: zn.radius_m||z.radius_m, playback_started_at: zn.playback_started_at };
+          const mySlot = getSpatialSlot(src);
           const slotUrl = zn.zone_tracks[mySlot] || zn.zone_tracks['C'];
-          if (slotUrl) {
-            loadTrack(slotUrl, 'Zone ' + mySlot, zn.playback_started_at, zn.play_at, zn.play_from_s);
-            showToast('🔊 Slot ' + mySlot);
-          } else {
-            loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-          }
+          if (slotUrl) { loadTrack(slotUrl, 'Zone '+mySlot, zn.playback_started_at, zn.play_at, zn.play_from_s); showToast('🔊 Slot '+mySlot); }
+          else { loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s); }
         } else {
           loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
         }
       } else {
+        activeZone = { ...activeZone, current_track_url: null };
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
+        _webAudioPlaying = false;
         if (rtcPeer) { rtcPeer.close(); rtcPeer=null; }
         document.getElementById('track-name').textContent='—';
         showToast('Stream ended');
       }
-}).subscribe();
-
-  buildSyncChannel(z.id);
+    })
+    .subscribe((status) => {
+      if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && activeZone?.id === z.id) {
+        clearTimeout(_zoneChannelRetryTimer);
+        _zoneChannelRetryTimer = setTimeout(() => {
+          if (activeZone?.id === z.id) buildZoneChannel(z);
+        }, 3000);
+      }
+    });
 }
 
 // ── SYNC CHANNEL — extracted so it can be rebuilt on reconnect ────────────
@@ -5157,22 +5167,11 @@ function shareHUD() {
   else navigator.clipboard.writeText(full).then(() => showToast('📋 Copied')).catch(() => {});
 }
 
-  // Keep zone subscription alive for DJ sync signals
+  // Watchdog: rebuild _zoneChannel if it went dead (buildZoneChannel auto-retries on error,
+  // but this catches any edge case where the object was nulled without a retry)
 function ensureZoneSubscription() {
   if (!activeZone?.id || window._zoneChannel) return;
-  window._zoneChannel = db.channel('zone_' + activeZone.id)
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zones', filter: 'id=eq.' + activeZone.id }, ({ new: zn }) => {
-      if (zn.resync_at) {
-        const waitMs = new Date(zn.resync_at).getTime() - syncedNow();
-        if (Math.abs(waitMs) < 10000) {
-          setTimeout(() => {
-            if (!audio.duration) return;
-            const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
-            seekPreservingBT(elapsed % audio.duration);
-          }, Math.max(0, waitMs));
-        }
-      }
-    }).subscribe();
+  buildZoneChannel(activeZone);
 }
 setInterval(ensureZoneSubscription, 5000);
 
