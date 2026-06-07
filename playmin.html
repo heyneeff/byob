@@ -1334,7 +1334,7 @@ function initMap(lat,lng){
   leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(leafletMap);
   L.control.zoom({position:'bottomleft'}).addTo(leafletMap);
-  [100,300,600].forEach(ms=>setTimeout(()=>leafletMap.invalidateSize(),ms));
+  [0,100,300,600,1200].forEach(ms=>setTimeout(()=>leafletMap.invalidateSize(),ms));
   // Place user marker if GPS already acquired
   if(userLat && !userMarker){ placeUserMarker(userLat,userLng); leafletMap.setView([userLat,userLng],16); }
 }
@@ -1474,7 +1474,7 @@ async function loadZones(){
   if(!data?.length)return;
   data.forEach(z=>{
     if(zoneCircles[z.id])return;
-    zoneCircles[z.id]=L.circle([z.lat,z.lng],{radius:z.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.06,weight:1.5}).addTo(leafletMap);
+    if(leafletMap) zoneCircles[z.id]=L.circle([z.lat,z.lng],{radius:z.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.06,weight:1.5}).addTo(leafletMap);
     if(!activeZone&&z.host_id===currentUser?.id) restoreZone(z);
   });
 }
@@ -3527,14 +3527,15 @@ function switchPanel(name,btn){
 
   if(name==='setup'){
     if(!leafletMap){
-      // Lazy-init: only create map when panel is actually visible
-      setTimeout(()=>{
+      // Wait two animation frames so the panel is fully painted before Leaflet measures it
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
         const center = (userLat&&userLng) ? [userLat,userLng] : DENVER;
         initMap(center[0],center[1]);
         loadZones();
-      }, 80);
+      }));
     } else {
-      [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
+      [50,200,500,1000].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
+      if(userLat&&leafletMap) leafletMap.setView([userLat,userLng],16);
     }
   }
 
