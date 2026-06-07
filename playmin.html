@@ -2113,7 +2113,7 @@ function startLiveStream(){
 function onTopLiveBtn(){
   const isLive = document.getElementById('btn-go-live')?.classList.contains('active');
   if(isLive){
-    if(confirm('Kill the stream?')) killStream();
+    killStream();
   } else {
     toggleLive();
   }

@@ -2217,10 +2217,11 @@ async function handleOffer(sdp) {
   };
   rtcPeer.ontrack = ({ streams }) => {
     const stream = streams[0];
+    const _wasPlaying = _webAudioPlaying;
     audio.pause(); audio.src = ''; audio.srcObject = null; audio.load();
     _webAudioPlaying = false;
     document.querySelectorAll('.viz-bar').forEach(b => b.style.animationPlayState='running');
-    if (_rtcUserHasTapped || _webAudioPlaying) {
+    if (_rtcUserHasTapped || _wasPlaying) {
       // Already unlocked — switch to live immediately
       _rtcUserHasTapped = true;
       audio.srcObject = stream;
@@ -4673,12 +4674,23 @@ function seekWithDuck(newTime) {
   const targetVol = audio.volume || 1;
   // Safety: if something throws mid-duck, release the flag so sync doesn't die silently
   const _duckSafety = setTimeout(() => { _isDucking = false; audio.volume = targetVol; }, 5000);
-  const duckStart = performance.now();
-  (function duckRamp(now) {
-    const t = Math.min((now - duckStart) / 1500, 1);
-    audio.volume = targetVol * (1 - t * t * (3 - 2 * t));
-    if (t < 1) { requestAnimationFrame(duckRamp); return; }
-    audio.volume = 0;
+  // setInterval (not rAF) — rAF is throttled/paused on locked phone screens, which is
+  // BYOB's primary listening mode (phone as Bluetooth speaker, screen off). An rAF ramp
+  // would freeze mid-duck, leaving audio silent until the 5s safety timer fires, then
+  // immediately re-duck on the next drift cycle — a near-permanent silence loop.
+  const DUCK_MS = 1500, RISE_MS = 1000, STEPS = 20;
+  function ramp(durationMs, from, to, onDone) {
+    const interval = Math.max(50, durationMs / STEPS);
+    let step = 0;
+    const timer = setInterval(() => {
+      step++;
+      const t = Math.min(step / STEPS, 1);
+      const eased = t * t * (3 - 2 * t);
+      audio.volume = from + (to - from) * eased;
+      if (step >= STEPS) { audio.volume = to; clearInterval(timer); onDone(); }
+    }, interval);
+  }
+  ramp(DUCK_MS, targetVol, 0, () => {
     // Recompute the target now, at seek time — the ~1.5s ramp we just ran means
     // the position passed in has gone stale (audio kept playing through it), so
     // seeking to it would reintroduce ~1.5s of fresh drift and the loop never settles.
@@ -4690,17 +4702,12 @@ function seekWithDuck(newTime) {
     safeTime = Math.max(0, Math.min(safeTime, (audio.duration || 9999) - 0.1));
     audio.currentTime = safeTime;
     setTimeout(() => {
-      const riseStart = performance.now();
-      (function riseRamp(now) {
-        const t = Math.min((now - riseStart) / 1000, 1);
-        audio.volume = targetVol * (t * t * (3 - 2 * t));
-        if (t < 1) { requestAnimationFrame(riseRamp); return; }
-        audio.volume = targetVol;
+      ramp(RISE_MS, 0, targetVol, () => {
         _isDucking = false;
         clearTimeout(_duckSafety);
-      })(performance.now());
+      });
     }, 80);
-  })(performance.now());
+  });
 }
 
 function applyDriftCorrection(lagMs) {
