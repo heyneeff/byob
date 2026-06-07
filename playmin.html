@@ -905,7 +905,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
       <span style="font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;letter-spacing:.1em;color:var(--muted);">UP NEXT</span>
       <span id="queue-count" style="background:var(--orange);color:#000;border-radius:8px;padding:1px 6px;font-size:9px;font-weight:900;"></span>
-      <button onclick="clearQueue()" style="margin-left:auto;background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">CLEAR</button>
+      <button id="btn-queue-loop" onclick="toggleQueueLoop()" style="margin-left:auto;background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">🔁 LOOP</button>
+      <button onclick="clearQueue()" style="background:transparent;border:1px solid var(--rim);color:var(--muted);padding:2px 8px;font-size:9px;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;letter-spacing:.08em;">CLEAR</button>
     </div>
     <div id="queue-list"></div>
   </div>
@@ -1592,11 +1593,37 @@ function togglePlay(){
 // ── PLAYLIST QUEUE ────────────────────────────────────────
 let playlist = [];
 let queueIdx  = -1;
+let _queueLoop = false;
 
 function queueTrack(url, title) {
   playlist.push({ url, title });
   renderQueue();
   showToast('+ ' + title);
+}
+
+function queueAll(shuffle=false) {
+  const q = _libFilter.toLowerCase();
+  let tracks = _realTracks.filter(t => {
+    const matchesCrate = _libCrate==='all' || t.type===_libCrate || (!t.type && _libCrate==='songs');
+    const matchesSearch = !q || t.name.toLowerCase().includes(q);
+    return matchesCrate && matchesSearch && t.url;
+  });
+  if (shuffle) tracks = [...tracks].sort(() => Math.random() - 0.5);
+  if (!tracks.length) { showToast('No tracks to queue'); return; }
+  tracks.forEach(t => playlist.push({ url: t.url, title: t.name }));
+  renderQueue();
+  showToast((shuffle ? '🔀 ' : '▶ ') + tracks.length + ' tracks queued');
+}
+
+function toggleQueueLoop() {
+  _queueLoop = !_queueLoop;
+  const btn = document.getElementById('btn-queue-loop');
+  if (btn) {
+    btn.style.background    = _queueLoop ? 'var(--teal)' : 'transparent';
+    btn.style.color         = _queueLoop ? '#000'        : 'var(--muted)';
+    btn.style.borderColor   = _queueLoop ? 'var(--teal)' : 'var(--rim)';
+  }
+  showToast(_queueLoop ? '🔁 Loop on' : 'Loop off');
 }
 
 function clearQueue() {
@@ -1707,7 +1734,12 @@ async function playNext() {
     }
   }
 
-  // Nothing left — stop cleanly
+  // Nothing left — loop or stop
+  if (_queueLoop && playlist.length > 0) {
+    queueIdx = -1;
+    playNext();
+    return;
+  }
   audio.pause();
   audio.currentTime = 0;
   isPlaying = false;
@@ -3777,6 +3809,8 @@ function libHTML(tracks, filter='') {
       <button class="crate ${_libCrate==='stems'?'active':''}" onclick="setCrate('stems',this)">Stems</button>
     </div>
     <input class="lib-search" placeholder="🔍 Search…" oninput="filterLib(this.value)" value="${filter.replace(/"/g,'&quot;')}"/>
+    <button class="lib-upload" onclick="queueAll(false)" title="Add all to queue" style="background:var(--card2);color:var(--teal);border-color:var(--teal);">▶ ALL</button>
+    <button class="lib-upload" onclick="queueAll(true)" title="Shuffle all into queue" style="background:var(--card2);color:var(--teal);border-color:var(--teal);">🔀</button>
     <button class="lib-upload" onclick="document.getElementById('file-input').click()">+ Song</button>
     <button class="lib-upload" onclick="document.getElementById('stem-file-input').click()" style="background:var(--teal);">+ Stem</button>
     </div>`;
