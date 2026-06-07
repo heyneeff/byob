@@ -121,6 +121,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .sl-fire-btn{width:72px;flex-shrink:0;height:22px;background:transparent;border:none;border-right:1px solid rgba(255,255,255,.04);color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.1em;cursor:pointer;transition:all .1s;}
 .sl-fire-btn:hover{background:#1a1200;color:var(--orange);}
 .sl-fire-btn.is-live{color:var(--orange);background:#1a1200;}
+.sl-fire-btn.is-pending{color:#fff;background:#1a0030;animation:pending-pulse .3s ease-in-out infinite alternate;}
+@keyframes pending-pulse{from{opacity:.5}to{opacity:1}}
 
 /* Mode strip */
 .mode-strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:5px 6px;}
@@ -1109,12 +1111,18 @@ window.addEventListener('DOMContentLoaded', async()=>{
     const {data:{session}}=await db.auth.getSession();
     if(session){
       currentUser=session.user;
-      window._mapInited=false;  // will lazy-init on first Setup panel visit
+      window._mapInited=true;  // init map immediately on startup
       document.getElementById('dj-auth').style.display='none';
       document.getElementById('dj-app').style.display='block';
       loadDemoMode();
       measureClockOffset();setInterval(measureClockOffset,60000);
       initZonesGlobalSub();
+      // Start GPS and load zones immediately — no longer gated on Setup panel visit
+      setTimeout(()=>{
+        initMap(DENVER[0],DENVER[1]);
+        loadZones();
+        loadEvents().catch(()=>{});
+      }, 120);
 setTimeout(()=>switchPanel('spatial',document.querySelector('[data-panel="spatial"]')),50);
 
     }
@@ -1215,7 +1223,6 @@ function loadDemoMode(){
     }
     return;
   }
-  if(!activeZone && !userLat){ showToast('Create a zone first'); return; }
   el._mapInited = true;
   const center = activeZone ? [activeZone.lat, activeZone.lng] : [userLat||39.7392, userLng||-104.9903];
   const spMap = L.map(el, {zoomControl:false, attributionControl:false}).setView(center, 17);
@@ -2827,9 +2834,41 @@ function buildTrackBpms() {
 
 // ─────────────────────────────────────────────────────────────
 
+let _pendingSceneId = null;
+let _pendingSceneTimer = null;
+
 function slFireScene(sceneId){
   const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
-  // Load into active zoneTracks
+
+  // Cancel any pending quantized fire
+  if(_pendingSceneTimer){ clearTimeout(_pendingSceneTimer); _pendingSceneTimer=null; _pendingSceneId=null; }
+
+  if(_masterBPM){
+    // Quantize to next beat boundary
+    const beatMs = 60000 / _masterBPM;
+    const now = serverNow();
+    // Phase: how far into the current beat are we?
+    const phase = now % beatMs;
+    const waitMs = phase < 20 ? 0 : beatMs - phase; // snap immediately if within 20ms of beat
+
+    if(waitMs > 30){
+      // Queue it — show pending state
+      _pendingSceneId = sceneId;
+      renderSceneLauncher(); // shows queued indicator
+      _pendingSceneTimer = setTimeout(()=>{
+        _pendingSceneId = null;
+        _pendingSceneTimer = null;
+        _doFireScene(sceneId);
+      }, waitMs);
+      showToast('⏱ On beat in '+Math.round(waitMs)+'ms');
+      return;
+    }
+  }
+  _doFireScene(sceneId);
+}
+
+function _doFireScene(sceneId){
+  const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
   getSlotKeys().forEach(k=>{delete zoneTracks[k];});
   Object.entries(s.tracks||{}).forEach(([slot,t])=>{ if(t?.url) assignTrackToZone(slot,t.url,t.name); });
   _activeSceneId=sceneId;
@@ -2924,7 +2963,8 @@ function renderSceneLauncher(){
 
   const fireCells=_scenes.map(s=>{
     const live=_activeSceneId===s.id;
-    return `<button class="sl-fire-btn${live?' is-live':''}" onclick="slFireScene(${s.id})">${live?'■ LIVE':'▶ FIRE'}</button>`;
+    const pending=_pendingSceneId===s.id;
+    return `<button class="sl-fire-btn${live?' is-live':pending?' is-pending':''}" onclick="slFireScene(${s.id})">${live?'■ LIVE':pending?'● BEAT':'▶ FIRE'}</button>`;
   }).join('');
 
   el.innerHTML=`<div class="sl-grid">
@@ -3467,14 +3507,7 @@ function switchPanel(name,btn){
   window.scrollTo(0,0);
 
   if(name==='setup'){
-    if(!window._mapInited && currentUser){
-      window._mapInited=true;
-      setTimeout(()=>{
-        initMap(DENVER[0],DENVER[1]);
-        loadZones();
-        loadEvents().catch(()=>{});
-      },120);
-    } else if(window.leafletMap){
+    if(window.leafletMap){
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
