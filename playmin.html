@@ -625,7 +625,21 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <div id="mode-body-scatter"></div><div id="mode-body-sweep"></div>
     </div>
 
-    <div class="sr-section-label" style="border-top:none;padding-top:6px;">SPATIAL</div>
+    <!-- MASTER BPM -->
+    <div class="sr-section-label" style="border-top:none;padding-top:6px;color:var(--orange);">MASTER BPM</div>
+    <div style="padding:6px 8px 8px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--rim);">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <input type="number" id="master-bpm" min="40" max="240" placeholder="—"
+          style="width:64px;background:#1a1a1a;border:1px solid var(--rim);border-radius:5px;color:var(--orange);font-size:24px;font-weight:900;font-family:'DM Mono',monospace;padding:3px 5px;text-align:center;outline:none;"
+          oninput="onMasterBpm(this.value)" onclick="event.stopPropagation()"/>
+        <span style="font-size:8px;letter-spacing:.12em;font-family:'Barlow Condensed',sans-serif;color:var(--muted);flex-shrink:0;">BPM</span>
+        <button onclick="tapTempo(event)" style="flex:1;padding:6px 0;background:transparent;border:1px solid var(--orange);border-radius:5px;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;color:var(--orange);cursor:pointer;letter-spacing:.1em;">TAP</button>
+        <button onclick="clearMasterBpm()" style="padding:6px 8px;background:transparent;border:1px solid var(--rim);border-radius:5px;font-family:'Barlow Condensed',sans-serif;font-size:10px;color:var(--muted);cursor:pointer;">OFF</button>
+      </div>
+      <div id="warp-status" style="font-size:8px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;min-height:10px;"></div>
+    </div>
+
+    <div class="sr-section-label">SPATIAL</div>
 
     <!-- SINGLE -->
     <div class="sr-row" id="sr-single">
@@ -980,7 +994,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button class="btn-live-option btn-live-stream" onclick="startLiveStream()">🎙 Live Mic</button>
       <button class="btn-live-option btn-live-upload" onclick="switchPanel('deck',document.querySelector('[data-panel=deck]'))">📚 Use Library</button>
     </div>
-    <input type="file" id="file-input" multiple style="display:none;"/>
+    <input type="file" id="file-input" multiple accept="audio/*" style="display:none;"/>
     <input type="file" id="stem-file-input" multiple accept="audio/*" style="display:none;"/>
     <div class="upload-status-row"><span class="upload-status" id="upload-status"></span></div>
     <div class="device-row" id="device-row" style="display:none;">
@@ -2721,6 +2735,99 @@ function slDropOnClip(ev,sceneId,slot){
   if(!url) return;
   slSetClip(sceneId,slot,url,name);
 }
+// ── MASTER BPM ───────────────────────────────────────────────
+let _masterBPM = null;
+let _tapTimes = [];
+
+function parseBpmFromName(name) {
+  // matches: 128, 128bpm, _128_, 128.0, BPM128 (case-insensitive)
+  const m = name.match(/(?:^|[\s_\-\.])(\d{2,3})(?:bpm)?(?:$|[\s_\-\.])/i)
+           || name.match(/bpm[\s_\-]?(\d{2,3})/i);
+  if (m) {
+    const n = parseInt(m[1]);
+    if (n >= 40 && n <= 240) return n;
+  }
+  return null;
+}
+
+function onMasterBpm(val) {
+  const n = parseFloat(val);
+  if (!isNaN(n) && n >= 40 && n <= 240) {
+    _masterBPM = n;
+    _updateWarpStatus();
+  } else {
+    _masterBPM = null;
+    _updateWarpStatus();
+  }
+}
+
+function tapTempo(e) {
+  if (e) e.stopPropagation();
+  const now = Date.now();
+  _tapTimes = _tapTimes.filter(t => now - t < 3000);
+  _tapTimes.push(now);
+  if (_tapTimes.length < 2) {
+    document.getElementById('warp-status').textContent = 'Tap more…';
+    return;
+  }
+  const intervals = [];
+  for (let i = 1; i < _tapTimes.length; i++) intervals.push(_tapTimes[i] - _tapTimes[i-1]);
+  const avg = intervals.reduce((a,b)=>a+b,0) / intervals.length;
+  const bpm = Math.round(60000 / avg);
+  if (bpm >= 40 && bpm <= 240) {
+    _masterBPM = bpm;
+    const inp = document.getElementById('master-bpm');
+    if (inp) inp.value = bpm;
+    _updateWarpStatus();
+  }
+}
+
+function clearMasterBpm() {
+  _masterBPM = null;
+  _tapTimes = [];
+  const inp = document.getElementById('master-bpm');
+  if (inp) inp.value = '';
+  document.getElementById('warp-status').textContent = 'Warp off';
+  setTimeout(() => {
+    const el = document.getElementById('warp-status');
+    if (el) el.textContent = '';
+  }, 1200);
+}
+
+function _updateWarpStatus() {
+  const el = document.getElementById('warp-status');
+  if (!el) return;
+  if (!_masterBPM) { el.textContent = ''; return; }
+  const pool = Object.values(zoneTracks);
+  const warped = pool.filter(t => {
+    const track = (_realTracks||[]).find(r => r.url === t.url);
+    return track?.bpm && typeof track.bpm === 'number';
+  });
+  if (!pool.length) {
+    el.textContent = `Master: ${_masterBPM} BPM — assign tracks to warp`;
+    return;
+  }
+  el.textContent = `${_masterBPM} BPM — ${warped.length}/${pool.length} slots warped`;
+}
+
+function getTrackBpm(url) {
+  if (!url) return null;
+  const track = (_realTracks||[]).find(t => t.url === url);
+  return (track?.bpm && typeof track.bpm === 'number') ? track.bpm : null;
+}
+
+function buildTrackBpms() {
+  // Returns slot → trackBPM map for all assigned slots that have a known BPM
+  const out = {};
+  Object.entries(zoneTracks).forEach(([slot, t]) => {
+    const bpm = getTrackBpm(t.url);
+    if (bpm) out[slot] = bpm;
+  });
+  return out;
+}
+
+// ─────────────────────────────────────────────────────────────
+
 function slFireScene(sceneId){
   const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
   // Load into active zoneTracks
@@ -2728,6 +2835,7 @@ function slFireScene(sceneId){
   Object.entries(s.tracks||{}).forEach(([slot,t])=>{ if(t?.url) assignTrackToZone(slot,t.url,t.name); });
   _activeSceneId=sceneId;
   renderSceneLauncher();
+  _updateWarpStatus();
   broadcastAllZones();
   showToast('▶ '+s.name);
 }
@@ -2889,7 +2997,7 @@ function addSlot(){
   clip.setAttribute('ondrop',`dropOnZone(event,'${key}')`);
   clip.onclick=()=>selectZoneSlot(key);
   clip.innerHTML=`<div class="slot-clip-color" style="background:${color};">${key}</div><div class="slot-clip-name" id="clip-${key}-name">Slot ${key}</div><div class="slot-clip-acts"><button class="slot-clip-btn play" onclick="playZone(event,'${key}')">▶</button><button class="slot-clip-btn danger" onclick="clearZoneSlot(event,'${key}')">×</button></div>`;
-  document.getElementById('zone-slots')?.insertBefore(clip, document.getElementById('slot-add-row'));
+  document.getElementById('zone-slots')?.appendChild(clip);
   // Add stem panel button
   rebuildStemBtns();
   _updateSlotLbl();
@@ -2951,6 +3059,7 @@ function dropOnZone(event,zone){
 }
 function assignTrackToZone(zone,url,name){
   zoneTracks[zone]={url,name};
+  _updateWarpStatus();
   const slot=document.getElementById('slot-'+zone);
     const nameEl=document.getElementById('slot-'+zone+'-name');
 function tapAssignTrack(id){
@@ -3047,7 +3156,9 @@ async function broadcastAllZones(){
         voices: parseInt(document.getElementById('scatter-voices')?.value||4),
         zone_lat: activeZone.lat,
         zone_lng: activeZone.lng,
-        zone_radius_m: activeZone.radius_m
+        zone_radius_m: activeZone.radius_m,
+        master_bpm: _masterBPM || null,
+        track_bpms: buildTrackBpms()
       }
     });
   }
@@ -3531,7 +3642,7 @@ async function fetchRealTracks() {
         id: 'R'+t.id,
         name: t.title || t.file_path?.split('/').pop() || 'Track',
         artist: currentUser.email?.split('@')[0] || 'You',
-        bpm: '—', key: '—', dur: '—',
+        bpm: parseBpmFromName(t.title || t.file_path?.split('/').pop() || ''), key: '—', dur: '—',
         col: ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'][i%5],
         url: t.public_url,
         type: t.file_path?.startsWith('stems/') ? 'stem' : 'song'

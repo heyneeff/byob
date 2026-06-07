@@ -1230,6 +1230,9 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     audio.removeEventListener('loadedmetadata', onMeta);
     if (!audio.duration) return;
     seekToSync(startedAt, playAt, playFromS);
+    // Apply master BPM warp if DJ has set one
+    const mySlot = window._spatialConfig ? getSpatialSlot(window._spatialConfig) : 'C';
+    applyBpmWarp(mySlot, url);
 
     audio.addEventListener('playing', function onPlaying() {
       audio.removeEventListener('playing', onPlaying);
@@ -3340,13 +3343,19 @@ async function activateZone(z) {
     }, delay);
   })
    .on('broadcast', { event: 'spatial_config' }, ({ payload }) => {
-    // Store spatial config — used for slot assignment
+    // Store spatial config — used for slot assignment and BPM warp
     window._spatialConfig = payload;
+    window._masterBPM = payload.master_bpm || null;
+    window._trackBpms = payload.track_bpms || {};
     const mySlot = getSpatialSlot(payload);
     const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
     if(trackUrl && trackUrl !== audio.src){
       loadTrack(trackUrl, 'Zone '+mySlot, payload.playback_started_at);
       showToast('🔊 Slot '+mySlot+' — '+mySlot);
+    }
+    // Apply BPM warp to currently playing track if still same slot
+    else if(trackUrl && trackUrl === audio.src){
+      applyBpmWarp(mySlot, trackUrl);
     }
   })
   .on('broadcast', { event: 'sweep_start' }, ({ payload }) => {
@@ -4225,10 +4234,11 @@ function applyDriftCorrection(lagMs) {
     return;
   }
   // Small drift = rate correction — completely inaudible at ±3%
-  const rate = lagMs > 0 ? 1.03 : 0.97;
+  const baseRate = _getBpmWarpRate();
+  const rate = lagMs > 0 ? baseRate * 1.03 : baseRate * 0.97;
   audio.playbackRate = rate;
   const correctionMs = Math.abs(lagMs) / 0.03 * 1000;
-  setTimeout(() => { audio.playbackRate = 1.0; }, correctionMs);
+  setTimeout(() => { audio.playbackRate = baseRate; }, correctionMs);
 }
 
 
@@ -4711,6 +4721,39 @@ setInterval(ensureZoneSubscription, 5000);
   // ── SPATIAL CLUSTER ASSIGNMENT ────────────────────────────
 // Deterministic — every listener runs the same algo on the same data
 // Result: self-organizing clusters with no server round-trip
+
+function _getBpmWarpRate() {
+  const masterBpm = window._masterBPM;
+  if (!masterBpm) return 1.0;
+  const config = window._spatialConfig;
+  if (!config) return 1.0;
+  const mySlot = getSpatialSlot(config);
+  const trackBpm = (window._trackBpms || {})[mySlot];
+  if (!trackBpm) return 1.0;
+  return Math.max(0.25, Math.min(4.0, masterBpm / trackBpm));
+}
+
+function applyBpmWarp(slot, url) {
+  const masterBpm = window._masterBPM;
+  if (!masterBpm) { audio.playbackRate = 1.0; return; }
+  // Try slot-specific track BPM first, then scan for matching URL
+  const trackBpms = window._trackBpms || {};
+  let trackBpm = trackBpms[slot];
+  if (!trackBpm) {
+    // Fall back to scanning all slots for a URL match
+    const config = window._spatialConfig;
+    if (config?.zone_tracks) {
+      for (const [s, u] of Object.entries(config.zone_tracks)) {
+        if (u === url && trackBpms[s]) { trackBpm = trackBpms[s]; break; }
+      }
+    }
+  }
+  if (!trackBpm) return; // unknown BPM — don't warp
+  const rate = masterBpm / trackBpm;
+  // Clamp to safe range
+  const clamped = Math.max(0.25, Math.min(4.0, rate));
+  audio.playbackRate = clamped;
+}
 
 function getSpatialSlot(config){
   if(!userLat || !config?.zone_lat) return 'C';
