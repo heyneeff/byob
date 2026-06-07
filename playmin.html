@@ -836,7 +836,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <div class="mx-eq-block" id="mx-eq-block"></div>
       <div class="mx-xf">
         <div class="mx-xf-label">FADER</div>
-        <input type="range" class="xfader" min="0" max="100" value="50"/>
+        <input type="range" class="xfader" id="xfader" min="0" max="100" value="50" oninput="onXfader(this.value)"/>
         <div class="xf-ends"><span style="color:var(--da);">A</span><span style="color:var(--db);">B</span></div>
       </div>
       <button class="mx-sync" onclick="syncBPM()">⟳ SYNC</button>
@@ -889,7 +889,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     </div>
     <div style="display:flex;flex-direction:column;align-items:center;gap:6px;">
       <button class="visuals-card" onclick="openVisuals()"><img class="eye-icon" id="eye-img" alt="Vis"/></button>
-      <div class="volume-row"><span class="vol-label">VOL</span><input type="range" class="vol" id="volume" min="0" max="100" value="80"/></div>
+      <div class="volume-row"><span class="vol-label">VOL</span><input type="range" class="vol" id="volume" min="0" max="100" value="80" oninput="onVolume(this.value)"/></div>
     </div>
   </div>
 
@@ -948,20 +948,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     </div>
     <button class="btn-message" onclick="openMsgModal()" style="margin-top:8px;">Message <img class="lips-icon" id="lips-img" alt="msg"/></button>
     <button onclick="broadcastTipNudge()" style="margin-top:6px;width:100%;padding:10px;background:transparent;border:2px solid var(--orange);border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:15px;font-weight:900;letter-spacing:.06em;color:var(--orange);cursor:pointer;" title="Send a random donation nudge to all listeners via Boomy">💸 TIP NUDGE</button>
-  </div>
-
-  <!-- ZONE CHAT -->
-  <div style="width:100%;margin-top:16px;">
-    <div class="cv-head" style="margin-bottom:8px;">Zone Chat <span id="dj-chat-count" style="font-weight:400;color:var(--muted);font-size:11px;"></span></div>
-    <div id="dj-chat-messages" style="background:var(--surface2);border-radius:10px;padding:10px;max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:10px;min-height:60px;">
-      <div style="font-size:11px;color:var(--muted);">Chat appears when zone is live</div>
-    </div>
-    <div style="display:flex;gap:8px;">
-      <input id="dj-chat-input" type="text" maxlength="120" placeholder="Message the crowd…" autocomplete="off"
-        style="flex:1;background:var(--surface2);border:1px solid var(--rim);border-radius:8px;padding:9px 12px;color:#fff;font-size:14px;font-family:'Roboto',sans-serif;outline:none;"
-        onkeydown="if(event.key==='Enter')djSendChat()"/>
-      <button onclick="djSendChat()" style="background:var(--orange);color:#000;border:none;border-radius:8px;padding:9px 14px;font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:900;letter-spacing:.06em;cursor:pointer;white-space:nowrap;">SEND</button>
-    </div>
   </div>
 
   <div class="crowd-footer"><button class="ff-btn">🫂 Friend Mode — Find Someone Nearby</button></div>
@@ -1480,7 +1466,6 @@ async function confirmZone(){
     document.getElementById('btn-create-zone').classList.add('has-zone');
     startListenerTracking(data.id);
     startDJPresenceBroadcast(data);
-    subscribeDJChat(data.id);
     showToast('Zone "'+name+'" created 📡');
   }catch(err){showToast('Error: '+err.message,true);console.error(err);}
 }
@@ -1564,7 +1549,6 @@ function restoreZone(z){
   }
   startListenerTracking(z.id);
   startDJPresenceBroadcast(z);
-  subscribeDJChat(z.id);
   showToast('Zone "'+z.name+'" restored 📡');
 }
 
@@ -1633,6 +1617,14 @@ function removeFromQueue(i) {
   renderQueue();
 }
 
+function savePlaylist(){try{localStorage.setItem('byob_q',JSON.stringify({playlist,queueIdx}));}catch(e){}}
+function loadPlaylist(){
+  try{
+    const s=JSON.parse(localStorage.getItem('byob_q')||'null');
+    if(s?.playlist?.length){playlist=s.playlist;queueIdx=s.queueIdx??-1;renderQueue();}
+  }catch(e){}
+}
+
 let _queueDragIdx = null;
 function renderQueue() {
   const strip = document.getElementById('queue-strip');
@@ -1651,6 +1643,7 @@ function renderQueue() {
       <button onclick="removeFromQueue(${realIdx})" style="background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0 4px;">×</button>
     </div>`;
   }).join('');
+  savePlaylist();
 }
 function _qDragStart(e, idx){ _queueDragIdx=idx; e.dataTransfer.effectAllowed='move'; e.currentTarget.style.opacity='0.4'; }
 function _qDragOver(e){ e.preventDefault(); e.dataTransfer.dropEffect='move'; e.currentTarget.style.borderTop='2px solid var(--orange)'; }
@@ -2186,63 +2179,6 @@ async function sendMessage(){
   showToast('✓ Sent to '+targets.length+' guest'+(targets.length!==1?'s':''));
 }
 
-// ── DJ ZONE CHAT ──────────────────────────────────────────
-let _djChatChannel = null;
-let _djChatMsgs    = [];
-let _djLastSentMs  = 0;
-
-function subscribeDJChat(zoneId){
-  if(_djChatChannel){ _djChatChannel.unsubscribe(); _djChatChannel=null; }
-  _djChatMsgs=[];
-  _djChatChannel=db.channel('chat_'+zoneId)
-    .on('broadcast',{event:'msg'},({payload})=>{
-      _djChatMsgs.push(payload);
-      if(_djChatMsgs.length>60) _djChatMsgs.shift();
-      renderDJChat();
-    })
-    .subscribe();
-}
-
-function unsubscribeDJChat(){
-  if(_djChatChannel){ _djChatChannel.unsubscribe(); _djChatChannel=null; }
-  _djChatMsgs=[];
-  const el=document.getElementById('dj-chat-messages');
-  if(el) el.innerHTML='<div style="font-size:11px;color:var(--muted);">Chat appears when zone is live</div>';
-}
-
-function djSendChat(){
-  const inp=document.getElementById('dj-chat-input');
-  const text=(inp?.value||'').trim();
-  if(!text||!_djChatChannel||!activeZone){showToast('No active zone');return;}
-  const now=Date.now();
-  if(now-_djLastSentMs<1200){showToast('Slow down');return;}
-  _djLastSentMs=now;
-  const name=currentUser?.user_metadata?.display_name||currentUser?.email?.split('@')[0]||'DJ';
-  _djChatChannel.send({type:'broadcast',event:'msg',payload:{id:currentUser.id,name,emoji:'🎛️',text,ts:now,isDJ:true}});
-  inp.value='';
-}
-
-function renderDJChat(){
-  const el=document.getElementById('dj-chat-messages');
-  const cEl=document.getElementById('dj-chat-count');
-  if(!el) return;
-  if(cEl) cEl.textContent=_djChatMsgs.length?`· ${_djChatMsgs.length} msgs`:'';
-  const recent=_djChatMsgs.slice(-40);
-  el.innerHTML=recent.map(m=>{
-    const isSelf=m.id===currentUser?.id;
-    const isDJ=!!m.isDJ;
-    const color=isSelf?'var(--orange)':isDJ?'var(--orange)':'var(--teal)';
-    const label=isSelf?'You (DJ)':(isDJ?`🎛️ ${m.name}`:`${m.emoji||'🎧'} ${m.name||'Guest'}`);
-    return `<div style="border-left:2px solid ${color};padding:5px 8px;border-radius:4px;background:rgba(255,255,255,.04);">
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:12px;color:${color};font-weight:700;letter-spacing:.04em;">${label}</div>
-      <div style="font-size:13px;color:#fff;margin-top:1px;word-break:break-word;">${djEscHtml(m.text)}</div>
-    </div>`;
-  }).join('');
-  el.scrollTop=el.scrollHeight;
-}
-
-function djEscHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-
 // ── CROWD MAP ─────────────────────────────────────────────
 let _crowdMap = null;
 let _crowdMarkers = {};
@@ -2448,7 +2384,6 @@ async function killStream(){
     await db.from('zones').update({active:false,current_track_url:null,track_name:null,playback_started_at:null}).eq('id',activeZone.id);
     if(zoneCircles[activeZone.id]){zoneCircles[activeZone.id].remove();delete zoneCircles[activeZone.id];}
     if(presenceChannel){presenceChannel.unsubscribe();presenceChannel=null;}
-    unsubscribeDJChat();
     activeZone=null;
   }
   document.getElementById('btn-create-zone').textContent='Create Zone';
@@ -3647,10 +3582,6 @@ function dropDeck(ev,d){
   ev.preventDefault();
   const id=ev.dataTransfer.getData('track-id')||dragging;if(id)loadDeck(d,id);
 }
-function toggleDeck(d){
-  if(d==='a'){deckA.playing=!deckA.playing;document.getElementById('da-play').textContent=deckA.playing?'⏸ PAUSE':'▶ PLAY';}
-  else{deckB.playing=!deckB.playing;document.getElementById('db-play').textContent=deckB.playing?'⏸ PAUSE':'▶ PLAY';}
-}
 function syncBPM(){
   if(!deckA.track||!deckB.track)return;
   deckB.bpm=deckA.bpm;document.getElementById('db-bpm').textContent=deckA.bpm;
@@ -3669,7 +3600,8 @@ function loadDeck(d,id){
     document.getElementById('btn-play').textContent='⏸';
     document.getElementById('btn-play').classList.add('playing');
     if(t.url){
-      audio.src=t.url;audio.loop=false;audio.play().catch(()=>{});isPlaying=true; playlist=[{url:t.url,title:t.name}];queueIdx=0;
+      ensureDeckGraph('a');
+      audio.src=t.url;audio.loop=false;audio.play().catch(()=>{});isPlaying=true; playlist=[{url:t.url,title:t.name}];queueIdx=0;savePlaylist();
       window._lastPublicUrl=t.url;
       // Auto-broadcast to listeners if zone is active
       if(activeZone){
@@ -3700,19 +3632,8 @@ function loadDeck(d,id){
     document.getElementById('db-bpm').textContent=t.bpm;
     document.getElementById('db-play').textContent='⏸ PAUSE';
     if(t.url){
-      audio.src=t.url; audio.loop=false; audio.play().catch(()=>{}); isPlaying=true;
-      window._lastPublicUrl=t.url;
-      document.getElementById('track-name').textContent=t.name;
-      document.getElementById('btn-play').textContent='⏸';
-      document.getElementById('btn-play').classList.add('playing');
-      if(activeZone){
-        const startedAt=new Date(serverNow()).toISOString();
-        const playAt=serverNow()+1500;
-        db.from('zones').update({current_track_url:t.url,track_name:t.name,playback_started_at:startedAt,play_at:playAt,play_from_s:0,active:true}).eq('id',activeZone.id).then(()=>{
-          if(window._djSyncChannel) setTimeout(()=>window._djSyncChannel.send({type:'broadcast',event:'hard_sync',payload:{resyncAt:serverNow()+1000,playback_started_at:startedAt,resetOffsets:false,track_url:t.url,track_name:t.name}}),1600);
-          showToast('📡 Broadcasting: '+t.name);
-        });
-      }
+      ensureDeckGraph('b');
+      audioB.src=t.url; audioB.loop=false; audioB.play().catch(()=>{});
     }
   }
   buildLibs();
@@ -4009,9 +3930,40 @@ document.getElementById('stem-file-input').addEventListener('change', async (e) 
 });
 
 // Initial load — deferred so currentUser is set
-setTimeout(()=>{ buildLibs(); initSpatialResize(); _slLoad(); renderSceneLauncher(); }, 800);
+setTimeout(()=>{ buildLibs(); initSpatialResize(); _slLoad(); renderSceneLauncher(); loadPlaylist(); }, 800);
 
 // Mixer EQ knobs
+// ── WEB AUDIO DECK GRAPH ─────────────────────────────────
+let _deckCtx = null;
+const _dkGraph = {};
+
+function ensureDeckGraph(d) {
+  if (_dkGraph[d]) { if(_deckCtx?.state==='suspended')_deckCtx.resume(); return _dkGraph[d]; }
+  if (!_deckCtx) _deckCtx = new AudioContext();
+  if (_deckCtx.state === 'suspended') _deckCtx.resume();
+  const au  = deckAudio(d);
+  const src = _deckCtx.createMediaElementSource(au);
+  const hi  = _deckCtx.createBiquadFilter(); hi.type='highshelf'; hi.frequency.value=8000;
+  const mid = _deckCtx.createBiquadFilter(); mid.type='peaking';  mid.frequency.value=1000; mid.Q.value=1;
+  const lo  = _deckCtx.createBiquadFilter(); lo.type='lowshelf';  lo.frequency.value=200;
+  const gain = _deckCtx.createGain();
+  src.connect(hi); hi.connect(mid); mid.connect(lo); lo.connect(gain); gain.connect(_deckCtx.destination);
+  au.volume = 1;
+  _dkGraph[d] = { src, hi, mid, lo, gain };
+  _applyDeckEQ(d);
+  _applyDeckGains();
+  return _dkGraph[d];
+}
+
+function _applyDeckEQ(d) {
+  const n = _dkGraph[d]; if (!n) return;
+  const toDb = id => { const v = mxVals[id] ?? 75; return (v - 75) / 75 * 12; };
+  n.hi.gain.value  = toDb(`mx-${d}-HI`);
+  n.mid.gain.value = toDb(`mx-${d}-MID`);
+  n.lo.gain.value  = toDb(`mx-${d}-LOW`);
+}
+
+// ─────────────────────────────────────────────────────────
 const MX_BANDS=['HI','MID','LOW'];
 const mxVals={};
 function buildMixer(){
@@ -4029,7 +3981,7 @@ function buildMixer(){
       drawMxKnob(id,v,col);
       const cv=document.getElementById(id);if(!cv)return;
       let sy=0,sv=0;
-      const move=cy2=>{v=Math.max(0,Math.min(100,sv+(sy-cy2)/1.5));mxVals[id]=v;drawMxKnob(id,v,col);};
+      const move=cy2=>{v=Math.max(0,Math.min(100,sv+(sy-cy2)/1.5));mxVals[id]=v;drawMxKnob(id,v,col);_applyDeckEQ(dk);};
       cv.addEventListener('mousedown',e=>{sy=e.clientY;sv=v;const mm=e2=>move(e2.clientY);const mu=()=>{window.removeEventListener('mousemove',mm);window.removeEventListener('mouseup',mu);};window.addEventListener('mousemove',mm);window.addEventListener('mouseup',mu);e.preventDefault();});
       cv.addEventListener('touchstart',e=>{e.preventDefault();sy=e.touches[0].clientY;sv=v;},{passive:false});
       cv.addEventListener('touchmove',e=>{e.preventDefault();move(e.touches[0].clientY);},{passive:false});
@@ -4073,6 +4025,7 @@ function toggleDeck(d){
   if(!dk.track){showToast('Load a track to Deck '+d.toUpperCase());return;}
   dk.playing=!dk.playing;
   if(dk.playing){
+    ensureDeckGraph(d);
     au.play().catch(()=>{});
     if(btn){btn.textContent='⏸ PAUSE';btn.classList.add('on');}
   } else {
@@ -4150,18 +4103,15 @@ function onPitch(d,v){
   if(dk.track)dk.bpm=Math.round((dk.track.bpm||124)*rate);
 }
 
-function onXfader(v){
-  const pos=parseFloat(v)/100;
-  const masterVol=(document.getElementById('volume')?.value||80)/100;
-  audio.volume=Math.min(1,(1-pos)*2)*masterVol;
-  audioB.volume=Math.min(1,pos*2)*masterVol;
-}
+function onXfader(v){ _applyDeckGains(); }
+function onVolume(v){ _applyDeckGains(); }
 
-function onVolume(v){
-  const pos=(document.getElementById('xfader')?.value||50)/100;
-  const vol=parseFloat(v)/100;
-  audio.volume=Math.min(1,(1-pos)*2)*vol;
-  audioB.volume=Math.min(1,pos*2)*vol;
+function _applyDeckGains(){
+  const pos=parseFloat(document.getElementById('xfader')?.value||50)/100;
+  const vol=parseFloat(document.getElementById('volume')?.value||80)/100;
+  const gA=Math.min(1,(1-pos)*2)*vol, gB=Math.min(1,pos*2)*vol;
+  if(_dkGraph.a) _dkGraph.a.gain.gain.value=gA; else audio.volume=gA;
+  if(_dkGraph.b) _dkGraph.b.gain.gain.value=gB; else audioB.volume=gB;
 }
 
 function syncBPM(){
