@@ -1120,9 +1120,9 @@ window.addEventListener('DOMContentLoaded', async()=>{
       loadDemoMode();
       measureClockOffset();setInterval(measureClockOffset,60000);
       initZonesGlobalSub();
-      // Start GPS and load zones immediately — no longer gated on Setup panel visit
+      // Start GPS immediately so userLat/userLng is ready for spatial map
       setTimeout(()=>{
-        initMap(DENVER[0],DENVER[1]);
+        startGPSTracking();
         loadZones();
         loadEvents().catch(()=>{});
       }, 120);
@@ -1314,26 +1314,29 @@ function renderSpatialDots(spMap){
   });
 }
 
+function startGPSTracking(){
+  if(window._gpsWatchId) return; // already running
+  window._gpsWatchId = navigator.geolocation.watchPosition(pos=>{
+    const acc = pos.coords.accuracy;
+    userLat=pos.coords.latitude; userLng=pos.coords.longitude;
+    if(leafletMap){
+      if(!userMarker){ placeUserMarker(userLat,userLng); leafletMap.setView([userLat,userLng],16); }
+      else userMarker.setLatLng([userLat,userLng]);
+      if(userMarker._accCircle) userMarker._accCircle.setLatLng([userLat,userLng]).setRadius(acc);
+      else userMarker._accCircle = L.circle([userLat,userLng],{radius:acc,color:'#f57e20',fillOpacity:0,weight:1,opacity:.35,dashArray:'4 4'}).addTo(leafletMap);
+      updateMapHint(userLat,userLng);
+    }
+  },()=>{},{enableHighAccuracy:true,maximumAge:0,timeout:30000});
+}
+
 function initMap(lat,lng){
+  if(leafletMap) return; // already created
   leafletMap=L.map('map',{zoomControl:false,attributionControl:false,preferCanvas:true}).setView([lat,lng],13);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{subdomains:'abcd',maxZoom:19}).addTo(leafletMap);
   L.control.zoom({position:'bottomleft'}).addTo(leafletMap);
   [100,300,600].forEach(ms=>setTimeout(()=>leafletMap.invalidateSize(),ms));
-
-  navigator.geolocation.watchPosition(pos=>{
-    const acc = pos.coords.accuracy; // meters — network fix ~1000m, GPS fix <50m
-    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
-    if(!userMarker){
-      placeUserMarker(userLat,userLng);
-      leafletMap.setView([userLat,userLng],16);
-    } else {
-      userMarker.setLatLng([userLat,userLng]);
-    }
-    // show accuracy ring so DJ can see when GPS has locked
-    if(userMarker._accCircle) userMarker._accCircle.setLatLng([userLat,userLng]).setRadius(acc);
-    else userMarker._accCircle = L.circle([userLat,userLng],{radius:acc,color:'#f57e20',fillOpacity:0,weight:1,opacity:.35,dashArray:'4 4'}).addTo(leafletMap);
-    updateMapHint(userLat,userLng);
-  },()=>{updateMapHint(lat,lng);},{enableHighAccuracy:true,maximumAge:0,timeout:30000});
+  // Place user marker if GPS already acquired
+  if(userLat && !userMarker){ placeUserMarker(userLat,userLng); leafletMap.setView([userLat,userLng],16); }
 }
 function placeUserMarker(lat,lng){
   if(userMarker)userMarker.remove();
@@ -3523,7 +3526,14 @@ function switchPanel(name,btn){
   window.scrollTo(0,0);
 
   if(name==='setup'){
-    if(window.leafletMap){
+    if(!leafletMap){
+      // Lazy-init: only create map when panel is actually visible
+      setTimeout(()=>{
+        const center = (userLat&&userLng) ? [userLat,userLng] : DENVER;
+        initMap(center[0],center[1]);
+        loadZones();
+      }, 80);
+    } else {
       [100,400,800].forEach(d=>setTimeout(()=>leafletMap.invalidateSize(),d));
     }
   }
