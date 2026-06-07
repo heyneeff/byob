@@ -1796,14 +1796,25 @@ async function getRTCConfig(){
 let peerConnections={};
 let signalingChannel=null;
 let localStream=null;
-async function startWebRTCBroadcast(stream){
-  localStream=stream;
-  if(!activeZone)return;
-  signalingChannel=db.channel('webrtc_'+activeZone.id)
+let _signalingRetryTimer=null;
+function buildSignalingChannel(zoneId){
+  if(signalingChannel){signalingChannel.unsubscribe();signalingChannel=null;}
+  signalingChannel=db.channel('webrtc_'+zoneId)
     .on('broadcast',{event:'listener-joined'},async({payload})=>{await createOfferFor(payload.listenerId);})
     .on('broadcast',{event:'answer'},async({payload})=>{const pc=peerConnections[payload.from];if(pc){await pc.setRemoteDescription({type:'answer',sdp:payload.sdp});}})
     .on('broadcast',{event:'ice-dj'},async({payload})=>{const pc=peerConnections[payload.from];if(pc&&payload.candidate){await pc.addIceCandidate(payload.candidate).catch(()=>{});}})
-    .subscribe(status=>{if(status==='SUBSCRIBED')showToast('WebRTC signaling ready 📡');});
+    .subscribe(status=>{
+      if(status==='SUBSCRIBED'){showToast('WebRTC signaling ready 📡');}
+      else if(status==='CHANNEL_ERROR'||status==='CLOSED'){
+        clearTimeout(_signalingRetryTimer);
+        _signalingRetryTimer=setTimeout(()=>{if(localStream&&activeZone)buildSignalingChannel(activeZone.id);},3000);
+      }
+    });
+}
+async function startWebRTCBroadcast(stream){
+  localStream=stream;
+  if(!activeZone)return;
+  buildSignalingChannel(activeZone.id);
 }
 function patchSdpForMusic(sdp){
   // Force stereo Opus at 128kbps — patches the fmtp line for the Opus payload type
@@ -1833,13 +1844,14 @@ async function createOfferFor(listenerId){
       const sender=pc.getSenders().find(s=>s.track?.kind==='audio');
       if(sender){const p=sender.getParameters();if(p.encodings?.length){p.encodings[0].maxBitrate=128000;sender.setParameters(p).catch(()=>{});}}
     }
-    if(pc.connectionState==='failed'||pc.connectionState==='disconnected'){pc.close();delete peerConnections[listenerId];}
+    if(pc.connectionState==='failed'){pc.close();delete peerConnections[listenerId];}
   };
   const offer=await pc.createOffer({offerToReceiveAudio:false});
   await pc.setLocalDescription({type:'offer',sdp:patchSdpForMusic(offer.sdp)});
   signalingChannel.send({type:'broadcast',event:'offer',payload:{to:listenerId,sdp:pc.localDescription.sdp}});
 }
 function stopWebRTCBroadcast(){
+  clearTimeout(_signalingRetryTimer);
   Object.values(peerConnections).forEach(pc=>pc.close());
   peerConnections={};
   if(signalingChannel){signalingChannel.unsubscribe();signalingChannel=null;}

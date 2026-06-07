@@ -2184,7 +2184,14 @@ async function joinWebRTCStream(zoneId) {
       if (rtcPeer && payload.candidate) await rtcPeer.addIceCandidate(payload.candidate).catch(()=>{});
     })
     .subscribe(status => {
-      if (status === 'SUBSCRIBED') rtcChannel.send({ type:'broadcast', event:'listener-joined', payload:{ listenerId } });
+      if (status === 'SUBSCRIBED') {
+        rtcChannel.send({ type:'broadcast', event:'listener-joined', payload:{ listenerId } });
+      } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        clearTimeout(window._rtcChannelRetryTimer);
+        window._rtcChannelRetryTimer = setTimeout(() => {
+          if (activeZone?.current_track_url === 'webrtc-live') joinWebRTCStream(activeZone.id);
+        }, 3000);
+      }
     });
 }
 
@@ -2210,7 +2217,22 @@ async function handleOffer(sdp) {
     showTapBanner();
   };
   rtcPeer.onconnectionstatechange = () => {
-    if (rtcPeer.connectionState === 'failed') {
+    const state = rtcPeer?.connectionState;
+    if (state === 'disconnected') {
+      clearTimeout(window._rtcDisconnectTimer);
+      window._rtcDisconnectTimer = setTimeout(() => {
+        if (rtcPeer && rtcPeer.connectionState !== 'connected') {
+          rtcPeer.close(); rtcPeer = null; _pendingStream = null;
+          showToast('🔄 Reconnecting live stream…');
+          if (rtcChannel && activeZone?.current_track_url === 'webrtc-live') {
+            rtcChannel.send({ type:'broadcast', event:'listener-joined', payload:{ listenerId } });
+          }
+        }
+      }, 4000);
+    } else if (state === 'connected') {
+      clearTimeout(window._rtcDisconnectTimer);
+    } else if (state === 'failed') {
+      clearTimeout(window._rtcDisconnectTimer);
       rtcPeer.close(); rtcPeer = null; _pendingStream = null;
       showToast('🔄 Reconnecting live stream…');
       setTimeout(() => {
