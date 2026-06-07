@@ -796,6 +796,10 @@ audio{display:none;}
       <div id="boomy-bar-bubble"></div>
     </div>
 
+    <button id="btn-donate" onclick="openDonation()" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;margin:12px 0 4px;padding:16px;background:var(--orange);border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:#000;cursor:pointer;box-shadow:4px 4px 0 rgba(0,0,0,.4);transition:transform .1s,box-shadow .1s;" onmousedown="this.style.transform='translate(2px,2px)';this.style.boxShadow='2px 2px 0 rgba(0,0,0,.4)'" onmouseup="this.style.transform='';this.style.boxShadow='4px 4px 0 rgba(0,0,0,.4)'" ontouchstart="this.style.transform='translate(2px,2px)';this.style.boxShadow='2px 2px 0 rgba(0,0,0,.4)'" ontouchend="this.style.transform='';this.style.boxShadow='4px 4px 0 rgba(0,0,0,.4)'">
+      💸 Make A Donation
+    </button>
+
     <!-- WHO'S HERE — fellowship / people present -->
     <div id="guest-list-section">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -2664,6 +2668,15 @@ function openTip() {
   const url = _getTipUrl();
   if (url) { window.open(url, '_blank'); return; }
   boomSay('Ask the DJ for their tip link! 💸', 3500, false, 'regular');
+}
+
+function openDonation() {
+  const url = _getTipUrl();
+  const amt = _getSuggestedAmount() || '25';
+  if (url) {
+    window._boomyTapOverride = () => { window.open(url, '_blank'); window._boomyTapOverride = null; };
+  }
+  boomSay(`Having fun! This is a pay what you can event, we suggest $${amt} 💸 Tap me →`, 9000, true, 'devious');
 }
 
 function showPlayerTipBtn() {
