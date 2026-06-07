@@ -1759,6 +1759,7 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
     if(upErr)throw upErr;
     const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
     await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
+    _realTracks=[]; buildLibs('',true);
     if(activeZone){
       const bufferMs=2000;
       const playAt=serverNow()+bufferMs;
@@ -3735,19 +3736,32 @@ async function fetchRealTracks() {
       .select('id,title,public_url,file_path,created_at')
       .order('created_at', { ascending: false })
       .limit(200);
-    if (data?.length) {
-      return data.map((t,i) => ({
-        id: 'R'+t.id,
-        name: t.title || t.file_path?.split('/').pop() || 'Track',
-        artist: currentUser.email?.split('@')[0] || 'You',
-        bpm: parseBpmFromName(t.title || t.file_path?.split('/').pop() || ''), key: '—', dur: '—',
-        col: ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'][i%5],
-        url: t.public_url,
-        type: t.file_path?.startsWith('stems/') ? 'stem' : 'song'
-      }));
-    }
+    return (data || []).map((t,i) => ({
+      id: 'R'+t.id,
+      dbId: t.id,
+      filePath: t.file_path,
+      name: t.title || t.file_path?.split('/').pop() || 'Track',
+      artist: currentUser.email?.split('@')[0] || 'You',
+      bpm: parseBpmFromName(t.title || t.file_path?.split('/').pop() || ''), key: '—', dur: '—',
+      col: ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'][i%5],
+      url: t.public_url,
+      type: t.file_path?.startsWith('stems/') ? 'stem' : 'song'
+    }));
   } catch(e) { console.warn('Library fetch:', e.message); }
   return [];
+}
+
+async function deleteTrack(id) {
+  const t = _realTracks.find(r => r.id === id);
+  if (!t?.dbId) return;
+  if (!confirm(`Delete "${t.name}"?`)) return;
+  try {
+    await db.from('tracks').delete().eq('id', t.dbId);
+    if (t.filePath) await db.storage.from('boombox').remove([t.filePath]);
+    _realTracks = _realTracks.filter(r => r.id !== id);
+    buildLibs(_libFilter);
+    showToast('Deleted: ' + t.name);
+  } catch(err) { showToast('Delete failed: ' + err.message); }
 }
 
 function libHTML(tracks, filter='') {
@@ -3788,15 +3802,15 @@ function libHTML(tracks, filter='') {
           <button class="tr-btn b" onclick="loadDeck('b','${t.id}')" title="Load to Deck B">B</button>
           <button class="tr-btn" onclick="quickSlot('${t.id}')" title="Add to queue" style="background:var(--card2);color:var(--teal);border-color:var(--teal);">+</button>
           <button class="tr-btn" onclick="showSlotPickerFor('${t.id}',event)" title="Assign to spatial slot" style="background:var(--card2);color:var(--orange);border-color:var(--orange);">→</button>
+          <button class="tr-btn" onclick="deleteTrack('${t.id}')" title="Delete track" style="background:var(--card2);color:var(--red);border-color:var(--red);">×</button>
         </div>
       </div>`).join('')}
     </div>`;
 }
 
-async function buildLibs(filter='') {
-  if (!_realTracks.length) {
-    const real = await fetchRealTracks();
-    _realTracks = real.length ? real : TRACKS;
+async function buildLibs(filter='', forceRefresh=false) {
+  if (!_realTracks.length || forceRefresh) {
+    _realTracks = await fetchRealTracks();
   }
   const html = libHTML(_realTracks, filter);
   const dl = document.getElementById('deck-lib'); if(dl) dl.innerHTML = html;
@@ -3931,13 +3945,6 @@ function crateActive(el){
   el.classList.add('active');
 }
 
-// Refresh library when a track is uploaded
-const _origFileInput = document.getElementById('file-input');
-if(_origFileInput){
-  _origFileInput.addEventListener('change', ()=>{
-    setTimeout(()=>{ _realTracks=[]; buildLibs(); }, 3000);
-  });
-}
 
 function openUploadPicker(){
   document.getElementById('upload-picker')?.remove();
@@ -3985,8 +3992,7 @@ document.getElementById('stem-file-input').addEventListener('change', async (e) 
   }
   if (done) {
     showToast('✓ ' + done + ' stem' + (done>1?'s':'') + ' uploaded');
-    _realTracks = [];
-    setTimeout(() => buildLibs(), 800);
+    buildLibs('', true);
   }
   e.target.value = '';
 });
