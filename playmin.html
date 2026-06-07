@@ -3600,7 +3600,6 @@ function loadDeck(d,id){
     document.getElementById('btn-play').textContent='⏸';
     document.getElementById('btn-play').classList.add('playing');
     if(t.url){
-      ensureDeckGraph('a');
       audio.src=t.url;audio.loop=false;audio.play().catch(()=>{});isPlaying=true; playlist=[{url:t.url,title:t.name}];queueIdx=0;savePlaylist();
       window._lastPublicUrl=t.url;
       // Auto-broadcast to listeners if zone is active
@@ -3632,7 +3631,6 @@ function loadDeck(d,id){
     document.getElementById('db-bpm').textContent=t.bpm;
     document.getElementById('db-play').textContent='⏸ PAUSE';
     if(t.url){
-      ensureDeckGraph('b');
       audioB.src=t.url; audioB.loop=false; audioB.play().catch(()=>{});
     }
   }
@@ -3956,6 +3954,7 @@ function ensureDeckGraph(d) {
 }
 
 function _applyDeckEQ(d) {
+  if (!_dkGraph[d]) ensureDeckGraph(d); // lazy-init on first knob touch (user gesture)
   const n = _dkGraph[d]; if (!n) return;
   const toDb = id => { const v = mxVals[id] ?? 75; return (v - 75) / 75 * 12; };
   n.hi.gain.value  = toDb(`mx-${d}-HI`);
@@ -4025,7 +4024,6 @@ function toggleDeck(d){
   if(!dk.track){showToast('Load a track to Deck '+d.toUpperCase());return;}
   dk.playing=!dk.playing;
   if(dk.playing){
-    ensureDeckGraph(d);
     au.play().catch(()=>{});
     if(btn){btn.textContent='⏸ PAUSE';btn.classList.add('on');}
   } else {
@@ -4103,7 +4101,7 @@ function onPitch(d,v){
   if(dk.track)dk.bpm=Math.round((dk.track.bpm||124)*rate);
 }
 
-function onXfader(v){ _applyDeckGains(); }
+function onXfader(v){ if(!_dkGraph.a)ensureDeckGraph('a'); if(!_dkGraph.b)ensureDeckGraph('b'); _applyDeckGains(); }
 function onVolume(v){ _applyDeckGains(); }
 
 function _applyDeckGains(){
