@@ -427,7 +427,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <span class="zdp-val" id="zdp-radius-val">200m</span>
   </div>
   <input class="zdp-name" id="zdp-name" type="text" placeholder="Zone name (e.g. Civic Park Rave)"/>
-  <input class="zdp-name" id="zdp-tip-url" type="url" placeholder="Tip link (Venmo, CashApp, PayPal…)" style="margin-top:6px;opacity:.8;"/>
+  <div style="display:flex;gap:6px;margin-top:6px;">
+    <input class="zdp-name" id="zdp-tip-url" type="url" placeholder="Tip link (Venmo, CashApp, PayPal…)" style="flex:1;margin:0;opacity:.8;"/>
+    <input class="zdp-name" id="zdp-tip-amount" type="number" min="1" max="999" placeholder="$" style="width:60px;margin:0;opacity:.8;text-align:center;" title="Suggested donation amount"/>
+  </div>
   <div class="zdp-actions">
     <button class="zdp-confirm" onclick="confirmZone()">✓ Create Zone</button>
     <button class="zdp-cancel" onclick="cancelZoneDraw()">✕ Cancel</button>
@@ -1434,6 +1437,8 @@ async function confirmZone(){
   if(!currentUser){showToast('Sign in first');document.getElementById('dj-auth').style.display='flex';return;}
   const name=document.getElementById('zdp-name').value.trim()||'Unnamed Zone';
   const tipUrl=document.getElementById('zdp-tip-url').value.trim()||null;
+  const tipAmount=parseInt(document.getElementById('zdp-tip-amount').value)||null;
+  window._suggestedDonation = tipAmount;
   try{
     // Deactivate any previous zones by this host so listener map stays clean
     await db.from('zones').update({active:false}).eq('host_id',currentUser.id);
@@ -3206,7 +3211,9 @@ async function broadcastAllZones(){
         zone_lng: activeZone.lng,
         zone_radius_m: activeZone.radius_m,
         master_bpm: _masterBPM || null,
-        track_bpms: buildTrackBpms()
+        track_bpms: buildTrackBpms(),
+        tip_url: activeZone?.tip_url || null,
+        suggested_donation: window._suggestedDonation || null
       }
     });
   }

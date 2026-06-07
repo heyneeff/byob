@@ -491,6 +491,30 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .stat-val{color:var(--white);}
 .stat-dot{width:8px;height:8px;border-radius:1px;flex-shrink:0;}
 
+/* ── TIP BUTTON ── */
+.btn-tip-player{
+  display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;margin-top:10px;padding:12px 16px;
+  background:transparent;border:2px solid var(--orange);border-radius:10px;
+  font-family:'Barlow Condensed',sans-serif;font-size:17px;font-weight:900;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--orange);
+  cursor:pointer;transition:all .15s;
+}
+.btn-tip-player:active{background:var(--orange);color:#000;transform:translate(1px,1px);}
+.tip-amount-badge{
+  background:var(--orange);color:#000;border-radius:6px;
+  padding:2px 8px;font-size:13px;font-weight:900;
+}
+
+/* ── PROXIMITY PULSE (nearby listener map marker) ── */
+@keyframes proximity-pulse{
+  0%{box-shadow:0 0 0 0 rgba(0,204,153,.6);}
+  70%{box-shadow:0 0 0 12px rgba(0,204,153,0);}
+  100%{box-shadow:0 0 0 0 rgba(0,204,153,0);}
+}
+.marker-nearby{animation:proximity-pulse 1.4s ease-out infinite;border-radius:50%;}
+.marker-friend{filter:drop-shadow(0 0 6px rgba(245,126,32,.9));}
+
 /* ── ZONES LIST ── */
 .zones-section{margin-top:16px;}
 .zones-title{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:9px;display:flex;align-items:center;gap:8px;}
@@ -687,8 +711,11 @@ audio{display:none;}
         <div class="progress-wrap" id="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
         <div class="time-row"><span id="time-cur">0:00</span><span id="time-dur">0:00</span></div>
         <div class="track-name-row" id="track-name">—</div>
-             
         <div class="sync-status" id="sync-status"></div>
+        <!-- TIP BUTTON — shown when zone has tip_url -->
+        <button class="btn-tip-player" id="btn-tip-player" style="display:none;" onclick="openTip()">
+          💸 Support the DJ<span class="tip-amount-badge" id="tip-amount-badge" style="display:none;"></span>
+        </button>
       </div>
 
         <div style="display:flex;justify-content:flex-end;margin-top:6px;">
@@ -1107,6 +1134,12 @@ function onTapBanner(){
 
 function onBoomyTap(){
   const wrap = document.getElementById('boom-popup-wrap');
+
+  // If a tip override is set, handle it and bail
+  if (window._boomyTapOverride) {
+    window._boomyTapOverride();
+    return;
+  }
 
   // If music is already playing — tap Boomy to re-sync
   if(wrap && !wrap.classList.contains('tappable') && _webAudioPlaying && activeZone){
@@ -2413,15 +2446,64 @@ function addZoneToMap(z) {
 }
 
 // ── EXIT ACTION CARDS ─────────────────────────────────────
-function showExitCards(z) {
-  // Set tip button link from zone's tip_url if DJ configured one
-  const tipBtn = document.getElementById('btn-exit-tip');
-  if (tipBtn) {
-    if (z?.tip_url) {
-      tipBtn.style.display = 'flex';
-      tipBtn.onclick = () => { window.open(z.tip_url, '_blank'); closeExitCards(); };
+function _getTipUrl() {
+  return activeZone?.tip_url || window._zoneTipUrl || null;
+}
+
+function _getSuggestedAmount() {
+  return window._suggestedDonation || null;
+}
+
+function openTip() {
+  const url = _getTipUrl();
+  if (url) { window.open(url, '_blank'); return; }
+  boomSay('Ask the DJ for their tip link! 💸', 3500, false, 'regular');
+}
+
+function showPlayerTipBtn() {
+  const btn = document.getElementById('btn-tip-player');
+  const badge = document.getElementById('tip-amount-badge');
+  if (!btn) return;
+  if (_getTipUrl()) {
+    btn.style.display = 'flex';
+    const amt = _getSuggestedAmount();
+    if (badge) { badge.textContent = amt ? '$'+amt+' suggested' : ''; badge.style.display = amt ? 'inline' : 'none'; }
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+let _tipNudgeFired = false;
+function scheduleTipNudge() {
+  _tipNudgeFired = false;
+  setTimeout(() => {
+    if (_tipNudgeFired || !activeZone) return;
+    _tipNudgeFired = true;
+    const url = _getTipUrl();
+    const amt = _getSuggestedAmount();
+    const amtText = amt ? ` $${amt} suggested.` : '';
+    if (url) {
+      // Make Boomy clickable → opens tip URL
+      window._boomyTapOverride = () => { window.open(url, '_blank'); window._boomyTapOverride = null; };
+      boomSay(`This set is a vibe. Support your DJ 💸${amtText} Tap me →`, 8000, true, 'devious');
     } else {
-      tipBtn.style.display = 'none'; // hide if DJ hasn't set tip link
+      boomSay(`Remember to tip your DJ! 💸${amtText}`, 5000, false, 'regular');
+    }
+  }, 3 * 60 * 1000); // 3 minutes after zone join
+}
+
+function showExitCards(z) {
+  const tipBtn = document.getElementById('btn-exit-tip');
+  const url = z?.tip_url || _getTipUrl();
+  if (tipBtn) {
+    const amt = _getSuggestedAmount();
+    tipBtn.style.display = 'flex';
+    const amtBadge = amt ? ` · $${amt}` : '';
+    tipBtn.innerHTML = `<span class="exit-icon">💸</span> Tip the DJ${amtBadge}`;
+    if (url) {
+      tipBtn.onclick = () => { window.open(url, '_blank'); closeExitCards(); };
+    } else {
+      tipBtn.onclick = () => { closeExitCards(); boomSay('Ask the DJ for their tip link! 💸', 3500, false, 'regular'); };
     }
   }
   document.getElementById('exit-cards')?.classList.add('open');
@@ -2507,7 +2589,14 @@ function updateGuestList() {
         <div class="guest-status ${g.status}">${g.status === 'present' ? 'Present' : 'On The Way'}</div>
       </div>
       <div class="guest-star${isFriend ? ' starred' : ''}">⭐</div>`;
-    row.addEventListener('click', () => openGuestCard(g));
+    row.addEventListener('click', () => {
+      openGuestCard(g);
+      // Zoom map to this person if we know their position
+      if (leafletMap && activeZone?.lat && g.bearing != null && g.dist != null) {
+        const pos = destFromBearing(activeZone.lat, activeZone.lng, g.bearing, g.dist);
+        leafletMap.flyTo(pos, 18, { animate: true, duration: 0.6 });
+      }
+    });
     ul.appendChild(row);
   });
 
@@ -2543,6 +2632,8 @@ function updateGuestList() {
 // ── GUEST MAP MARKERS ─────────────────────────────────────
 let _guestMapMarkers = {};
 
+let _proximityAlerted = new Set(); // guests we've already announced as nearby
+
 function updateGuestMapMarkers() {
   if (!leafletMap || !activeZone?.lat) return;
   const seen = new Set();
@@ -2550,19 +2641,39 @@ function updateGuestMapMarkers() {
   Object.values(liveGuests).forEach(g => {
     if (g.bearing == null) return;
     seen.add(g.id);
-    const pos = destFromBearing(activeZone.lat, activeZone.lng, g.bearing, g.dist * 1609.34); // dist is miles → meters
+    // g.dist is already in meters (converted on receive)
+    const pos = destFromBearing(activeZone.lat, activeZone.lng, g.bearing, g.dist);
     const isFriend = !!(g.userId && _friends[g.userId]);
     const friendName = isFriend ? (g.name || _friends[g.userId]?.name || '') : '';
     const hasSignal = !!g.signal;
     const displayEmoji = hasSignal ? g.signal : (g.emoji || '🎧');
+
+    // Compute distance from me to this guest
+    let distFromMe = null;
+    if (userLat && userLng) {
+      const guestPos = pos;
+      distFromMe = distM(userLat, userLng, guestPos.lat, guestPos.lng);
+      g.distFromMe = distFromMe;
+    }
+    const isNearby = distFromMe !== null && distFromMe < 40;
+
+    // Proximity Boomy alert — fire once per guest per zone session
+    if (isNearby && !_proximityAlerted.has(g.id) && activeZone) {
+      _proximityAlerted.add(g.id);
+      const dist = Math.round(distFromMe);
+      const who = isFriend ? (friendName || 'Your friend') : (hasSignal ? displayEmoji : 'Someone');
+      setTimeout(() => boomSay(`${who} is ${dist}m from you 👀`, 4000, true, 'devious'), 500);
+    }
+
     const nameBadge = isFriend && friendName
       ? `<div style="font-size:9px;font-weight:700;color:#fff;background:rgba(0,0,0,.75);border-radius:4px;padding:1px 5px;margin-top:1px;white-space:nowrap;letter-spacing:.02em;">${friendName}</div>`
       : '';
-    const signalBadge = hasSignal
+    const signalBadge = hasSignal && !isNearby
       ? `<div style="font-size:8px;font-weight:900;color:#000;background:#f57e20;border-radius:4px;padding:1px 4px;margin-top:1px;letter-spacing:.04em;">SIGNAL</div>`
       : '';
-    const html = `<div style="text-align:center;cursor:pointer;"><div style="font-size:${hasSignal?'22':isFriend?'18':'14'}px;line-height:1;">${displayEmoji}</div>${nameBadge}${signalBadge}</div>`;
-    const sz = hasSignal ? 40 : isFriend ? 44 : 20;
+    const pulseClass = isNearby ? ' marker-nearby' : isFriend ? ' marker-friend' : '';
+    const html = `<div class="${pulseClass}" style="text-align:center;cursor:pointer;"><div style="font-size:${isNearby?'26':hasSignal?'22':isFriend?'18':'14'}px;line-height:1;">${displayEmoji}</div>${nameBadge}${signalBadge}</div>`;
+    const sz = isNearby ? 48 : hasSignal ? 40 : isFriend ? 44 : 20;
 
     if (_guestMapMarkers[g.id]) {
       _guestMapMarkers[g.id].setLatLng(pos);
@@ -2570,7 +2681,7 @@ function updateGuestMapMarkers() {
     } else {
       const m = L.marker(pos, {
         icon: L.divIcon({html,iconSize:[sz,sz],iconAnchor:[sz/2,sz/2],className:''}),
-        zIndexOffset: isFriend ? 600 : 400
+        zIndexOffset: isNearby ? 1000 : isFriend ? 600 : 400
       });
       m.on('click', () => openGuestCard(g));
       m.addTo(leafletMap);
@@ -2578,7 +2689,6 @@ function updateGuestMapMarkers() {
     }
   });
 
-  // Remove markers for guests who have left
   Object.keys(_guestMapMarkers).forEach(id => {
     if (!seen.has(id)) { _guestMapMarkers[id].remove(); delete _guestMapMarkers[id]; }
   });
@@ -3235,6 +3345,7 @@ async function activateZone(z) {
   _seenFriendIds.clear();
   liveGuests = {};
   clearGuestMapMarkers();
+  _proximityAlerted = new Set();
 
   // Phase C: check if any friends are going to the event at this zone
   checkFriendsGoingToEvent(z.id);
@@ -3362,6 +3473,8 @@ async function activateZone(z) {
     window._spatialConfig = payload;
     window._masterBPM = payload.master_bpm || null;
     window._trackBpms = payload.track_bpms || {};
+    if (payload.suggested_donation) { window._suggestedDonation = payload.suggested_donation; showPlayerTipBtn(); }
+    if (payload.tip_url) { window._zoneTipUrl = payload.tip_url; showPlayerTipBtn(); }
     const mySlot = getSpatialSlot(payload);
     const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
     if(trackUrl && trackUrl !== audio.src){
@@ -3440,6 +3553,11 @@ function unlockUI(z) {
   // Start tracking and navigation
   try { startProximityTracking(z); } catch(e) {}
   try { startNavigation(z); } catch(e) {}
+
+  // Store tip info and show tip button
+  window._zoneTipUrl = z.tip_url || null;
+  showPlayerTipBtn();
+  scheduleTipNudge();
 }
 
 // ── WEBRTC RECEIVER ──────────────────────────────────────
