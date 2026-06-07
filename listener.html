@@ -5137,9 +5137,10 @@ function broadcastHUD() {
   });
 }
 
-setInterval(() => {
-  if (document.getElementById('hud')?.classList.contains('open')) broadcastHUD();
-}, 3000);
+// Always broadcast — debug.html needs this stream regardless of whether
+// this device's own HUD panel happens to be open (matches broadcastDebug,
+// which is also always-on).
+setInterval(broadcastHUD, 3000);
 
 // ── HUD FORCE BUTTONS ─────────────────────────────────────
 function hudForceEnter() {
