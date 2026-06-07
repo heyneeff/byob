@@ -2115,7 +2115,7 @@ async function toggleLive(){
 
   if(!_micModeArmed){showToast('Choose an audio source first ↑');return;}
   const deviceId=document.getElementById('device-select').value;
-  const audioConstraints={echoCancellation:false,noiseSuppression:false,autoGainControl:false,sampleRate:48000,channelCount:2};
+  const audioConstraints={echoCancellation:false,noiseSuppression:false,autoGainControl:false,sampleRate:48000,channelCount:{ideal:2}};
   if(deviceId)audioConstraints.deviceId={exact:deviceId};
   const constraints={audio:audioConstraints};
   try{

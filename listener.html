@@ -2210,7 +2210,15 @@ async function handleOffer(sdp) {
     showTapBanner();
   };
   rtcPeer.onconnectionstatechange = () => {
-    if (rtcPeer.connectionState === 'failed') { rtcPeer.close(); rtcPeer = null; showToast('Live stream disconnected'); }
+    if (rtcPeer.connectionState === 'failed') {
+      rtcPeer.close(); rtcPeer = null; _pendingStream = null;
+      showToast('🔄 Reconnecting live stream…');
+      setTimeout(() => {
+        if (rtcChannel && activeZone?.current_track_url === 'webrtc-live') {
+          rtcChannel.send({ type:'broadcast', event:'listener-joined', payload:{ listenerId } });
+        }
+      }, 2500);
+    }
   };
   await rtcPeer.setRemoteDescription({ type:'offer', sdp });
   const answer = await rtcPeer.createAnswer();
