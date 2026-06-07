@@ -2090,6 +2090,7 @@ function fastDriftCorrect() {
   if (!activeZone?.playback_started_at) return;
   if (!audio.duration || audio.paused || _isMuted) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
+  if (_isDucking) return;
   const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
   const expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
   const lagMs = (expected - audio.currentTime) * 1000;
@@ -4614,10 +4615,37 @@ async function _enterLockingState(){
     _syncState = 'idle';
   }
 }
+let _isDucking = false;
+
+function seekWithDuck(newTime) {
+  if (_isDucking) return;
+  _isDucking = true;
+  const safeTime = Math.max(0, Math.min(newTime, (audio.duration || 9999) - 0.1));
+  const targetVol = audio.volume || 1;
+  const duckStart = performance.now();
+  (function duckRamp(now) {
+    const t = Math.min((now - duckStart) / 1500, 1);
+    audio.volume = targetVol * (1 - t * t * (3 - 2 * t));
+    if (t < 1) { requestAnimationFrame(duckRamp); return; }
+    audio.volume = 0;
+    audio.currentTime = safeTime;
+    setTimeout(() => {
+      const riseStart = performance.now();
+      (function riseRamp(now) {
+        const t = Math.min((now - riseStart) / 1000, 1);
+        audio.volume = targetVol * (t * t * (3 - 2 * t));
+        if (t < 1) { requestAnimationFrame(riseRamp); return; }
+        audio.volume = targetVol;
+        _isDucking = false;
+      })(performance.now());
+    }, 80);
+  })(performance.now());
+}
+
 function applyDriftCorrection(lagMs) {
   if (Math.abs(lagMs) < 15) return;
   if (Math.abs(lagMs) > 500) {
-    seekPreservingBT(audio.currentTime + lagMs / 1000); // big jump = seek
+    seekWithDuck(audio.currentTime + lagMs / 1000);
     return;
   }
   // Small drift = rate correction — completely inaudible at ±3%
