@@ -1033,11 +1033,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div class="rnlabel">Crowd</div>
   </div>
   <div class="rnsep"></div>
-  <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
+  <div style="display:none;">
     <button class="rnbtn" data-panel="setup" onclick="switchPanel('setup',this)">⚙️</button>
     <div class="rnlabel">Setup</div>
   </div>
-  <div class="rnsep"></div>
   <div class="vu-strip">
     <div class="rnlabel">IN</div>
     <div class="vu-bar"><div class="vu-fill" id="vu-fill" style="height:20%;"></div></div>
@@ -1116,7 +1115,7 @@ window.addEventListener('DOMContentLoaded', async()=>{
       loadDemoMode();
       measureClockOffset();setInterval(measureClockOffset,60000);
       initZonesGlobalSub();
-setTimeout(()=>switchPanel('setup',document.querySelector('[data-panel="setup"]')),50);
+setTimeout(()=>switchPanel('spatial',document.querySelector('[data-panel="spatial"]')),50);
 
     }
   } catch(e) {}
