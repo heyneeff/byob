@@ -4670,7 +4670,6 @@ let _isDucking = false;
 function seekWithDuck(newTime) {
   if (_isDucking) return;
   _isDucking = true;
-  const safeTime = Math.max(0, Math.min(newTime, (audio.duration || 9999) - 0.1));
   const targetVol = audio.volume || 1;
   // Safety: if something throws mid-duck, release the flag so sync doesn't die silently
   const _duckSafety = setTimeout(() => { _isDucking = false; audio.volume = targetVol; }, 5000);
@@ -4680,6 +4679,15 @@ function seekWithDuck(newTime) {
     audio.volume = targetVol * (1 - t * t * (3 - 2 * t));
     if (t < 1) { requestAnimationFrame(duckRamp); return; }
     audio.volume = 0;
+    // Recompute the target now, at seek time — the ~1.5s ramp we just ran means
+    // the position passed in has gone stale (audio kept playing through it), so
+    // seeking to it would reintroduce ~1.5s of fresh drift and the loop never settles.
+    let safeTime = newTime;
+    if (activeZone?.playback_started_at && audio.duration) {
+      const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+      safeTime = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
+    }
+    safeTime = Math.max(0, Math.min(safeTime, (audio.duration || 9999) - 0.1));
     audio.currentTime = safeTime;
     setTimeout(() => {
       const riseStart = performance.now();
@@ -4705,7 +4713,7 @@ function applyDriftCorrection(lagMs) {
   const baseRate = _getBpmWarpRate();
   const rate = lagMs > 0 ? baseRate * 1.03 : baseRate * 0.97;
   audio.playbackRate = rate;
-  const correctionMs = Math.abs(lagMs) / 0.03 * 1000;
+  const correctionMs = Math.abs(lagMs) / 0.03;
   setTimeout(() => { audio.playbackRate = baseRate; }, correctionMs);
 }
 
@@ -5290,7 +5298,7 @@ function broadcastDebug() {
   const interval  = !!window._guestBroadcastInterval;
 
   ch.send({
-    type: 'broadcast', event: 'hud_data',
+    type: 'broadcast', event: 'listener_health',
     payload: {
       deviceId:   'listener_' + (listenerId || 'unknown').slice(0,6),
       zone:       activeZone?.name || 'none',

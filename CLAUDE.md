@@ -28,6 +28,8 @@ Deploy: push to `main` — GitHub Pages serves automatically via the `CNAME` rec
 | `play.html` | **Legacy — do not edit.** Earlier version of the DJ engine. |
 | `index.html` | Meta-redirect to `listener.html` |
 | `Roadmap` | Product vision, open bugs, queued features, session log |
+| `byob-capture.html`, `organismvisualizer.html` | Standalone prototypes — not linked from the main app, not wired to Supabase tables above |
+| `migration_*.sql` | One-off schema migrations — run manually in the Supabase SQL editor, not applied automatically |
 
 ## Architecture
 
