@@ -2062,7 +2062,7 @@ function stopEverything() {
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
   _pendingStream = null;
   hideTapBanner();
-  clearInterval(_syncInterval);
+  clearInterval(_syncInterval); clearInterval(_driftInterval); clearInterval(_healthInterval);
   _webAudioPlaying = false;
   _isMuted = false;
   activeZone = null;
@@ -2081,37 +2081,76 @@ function stopEverything() {
 // SYNC ENGINE — drift correction only
 // ════════════════════════════════════════════════════════════
 let _syncInterval = null;
+let _driftInterval = null;
+let _healthInterval = null;
+
+// Fast drift correction — memory only, no network, runs every 5s
+function fastDriftCorrect() {
+  if (!activeZone?.playback_started_at) return;
+  if (!audio.duration || audio.paused || _isMuted) return;
+  if (audio.srcObject) return; // WebRTC live — no drift correct
+  const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+  const expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
+  const lagMs = (expected - audio.currentTime) * 1000;
+  window._lastDriftMs = Math.round(lagMs);
+  if (Math.abs(lagMs) > 60) {
+    console.log('[Drift]', lagMs.toFixed(0) + 'ms');
+    applyDriftCorrection(lagMs);
+  }
+}
+
+// Zone health check — DB fetch, runs every 60s to detect zone end / missed track changes
 async function syncZoneAudio() {
   if (!activeZone) return;
   try {
-    const { data: z } = await db.from('zones').select('id,active,lat,lng,radius_m,zone_tracks,current_track_url,playback_started_at,play_at,play_from_s').eq('id', activeZone.id).single();
-
-
+    const { data: z } = await db.from('zones').select('id,active,lat,lng,radius_m,zone_tracks,current_track_url,track_name,playback_started_at,play_at,play_from_s').eq('id', activeZone.id).single();
     if (!z) return;
-    activeZone = z;
     if (!z.active) { stopEverything(); showToast('The zone has ended 🎤'); return; }
-    if (z.current_track_url === 'webrtc-live' || !z.current_track_url) return;
-        // Drift correction
-    if (z.playback_started_at && audio.duration && !audio.paused && !_isMuted) {
-      const elapsed = (syncedNow() - new Date(z.playback_started_at).getTime()) / 1000;
-      const expected = (elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000) - (_scatterOffsetMs / 1000)) % audio.duration;
-      // positive lag = audio is behind; negative = audio is ahead
-      const lagMs = (expected - audio.currentTime) * 1000;
-      window._lastDriftMs = Math.round(lagMs); // exposed for presence broadcast
-      if (Math.abs(lagMs) > 60) {
-        console.log('Drift correction:', lagMs.toFixed(0)+'ms');
-        applyDriftCorrection(lagMs); // rate-based for <500ms (inaudible), seek for >500ms
+    // Absorb any missed track change
+    if (z.playback_started_at && z.playback_started_at !== activeZone.playback_started_at && z.current_track_url && z.current_track_url !== 'webrtc-live') {
+      activeZone = { ...activeZone, ...z };
+      if (z.current_track_url !== audio.src) {
+        loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
       }
+    } else {
+      activeZone = { ...activeZone, ...z };
     }
-    
-  } catch(e) { console.warn('Sync error:', e.message); }
+  } catch(e) { console.warn('[HealthCheck]', e.message); }
 }
+
 function startSyncEngine() {
-  clearInterval(_syncInterval);
-  _syncInterval = setInterval(syncZoneAudio, 10000);
+  clearInterval(_driftInterval);
+  clearInterval(_healthInterval);
+  clearInterval(_syncInterval); // legacy
+  _driftInterval  = setInterval(fastDriftCorrect, 5000);   // memory-only, fast
+  _healthInterval = setInterval(syncZoneAudio,    60000);  // DB health check
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && activeZone) syncZoneAudio();
+  if (document.visibilityState !== 'visible' || !activeZone) return;
+  // Instant memory-based resync — no network needed
+  if (audio.duration && activeZone.playback_started_at && !audio.srcObject) {
+    const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+    const expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
+    const lagMs = (expected - audio.currentTime) * 1000;
+    if (Math.abs(lagMs) > 200) seekPreservingBT(expected);
+  }
+  // Background DB health check
+  syncZoneAudio();
+});
+
+// Network reconnection — no refresh needed
+let _reconnectTimer = null;
+window.addEventListener('online', () => {
+  if (!activeZone) return;
+  clearTimeout(_reconnectTimer);
+  _reconnectTimer = setTimeout(async () => {
+    await measureClockOffset();
+    buildSyncChannel(activeZone.id);
+    if (window._guestChannel) { window._guestChannel.unsubscribe(); initGuestListChannel(activeZone.id); }
+    // Resync position after clock refresh
+    fastDriftCorrect();
+    showToast('🔁 Reconnected');
+  }, 1200); // small delay for network to stabilize
 });
 
 // ════════════════════════════════════════════════════════════
@@ -2314,7 +2353,8 @@ async function handleLogin() {
 // ── ENTER APP ────────────────────────────────────────────
 function enterApp() {
   measureClockOffset();
-  setInterval(measureClockOffset, 60000);
+  // Re-measure every 30s when in a zone, 60s otherwise — tighter sync
+  setInterval(() => measureClockOffset(), 30000);
   document.getElementById('login-screen').classList.add('exit');
   setTimeout(() => {
     document.getElementById('login-screen').style.display = 'none';
@@ -3564,9 +3604,14 @@ async function activateZone(z) {
       }
 }).subscribe();
 
-  // ── BROADCAST SYNC CHANNEL — stays alive even after GPS exit ──
-  if (window._syncChannel) { window._syncChannel.unsubscribe(); }
-  window._syncChannel = db.channel('sync_' + z.id)
+  buildSyncChannel(z.id);
+}
+
+// ── SYNC CHANNEL — extracted so it can be rebuilt on reconnect ────────────
+let _syncChannelRetryTimer = null;
+function buildSyncChannel(zoneId) {
+  if (window._syncChannel) { window._syncChannel.unsubscribe(); window._syncChannel = null; }
+  window._syncChannel = db.channel('sync_' + zoneId)
    .on('broadcast', { event: 'hard_sync' }, ({ payload }) => {
     const waitMs = payload.resyncAt - syncedNow();
     if (Math.abs(waitMs) > 10000) return;
@@ -3574,9 +3619,7 @@ async function activateZone(z) {
       localStorage.removeItem('byob_device_latency');
       _deviceLatencyMs = 0;
     }
-    if (payload.resetOffsets || payload.clearScatter) {
-      _scatterOffsetMs = 0;
-    }
+    if (payload.resetOffsets || payload.clearScatter) { _scatterOffsetMs = 0; }
     const delay = Math.max(0, waitMs);
     boomSay('Syncing…', delay + 300, false, 'regular');
     setTimeout(() => {
@@ -3587,13 +3630,11 @@ async function activateZone(z) {
       }
       if (!audio.duration) return;
       const elapsed = (syncedNow() - new Date(payload.playback_started_at).getTime()) / 1000;
-      // seek target matches syncZoneAudio formula exactly
-      seekPreservingBT(((elapsed + SEEK_STAB_S - (_deviceLatencyMs / 1000) - (_scatterOffsetMs / 1000)) % audio.duration + audio.duration) % audio.duration);
+      seekPreservingBT(((elapsed + SEEK_STAB_S - (_deviceLatencyMs/1000) - (_scatterOffsetMs/1000)) % audio.duration + audio.duration) % audio.duration);
       setSyncIndicator('synced', 0);
     }, delay);
   })
-   .on('broadcast', { event: 'spatial_config' }, ({ payload }) => {
-    // Store spatial config — used for slot assignment and BPM warp
+  .on('broadcast', { event: 'spatial_config' }, ({ payload }) => {
     window._spatialConfig = payload;
     window._masterBPM = payload.master_bpm || null;
     window._trackBpms = payload.track_bpms || {};
@@ -3601,25 +3642,16 @@ async function activateZone(z) {
     if (payload.tip_url) { window._zoneTipUrl = payload.tip_url; showPlayerTipBtn(); }
     const mySlot = getSpatialSlot(payload);
     const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
-    if(trackUrl && trackUrl !== audio.src){
-      loadTrack(trackUrl, 'Zone '+mySlot, payload.playback_started_at);
-      showToast('🔊 Slot '+mySlot+' — '+mySlot);
-    }
-    // Apply BPM warp to currently playing track if still same slot
-    else if(trackUrl && trackUrl === audio.src){
+    if (trackUrl && trackUrl !== audio.src) {
+      loadTrack(trackUrl, 'Zone ' + mySlot, payload.playback_started_at);
+      showToast('🔊 Slot ' + mySlot);
+    } else if (trackUrl && trackUrl === audio.src) {
       applyBpmWarp(mySlot, trackUrl);
     }
   })
-  .on('broadcast', { event: 'sweep_start' }, ({ payload }) => {
-    window._sweepConfig = payload;
-    applySweepOffset(payload);
-  })
-  .on('broadcast', { event: 'sweep_stop' }, () => {
-    window._sweepConfig = null;
-    _scatterOffsetMs = 0;
-  })
-
-    .on('broadcast', { event: 'scatter' }, ({ payload }) => {
+  .on('broadcast', { event: 'sweep_start' }, ({ payload }) => { window._sweepConfig = payload; applySweepOffset(payload); })
+  .on('broadcast', { event: 'sweep_stop' }, () => { window._sweepConfig = null; _scatterOffsetMs = 0; })
+  .on('broadcast', { event: 'scatter' }, ({ payload }) => {
     const maxMs  = payload.maxMs  || 1000;
     const voices = payload.voices || 4;
     const slot   = simpleHash(listenerId) % voices;
@@ -3639,10 +3671,7 @@ async function activateZone(z) {
     if (!trackUrl || trackUrl === audio.src) return;
     const label = 'Cluster ' + (mySlot || 'C');
     const waitMs = payload.play_at ? Math.max(0, payload.play_at - syncedNow()) : 0;
-    setTimeout(() => {
-      loadTrack(trackUrl, label, payload.playback_started_at);
-      boomSay('⬡ ' + (mySlot || 'C'), 2000, false, 'regular');
-    }, waitMs);
+    setTimeout(() => { loadTrack(trackUrl, label, payload.playback_started_at); boomSay('⬡ ' + (mySlot || 'C'), 2000, false, 'regular'); }, waitMs);
   })
   .on('broadcast', { event: 'rally' }, ({ payload }) => {
     if (!payload?.lat || !payload?.lng) return;
@@ -3657,7 +3686,15 @@ async function activateZone(z) {
         radius: 14, color: '#00cc99', fillColor: '#00cc99', fillOpacity: 0.25, weight: 2
       }).addTo(leafletMap).bindTooltip('🎯 Rally', { permanent: true, direction: 'top', className: 'rally-tooltip' });
     }
-  }).subscribe();
+  })
+  .subscribe((status) => {
+    if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && activeZone?.id === zoneId) {
+      clearTimeout(_syncChannelRetryTimer);
+      _syncChannelRetryTimer = setTimeout(() => {
+        if (activeZone?.id === zoneId) buildSyncChannel(zoneId);
+      }, 3000);
+    }
+  });
 }
  
 // Keep joinZone as alias for geofence auto-trigger
@@ -3737,6 +3774,28 @@ audio.addEventListener('timeupdate',()=>{
   document.getElementById('progress-fill').style.width=(audio.currentTime/audio.duration*100)+'%';
   document.getElementById('time-cur').textContent=fmt(audio.currentTime);
   document.getElementById('time-dur').textContent=fmt(audio.duration);
+});
+
+// Audio stall recovery — auto-resume after 2.5s if we expected playback
+let _stallTimer = null;
+function _handleStall() {
+  if (!_webAudioPlaying || !activeZone || _isMuted) return;
+  clearTimeout(_stallTimer);
+  _stallTimer = setTimeout(() => {
+    if (audio.paused && _webAudioPlaying && !_isMuted) {
+      audio.play().catch(() => {});
+    }
+  }, 2500);
+}
+audio.addEventListener('stalled',  _handleStall);
+audio.addEventListener('waiting',  _handleStall);
+audio.addEventListener('suspend',  _handleStall);
+audio.addEventListener('playing',  () => clearTimeout(_stallTimer));
+audio.addEventListener('error', () => {
+  if (!_webAudioPlaying || !activeZone || !audio.src) return;
+  // Reload and re-seek on hard error
+  const src = audio.src, startedAt = activeZone.playback_started_at;
+  setTimeout(() => { if(activeZone && audio.src === src) { audio.load(); audio.play().then(()=>{ if(startedAt && audio.duration) seekToSync(startedAt); }).catch(()=>{}); } }, 1500);
 });
   
 document.getElementById('progress-bar').addEventListener('click',e=>{
@@ -4366,8 +4425,9 @@ let _scatterOffsetMs = 0;
 
 
 async function measureClockOffset() {
+  const count = activeZone ? 8 : 5; // more samples while in a zone = tighter sync
   const samples = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < count; i++) {
     try {
       const t0 = Date.now();
       const { data, error } = await db.rpc('server_now').single();
@@ -4375,11 +4435,10 @@ async function measureClockOffset() {
       if (!error && data) {
         const rtt = t1 - t0;
         const serverMs = new Date(data).getTime();
-        // discard samples with suspiciously high RTT (>400ms) — they skew the median
         if (!isNaN(serverMs) && rtt < 400) samples.push(serverMs - (t0 + rtt / 2));
       }
     } catch(e) {}
-    if (i < 4) await new Promise(r => setTimeout(r, 60));
+    if (i < count - 1) await new Promise(r => setTimeout(r, 50));
   }
   if (samples.length) _clockOffset = samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)];
 }
@@ -4526,19 +4585,19 @@ function applyDriftCorrection(lagMs) {
 
 function seekPreservingBT(newTime) {
   const safeTime = Math.max(0, Math.min(newTime, (audio.duration || 9999) - 0.1));
-  const vol = audio.volume;
+  const targetVol = audio.volume || 1;
   audio.volume = 0;
   audio.currentTime = safeTime;
-  // Ramp volume back up over 200ms — more reliable than mute/unmute on iOS
-  let t = 0;
-  const ramp = setInterval(() => {
-    t += 40;
-    audio.volume = Math.min(vol, vol * (t / 200));
-    if (t >= 200) {
-      audio.volume = vol;
-      clearInterval(ramp);
-    }
-  }, 40);
+  // RAF-based ramp — smoother than setInterval, no timer drift
+  const rampMs = 180;
+  const start = performance.now();
+  function ramp(now) {
+    const t = Math.min((now - start) / rampMs, 1);
+    audio.volume = targetVol * (t * t * (3 - 2 * t)); // smooth step
+    if (t < 1) requestAnimationFrame(ramp);
+    else audio.volume = targetVol;
+  }
+  requestAnimationFrame(ramp);
 }
 
 async function _runLockingPass(){
