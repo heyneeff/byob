@@ -8,7 +8,7 @@ BYOB is a mobile-first, no-infrastructure party platform. Attendees use their ph
 
 ## Development
 
-No build step. Open files directly in a browser or serve locally:
+No build step. Serve locally with:
 
 ```bash
 python3 -m http.server 8080
@@ -20,11 +20,10 @@ Deploy: push to `main` — GitHub Pages serves automatically via the `CNAME` rec
 
 | File | Role |
 |------|------|
-| `listener.html` | Listener app — GPS, audio playback, geofence entry, spatial pan, presence |
-| `playmin.html` | DJ engine — zone creation, live stream, sync broadcast, crowd view, deck |
+| `listener.html` | Listener app — GPS, audio playback, geofence entry, spatial routing, fellowship/social |
+| `playmin.html` | DJ engine — zone creation, live stream, sync broadcast, crowd view, deck, scenes |
 | `orchestra.js` | Shared `SpatialOrchestra` class — radar canvas with sweep beam and listener dots |
 | `debug.html` | Sync dashboard — subscribes to `hud_data` broadcasts, shows GPS/sync health per listener |
-| `organismvisualizer.html` | Standalone Signal Organism prototype (canvas visualizer, not yet integrated) |
 | `dj.html` | **Legacy — do not edit.** Absorbed into `playmin.html`. |
 | `play.html` | **Legacy — do not edit.** Earlier version of the DJ engine. |
 | `index.html` | Meta-redirect to `listener.html` |
@@ -39,71 +38,129 @@ Single Supabase project (`ohacvuwzvuifpyqckise.supabase.co`) for auth, database,
 - **`zones`** — `id, name, host_id, lat, lng, radius_m, active, listeners, tip_url, current_track_url, track_name, playback_started_at, play_at, play_from_s, zone_tracks, last_message, last_message_at`
 - **`tracks`** — `id, user_id, zone_id, title, file_path, public_url, created_at`
 - **`events`** — `id, name, artists, description, event_start, location_reveal_at, lat, lng, radius_m, zone_id, created_by`
-- **`profiles`** — user profile data (extended for Carnival Society membership)
+- **`profiles`** — user profile data (display_name, emoji, vibe_tag, phone, instagram)
 
 Storage bucket: **`boombox`** — track audio files uploaded as `boombox/{filename}`.
 
 ### Realtime channel naming convention
-- `presence_{zone_id}` — listener GPS presence (bearing, dist, status, slot); DJ also broadcasts here via a separate channel subscription
-- `sync_{zone_id}` — DJ → listener sync commands (`hard_sync`, `sweep_start`, `sweep_stop`, `scatter`, `zone_update`, `cluster_assign`, `spatial_config`)
-- `zone_{zone_id}` — zone metadata updates
+- `presence_{zone_id}` — listener GPS presence (bearing, dist, status, slot); DJ reads from here for crowd map
+- `sync_{zone_id}` — DJ → listener commands: `hard_sync`, `sweep_start`, `sweep_stop`, `scatter`, `spatial_config`, `cluster_assign`, `rally`
+- `zone_{zone_id}` — Postgres realtime on `zones` table UPDATE for the active zone
 - `webrtc_{zone_id}` — WebRTC signaling for live mic streaming (offer/answer/ice)
+- `chat_{zone_id}` — zone chat (currently unused in UI but channel wired in JS)
 
 ### GPS / geofence flow (listener)
-`watchPosition` runs a single loop (one instance only — duplicate loops were a prior bug). On each position fix, bearing and distance to the active zone center are computed. If inside the geofence, audio unlocks. The listener broadcasts its presence payload every 2s via the `presence_{zone_id}` channel. `syncZoneAudio()` must select `lat,lng,radius_m` from Supabase or bearing/dist return NaN.
+`watchPosition` runs a single loop. On each fix, bearing and distance to active zone center are computed. Inside the geofence → audio unlocks, `unlockUI(z)` called. Listener broadcasts presence every 3s via `presence_{zone_id}`. `syncZoneAudio()` select must include `lat,lng,radius_m`.
 
 ### Server clock sync
-All playback timing uses `syncedNow()` (listener) / `serverNow()` (DJ) — never raw `Date.now()`. `_clockOffset` is computed via `measureClockOffset()` by calling `db.rpc('now')` and comparing round-trip timestamps. Called at boot, every 60s, and fresh at zone entry. Local relative timers (presence prune, animation loops, file path naming) stay on `Date.now()`.
+All playback timing uses `syncedNow()` (listener) / `serverNow()` (DJ) — never raw `Date.now()`. `_clockOffset` computed via `measureClockOffset()` (calls `db.rpc('server_now')`): 8 samples when in a zone, 5 otherwise; median of RTT < 400ms samples. Re-measured every 30s. Awaited before first seek at zone entry.
 
-### Sync / audio timing (listener)
-The zone stores: `playback_started_at` (ISO wall-clock), `play_at` (epoch ms for scheduled play), `play_from_s` (seek offset). Seek position:
+### Sync engine (listener)
+Two separate loops — do NOT collapse back into one:
+- **`fastDriftCorrect()`** — memory only, runs every 5s. Uses `activeZone.playback_started_at` (cached). No DB fetch. Applies ±3% rate correction for <500ms drift, seek for >500ms.
+- **`syncZoneAudio()`** — DB fetch, runs every 60s. Checks `active` flag, detects missed track changes by comparing `playback_started_at`.
+
+Seek formula (must stay consistent across all callers):
 ```
-seekTo = elapsed + _calOffset - (_deviceLatencyMs / 1000) + SEEK_STAB_S - (_scatterOffsetMs / 1000)
+expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % duration + duration) % duration
 ```
-`_calOffset` is persisted in `localStorage('byob_cal_offset')`. `hard_sync` events reset playback. Scatter mode staggers listener start times for spatial effect.
+where `elapsed = (syncedNow() - new Date(playback_started_at).getTime()) / 1000`
+
+`SEEK_STAB_S = 0.27` — audio seek stabilization latency constant.
+
+### Sync channel — `buildSyncChannel(zoneId)`
+The sync channel is extracted into `buildSyncChannel(zoneId)` so it can be rebuilt on reconnect. It auto-retries on CHANNEL_ERROR/CLOSED after 3s. **Always call `buildSyncChannel` — never inline the channel chain again.**
+
+Handles: `hard_sync`, `spatial_config`, `sweep_start`, `sweep_stop`, `scatter`, `cluster_assign`, `rally`.
+
+### Reconnection (no refresh needed)
+- `window.online` event: re-measures clock, calls `buildSyncChannel`, rebuilds guest channel, runs `fastDriftCorrect`
+- `visibilitychange` to visible: instant memory-based seek, then `syncZoneAudio()` in background
+- Audio stall/waiting/suspend: 2.5s watchdog auto-resumes if `_webAudioPlaying` is true
+- Audio error: reloads src and re-seeks after 1.5s
+
+### Zone entry flow (`activateZone`)
+1. Set `activeZone`, call `unlockUI(z)`, init guest channel
+2. `await measureClockOffset()`
+3. `startSyncEngine()` — starts both drift and health intervals
+4. Load track: webrtc-live → `joinWebRTCStream()` | spatial zone_tracks → `loadTrack(slotUrl)` | fallback → `loadTrack(current_track_url)`
+5. **Then always** subscribe `_zoneChannel` (postgres changes) and call `buildSyncChannel(z.id)`
+
+**CRITICAL: never `return` early inside the track-loading block — channels must always be subscribed regardless of which track path runs.**
 
 ### WebRTC live streaming
-DJ taps "Go Live" → `current_track_url` set to `'webrtc-live'` on the zone. Listeners detect this and call `joinWebRTCStream()` instead of loading a file. ICE servers from `boombox.metered.live` with STUN fallback. Signaling via `webrtc_{zone_id}` channel.
+DJ taps "Go Live" → `current_track_url = 'webrtc-live'`. Listeners call `joinWebRTCStream()`. ICE from `boombox.metered.live` with STUN fallback. `ontrack` stores stream in `_pendingStream`; user tap assigns to `audio.srcObject` and plays.
 
 ### Zone slots (dynamic, C + 1–N)
-DJ assigns tracks to zone slots. Slot count is dynamic: always has Center (C) plus numbered slots starting at 4, expandable via `+ STEM` / `−` buttons in the spatial panel. Key functions: `getSlotKeys()`, `slotColor(key)`, `addSlot()`, `removeSlot()`. `SLOT_PALETTE` holds 12 colors cycling by slot number. `zone_tracks` is a JSON column on `zones` storing slot→track-url mapping.
+DJ assigns tracks to zone slots. Dynamic count: Center (C) plus numbered slots. Key functions: `getSlotKeys()`, `slotColor(key)`, `addSlot()`, `removeSlot()`. `SLOT_PALETTE` holds 12 colors. `zone_tracks` is JSON on `zones`: `{slotKey → trackUrl}`.
 
 ### Spatial modes (DJ side, `playmin.html`)
 - **Single** — all listeners get Center (C) track
-- **Cluster** — k-means by GPS proximity, assigns stem slots, recomputes every 30s
-- **Ring** — concentric rings by distance from zone center, inner = C
-- **Sweep** — circular sweep beam with staggered playback offset per bearing
-- **Scatter** — staggers start times across voices for chorus effect
-- **Movement** — auto-cycles stem assignments via wave/pulse/orbit/swing patterns
+- **Cluster** — k-means by GPS proximity, assigns stem slots
+- **Ring** — concentric rings by distance from zone center
+- **Sweep** — circular sweep beam with staggered offset per bearing
+- **Scatter** — staggers start times across voices
+- **Movement** — auto-cycles stem assignments (wave/pulse/orbit/swing)
 
-All modes broadcast `cluster_assign` via `sync_{zone_id}` with `{listenerId → slotKey}` map + `zone_tracks`.
+All modes broadcast `cluster_assign` via `sync_{zone_id}` with `{listenerId → slotKey}` + `zone_tracks`.
 
-### Listener slot assignment (`listener.html`)
-`getSpatialSlot()` does bearing-quadrant self-assignment as fallback. DJ-broadcast `cluster_assign` events override this by directly mapping `payload.assignments[myId]` to a slot key.
+### Listener slot assignment
+`getSpatialSlot(config)` — bearing-quadrant self-assignment. Needs `config.zone_lat`, `config.zone_lng`, `config.zone_radius_m`, `config.zone_tracks`, `config.voices`. `l.dist` in `liveGuests` is in **meters** — do NOT multiply by 1609.34.
 
-### Spatial map (DJ side)
-Leaflet map in the Spatial panel (`sp-spatial-map`). `renderSpatialDots()` runs every 2s. DJ dot rendered directly from `userLat/userLng` as a permanent `__dj__` marker — does NOT depend on presence echo. Listener dots read from `liveListeners` (keyed by listener ID). `isDJ` flag is preserved in `liveListeners` entries and filtered out of cluster/ring/movement slot assignments.
+### Master BPM + scene launcher (DJ, `playmin.html`)
+`_masterBPM` — DJ-set master tempo. `tapTempo()` — tap-to-set. `onMasterBpm()` — manual entry. Scenes fire beat-quantized via `slFireScene` → waits `beatMs - (serverNow() % beatMs)` then calls `_doFireScene`. `broadcastAllZones()` payload includes `master_bpm` and `track_bpms`. Listeners apply `applyBpmWarp(slot, url)` from `audio.playbackRate`. Drift correction uses `_getBpmWarpRate()` as base rate so BPM warp and drift correction don't fight.
 
-### SpatialOrchestra (`orchestra.js`)
-Canvas-based radar in `playmin.html`'s Spatial panel. Reads `window.liveListeners` and `window.activeZone`. Sweep beam driven by drag velocity or `startSweep(rpm, dir)`. Center tap broadcasts `hard_sync` via `window._djSyncChannel`.
+### Rally point
+DJ fires `broadcastRally()` from RALLY POINT section in spatial panel → sends `{lat, lng, label}` on `sync_{zone_id}` as event `rally`. Listener receives: stores `window._rallyPoint`, shows `#fsb-rally` button, Boomy announces, drops teal circle marker on map. `zoomToRally()` flies map to coordinates.
+
+### Tip flow
+Zone has `tip_url` and optional `suggested_donation`. Broadcast via `spatial_config` payload. `showPlayerTipBtn()` shows/hides `#fsb-tip` fellowship button. 3-minute `scheduleTipNudge()` fires Boomy with tip CTA. `openTip()` opens URL in new tab.
+
+## Listener UI layout (as of Jun 2026)
+
+```
+app-header (sticky)          — logo, user/role badge, boombox menu
+now-playing-bar (sticky)     — zone name (teal), track name, thin orange progress bar
+                               IDs: #npb-zone, #npb-track, #npb-fill
+                               shown/hidden via .active class
+.screen:
+  .map-frame (380px)         — Leaflet map, .map-zone-overlay (zone name pill, top-center)
+  .btn-zone                  — "⚡ FIND NEAREST ZONE" → "✦ YOU ARE IN THE ZONE"
+  .zone-nav                  — bearing arrow + distance (hidden until approaching)
+  .fellowship-row#fellowship-lockable  — locked until in-zone
+    #fsb-crowd  👥 WHO'S HERE
+    #fsb-signal 📡 MY SIGNAL
+    #fsb-tip    💸 TIP DJ     (hidden until zone has tip_url)
+    #fsb-rally  🎯 RALLY      (hidden until DJ broadcasts rally)
+  #boomy-bar                 — in-flow Boomy image + speech bubble (not sticky)
+  #guest-list-section        — WHO'S HERE list (always visible, always rendered)
+    #signal-picker           — emoji signal setter
+    #guest-list-ul           — rendered guest rows
+
+Hidden (display:none) for JS compat:
+  #organism-canvas, #music-lockable, #visuals-lockable, #progress-bar,
+  #progress-fill, #time-cur, #time-dur, #track-name, #sync-status,
+  #btn-tip-player, #tip-amount-badge, #music-artist, #zone-list,
+  #zone-chat-section, #chat-messages, #chat-input, #eye-img
+```
+
+`unlockUI(z)` removes `locked` class from `music-lockable`, `visuals-lockable`, `fellowship-lockable`. Leaving zone re-locks all three.
+
+Boomy speech (`playBabble`) is currently muted — `playBabble()` returns immediately. Re-enable by removing the `return` at the top of that function.
 
 ## Invariants — do not regress
 - `bearing: 0` (due north) must not be treated as falsy — use `if (l.dist == null)` not `if (!l.bearing)`
-- `setInterval(sendPresence)` must live outside the subscription callback — recreating it on reconnect stacks intervals
-- `syncZoneAudio()` select query must include `lat,lng,radius_m`
+- `setInterval(sendPresence)` must live outside the subscription callback — recreating on reconnect stacks intervals
+- `syncZoneAudio()` select must include `lat,lng,radius_m`
 - All playback position math uses `syncedNow()` (listener) / `serverNow()` (DJ), never raw `Date.now()`
 - `measureClockOffset()` must be awaited before `seekToSync()` runs at zone entry
 - DJ dot uses `window._spDotMarkers['__dj__']` and is never keyed through `liveListeners`
 - Supabase does not echo broadcasts back to the sender — never rely on self-delivery for state
+- `activateZone` must ALWAYS reach the `_zoneChannel` + `buildSyncChannel` calls — no early return in the track-loading block
+- `l.dist` in presence payloads is in **meters** — never multiply by 1609.34
+- Seek formula must include all four terms: `elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000`
+- `fastDriftCorrect` and `syncZoneAudio` are separate loops — do not merge them back
+- `buildSyncChannel(zoneId)` is the only way to set up the sync channel — never inline it
 
 ## Design principle: listener simplicity
-`listener.html` must stay minimal and frictionless. Never expose slot selection, zone routing, or spatial audio controls to the listener — those are DJ tools in `playmin.html`. Any spatial mechanic (sweep receive, auto-pan, cluster assignment) runs silently with no listener UI.
-
-## Queued features (build order from Roadmap)
-1. Slot Routing 1/2/3/4 (listener side) + Signal Organism Visualizer
-2. 3D sweep receive on listener side (silent — no UI)
-3. Profiles + follow system
-4. Front page event discovery
-5. Stripe Connect + ticketing (geofence = ticket validation)
-6. The Circle (Carnival Society) on shared Supabase backend
-7. Push notifications
+`listener.html` must stay minimal and frictionless. Fellowship features (WHO'S HERE, signal, tip, rally) live below the map and are locked until in-zone. Spatial audio routing happens silently. No slot selection, no zone routing controls exposed to listeners.
