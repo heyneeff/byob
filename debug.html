@@ -41,14 +41,24 @@ const db = createClient(
 
 const devs = {};
 
+// Two distinct telemetry streams share the byob_debug channel with incompatible
+// schemas — keep them tagged and rendered separately rather than merging (that's
+// what caused the garbled "epoch-ms as playback position" display before):
+//   'hud_data'        — broadcastHUD(): real audio-sync data, only sent while a
+//                       listener has their in-app HUD panel open
+//   'listener_health' — broadcastDebug(): always-on GPS/connection health probe
 db.channel('byob_debug')
   .on('broadcast', { event: 'hud_data' }, ({ payload }) => {
-    devs[payload.deviceId] = { ...payload, lastSeen: Date.now() };
+    devs[payload.deviceId] = { ...payload, _kind: 'sync', lastSeen: Date.now() };
+    render();
+  })
+  .on('broadcast', { event: 'listener_health' }, ({ payload }) => {
+    devs[payload.deviceId] = { ...payload, _kind: 'health', lastSeen: Date.now() };
     render();
   })
   .subscribe(s => {
     document.getElementById('status').textContent =
-      s === 'SUBSCRIBED' ? '● Listening — open HUD on any device to stream data here' : s;
+      s === 'SUBSCRIBED' ? '● Listening — open a listener\'s HUD for full sync data; GPS/connection health streams automatically' : s;
   });
 
 function render() {
@@ -56,26 +66,12 @@ function render() {
   document.getElementById('grid').innerHTML = ids.map(id => {
     const d = devs[id];
     const age = Math.round((Date.now() - d.lastSeen) / 1000);
-    const dm = parseFloat(d.driftMs);
-    const dc = Math.abs(dm) > 500 ? 'bad' : Math.abs(dm) > 100 ? 'warn' : '';
-    return `<div class="card">
-      <div class="card-hdr">
-        <span class="dev-id">${d.deviceId}</span>
-        <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
-      </div>
-      ${r('elapsed',     d.elapsed    ? d.elapsed + 's'    : '—')}
-      ${r('currentTime', d.currentTime? d.currentTime+'s'  : '—')}
-      ${r('expectedPos', d.expectedPos? d.expectedPos+'s'  : '—')}
-      ${r('DRIFT',       d.driftMs !== null ? d.driftMs+'ms':'—', dc)}
-      ${r('BT latency',  d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
-      ${r('calOffset',   (d.calOffset>=0?'+':'')+d.calOffset+'ms')}
-      ${r('syncState',   d.syncState || '—')}
-      ${r('src',         d.src || '—')}
-    </div>`;
+    return d._kind === 'sync' ? renderSyncCard(d, age) : renderHealthCard(d, age);
   }).join('');
 
-  if (ids.length >= 2) {
-    const vals = ids.map(id => parseFloat(devs[id].currentTime)).filter(v => !isNaN(v));
+  const syncIds = ids.filter(id => devs[id]._kind === 'sync');
+  if (syncIds.length >= 2) {
+    const vals = syncIds.map(id => parseFloat(devs[id].currentTime)).filter(v => !isNaN(v));
     if (vals.length >= 2) {
       const delta = Math.abs(vals[0] - vals[1]) * 1000;
       const el = document.getElementById('diff-val');
@@ -84,6 +80,40 @@ function render() {
       document.getElementById('diff').style.display = 'block';
     }
   }
+}
+
+function renderSyncCard(d, age) {
+  const dm = parseFloat(d.driftMs);
+  const dc = Math.abs(dm) > 500 ? 'bad' : Math.abs(dm) > 100 ? 'warn' : '';
+  return `<div class="card">
+    <div class="card-hdr">
+      <span class="dev-id">🎧 ${d.deviceId}</span>
+      <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
+    </div>
+    ${r('elapsed',     d.elapsed    ? d.elapsed + 's'    : '—')}
+    ${r('currentTime', d.currentTime? d.currentTime+'s'  : '—')}
+    ${r('expectedPos', d.expectedPos? d.expectedPos+'s'  : '—')}
+    ${r('DRIFT',       d.driftMs !== null && d.driftMs !== undefined ? d.driftMs+'ms':'—', dc)}
+    ${r('BT latency',  d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
+    ${r('syncState',   d.syncState || '—')}
+    ${r('src',         d.src || '—')}
+  </div>`;
+}
+
+function renderHealthCard(d, age) {
+  const distM = parseFloat(d.driftMs); // meters from zone center (see broadcastDebug)
+  const dc = isNaN(distM) ? '' : (distM > 300 ? 'bad' : distM > (d.zone !== 'none' ? 100 : 1e9) ? 'warn' : '');
+  return `<div class="card">
+    <div class="card-hdr">
+      <span class="dev-id">📡 ${d.deviceId}</span>
+      <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
+    </div>
+    ${r('dist to zone', !isNaN(distM) ? distM.toFixed(0)+'m' : '—', dc)}
+    ${r('GPS coords',   d.expectedPos || '—')}
+    ${r('bearing',      d.src || '—')}
+    ${r('presence',     d.deviceLatencyMs ? '✓ broadcasting' : '✗ idle', d.deviceLatencyMs ? '' : 'warn')}
+    ${r('status',       d.syncState || '—')}
+  </div>`;
 }
 
 function r(key, val, cls='') {
