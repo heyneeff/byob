@@ -2406,6 +2406,9 @@ async function killStream(){
   }
   _killArmed = false;
   clearTimeout(_killArmedTimer);
+  // Broadcast first — don't make listeners wait on the zones-table postgres
+  // change (some devices miss/lag on it) or the 60s syncZoneAudio poll.
+  if(window._djSyncChannel) window._djSyncChannel.send({type:'broadcast',event:'stream_end',payload:{}});
   audio.pause();audio.src='';audio.load();
   if(liveStream){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;}
   stopWebRTCBroadcast();

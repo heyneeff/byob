@@ -3785,6 +3785,11 @@ function buildSyncChannel(zoneId) {
   .on('broadcast', { event: 'message' }, ({ payload }) => {
     if (payload?.text) boomSay(`📣 ${payload.text}`, 7000, true, 'devious');
   })
+  .on('broadcast', { event: 'stream_end' }, () => {
+    // Direct signal from killStream — don't wait on the zones-table postgres
+    // change (which some devices miss/lag on) or the 60s syncZoneAudio poll.
+    if (activeZone?.id === zoneId) { stopEverything(); showToast('Zone ended 🎤'); }
+  })
   .subscribe((status) => {
     if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && activeZone?.id === zoneId) {
       clearTimeout(_syncChannelRetryTimer);
