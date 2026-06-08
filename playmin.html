@@ -991,7 +991,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div class="section-label">Audio Source</div>
     <div class="live-menu-row">
       <button class="btn-live-option btn-live-stream" onclick="startLiveStream()">🎙 Live Mic</button>
-      <button class="btn-live-option btn-live-upload" onclick="switchPanel('deck',document.querySelector('[data-panel=deck]'))">📚 Use Library</button>
+      <button class="btn-live-option btn-live-upload" onclick="cancelLiveMicSetup();switchPanel('deck',document.querySelector('[data-panel=deck]'))">📚 Use Library</button>
     </div>
     <input type="file" id="file-input" multiple accept="audio/*" style="display:none;"/>
     <input type="file" id="stem-file-input" multiple accept="audio/*" style="display:none;"/>
@@ -2109,6 +2109,15 @@ function startLiveStream(){
   scanDevices();
   const streamBtn=document.querySelector('.btn-live-stream');
   if(streamBtn){streamBtn.textContent='🔴 Confirm Stream';streamBtn.onclick=()=>{toggleLive();};}
+}
+// Bail out of the "choose a mic" setup — there was no way back to track-based
+// DJing once _micModeArmed got set, leaving the audio-source prompt stuck on.
+function cancelLiveMicSetup(){
+  if(liveStream)return; // already streaming — don't tear that down here
+  _micModeArmed=false;
+  document.getElementById('device-row').style.display='none';
+  const streamBtn=document.querySelector('.btn-live-stream');
+  if(streamBtn){streamBtn.textContent='🎙 Live Mic';streamBtn.onclick=()=>{startLiveStream();};}
 }
 function onTopLiveBtn(){
   const isLive = document.getElementById('btn-go-live')?.classList.contains('active');
