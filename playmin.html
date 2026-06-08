@@ -2167,16 +2167,23 @@ async function toggleLive(){
   try{
     liveStream=await navigator.mediaDevices.getUserMedia(constraints);
     scanDevices(); // re-scan after permission — labels now visible on iOS
-    audioCtx=new AudioContext();
-    analyserNode=audioCtx.createAnalyser();analyserNode.fftSize=256;
-    // Feed the analyser a CLONE, not the live track — Safari's WebKit audio
-    // pipeline only reliably serves one consumer per MediaStreamTrack; sharing
-    // it with WebRTC's sender starves the peer connection of audio (meter
-    // moves locally, but listeners hear nothing despite "connected" state).
-    audioCtx.createMediaStreamSource(liveStream.clone()).connect(analyserNode);
-    const meterData=new Uint8Array(analyserNode.frequencyBinCount);
-    const tick=()=>{analyserNode.getByteFrequencyData(meterData);const avg=meterData.reduce((a,b)=>a+b,0)/meterData.length;document.getElementById('meter-fill').style.width=Math.min(avg*2,100)+'%';meterRAF=requestAnimationFrame(tick);};
-    tick();
+    // Safari/WebKit can only reliably hand a getUserMedia mic track to ONE
+    // consumer: routing it through Web Audio (for the level meter) starves
+    // the WebRTC sender of audio, and cloning the track for the meter instead
+    // produces a silent clone (separate WebKit bug) — starving the meter.
+    // Either way one side goes silent, so on Safari skip the meter entirely
+    // and give WebRTC exclusive, untouched access to the original track.
+    const _isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if(!_isSafari){
+      audioCtx=new AudioContext();
+      analyserNode=audioCtx.createAnalyser();analyserNode.fftSize=256;
+      audioCtx.createMediaStreamSource(liveStream).connect(analyserNode);
+      const meterData=new Uint8Array(analyserNode.frequencyBinCount);
+      const tick=()=>{analyserNode.getByteFrequencyData(meterData);const avg=meterData.reduce((a,b)=>a+b,0)/meterData.length;document.getElementById('meter-fill').style.width=Math.min(avg*2,100)+'%';meterRAF=requestAnimationFrame(tick);};
+      tick();
+    } else {
+      document.getElementById('meter-fill').style.width='100%';
+    }
     btn.classList.add('active');btn.textContent='■ Stop Live';
     if(btnLive){btnLive.classList.add('active');btnLive.textContent='■ Live';}
     document.getElementById('track-name').textContent='🔴 LIVE — '+activeZone.name;
