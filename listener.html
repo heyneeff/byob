@@ -5108,7 +5108,10 @@ const _hudDeviceId = 'dev_' + Math.random().toString(36).substr(2, 6);
 
 function ensureHUDChannel() {
   if (_hudChannel) return;
-  _hudChannel = db.channel('byob_debug').subscribe();
+  // Share one 'byob_debug' subscription with broadcastDebug — now that this
+  // broadcasts unconditionally for every listener, doubling up channel
+  // subscriptions per device would needlessly multiply realtime connections.
+  _hudChannel = window._debugChannel = window._debugChannel || db.channel('byob_debug').subscribe();
 }
 
 function broadcastHUD() {
@@ -5129,6 +5132,7 @@ function broadcastHUD() {
       expectedPos: expectedPos?.toFixed(3),
       driftMs:     drift !== null ? (drift * 1000).toFixed(0) : null,
       duration:    audio.duration?.toFixed(2),
+      calOffset:   _clockOffset,
       deviceLatencyMs: _deviceLatencyMs,
       syncState:   typeof _syncState !== 'undefined' ? _syncState : '—',
       zone:        activeZone?.name || null,
@@ -5297,7 +5301,7 @@ function applySweepOffset(sweep){
 
 // ── DEBUG BROADCAST ──────────────────────────────────────
 function broadcastDebug() {
-  const ch = window._debugChannel = window._debugChannel ||
+  const ch = window._debugChannel = window._debugChannel || _hudChannel ||
     db.channel('byob_debug').subscribe();
 
   const hasZone   = !!activeZone;
