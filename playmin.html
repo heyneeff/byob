@@ -2169,11 +2169,7 @@ async function toggleLive(){
     scanDevices(); // re-scan after permission — labels now visible on iOS
     audioCtx=new AudioContext();
     analyserNode=audioCtx.createAnalyser();analyserNode.fftSize=256;
-    // Feed the analyser a CLONE, not the live track — Safari's WebKit audio
-    // pipeline only reliably serves one consumer per MediaStreamTrack; sharing
-    // it with WebRTC's sender starves the peer connection of audio (meter
-    // moves locally, but listeners hear nothing despite "connected" state).
-    audioCtx.createMediaStreamSource(liveStream.clone()).connect(analyserNode);
+    audioCtx.createMediaStreamSource(liveStream).connect(analyserNode);
     const meterData=new Uint8Array(analyserNode.frequencyBinCount);
     const tick=()=>{analyserNode.getByteFrequencyData(meterData);const avg=meterData.reduce((a,b)=>a+b,0)/meterData.length;document.getElementById('meter-fill').style.width=Math.min(avg*2,100)+'%';meterRAF=requestAnimationFrame(tick);};
     tick();
