@@ -1083,7 +1083,7 @@ async function measureClockOffset(){
   }
   if(samples.length)_clockOffset=samples.sort((a,b)=>a-b)[Math.floor(samples.length/2)];
 }
-function serverNow(){return Date.now()+_clockOffset;}
+function serverNow(){return Math.round(Date.now()+_clockOffset);}
 let userLat=null,userLng=null;
 let draftCenter=null,draftRadius=200,drawMode=false;
 let isPlaying=false,liveStream=null,audioCtx=null,analyserNode=null,meterRAF=null,_micModeArmed=false;

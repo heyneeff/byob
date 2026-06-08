@@ -4540,7 +4540,7 @@ async function measureClockOffset() {
   }
   if (samples.length) _clockOffset = samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)];
 }
-function syncedNow() { return Date.now() + _clockOffset; }
+function syncedNow() { return Math.round(Date.now() + _clockOffset); }
 
 
 async function calibrateDeviceLatency() {
@@ -4667,6 +4667,8 @@ async function _enterLockingState(){
   }
 }
 let _isDucking = false;
+let _driftCorrectionActive = false;
+let _driftCorrectionTimer = null;
 
 function seekWithDuck(newTime) {
   if (_isDucking) return;
@@ -4713,15 +4715,26 @@ function seekWithDuck(newTime) {
 function applyDriftCorrection(lagMs) {
   if (Math.abs(lagMs) < 15) return;
   if (Math.abs(lagMs) > 500) {
+    clearTimeout(_driftCorrectionTimer);
+    _driftCorrectionActive = false;
+    audio.playbackRate = _getBpmWarpRate();
     seekWithDuck(audio.currentTime + lagMs / 1000);
     return;
   }
+  // A correction is still ramping — let it finish before measuring again, otherwise
+  // the next 5s tick reads the in-progress rate change as fresh drift and stacks
+  // another correction on top, fighting the first one (the "jitter" / overcorrection).
+  if (_driftCorrectionActive) return;
   // Small drift = rate correction — completely inaudible at ±3%
   const baseRate = _getBpmWarpRate();
   const rate = lagMs > 0 ? baseRate * 1.03 : baseRate * 0.97;
   audio.playbackRate = rate;
+  _driftCorrectionActive = true;
   const correctionMs = Math.abs(lagMs) / 0.03;
-  setTimeout(() => { audio.playbackRate = baseRate; }, correctionMs);
+  _driftCorrectionTimer = setTimeout(() => {
+    audio.playbackRate = baseRate;
+    _driftCorrectionActive = false;
+  }, correctionMs);
 }
 
 
@@ -5104,7 +5117,7 @@ setInterval(() => {
 
   // ── HUD BROADCAST TO debug.html ──────────────────────────
 let _hudChannel = null;
-const _hudDeviceId = 'dev_' + Math.random().toString(36).substr(2, 6);
+const _hudDeviceId = 'dev_' + listenerId.slice(0, 6);
 
 function ensureHUDChannel() {
   if (_hudChannel) return;
