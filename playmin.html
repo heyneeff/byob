@@ -2390,8 +2390,22 @@ async function triggerResync() {
   showToast('⟳ Sync in 2s…');
 }
 
+let _killArmed = false, _killArmedTimer = null;
 async function killStream(){
-  if(!confirm('Kill the stream and deactivate zone?'))return;
+  // Native confirm() dialogs can get permanently suppressed by the browser
+  // ("Prevent this page from creating additional dialogs") after a user
+  // dismisses a few in a row — confirm() then silently returns false forever,
+  // and this button looks broken with no way to recover short of a refresh.
+  // Use an in-page arm/confirm pattern instead, like the rest of the app.
+  if(!_killArmed){
+    _killArmed = true;
+    showToast('⚠ Tap again to kill the stream and deactivate zone');
+    clearTimeout(_killArmedTimer);
+    _killArmedTimer = setTimeout(() => { _killArmed = false; }, 4000);
+    return;
+  }
+  _killArmed = false;
+  clearTimeout(_killArmedTimer);
   audio.pause();audio.src='';audio.load();
   if(liveStream){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;}
   stopWebRTCBroadcast();
