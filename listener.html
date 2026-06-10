@@ -3596,7 +3596,14 @@ async function activateZone(z) {
   await measureClockOffset();
     startSyncEngine();
 
-    // Calibration already ran during approach — nothing to do here
+    // Fallback: preSyncApproach() normally calibrates during the GPS-approach
+    // window before activeZone is set, but "force enter" (and any fast/direct
+    // entry that skips the approach phase) bypasses that entirely, leaving
+    // _deviceLatencyMs at 0 forever. Audio hasn't started yet here, so it's
+    // still safe to run the mic-based calibration now if it hasn't happened.
+    if (!localStorage.getItem('byob_device_latency')) {
+      await calibrateDeviceLatency();
+    }
 
 
   if (z.current_track_url === 'webrtc-live') {
