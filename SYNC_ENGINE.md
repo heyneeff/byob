@@ -58,8 +58,9 @@ expected = (elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/100
 ## Step 3: two independent loops keep it locked in
 
 - **`fastDriftCorrect()`** — runs every 5 seconds, purely from memory (no
-  network call). Computes `expected` vs. `audio.currentTime`, and if they've
-  drifted apart by more than 60ms, calls `applyDriftCorrection()`.
+  network call). Computes `expected` vs. `audio.currentTime` (via
+  `computeLagMs()`), and if they've drifted apart by more than 60ms, calls
+  `requestCorrection()`.
 - **`syncZoneAudio()`** — runs every 60 seconds, does an actual database fetch.
   Its job isn't fine-tuning — it's a safety net that catches things memory
   can miss: "did the zone end?", "did the track change and I missed the
@@ -69,47 +70,76 @@ These stay deliberately separate: one is a tight feedback loop for staying
 glued to the beat, the other is a slow heartbeat for catching structural
 changes (zone ended, track changed, etc).
 
-## Step 4: how a correction actually gets applied — `applyDriftCorrection()`
+## Step 4: how a correction actually gets applied — `requestCorrection()`
 
 Not all drift is equal, and how you fix it matters for what it sounds like:
 
-- **Drift under 500ms** → nudge the *playback speed* by ±3% (`audio.playbackRate`)
+- **Drift under 15ms** → ignored. Not worth correcting.
+- **Drift 15–500ms** → nudge the *playback speed* by ±3% (`audio.playbackRate`)
   for just long enough to close the gap, then snap back to normal speed.
   At ±3%, this is completely inaudible — the listener never hears a seek,
   the track just very subtly speeds up or slows down for a few seconds.
+  This is the **`'warping'`** state.
 - **Drift over 500ms** → too big to fix by speeding up — instead, fade the
   volume down, jump (`seek`) to the correct position, fade back up. This is
-  the "duck" (`seekWithDuck()`). It's audible as a brief dip in volume, which
-  is why you want it to happen as rarely as possible.
+  the "duck" (`seekWithDuck()`), the **`'ducking'`** state. It's audible as a
+  brief dip in volume, which is why you want it to happen as rarely as
+  possible.
 
-A guard flag (`_driftCorrectionActive` / `_isDucking`) makes sure a second
-correction can't start measuring and acting while the first one is still
-mid-flight — otherwise the second correction would see the first one's
-in-progress rate change as "fresh drift" and pile another correction on top of
-it, and the two would fight forever without ever settling.
+### One gate: `_driftState`
+
+All of this is governed by a single state variable, `_driftState`
+(`'idle'` / `'warping'` / `'ducking'`), through one entry point —
+`requestCorrection(lagMs)`:
+
+- If `_driftState === 'ducking'` (mid volume-ramp, audible if interrupted),
+  the new request is remembered via `_driftPendingRecheck` instead of acting
+  immediately — interrupting a duck would be jarring. Once the duck finishes,
+  `settleToIdle()` re-checks drift and fires a fresh correction if still needed.
+- If `_driftState === 'warping'`, a new request is **not** deferred — a
+  rate-warp is just a `playbackRate` multiplier with no audible artifact, so
+  it's always safe to recompute with fresh numbers. (Earlier designs deferred
+  this too, which let a stale ±3% rate — chosen for drift that no longer
+  exists — keep running in the *wrong direction* for its full remaining
+  duration, making things worse instead of better.)
+- Otherwise, drift is classified as above and `_driftState` moves to
+  `'warping'` or `'ducking'`.
+
+`settleToIdle()` is the piece a naive gate gets wrong: when a correction is
+deferred because the gate was busy, *something* must recheck once it frees up
+— otherwise drift just accumulates silently. This is what makes "single gate"
+actually safe rather than merely "less wrong than scattered flags."
 
 ## Step 5: deliberate "everyone snap together NOW" moments
 
-Separate from continuous drift correction, the DJ can also trigger a
-**coordinated hard sync** — "at this exact future timestamp, every phone jumps
-to this exact position." Used for: starting a new track, switching spatial
-slots, a sweep beam reaching a listener's bearing, or a manual "resync
-everyone" command. These don't go through the gentle ±3% warp — they're
-supposed to snap immediately, in lockstep, because the DJ has explicitly
-commanded it.
+Separate from continuous drift correction, the DJ (or a spatial effect) can
+also trigger a **coordinated snap** — "jump to this exact position right now."
+Used for: starting a new track, a coordinated `resync_at`, a sweep beam
+reaching a listener's bearing, a manual `hard_sync`, and **scatter** (the DJ
+staggers each listener's start offset for a spatial effect). These don't go
+through the gentle ±3% warp — they're supposed to snap immediately, because
+the reference point itself just changed, not because the listener drifted.
 
 Because these are forced, immediate seeks, they first call
-`cancelDriftCorrection()` — which cancels any in-flight rate-warp or duck and
-resets the playback rate to baseline. Without this, a coordinated snap could
-land *during* an unrelated drift correction, get immediately "corrected" again
-by that stale in-flight adjustment, and the listener would end up worse off
-than before the snap.
+`cancelDriftCorrection()` — which resets `_driftState` to `'idle'`, clears
+`_driftPendingRecheck`, cancels any in-flight rate-warp timer, and resets the
+playback rate to baseline. Without this, a coordinated snap could land
+*during* an unrelated drift correction, get immediately "corrected" again by
+that stale in-flight adjustment, and the listener would end up worse off than
+before the snap.
+
+Scatter used to be treated as ordinary drift (fed into `requestCorrection()`),
+but the simulator showed that's wrong: a scatter offset can be hundreds of ms,
+which lands in `'ducking'` territory — and a duck takes ~2.5s to ramp down,
+seek, and ramp back up. For that whole window, the listener measures as
+hundreds of ms "off" even though nothing is actually wrong, just stale. Treating
+it as a forced snap (cancel + immediate seek, like `hard_sync`) fixed this.
 
 ## The golden rule: one corrector to rule them all
 
 The single most important invariant in this system: **every code path that
 wants to nudge a listener's playback position funnels through
-`applyDriftCorrection()` / `seekWithDuck()` / `cancelDriftCorrection()`.**
+`requestCorrection()` / `seekWithDuck()` / `cancelDriftCorrection()`.**
 Nothing calls `seekPreservingBT()` directly except the deliberate,
 DJ-coordinated snap moments described above (and those clear any in-flight
 correction first).
@@ -125,3 +155,15 @@ two (or more) corrections actively fighting over the same `audio.currentTime`
 no single part of the system has the full picture of what's currently being
 corrected. Funneling everything through one gated entry point is what gives
 that one part the full picture.
+
+## Where this design was proven: `sync-sim.html`
+
+Before porting this design into `listener.html`, it was validated in
+`sync-sim.html` — a standalone simulator (no audio, no Supabase, just numbers)
+that runs the same randomized "party" through the old scattered-flags
+controller and the new single-gate controller side by side, with identical
+seeds and event schedules. It includes checkboxes to toggle screen-wake,
+scatter, and hard-sync events on/off, so the core 5s drift-correction loop can
+be tested in isolation from the "snap" events. Open it locally
+(`python3 -m http.server` from the repo root, then `sync-sim.html`) to
+re-run or extend these comparisons.
