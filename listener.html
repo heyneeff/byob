@@ -3741,6 +3741,18 @@ function buildSyncChannel(zoneId) {
       showToast('🔊 Slot ' + mySlot);
     } else if (trackUrl && trackUrl === audio.src) {
       applyBpmWarp(mySlot, trackUrl);
+      // Scene fires reset playback_started_at for the whole zone. A listener
+      // whose stem didn't change must still adopt the new reference point —
+      // otherwise it limps on the old one until fastDriftCorrect ducks it
+      // (up to 5s late). Forced snap, same family as hard_sync/scatter.
+      const newStart = payload.playback_started_at ? new Date(payload.playback_started_at).getTime() : null;
+      const curStart = activeZone?.playback_started_at ? new Date(activeZone.playback_started_at).getTime() : null;
+      if (newStart && audio.duration && (!curStart || Math.abs(newStart - curStart) > 250)) {
+        if (activeZone) activeZone.playback_started_at = payload.playback_started_at;
+        cancelDriftCorrection();
+        const elapsed = (syncedNow() - newStart) / 1000;
+        seekPreservingBT(((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration);
+      }
     }
   })
   .on('broadcast', { event: 'sweep_start' }, ({ payload }) => { window._sweepConfig = payload; applySweepOffset(payload); })
@@ -4643,6 +4655,79 @@ async function calibrateDeviceLatency() {
 
 
 
+// ── RECALIBRATION NUDGE ──────────────────────────────────
+// Two passive staleness signals for _deviceLatencyMs. The mic-click
+// calibration can't silently re-run mid-set (opening the mic kills BT audio
+// on iOS, and it pauses playback) — so instead of auto-recalibrating, Boomy
+// nudges and the user taps to consent:
+//   1. devicechange — an audio device appeared/disappeared (BT speaker paired)
+//   2. ctx.outputLatency jump — Chrome/Android reports live output-path
+//      latency; a sudden shift means the audio route changed under us.
+function getOutputLatencyMs() {
+  // Passive read of the existing sfx context — never create one just for
+  // this (a fresh suspended context reports 0/garbage).
+  const ctx = _sfxCtx || window._sfxCtx;
+  if (!ctx || typeof ctx.outputLatency !== 'number') return null; // unsupported (iOS Safari)
+  const ms = Math.round(ctx.outputLatency * 1000);
+  return ms > 0 ? ms : null;
+}
+
+let _recalNudgeAt = 0;          // local cooldown — not sync math, raw Date.now() ok
+let _lastOutputLatencyMs = null;
+let _audioDeviceSig = null;
+
+function nudgeRecalibrate(reason) {
+  // Pre-music cases are covered by auto-calibration (preSyncApproach /
+  // activateZone fallback) — only nudge when recalibrating would actually
+  // interrupt playback, i.e. the case that needs user consent.
+  if (!activeZone || !_webAudioPlaying) return;
+  if (Date.now() - _recalNudgeAt < 120000) return; // 2 min cooldown
+  _recalNudgeAt = Date.now();
+  console.log('[Calibrate] Recal nudge:', reason);
+  window._boomyTapOverride = () => { window._boomyTapOverride = null; hudCalibrateNow(); };
+  boomSay('🔊 New speaker? Tap me to tighten the sync →', 9000, true, 'regular');
+}
+
+async function _audioDeviceSignature() {
+  // deviceIds are exposed once mic permission has been granted (which
+  // calibration does). Returns null when enumeration is degraded (iOS
+  // without a persisted grant lists empty deviceIds) — caller falls back
+  // to trusting the devicechange event itself.
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const auds = devs.filter(d => d.kind === 'audioinput' || d.kind === 'audiooutput');
+    if (!auds.length || auds.every(d => !d.deviceId)) return null;
+    return auds.map(d => d.kind + ':' + d.deviceId).sort().join('|');
+  } catch (e) { return null; }
+}
+
+if (navigator.mediaDevices?.addEventListener) {
+  _audioDeviceSignature().then(sig => { _audioDeviceSig = sig; });
+  let _devChangeTimer = null;
+  navigator.mediaDevices.addEventListener('devicechange', () => {
+    // BT pairing fires several devicechange events in a burst — settle first
+    clearTimeout(_devChangeTimer);
+    _devChangeTimer = setTimeout(async () => {
+      const sig = await _audioDeviceSignature();
+      // No usable signature on either side → can't diff, trust the event.
+      // (Spurious nudges are bounded by the cooldown + in-zone gate.)
+      if (sig === null || _audioDeviceSig === null || sig !== _audioDeviceSig) {
+        nudgeRecalibrate('devicechange');
+      }
+      _audioDeviceSig = sig;
+    }, 1500);
+  });
+}
+
+setInterval(() => {
+  const ol = getOutputLatencyMs();
+  if (ol !== null && _lastOutputLatencyMs !== null && Math.abs(ol - _lastOutputLatencyMs) > 75) {
+    nudgeRecalibrate('outputLatency ' + _lastOutputLatencyMs + 'ms → ' + ol + 'ms');
+  }
+  if (ol !== null) _lastOutputLatencyMs = ol;
+}, 3000);
+
+
 async function initAutoSync(){
   // Mic sync disabled — iOS kills Bluetooth when getUserMedia opens.
   // Wall-clock sync + manual resync button is sufficient for live events.
@@ -5114,8 +5199,10 @@ function buildHUDRows() {
   const startedAt = activeZone?.playback_started_at
     ? new Date(activeZone.playback_started_at).getTime() : null;
   const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
+  // Must match computeLagMs() / broadcastHUD() — a simplified copy here makes
+  // DRIFT read wrong by a constant offset even when the corrector is fine
   const expectedPos = elapsed !== null && audio.duration
-    ? ((elapsed - _deviceLatencyMs/1000) % audio.duration) : null;
+    ? (((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration) : null;
   const drift = expectedPos !== null
     ? (audio.currentTime - expectedPos) : null;
 
@@ -5134,6 +5221,7 @@ function buildHUDRows() {
     ['_webAudioPlaying', String(_webAudioPlaying)],
     ['_deviceLatencyMs', _deviceLatencyMs+'ms',
       v => parseFloat(v)===0?'warn':''],
+    ['ctx.outputLatency', getOutputLatencyMs() !== null ? getOutputLatencyMs()+'ms' : 'n/a'],
     ['_clockOffset',     _clockOffset.toFixed(0)+'ms', v => parseFloat(v)===0?'warn':''],
     ['_syncState',       typeof _syncState !== 'undefined' ? _syncState : '—'],
     ['activeZone',       activeZone?.name ?? 'none'],
@@ -5203,6 +5291,7 @@ function broadcastHUD() {
       duration:    audio.duration?.toFixed(2),
       calOffset:   _clockOffset,
       deviceLatencyMs: _deviceLatencyMs,
+      outputLatencyMs: getOutputLatencyMs(), // browser-reported output path latency (null = unsupported)
       syncState:   typeof _syncState !== 'undefined' ? _syncState : '—',
       playbackRate: audio.duration ? audio.playbackRate.toFixed(3) : null,
       driftState:  _driftState,

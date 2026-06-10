@@ -38,14 +38,16 @@
 <h1>🎛 BYOB — Sync Engine Simulator</h1>
 <p class="lead">
   Runs the same randomized "party" — clock-sync error, Bluetooth latency, hardware
-  clock drift, scatter/sweep changes, coordinated hard-syncs — through two
-  controller designs side by side: the <b>old scattered-flags</b> approach
-  (<code>_isDucking</code> / <code>_driftCorrectionActive</code> + a few direct
-  seeks that bypass them — the source of the "roving" bug) vs. a
-  <b>single gated <code>_syncState</code></b> approach where every correction
-  funnels through one function. Same seed, same event schedule, same listener
-  population — only the controller logic differs. No real audio, no Supabase —
-  positions and clocks are just numbers, run thousands of times faster than real time.
+  clock drift, scatter/sweep changes, coordinated hard-syncs, spatial cluster
+  reassigns, scene fires — through two system designs side by side: the <b>old</b>
+  system (scattered <code>_isDucking</code>/<code>_driftCorrectionActive</code> flags,
+  direct bypass seeks, <code>cluster_assign</code> minting a private "started NOW"
+  reference per reassignment, scene fires that never re-seek unchanged stems) vs.
+  the <b>current</b> system (single gated corrector + one shared
+  <code>playback_started_at</code> reference that spatial reassignment never
+  re-mints). Same seed, same event schedule, same listener population — only the
+  logic differs. No real audio, no Supabase — positions and clocks are just
+  numbers, run thousands of times faster than real time.
 </p>
 
 <div class="controls">
@@ -56,6 +58,8 @@
   <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-wake" type="checkbox" checked style="width:auto;"> Screen-wake events</label>
   <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-scatter" type="checkbox" checked style="width:auto;"> Scatter events</label>
   <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-hardsync" type="checkbox" checked style="width:auto;"> Hard-sync events</label>
+  <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-cluster" type="checkbox" checked style="width:auto;"> Cluster reassigns</label>
+  <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-scene" type="checkbox" checked style="width:auto;"> Scene fires</label>
   <button id="btn-run">▶ Run simulation</button>
   <button id="btn-reseed" class="secondary">🎲 New random seed</button>
   <span id="status" class="events"></span>
@@ -63,12 +67,12 @@
 
 <div class="grid">
   <div class="panel">
-    <h2>Legacy — scattered flags + direct seeks</h2>
+    <h2>Legacy — scattered flags + fragmented spatial references</h2>
     <canvas id="chart-legacy" width="900" height="260"></canvas>
     <table id="stats-legacy"></table>
   </div>
   <div class="panel">
-    <h2>New — single gated <code>_syncState</code></h2>
+    <h2>New — single gate + one shared reference point</h2>
     <canvas id="chart-new" width="900" height="260"></canvas>
     <table id="stats-new"></table>
   </div>
@@ -183,6 +187,22 @@ function legacyTick(L, simNow, dtMs, ctx) {
   }
   if (ctx.events.hardSync) { snapTo(L, simNow, ctx.startedAt); }
 
+  // PRE-FIX cluster_assign: the DJ stamped playback_started_at = NOW into the
+  // broadcast (never the DB). A reassigned phone reloads its stem and seeks
+  // against that private reference — landing at ~position 0 — while
+  // fastDriftCorrect still measures against the zone's real reference and
+  // duck-yanks it back seconds later. Reference fragmentation.
+  if (ctx.events.clusterAssign && ctx.pick(ctx.events.clusterAssign, L)) {
+    L.currentTime = expectedPos(L, simNow, simNow); // private "started NOW" reference
+    L.hardSeekCount++; L.directBypassCount++;
+  }
+  // PRE-FIX scene fire: only listeners whose stem changed reloaded (and thus
+  // adopted the new reference). Same-stem listeners never re-seeked — they
+  // limp on the old reference until the 5s drift loop ducks them.
+  if (ctx.events.sceneFire && ctx.pick(ctx.events.sceneFire, L, ctx.events.sceneFire.changedFrac)) {
+    snapTo(L, simNow, ctx.startedAt);
+  }
+
   L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
 }
 function legacyApply(L, lag, simNow) {
@@ -276,6 +296,16 @@ function newTick(L, simNow, dtMs, ctx) {
   }
   if (ctx.events.hardSync) { requestCorrection(0, true); }
 
+  // POST-FIX cluster_assign: the broadcast carries the zone's EXISTING
+  // playback_started_at (currentStartedAt() in playmin.html) — the stem
+  // reload lands in-phase. One clean seek the gate fully owns.
+  if (ctx.events.clusterAssign && ctx.pick(ctx.events.clusterAssign, L)) {
+    requestCorrection(0, true);
+  }
+  // POST-FIX scene fire: every listener adopts the new reference immediately —
+  // the spatial_config handler force-snaps even when the stem didn't change.
+  if (ctx.events.sceneFire) { requestCorrection(0, true); }
+
   L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
 }
 
@@ -283,10 +313,17 @@ function newTick(L, simNow, dtMs, ctx) {
 // Simulation driver
 // ════════════════════════════════════════════════════════════
 function runSim(seed, listenerCount, totalMs, disruptRate, tickFn, eventToggles) {
-  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true }, eventToggles);
+  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true }, eventToggles);
   const rng = mulberry32(seed);
   const listeners = Array.from({length:listenerCount}, (_,i) => makeListener(rng, i, 1.0));
   const ctx = { startedAt: 0, events:{}, scatterFor: () => 0 };
+  // Deterministic per-event listener picker — identical for legacy & new runs.
+  // Used by clusterAssign (which listeners get reassigned) and sceneFire
+  // (which listeners' stems changed vs stayed the same).
+  ctx.pick = (ev, L, frac) => {
+    const x = Math.abs(Math.sin((L.id + 1) * 12.9898 + ev.r * 78.233) * 43758.5453);
+    return (x - Math.floor(x)) < (frac !== undefined ? frac : ev.frac);
+  };
   const eventLog = [];
 
   // Pre-roll a deterministic disruption schedule so legacy & new face the *same* party.
@@ -302,6 +339,16 @@ function runSim(seed, listenerCount, totalMs, disruptRate, tickFn, eventToggles)
       if (enable.scatterChange) schedule.push({ t, type:'scatterChange', voices, maxMs });
     }
     if (rng() < 0.000015 * disruptRate) { if (enable.hardSync) schedule.push({ t, type:'hardSync' }); }
+    if (rng() < 0.00004 * disruptRate) {
+      // spatial reassign (cluster/ring/movement tick) hits a fraction of the crowd
+      const frac = 0.2 + rng()*0.5, r = rng();
+      if (enable.clusterAssign) schedule.push({ t, type:'clusterAssign', frac, r });
+    }
+    if (rng() < 0.00001 * disruptRate) {
+      // scene fire: the reference point itself resets; only some stems change
+      const changedFrac = 0.3 + rng()*0.5, r = rng();
+      if (enable.sceneFire) schedule.push({ t, type:'sceneFire', changedFrac, r });
+    }
   }
   schedule.sort((a,b) => a.t - b.t);
 
@@ -310,8 +357,13 @@ function runSim(seed, listenerCount, totalMs, disruptRate, tickFn, eventToggles)
     ctx.events = {};
     while (idx < schedule.length && schedule[idx].t <= simNow) {
       const ev = schedule[idx++];
-      ctx.events[ev.type] = true;
+      ctx.events[ev.type] = ev; // full event object — truthy, carries frac/r for pickers
       if (ev.type === 'hardSync') { ctx.startedAt = simNow; eventLog.push(`⏱ ${(simNow/60000).toFixed(1)}m — coordinated hard-sync (new track / resync)`); }
+      if (ev.type === 'clusterAssign') eventLog.push(`⬡ ${(simNow/60000).toFixed(1)}m — DJ spatial reassign (~${Math.round(ev.frac*100)}% of crowd switches stems)`);
+      if (ev.type === 'sceneFire') {
+        ctx.startedAt = simNow; // the reference point genuinely resets (DB write) — both designs
+        eventLog.push(`🎬 ${(simNow/60000).toFixed(1)}m — scene fire (reference reset; ~${Math.round(ev.changedFrac*100)}% change stems)`);
+      }
       if (ev.type === 'scatterChange') {
         const voices = ev.voices, maxMs = ev.maxMs;
         ctx.scatterFor = (L) => Math.round(((L.id % voices) / Math.max(1,voices-1)) * maxMs);
@@ -395,6 +447,8 @@ btnRun.addEventListener('click', () => {
       visibilityWake: document.getElementById('cf-ev-wake').checked,
       scatterChange:  document.getElementById('cf-ev-scatter').checked,
       hardSync:       document.getElementById('cf-ev-hardsync').checked,
+      clusterAssign:  document.getElementById('cf-ev-cluster').checked,
+      sceneFire:      document.getElementById('cf-ev-scene').checked,
     };
 
     const legacy = runSim(seed, count, totalMs, disrupt, legacyTick, eventToggles);

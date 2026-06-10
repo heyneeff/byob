@@ -135,6 +135,34 @@ seek, and ramp back up. For that whole window, the listener measures as
 hundreds of ms "off" even though nothing is actually wrong, just stale. Treating
 it as a forced snap (cancel + immediate seek, like `hard_sync`) fixed this.
 
+## The other golden rule: one reference point per zone
+
+The DJ side has an equivalent invariant: **spatial reassignment changes WHICH
+stem a phone plays, never WHEN the set started.** Every `cluster_assign`
+broadcast (cluster, ring, remix, movement ticks) must carry the zone's
+*existing* `playback_started_at` — `currentStartedAt()` in `playmin.html` —
+not a freshly minted "now".
+
+This was the June 2026 spatial-era regression: the four `cluster_assign`
+sites each stamped `playback_started_at: new Date(serverNow())` into the
+broadcast (and never the DB). A reassigned phone reloaded its stem and seeked
+against that private reference — landing at position ~0 — while
+`fastDriftCorrect` still measured against the zone's real reference and
+duck-yanked it back seconds later. With movement mode rebroadcasting every
+2s, the crowd's shared reference fragmented continuously: that's what
+"we lost the sync" sounded like. Simulated in `sync-sim.html` ("Cluster
+reassigns" toggle): legacy behavior produced ~90,000ms max drift and ~180
+audible dips per 20-minute party; the shared-reference fix holds worst-case
+drift under ~70ms with zero time spent >100ms off.
+
+Sites that *legitimately* restart playback (track change, scene fire,
+go-live) register the new timestamp through `noteStartedAt()` so later
+broadcasts (`cluster_assign`, `hard_sync`) reuse it instead of going stale.
+And on the listener side, a scene fire must snap **every** listener to the
+new reference — including those whose stem didn't change (the
+`spatial_config` handler's same-track branch force-snaps when the payload's
+timestamp differs from the current one by >250ms).
+
 ## The golden rule: one corrector to rule them all
 
 The single most important invariant in this system: **every code path that
@@ -166,18 +194,22 @@ device/speaker).
 
 Normally this runs automatically, once, the first time a phone is detected
 *approaching* a zone (`preSyncApproach()`, GPS-gated) and not yet calibrated.
-That means a phone using the "⚡ ENTER" HUD button to force-join from far
-outside the zone never triggers it — `_deviceLatencyMs` stays `0`, and every
-phone's `audio.currentTime` can be perfectly converged while the *audible*
-sound from each speaker is still offset by each phone's uncompensated
-latency. This is what an audible "speakers aren't synced" gap looks like even
-when `driftState: idle` and `driftMs` near 0 on every device.
+A phone using the "⚡ ENTER" HUD button to force-join from far outside the
+zone skips that approach phase — so `activateZone` has a fallback: if the
+`byob_device_latency` localStorage key has never been written, it runs
+`calibrateDeviceLatency()` at zone entry, before audio starts.
 
-**Manual fix**: the HUD has a **📡 CALIBRATE** button (`hudCalibrateNow()`) —
-pauses playback, runs `calibrateDeviceLatency()`, then re-seeks
-(`cancelDriftCorrection()` + `seekToSync()`) and resumes. Use this on each
-phone when testing via force-enter, since the GPS-gated auto-calibration
-won't run.
+An *uncalibrated* phone (`_deviceLatencyMs` stuck at `0` on a Bluetooth
+speaker) is what an audible "speakers aren't synced" gap looks like even when
+`driftState: idle` and `driftMs` near 0 on every device — every phone's
+`audio.currentTime` is perfectly converged while the *audible* sound from
+each speaker is still offset by its uncompensated output latency.
+
+**Manual re-run**: the HUD has a **📡 CALIBRATE** button (`hudCalibrateNow()`)
+— pauses playback, runs `calibrateDeviceLatency()`, then re-seeks
+(`cancelDriftCorrection()` + `seekToSync()`) and resumes. Use this when a
+cached calibration looks wrong (e.g. the user switched to a different
+speaker since it was measured).
 
 ## Live debugging: `debug.html`
 

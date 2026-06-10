@@ -95,6 +95,8 @@ function renderSyncCard(d, age) {
     ${r('expectedPos', d.expectedPos? d.expectedPos+'s'  : '—')}
     ${r('DRIFT',       d.driftMs !== null && d.driftMs !== undefined ? d.driftMs+'ms':'—', dc)}
     ${r('BT latency',  d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
+    ${r('outputLatency', d.outputLatencyMs != null ? d.outputLatencyMs+'ms' : 'n/a',
+        d.outputLatencyMs != null && Math.abs(d.outputLatencyMs - d.deviceLatencyMs) > 150 ? 'warn' : '')}
     ${r('calOffset',   d.calOffset!=null ? (d.calOffset>=0?'+':'')+d.calOffset+'ms' : '—', d.calOffset===0?'warn':'')}
     ${r('syncState',   d.syncState || '—')}
     ${r('rate',        d.playbackRate || '—', d.playbackRate && d.playbackRate!=='1.000' ? 'warn' : '')}

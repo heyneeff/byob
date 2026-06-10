@@ -1277,7 +1277,7 @@ function remixSlots(){
   const assignments={};
   listeners.forEach(l=>{ const k=keys[Math.floor(Math.random()*keys.length)]; assignments[l.id]=k; liveListeners[l.id].slot=k; });
   const zoneTrks=flatZoneTracks();
-  if(window._djSyncChannel) window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrks,playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+  if(window._djSyncChannel) window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrks,playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
   if(window._spMap) renderSpatialDots(window._spMap);
   showToast('🎲 Slots remixed');
 }
@@ -1700,6 +1700,7 @@ async function playNext() {
       if (zErr) { showToast('⚠ Zone update failed: ' + zErr.message, true); }
       else {
         activeZone = { ...activeZone, current_track_url: next.url, track_name: next.title, playback_started_at: startedAt, play_at: playAt, play_from_s: 0 };
+        noteStartedAt(startedAt); // keep _currentZone in step for hard_sync/cluster_assign
         showToast('📡 Broadcasting: ' + next.title);
         if (window._djSyncChannel) {
           setTimeout(() => window._djSyncChannel.send({
@@ -1945,7 +1946,7 @@ function clusterSpeakers(){
   const k=Math.min(stems.length,entries.length);
   const assignments=kMeansClusters(entries,k);
   const zoneTrkPayload=flatZoneTracks();
-  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400,cluster_count:k}});
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400,cluster_count:k}});
   stampSlotAssignments(assignments);
   showToast('⬡ '+k+' clusters · '+entries.length+' speakers');
   _clusterActive=true;
@@ -2003,7 +2004,7 @@ function applyRing(){
     assignments[l.id]=slotKeys[Math.min(Math.floor(ratio*numRings),numRings-1)];
   });
   if(window._djSyncChannel){
-    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
     stampSlotAssignments(assignments);
   }
   showToast('⊚ Ring · '+numRings+' rings · '+listeners.length+' speakers');
@@ -2083,7 +2084,7 @@ function tickMovement(){
       break;
   }
 
-  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
   stampSlotAssignments(assignments);
   const status=document.getElementById('mv-status');
   if(status)status.textContent=_mvPattern.toUpperCase()+' · '+listeners.length+' speakers · phase '+((_mvPhase)*10|0)+'/'+(n*10);
@@ -2150,6 +2151,7 @@ async function toggleLive(){
     audio.play().catch(()=>{});
     const publicUrl = window._lastPublicUrl || audio.src;
     const startedAt = new Date(serverNow()-audio.currentTime*1000).toISOString();
+    noteStartedAt(startedAt);
     await db.from('zones').update({
       current_track_url: publicUrl,
       track_name: document.getElementById('track-name').textContent,
@@ -2642,6 +2644,7 @@ async function loadFromLibrary(filename){
   const isLive=document.getElementById('btn-go-live')?.classList.contains('active');
   if(isLive && activeZone?.id){
     const startedAt=new Date(serverNow()).toISOString();
+    noteStartedAt(startedAt);
     const playAt=serverNow()+800;
     db.from('zones').update({
       current_track_url:url, track_name:name,
@@ -3222,11 +3225,26 @@ function clearZoneSlot(event,zone){
 }
 function playZone(event,zone){event.stopPropagation();const t=zoneTracks[zone];if(!t)return;audio.src=t.url;audio.play().catch(()=>{});document.getElementById('track-name').textContent=t.name;showToast('Playing Zone '+zone+': '+t.name);}
 function muteZone(event,zone){event.stopPropagation();showToast('Zone '+zone+' muted');}
+// ── Zone reference point bookkeeping ──────────────────────
+// One live playback_started_at per zone. Spatial reassignments must never
+// mint a fresh one — they change WHICH stem a phone plays, not WHEN the set
+// started. Every site that legitimately restarts playback registers the new
+// timestamp here so later broadcasts (cluster_assign, hard_sync) reuse it
+// instead of going stale or fragmenting the crowd's shared reference.
+function noteStartedAt(startedAt){
+  if(activeZone) activeZone.playback_started_at=startedAt;
+  window._currentZone={...(window._currentZone||{}),playback_started_at:startedAt};
+}
+function currentStartedAt(){
+  return activeZone?.playback_started_at || window._currentZone?.playback_started_at || null;
+}
+
 async function broadcastAllZones(){
   if(!activeZone){showToast('Create a zone first');return;}
   if(!Object.keys(zoneTracks).length){showToast('Assign tracks to zones first');return;}
 
   const startedAt = new Date(serverNow()).toISOString();
+  noteStartedAt(startedAt); // scenes/spatial broadcasts ARE a legitimate restart
   const payload={};
   Object.entries(zoneTracks).forEach(([z,t])=>{payload[z]=t.url;});
 
@@ -3662,6 +3680,7 @@ function loadDeck(d,id){
       // Auto-broadcast to listeners if zone is active
       if(activeZone){
         const startedAt=new Date(serverNow()).toISOString();
+        noteStartedAt(startedAt);
         const playAt=serverNow()+1500;
         db.from('zones').update({
           current_track_url:t.url,

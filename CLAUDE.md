@@ -23,10 +23,12 @@ Deploy: push to `main` — GitHub Pages serves automatically via the `CNAME` rec
 | `listener.html` | Listener app — GPS, audio playback, geofence entry, spatial routing, fellowship/social |
 | `playmin.html` | DJ engine — zone creation, live stream, sync broadcast, crowd view, deck, scenes |
 | `orchestra.js` | Shared `SpatialOrchestra` class — radar canvas with sweep beam and listener dots |
-| `debug.html` | Sync dashboard — subscribes to `hud_data` broadcasts, shows GPS/sync health per listener |
+| `debug.html` | Sync dashboard — subscribes to `byob_debug` broadcasts, one card per device: currentTime, expectedPos, driftMs, deviceLatencyMs, playbackRate, driftState |
+| `sync-sim.html` | Standalone sync-engine simulator — no audio, no Supabase. Runs old vs new corrector designs side by side with identical seeds. Validate corrector changes here before porting to `listener.html` |
+| `SYNC_ENGINE.md` | Deep-dive doc on how sync works — the reasoning behind the corrector design. **Update it when changing sync behavior** |
 | `dj.html` | **Legacy — do not edit.** Absorbed into `playmin.html`. |
 | `play.html` | **Legacy — do not edit.** Earlier version of the DJ engine. |
-| `index.html` | Meta-redirect to `listener.html` |
+| `index.html` | Public landing page — upcoming events list (free vs paid, location reveal), city filter, links to `listener.html` / `playmin.html` |
 | `Roadmap` | Product vision, open bugs, queued features, session log |
 | `byob-capture.html`, `organismvisualizer.html` | Standalone prototypes — not linked from the main app, not wired to Supabase tables above |
 | `migration_*.sql` | One-off schema migrations — run manually in the Supabase SQL editor, not applied automatically |
@@ -50,6 +52,7 @@ Storage bucket: **`boombox`** — track audio files uploaded as `boombox/{filena
 - `zone_{zone_id}` — Postgres realtime on `zones` table UPDATE for the active zone
 - `webrtc_{zone_id}` — WebRTC signaling for live mic streaming (offer/answer/ice)
 - `chat_{zone_id}` — zone chat (currently unused in UI but channel wired in JS)
+- `byob_debug` — global (not zone-scoped) debug channel, two event streams: `hud_data` (`broadcastHUD()`, real audio-sync snapshot every 3s while a listener's HUD panel is open) and `listener_health`; `debug.html` renders both
 
 ### GPS / geofence flow (listener)
 `watchPosition` runs a single loop. On each fix, bearing and distance to active zone center are computed. Inside the geofence → audio unlocks, `unlockUI(z)` called. Listener broadcasts presence every 3s via `presence_{zone_id}`. `syncZoneAudio()` select must include `lat,lng,radius_m`.
@@ -58,17 +61,32 @@ Storage bucket: **`boombox`** — track audio files uploaded as `boombox/{filena
 All playback timing uses `syncedNow()` (listener) / `serverNow()` (DJ) — never raw `Date.now()`. `_clockOffset` computed via `measureClockOffset()` (calls `db.rpc('server_now')`): 8 samples when in a zone, 5 otherwise; median of RTT < 400ms samples. Re-measured every 30s. Awaited before first seek at zone entry.
 
 ### Sync engine (listener)
+Full design rationale in `SYNC_ENGINE.md` — read it before touching sync code, update it after.
+
 Two separate loops — do NOT collapse back into one:
-- **`fastDriftCorrect()`** — memory only, runs every 5s. Uses `activeZone.playback_started_at` (cached). No DB fetch. Applies ±3% rate correction for <500ms drift, seek for >500ms.
+- **`fastDriftCorrect()`** — memory only, runs every 5s. Uses `activeZone.playback_started_at` (cached). No DB fetch. Computes drift via `computeLagMs()`; >60ms calls `requestCorrection()`.
 - **`syncZoneAudio()`** — DB fetch, runs every 60s. Checks `active` flag, detects missed track changes by comparing `playback_started_at`.
 
-Seek formula (must stay consistent across all callers):
+Seek formula (must stay consistent across all callers, including `debug.html`'s expectedPos):
 ```
 expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % duration + duration) % duration
 ```
 where `elapsed = (syncedNow() - new Date(playback_started_at).getTime()) / 1000`
 
 `SEEK_STAB_S = 0.27` — audio seek stabilization latency constant.
+
+### Drift corrector — single gate `_driftState`
+One state variable `_driftState` (`'idle' | 'warping' | 'ducking'`), one entry point `requestCorrection(lagMs)`:
+- **<15ms** → ignored
+- **15–500ms** → `'warping'`: ±3% `audio.playbackRate` nudge (inaudible), snaps back when gap closes. A new request during `'warping'` recomputes immediately — never deferred (a deferred warp runs a stale rate in the wrong direction).
+- **>500ms** → `'ducking'`: `seekWithDuck()` — fade down, seek, fade up (~2.5s, audible). A new request during `'ducking'` sets `_driftPendingRecheck`; `settleToIdle()` re-checks drift when the duck finishes — without this recheck, deferred drift accumulates silently.
+
+**Coordinated snaps** (`hard_sync`, `scatter`, sweep beam, `resync_at`, track change) are NOT drift — they call `cancelDriftCorrection()` (resets state, clears pending recheck, kills in-flight warp timer, restores base rate) then seek directly via `seekPreservingBT()`. Scatter especially: it's a forced snap, never feed it into `requestCorrection()` (a multi-hundred-ms scatter offset triggers a duck and reads as "broken" for 2.5s).
+
+Note: `_syncState` (`'idle' | 'locking' | 'locked' | 'verifying'`) is a **different** state machine — the mic-based auto-sync verifier. Don't confuse the two.
+
+### Bluetooth latency calibration
+`calibrateDeviceLatency()` plays a click, listens via mic, measures round-trip → `_deviceLatencyMs` (cached in localStorage `byob_device_latency`). Auto-runs once via `preSyncApproach()` during GPS approach; `activateZone` has a fallback that calibrates at zone entry if the localStorage key is missing (covers force-enter, which skips the approach phase). Manual re-run: HUD **📡 CALIBRATE** button (`hudCalibrateNow()`) — pauses, calibrates, re-seeks. An uncalibrated phone (`deviceLatencyMs: 0` on a BT speaker) sounds offset even with `driftMs ≈ 0`.
 
 ### Sync channel — `buildSyncChannel(zoneId)`
 The sync channel is extracted into `buildSyncChannel(zoneId)` so it can be rebuilt on reconnect. It auto-retries on CHANNEL_ERROR/CLOSED after 3s. **Always call `buildSyncChannel` — never inline the channel chain again.**
@@ -163,6 +181,9 @@ Boomy speech (`playBabble`) is currently muted — `playBabble()` returns immedi
 - Seek formula must include all four terms: `elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000`
 - `fastDriftCorrect` and `syncZoneAudio` are separate loops — do not merge them back
 - `buildSyncChannel(zoneId)` is the only way to set up the sync channel — never inline it
+- Every drift trigger funnels through `requestCorrection()` — nothing calls `seekPreservingBT()` directly except coordinated snaps, and those must call `cancelDriftCorrection()` first. Two uncoordinated correctors fighting over `audio.currentTime` is the "roving" bug
+- One reference point per zone: `cluster_assign` broadcasts must carry the zone's existing `playback_started_at` via `currentStartedAt()` (playmin.html) — never mint `new Date(serverNow())`. Spatial reassignment changes WHICH stem, not WHEN the set started. Sites that legitimately restart playback must call `noteStartedAt(startedAt)`
+- Validate corrector design changes in `sync-sim.html` before porting to `listener.html`; keep `SYNC_ENGINE.md` and `debug.html`'s expectedPos formula in step with the code
 
 ## Design principle: listener simplicity
 `listener.html` must stay minimal and frictionless. Fellowship features (WHO'S HERE, signal, tip, rally) live below the map and are locked until in-zone. Spatial audio routing happens silently. No slot selection, no zone routing controls exposed to listeners.
