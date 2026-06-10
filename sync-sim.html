@@ -53,6 +53,9 @@
   <label>Listeners <input id="cf-listeners" type="number" value="8" min="1" max="24"></label>
   <label>Party length (min) <input id="cf-minutes" type="number" value="20" min="1" max="120"></label>
   <label>Disruption rate <input id="cf-disrupt" type="number" value="1.0" min="0" max="5" step="0.1"></label>
+  <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-wake" type="checkbox" checked style="width:auto;"> Screen-wake events</label>
+  <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-scatter" type="checkbox" checked style="width:auto;"> Scatter events</label>
+  <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-hardsync" type="checkbox" checked style="width:auto;"> Hard-sync events</label>
   <button id="btn-run">▶ Run simulation</button>
   <button id="btn-reseed" class="secondary">🎲 New random seed</button>
   <span id="status" class="events"></span>
@@ -279,19 +282,26 @@ function newTick(L, simNow, dtMs, ctx) {
 // ════════════════════════════════════════════════════════════
 // Simulation driver
 // ════════════════════════════════════════════════════════════
-function runSim(seed, listenerCount, totalMs, disruptRate, tickFn) {
+function runSim(seed, listenerCount, totalMs, disruptRate, tickFn, eventToggles) {
+  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true }, eventToggles);
   const rng = mulberry32(seed);
   const listeners = Array.from({length:listenerCount}, (_,i) => makeListener(rng, i, 1.0));
   const ctx = { startedAt: 0, events:{}, scatterFor: () => 0 };
   const eventLog = [];
 
   // Pre-roll a deterministic disruption schedule so legacy & new face the *same* party.
+  // Disabled event types still draw from rng() (so the schedule for the remaining
+  // types stays identical regardless of which toggles are on) — they're just not
+  // pushed onto the schedule.
   const schedule = [];
   for (let t = 5000; t < totalMs; t += 1) {
     // Probabilities tuned so a ~20min run sees a healthy mix of each, scaled by disruptRate
-    if (rng() < 0.00006 * disruptRate) schedule.push({ t, type:'visibilityWake' });
-    if (rng() < 0.00004 * disruptRate) schedule.push({ t, type:'scatterChange', voices: 2 + Math.floor(rng()*4), maxMs: 400 + rng()*900 });
-    if (rng() < 0.000015 * disruptRate) schedule.push({ t, type:'hardSync' });
+    if (rng() < 0.00006 * disruptRate) { if (enable.visibilityWake) schedule.push({ t, type:'visibilityWake' }); }
+    if (rng() < 0.00004 * disruptRate) {
+      const voices = 2 + Math.floor(rng()*4), maxMs = 400 + rng()*900;
+      if (enable.scatterChange) schedule.push({ t, type:'scatterChange', voices, maxMs });
+    }
+    if (rng() < 0.000015 * disruptRate) { if (enable.hardSync) schedule.push({ t, type:'hardSync' }); }
   }
   schedule.sort((a,b) => a.t - b.t);
 
@@ -381,9 +391,14 @@ btnRun.addEventListener('click', () => {
     const minutes    = Math.max(1, parseInt(document.getElementById('cf-minutes').value) || 20);
     const disrupt    = parseFloat(document.getElementById('cf-disrupt').value) || 1.0;
     const totalMs    = minutes * 60 * 1000;
+    const eventToggles = {
+      visibilityWake: document.getElementById('cf-ev-wake').checked,
+      scatterChange:  document.getElementById('cf-ev-scatter').checked,
+      hardSync:       document.getElementById('cf-ev-hardsync').checked,
+    };
 
-    const legacy = runSim(seed, count, totalMs, disrupt, legacyTick);
-    const fresh  = runSim(seed, count, totalMs, disrupt, newTick);
+    const legacy = runSim(seed, count, totalMs, disrupt, legacyTick, eventToggles);
+    const fresh  = runSim(seed, count, totalMs, disrupt, newTick, eventToggles);
 
     drawChart(document.getElementById('chart-legacy'), legacy.listeners, totalMs);
     drawChart(document.getElementById('chart-new'),    fresh.listeners,  totalMs);
