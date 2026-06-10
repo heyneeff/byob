@@ -5195,6 +5195,9 @@ function broadcastHUD() {
       calOffset:   _clockOffset,
       deviceLatencyMs: _deviceLatencyMs,
       syncState:   typeof _syncState !== 'undefined' ? _syncState : '—',
+      playbackRate: audio.duration ? audio.playbackRate.toFixed(3) : null,
+      driftState:  _driftState,
+      driftPending: _driftPendingRecheck,
       zone:        activeZone?.name || null,
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
     }
