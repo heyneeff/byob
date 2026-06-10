@@ -209,12 +209,24 @@ function newTick(L, simNow, dtMs, ctx) {
   function requestCorrection(lag, force) {
     if (force) {                       // cancelDriftCorrection() — wins immediately
       L.playbackRate = L.baseRate; L.duckPhase = null; L.pendingRecheck = false;
-      L.state = 'snapping';
+      snapTo(L, simNow, ctx.startedAt);  // resolve synchronously, same tick — a
+      L.state = 'idle';                  // deferred snap would log one stale
+      return;                            // pre-snap "drift" sample (~half the track)
+    }
+    // 'ducking' is mid volume-ramp — interrupting it is audible, so it must
+    // finish; remember to recheck once it does. 'warping' is just a
+    // playbackRate multiplier with no audible artifact from changing it —
+    // always safe to recompute in place with fresh numbers. Without this, a
+    // rate chosen for OLD lag (e.g. before a scatterChange moved the target)
+    // keeps running in the wrong direction for its full remaining duration,
+    // growing drift instead of shrinking it.
+    if (L.state === 'ducking') { L.pendingRecheck = true; return; }
+    if (Math.abs(lag) < 15) {
+      L.playbackRate = L.baseRate; L.state = 'idle';
       return;
     }
-    if (L.state !== 'idle') { L.pendingRecheck = true; return; } // remember — don't drop it
-    if (Math.abs(lag) < 15) return;
     if (Math.abs(lag) > 500) {
+      L.playbackRate = L.baseRate;
       L.state = 'ducking'; L.dipCount++;
       L.duckPhase = { stage:'down', nextAt: simNow + 1500 };
     } else {
@@ -240,7 +252,6 @@ function newTick(L, simNow, dtMs, ctx) {
     if (L.duckPhase.stage === 'down') { snapTo(L, simNow, ctx.startedAt); L.duckPhase = { stage:'up', nextAt: simNow + 1080 }; }
     else { L.duckPhase = null; settleToIdle(); }
   }
-  if (L.state === 'snapping') { snapTo(L, simNow, ctx.startedAt); settleToIdle(); }
 
   if (simNow >= L.nextFastCheck) {
     L.nextFastCheck = simNow + FAST_CHECK_MS;
@@ -251,9 +262,14 @@ function newTick(L, simNow, dtMs, ctx) {
     const lag = computeLag(L, simNow, ctx.startedAt);
     if (Math.abs(lag) > 60) requestCorrection(lag, false);
   }
+  // scatterChange isn't drift to be corrected gradually — it's a deliberate
+  // shift of the reference point itself (same family as hardSync, per
+  // SYNC_ENGINE.md step 5). Treat it as a forced snap: cancel whatever's
+  // running and jump immediately, rather than feeding the new gap into the
+  // gradual warp/duck path where it gets misread as "drift".
   if (ctx.events.scatterChange) {
     L.scatterOffsetMs = ctx.scatterFor(L);
-    requestCorrection(computeLag(L, simNow, ctx.startedAt), false);
+    requestCorrection(0, true);
   }
   if (ctx.events.hardSync) { requestCorrection(0, true); }
 
