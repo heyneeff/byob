@@ -2133,12 +2133,15 @@ document.addEventListener('visibilitychange', () => {
   if (audio.srcObject && _webAudioPlaying && audio.paused) {
     audio.play().catch(() => {});
   }
-  // Instant memory-based resync — no network needed
+  // Instant memory-based resync — no network needed. Routed through the single
+  // guarded corrector (applyDriftCorrection) so it can't stack on top of an
+  // in-flight duck/seek or rate-warp from fastDriftCorrect — that fighting
+  // between independent direct-seek paths was the "roving" never-settles bug.
   if (audio.duration && activeZone.playback_started_at && !audio.srcObject) {
     const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
     const expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
     const lagMs = (expected - audio.currentTime) * 1000;
-    if (Math.abs(lagMs) > 200) seekPreservingBT(expected);
+    if (Math.abs(lagMs) > 60) applyDriftCorrection(lagMs);
   }
   // Background DB health check
   syncZoneAudio();
@@ -3645,6 +3648,7 @@ function buildZoneChannel(z) {
           boomSay('Syncing all speakers…', Math.max(0,waitMs), false, 'regular');
           setTimeout(() => {
             if (!activeZone || !audio.duration) return;
+            cancelDriftCorrection();
             const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
             seekPreservingBT(((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration);
             setSyncIndicator('synced', 0);
@@ -3701,10 +3705,9 @@ function buildSyncChannel(zoneId) {
    .on('broadcast', { event: 'hard_sync' }, ({ payload }) => {
     const waitMs = payload.resyncAt - syncedNow();
     if (Math.abs(waitMs) > 10000) return;
-    if (payload.resetOffsets) {
-      localStorage.removeItem('byob_device_latency');
-      _deviceLatencyMs = 0;
-    }
+    // _deviceLatencyMs is a hardware constant (speaker output delay) — a SNAP/sync
+    // command must never wipe it, or the listener loses BT compensation until they
+    // physically leave and re-enter the zone (the only place recalibration runs).
     if (payload.resetOffsets || payload.clearScatter) { _scatterOffsetMs = 0; }
     const delay = Math.max(0, waitMs);
     boomSay('Syncing…', delay + 300, false, 'regular');
@@ -3715,6 +3718,7 @@ function buildSyncChannel(zoneId) {
         return;
       }
       if (!audio.duration) return;
+      cancelDriftCorrection();
       const elapsed = (syncedNow() - new Date(payload.playback_started_at).getTime()) / 1000;
       seekPreservingBT(((elapsed + SEEK_STAB_S - (_deviceLatencyMs/1000) - (_scatterOffsetMs/1000)) % audio.duration + audio.duration) % audio.duration);
       setSyncIndicator('synced', 0);
@@ -3743,10 +3747,15 @@ function buildSyncChannel(zoneId) {
     const slot   = simpleHash(listenerId) % voices;
     _scatterOffsetMs = voices > 1 ? Math.round((slot / (voices - 1)) * maxMs) : 0;
     boomSay(`♩ +${(_scatterOffsetMs/1000).toFixed(2)}s`, 1800, false, 'devious');
+    // Routed through applyDriftCorrection (not a direct seekPreservingBT call) —
+    // it picks rate-warp vs. hard seek based on how big the new offset is, and
+    // its in-flight guard keeps it from colliding with fastDriftCorrect's own
+    // corrections. Direct seeks from here were one of the "roving" fight sources.
     if (activeZone?.playback_started_at && audio.duration) {
       const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-      const raw = elapsed - (_deviceLatencyMs/1000) + SEEK_STAB_S - (_scatterOffsetMs/1000);
-      seekPreservingBT(((raw % audio.duration) + audio.duration) % audio.duration);
+      const expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
+      const lagMs = (expected - audio.currentTime) * 1000;
+      applyDriftCorrection(lagMs);
     }
   })
   .on('broadcast', { event: 'cluster_assign' }, ({ payload }) => {
@@ -4675,6 +4684,16 @@ let _isDucking = false;
 let _driftCorrectionActive = false;
 let _driftCorrectionTimer = null;
 
+// Coordinated DJ-commanded snaps (hard_sync / resync_at / sweep beam-hit) seek
+// immediately and must win — cancel any in-flight rate-warp/duck first so it
+// can't recompute and overwrite the snap a moment later (a "roving" fight source).
+function cancelDriftCorrection() {
+  clearTimeout(_driftCorrectionTimer);
+  _driftCorrectionActive = false;
+  _isDucking = false;
+  audio.playbackRate = _getBpmWarpRate();
+}
+
 function seekWithDuck(newTime) {
   if (_isDucking) return;
   _isDucking = true;
@@ -5311,6 +5330,7 @@ function applySweepOffset(sweep){
   // Apply seek offset when beam hits us
   setTimeout(()=>{
     if(!audio.duration || !activeZone?.playback_started_at) return;
+    cancelDriftCorrection();
     const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
     seekPreservingBT(((elapsed - _deviceLatencyMs/1000) % audio.duration));
     showToast('◎ Sweep hit — '+Math.round(delayMs)+'ms');

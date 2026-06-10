@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BYOB — Sync Engine Simulator</title>
+<style>
+  :root { --bg:#0b0d10; --panel:#15181c; --rim:#262b31; --teal:#00cc99; --orange:#ff9248; --muted:#8a939c; --bad:#ff5d5d; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:#e8ecef; font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:15px; margin:0 0 10px; color:var(--teal); }
+  p.lead { color:var(--muted); max-width:760px; margin:0 0 20px; }
+  .controls { display:flex; flex-wrap:wrap; gap:14px; align-items:center; background:var(--panel); border:1px solid var(--rim); border-radius:10px; padding:14px; margin-bottom:20px; }
+  .controls label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+  .controls input { background:#0e1013; border:1px solid var(--rim); color:#e8ecef; border-radius:6px; padding:6px 8px; width:90px; font:inherit; }
+  button { background:var(--teal); color:#000; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; font:inherit; }
+  button:disabled { opacity:.5; cursor:default; }
+  button.secondary { background:transparent; color:var(--teal); border:1px solid var(--teal); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+  @media (max-width:980px){ .grid{ grid-template-columns:1fr; } }
+  .panel { background:var(--panel); border:1px solid var(--rim); border-radius:10px; padding:16px; }
+  canvas { width:100%; height:260px; background:#0e1013; border-radius:8px; display:block; }
+  table { width:100%; border-collapse:collapse; margin-top:12px; font-size:12px; }
+  th,td { text-align:left; padding:5px 8px; border-bottom:1px solid var(--rim); }
+  th { color:var(--muted); font-weight:600; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; margin-top:8px; font-size:11px; color:var(--muted); }
+  .swatch { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; vertical-align:middle; }
+  .verdict { margin-top:18px; padding:14px; border-radius:10px; border:1px solid var(--rim); background:#101316; }
+  .verdict b { color:var(--teal); }
+  .verdict .bad { color:var(--bad); }
+  .events { color:var(--muted); font-size:12px; margin-top:10px; }
+  code { background:#0e1013; padding:1px 5px; border-radius:4px; }
+</style>
+</head>
+<body>
+
+<h1>🎛 BYOB — Sync Engine Simulator</h1>
+<p class="lead">
+  Runs the same randomized "party" — clock-sync error, Bluetooth latency, hardware
+  clock drift, scatter/sweep changes, coordinated hard-syncs — through two
+  controller designs side by side: the <b>old scattered-flags</b> approach
+  (<code>_isDucking</code> / <code>_driftCorrectionActive</code> + a few direct
+  seeks that bypass them — the source of the "roving" bug) vs. a
+  <b>single gated <code>_syncState</code></b> approach where every correction
+  funnels through one function. Same seed, same event schedule, same listener
+  population — only the controller logic differs. No real audio, no Supabase —
+  positions and clocks are just numbers, run thousands of times faster than real time.
+</p>
+
+<div class="controls">
+  <label>Seed <input id="cf-seed" type="number" value="42"></label>
+  <label>Listeners <input id="cf-listeners" type="number" value="8" min="1" max="24"></label>
+  <label>Party length (min) <input id="cf-minutes" type="number" value="20" min="1" max="120"></label>
+  <label>Disruption rate <input id="cf-disrupt" type="number" value="1.0" min="0" max="5" step="0.1"></label>
+  <button id="btn-run">▶ Run simulation</button>
+  <button id="btn-reseed" class="secondary">🎲 New random seed</button>
+  <span id="status" class="events"></span>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <h2>Legacy — scattered flags + direct seeks</h2>
+    <canvas id="chart-legacy" width="900" height="260"></canvas>
+    <table id="stats-legacy"></table>
+  </div>
+  <div class="panel">
+    <h2>New — single gated <code>_syncState</code></h2>
+    <canvas id="chart-new" width="900" height="260"></canvas>
+    <table id="stats-new"></table>
+  </div>
+</div>
+<div class="legend" id="legend"></div>
+<div class="events" id="event-log"></div>
+<div class="verdict" id="verdict">Press <b>Run simulation</b> to compare the two designs.</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// Seeded RNG — same seed ⇒ identical "party" for both controllers
+// ════════════════════════════════════════════════════════════
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// Constants — mirror listener.html
+// ════════════════════════════════════════════════════════════
+const SEEK_STAB_S = 0.27;
+const DURATION    = 200;     // simulated track length, seconds
+const TICK_MS     = 250;     // simulated ms advanced per step
+const FAST_CHECK_MS = 5000;  // fastDriftCorrect cadence
+
+function wrapLag(lagMs) {
+  const half = DURATION * 1000 / 2;
+  while (lagMs >  half) lagMs -= DURATION * 1000;
+  while (lagMs < -half) lagMs += DURATION * 1000;
+  return lagMs;
+}
+function expectedPos(listener, simNow, startedAt) {
+  const elapsed = (simNow + listener.clockOffset - startedAt) / 1000;
+  return ((elapsed + SEEK_STAB_S - listener.deviceLatencyMs/1000 - listener.scatterOffsetMs/1000) % DURATION + DURATION) % DURATION;
+}
+function computeLag(listener, simNow, startedAt) {
+  return wrapLag((expectedPos(listener, simNow, startedAt) - listener.currentTime) * 1000);
+}
+function advance(listener, dtMs) {
+  listener.currentTime = (listener.currentTime + (dtMs/1000) * listener.playbackRate * (1 + listener.hwDriftPct) + DURATION) % DURATION;
+}
+function snapTo(listener, simNow, startedAt) {
+  listener.currentTime = expectedPos(listener, simNow, startedAt);
+  listener.hardSeekCount++;
+}
+
+// ════════════════════════════════════════════════════════════
+// Listener factory — randomized real-world imperfections
+// ════════════════════════════════════════════════════════════
+function makeListener(rng, id, baseRate) {
+  return {
+    id,
+    color: `hsl(${Math.floor(rng()*360)} 70% 60%)`,
+    clockOffset:    (rng() - 0.5) * 70,     // ±35ms residual clock-sync error
+    deviceLatencyMs: 60 + rng() * 260,      // 60–320ms BT output latency
+    hwDriftPct:     (rng() - 0.5) * 0.01,   // ±0.5% real hardware clock drift — never goes away
+    scatterOffsetMs: 0,
+    currentTime:    rng() * DURATION,
+    playbackRate:   baseRate, baseRate,
+    nextFastCheck:  rng() * FAST_CHECK_MS,
+    state: 'idle', pendingRecheck: false,    // for the new controller
+    isDucking: false, correctionActive: false, // for the legacy controller
+    dipCount: 0, warpCount: 0, hardSeekCount: 0, directBypassCount: 0,
+    history: []
+  };
+}
+
+// ════════════════════════════════════════════════════════════
+// LEGACY controller — mirrors pre-fix listener.html:
+//   _isDucking / _driftCorrectionActive booleans, PLUS a couple of
+//   event handlers that called seekPreservingBT() directly — bypassing
+//   both flags entirely. That bypass is the root of "roving".
+// ════════════════════════════════════════════════════════════
+function legacyTick(L, simNow, dtMs, ctx) {
+  advance(L, dtMs);
+
+  if (L.duckPhase) {
+    if (simNow >= L.duckPhase.nextAt) {
+      if (L.duckPhase.stage === 'down') {
+        snapTo(L, simNow, ctx.startedAt);
+        L.duckPhase = { stage:'up', nextAt: simNow + 1080 };
+      } else { L.isDucking = false; L.duckPhase = null; }
+    }
+  }
+  if (L.isDucking && simNow >= L.duckSafetyAt) { L.isDucking = false; L.duckPhase = null; }
+  if (L.correctionActive && simNow >= L.correctionEndsAt) {
+    L.playbackRate = L.baseRate; L.correctionActive = false;
+  }
+
+  if (simNow >= L.nextFastCheck) {
+    L.nextFastCheck = simNow + FAST_CHECK_MS;
+    if (!L.isDucking) {
+      const lag = computeLag(L, simNow, ctx.startedAt);
+      if (Math.abs(lag) > 60) legacyApply(L, lag, simNow);
+    }
+  }
+
+  // BYPASS PATHS — these called seekPreservingBT() directly in the old code,
+  // with no idea whether a duck or rate-warp was already in flight.
+  if (ctx.events.visibilityWake) {
+    const lag = computeLag(L, simNow, ctx.startedAt);
+    if (Math.abs(lag) > 200) { snapTo(L, simNow, ctx.startedAt); L.directBypassCount++; }
+  }
+  if (ctx.events.scatterChange) {
+    L.scatterOffsetMs = ctx.scatterFor(L);
+    snapTo(L, simNow, ctx.startedAt);
+    L.directBypassCount++;
+  }
+  if (ctx.events.hardSync) { snapTo(L, simNow, ctx.startedAt); }
+
+  L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
+}
+function legacyApply(L, lag, simNow) {
+  if (Math.abs(lag) < 15) return;
+  if (Math.abs(lag) > 500) {
+    L.correctionActive = false; L.playbackRate = L.baseRate;
+    if (L.isDucking) return;
+    L.isDucking = true; L.dipCount++;
+    L.duckSafetyAt = simNow + 5000;
+    L.duckPhase = { stage:'down', nextAt: simNow + 1500 };
+    return;
+  }
+  if (L.correctionActive) return;
+  L.playbackRate = lag > 0 ? L.baseRate * 1.03 : L.baseRate * 0.97;
+  L.correctionActive = true; L.warpCount++;
+  L.correctionEndsAt = simNow + Math.abs(lag) / 0.03;
+}
+
+// ════════════════════════════════════════════════════════════
+// NEW controller — single _syncState gate. Every trigger calls
+// requestCorrection(); only a forced "snap" can interrupt — and it
+// explicitly cancels whatever's running first (cancelDriftCorrection).
+// ════════════════════════════════════════════════════════════
+function newTick(L, simNow, dtMs, ctx) {
+  advance(L, dtMs);
+
+  function requestCorrection(lag, force) {
+    if (force) {                       // cancelDriftCorrection() — wins immediately
+      L.playbackRate = L.baseRate; L.duckPhase = null; L.pendingRecheck = false;
+      L.state = 'snapping';
+      return;
+    }
+    if (L.state !== 'idle') { L.pendingRecheck = true; return; } // remember — don't drop it
+    if (Math.abs(lag) < 15) return;
+    if (Math.abs(lag) > 500) {
+      L.state = 'ducking'; L.dipCount++;
+      L.duckPhase = { stage:'down', nextAt: simNow + 1500 };
+    } else {
+      L.playbackRate = lag > 0 ? L.baseRate * 1.03 : L.baseRate * 0.97;
+      L.state = 'warping'; L.warpCount++;
+      L.warpEndsAt = simNow + Math.abs(lag) / 0.03;
+    }
+  }
+  // The missing piece a naive gate gets wrong: when a correction is dropped
+  // because the gate was busy, something MUST recheck once it frees up — or
+  // drift just accumulates forever, silently. This is what makes "single gate"
+  // actually safe rather than just "less wrong than scattered flags."
+  function settleToIdle() {
+    L.state = 'idle';
+    if (L.pendingRecheck) {
+      L.pendingRecheck = false;
+      requestCorrection(computeLag(L, simNow, ctx.startedAt), false);
+    }
+  }
+
+  if (L.state === 'warping' && simNow >= L.warpEndsAt) { L.playbackRate = L.baseRate; settleToIdle(); }
+  if (L.state === 'ducking' && simNow >= L.duckPhase.nextAt) {
+    if (L.duckPhase.stage === 'down') { snapTo(L, simNow, ctx.startedAt); L.duckPhase = { stage:'up', nextAt: simNow + 1080 }; }
+    else { L.duckPhase = null; settleToIdle(); }
+  }
+  if (L.state === 'snapping') { snapTo(L, simNow, ctx.startedAt); settleToIdle(); }
+
+  if (simNow >= L.nextFastCheck) {
+    L.nextFastCheck = simNow + FAST_CHECK_MS;
+    const lag = computeLag(L, simNow, ctx.startedAt);
+    if (Math.abs(lag) > 60) requestCorrection(lag, false);
+  }
+  if (ctx.events.visibilityWake) {
+    const lag = computeLag(L, simNow, ctx.startedAt);
+    if (Math.abs(lag) > 60) requestCorrection(lag, false);
+  }
+  if (ctx.events.scatterChange) {
+    L.scatterOffsetMs = ctx.scatterFor(L);
+    requestCorrection(computeLag(L, simNow, ctx.startedAt), false);
+  }
+  if (ctx.events.hardSync) { requestCorrection(0, true); }
+
+  L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
+}
+
+// ════════════════════════════════════════════════════════════
+// Simulation driver
+// ════════════════════════════════════════════════════════════
+function runSim(seed, listenerCount, totalMs, disruptRate, tickFn) {
+  const rng = mulberry32(seed);
+  const listeners = Array.from({length:listenerCount}, (_,i) => makeListener(rng, i, 1.0));
+  const ctx = { startedAt: 0, events:{}, scatterFor: () => 0 };
+  const eventLog = [];
+
+  // Pre-roll a deterministic disruption schedule so legacy & new face the *same* party.
+  const schedule = [];
+  for (let t = 5000; t < totalMs; t += 1) {
+    // Probabilities tuned so a ~20min run sees a healthy mix of each, scaled by disruptRate
+    if (rng() < 0.00006 * disruptRate) schedule.push({ t, type:'visibilityWake' });
+    if (rng() < 0.00004 * disruptRate) schedule.push({ t, type:'scatterChange', voices: 2 + Math.floor(rng()*4), maxMs: 400 + rng()*900 });
+    if (rng() < 0.000015 * disruptRate) schedule.push({ t, type:'hardSync' });
+  }
+  schedule.sort((a,b) => a.t - b.t);
+
+  let idx = 0;
+  for (let simNow = 0; simNow < totalMs; simNow += TICK_MS) {
+    ctx.events = {};
+    while (idx < schedule.length && schedule[idx].t <= simNow) {
+      const ev = schedule[idx++];
+      ctx.events[ev.type] = true;
+      if (ev.type === 'hardSync') { ctx.startedAt = simNow; eventLog.push(`⏱ ${(simNow/60000).toFixed(1)}m — coordinated hard-sync (new track / resync)`); }
+      if (ev.type === 'scatterChange') {
+        const voices = ev.voices, maxMs = ev.maxMs;
+        ctx.scatterFor = (L) => Math.round(((L.id % voices) / Math.max(1,voices-1)) * maxMs);
+        eventLog.push(`◎ ${(simNow/60000).toFixed(1)}m — DJ broadcasts scatter (${voices} voices, ±${Math.round(maxMs)}ms)`);
+      }
+      if (ev.type === 'visibilityWake') eventLog.push(`📱 ${(simNow/60000).toFixed(1)}m — a phone wakes from locked screen`);
+    }
+    for (const L of listeners) tickFn(L, simNow, TICK_MS, ctx);
+  }
+  return { listeners, eventLog };
+}
+
+// ════════════════════════════════════════════════════════════
+// Rendering
+// ════════════════════════════════════════════════════════════
+function drawChart(canvas, listeners, totalMs) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  ctx.clearRect(0,0,w,h);
+  ctx.strokeStyle = '#262b31'; ctx.lineWidth = 1;
+  // gridlines at ±60ms (the "audible-ish" threshold) and ±500ms (hard-seek threshold)
+  [-500,-60,0,60,500].forEach(ms => {
+    const y = h/2 - (ms/1100) * h;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke();
+    ctx.fillStyle = ms === 0 ? '#8a939c' : '#454c54';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(ms === 0 ? 'in sync' : (ms+'ms'), 6, y - 3);
+  });
+  for (const L of listeners) {
+    ctx.strokeStyle = L.color; ctx.lineWidth = 1.4; ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    L.history.forEach((p,i) => {
+      const x = (p.t/totalMs) * w;
+      const y = Math.max(2, Math.min(h-2, h/2 - (p.drift/1100) * h));
+      if (i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function fillStats(table, listeners, label) {
+  const settleFrom = listeners[0]?.history.length ? listeners[0].history.length * 0.2 | 0 : 0; // ignore first 20% (initial lock-in)
+  let rows = `<tr><th>Listener</th><th>Max |drift| (settled)</th><th>Volume dips</th><th>Rate-warps</th><th>Hard seeks</th>${label==='legacy' ? '<th>Bypass seeks</th>' : ''}</tr>`;
+  let sumMax=0, sumDips=0, sumWarps=0, sumSeeks=0, sumBypass=0;
+  listeners.forEach(L => {
+    const settled = L.history.slice(settleFrom);
+    const maxDrift = settled.reduce((m,p) => Math.max(m, Math.abs(p.drift)), 0);
+    sumMax += maxDrift; sumDips += L.dipCount; sumWarps += L.warpCount; sumSeeks += L.hardSeekCount; sumBypass += (L.directBypassCount||0);
+    rows += `<tr><td><span class="swatch" style="background:${L.color}"></span>#${L.id}</td>`
+          + `<td>${maxDrift.toFixed(0)}ms</td><td>${L.dipCount}</td><td>${L.warpCount}</td><td>${L.hardSeekCount}</td>`
+          + (label==='legacy' ? `<td>${L.directBypassCount||0}</td>` : '') + `</tr>`;
+  });
+  table.innerHTML = rows;
+  return { avgMax: sumMax/listeners.length, totalDips: sumDips, totalWarps: sumWarps, totalSeeks: sumSeeks, totalBypass: sumBypass };
+}
+
+function buildLegend(listeners) {
+  document.getElementById('legend').innerHTML = listeners.map(L =>
+    `<span><span class="swatch" style="background:${L.color}"></span>Listener #${L.id} — ${Math.round(L.deviceLatencyMs)}ms BT, ${(L.hwDriftPct*100).toFixed(2)}% clock drift</span>`
+  ).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+// Wire up UI
+// ════════════════════════════════════════════════════════════
+const btnRun = document.getElementById('btn-run');
+const btnReseed = document.getElementById('btn-reseed');
+btnReseed.addEventListener('click', () => { document.getElementById('cf-seed').value = Math.floor(Math.random()*100000); });
+
+btnRun.addEventListener('click', () => {
+  btnRun.disabled = true;
+  document.getElementById('status').textContent = 'Running…';
+  setTimeout(() => { // let the UI paint "Running…" before the (synchronous) crunch
+    const seed       = parseInt(document.getElementById('cf-seed').value) || 1;
+    const count      = Math.max(1, Math.min(24, parseInt(document.getElementById('cf-listeners').value) || 8));
+    const minutes    = Math.max(1, parseInt(document.getElementById('cf-minutes').value) || 20);
+    const disrupt    = parseFloat(document.getElementById('cf-disrupt').value) || 1.0;
+    const totalMs    = minutes * 60 * 1000;
+
+    const legacy = runSim(seed, count, totalMs, disrupt, legacyTick);
+    const fresh  = runSim(seed, count, totalMs, disrupt, newTick);
+
+    drawChart(document.getElementById('chart-legacy'), legacy.listeners, totalMs);
+    drawChart(document.getElementById('chart-new'),    fresh.listeners,  totalMs);
+    const sLegacy = fillStats(document.getElementById('stats-legacy'), legacy.listeners, 'legacy');
+    const sNew    = fillStats(document.getElementById('stats-new'),    fresh.listeners,  'new');
+    buildLegend(legacy.listeners);
+    document.getElementById('event-log').innerHTML = '<b>Party timeline (identical for both runs):</b><br>' + legacy.eventLog.map(e=>'• '+e).join('<br>');
+
+    const verdict = document.getElementById('verdict');
+    const better = (a,b) => a < b ? `<b>new wins</b>` : (a > b ? `<span class="bad">legacy wins</span>` : 'tie');
+    verdict.innerHTML = `
+      <b>Result</b> — same ${count}-listener party, same ${minutes}-minute timeline, same disruptions:<br><br>
+      <b>Avg settled drift:</b> legacy ${sLegacy.avgMax.toFixed(0)}ms vs new ${sNew.avgMax.toFixed(0)}ms — ${better(sNew.avgMax, sLegacy.avgMax)}<br>
+      <b>Total audible volume dips:</b> legacy ${sLegacy.totalDips} vs new ${sNew.totalDips} — ${better(sNew.totalDips, sLegacy.totalDips)}<br>
+      <b>Total hard seeks:</b> legacy ${sLegacy.totalSeeks} vs new ${sNew.totalSeeks} — ${better(sNew.totalSeeks, sLegacy.totalSeeks)}<br>
+      <b>Direct bypass seeks (the actual "roving" mechanism):</b> legacy had ${sLegacy.totalBypass} — the new design has <b>zero</b>, by construction (nothing can seek without going through the single gate).<br><br>
+      <span style="color:var(--muted)">Legacy lines that hover near the gridlines and occasionally spike past ±500ms before "fighting" their way back are the roving signature — a duck and a bypass-seek landing on the same listener within the same correction window. The new design's worst case is a single clean seek that the gate fully owns.</span>
+    `;
+
+    document.getElementById('status').textContent = `Simulated ${minutes}min × ${count} listeners (seed ${seed}) — ${legacy.eventLog.length} disruption events.`;
+    btnRun.disabled = false;
+  }, 30);
+});
+
+// Auto-run once on load with the defaults
+btnRun.click();
+</script>
+</body>
+</html>

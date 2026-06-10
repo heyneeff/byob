@@ -2923,7 +2923,12 @@ function _doFireScene(sceneId){
   const monitorTrack = zoneTracks['C'] || Object.values(zoneTracks)[0];
   if(monitorTrack?.url && audio.src !== monitorTrack.url){
     audio.src = monitorTrack.url;
-    audio.loop = true;
+    // NOT audio.loop = true — this is the shared #audio-player element with
+    // `ended` wired to playNext(). A looping element never fires `ended`, so
+    // scenes would get stuck replaying the same track forever instead of
+    // advancing/syncing (the "playmin just loops" bug). Let it end naturally —
+    // playNext() already handles "nothing queued" via _queueLoop or a stop.
+    audio.loop = false;
     audio.play().catch(()=>{});
   } else if(monitorTrack?.url){
     audio.play().catch(()=>{});
