@@ -156,6 +156,43 @@ no single part of the system has the full picture of what's currently being
 corrected. Funneling everything through one gated entry point is what gives
 that one part the full picture.
 
+## Calibration: the missing piece for Bluetooth speakers
+
+The seek formula's `_deviceLatencyMs` term only does anything if it's been
+*measured*. `calibrateDeviceLatency()` plays a click through the speaker,
+listens for it via the mic, and measures the round-trip — this captures each
+phone's real Bluetooth output delay (often 100–300ms+, and different per
+device/speaker).
+
+Normally this runs automatically, once, the first time a phone is detected
+*approaching* a zone (`preSyncApproach()`, GPS-gated) and not yet calibrated.
+That means a phone using the "⚡ ENTER" HUD button to force-join from far
+outside the zone never triggers it — `_deviceLatencyMs` stays `0`, and every
+phone's `audio.currentTime` can be perfectly converged while the *audible*
+sound from each speaker is still offset by each phone's uncompensated
+latency. This is what an audible "speakers aren't synced" gap looks like even
+when `driftState: idle` and `driftMs` near 0 on every device.
+
+**Manual fix**: the HUD has a **📡 CALIBRATE** button (`hudCalibrateNow()`) —
+pauses playback, runs `calibrateDeviceLatency()`, then re-seeks
+(`cancelDriftCorrection()` + `seekToSync()`) and resumes. Use this on each
+phone when testing via force-enter, since the GPS-gated auto-calibration
+won't run.
+
+## Live debugging: `debug.html`
+
+`broadcastHUD()` sends a snapshot every 3s on the shared `byob_debug`
+realtime channel whenever a listener has their HUD panel open. `debug.html`
+subscribes and renders one card per device — `currentTime`, `expectedPos`,
+`driftMs`, `deviceLatencyMs`, `playbackRate`, `driftState`, plus a
+"position delta between devices" readout when 2+ devices are reporting.
+
+`expectedPos` here uses the **same formula** as `computeLagMs()`
+(`elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000`,
+wrapped into `[0, duration)`) — keep these in sync; a simplified/divergent
+copy here will make `driftMs` look wrong by a constant offset (previously
+off by ~`SEEK_STAB_S`, ~270ms) even when the corrector itself is fine.
+
 ## Where this design was proven: `sync-sim.html`
 
 Before porting this design into `listener.html`, it was validated in

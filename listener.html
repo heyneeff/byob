@@ -915,6 +915,7 @@ audio{display:none;}
     <button class="hud-act" onclick="hudForceExit()">🚪 EXIT</button>
     <button class="hud-act" onclick="hudReSeek()">🎯 RE-SEEK</button>
     <button class="hud-act" onclick="hudResetCal()">🔄 RESET</button>
+    <button class="hud-act" onclick="hudCalibrateNow()">📡 CALIBRATE</button>
   </div>
 </div>
 <div id="toast"></div>
@@ -5181,7 +5182,8 @@ function broadcastHUD() {
     ? new Date(activeZone.playback_started_at).getTime() : null;
   const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
   const expectedPos = elapsed !== null && audio.duration
-    ? ((elapsed - _deviceLatencyMs / 1000) % audio.duration) : null;
+    ? (((elapsed + SEEK_STAB_S - _deviceLatencyMs / 1000 - _scatterOffsetMs / 1000) % audio.duration + audio.duration) % audio.duration)
+    : null;
   const drift = expectedPos !== null ? (audio.currentTime - expectedPos) : null;
   _hudChannel.send({
     type: 'broadcast', event: 'hud_data',
@@ -5230,6 +5232,23 @@ function hudResetCal() {
   localStorage.removeItem('byob_device_latency');
   _deviceLatencyMs = 0;
   showToast('🔄 Latency reset — re-entering zone recommended');
+}
+
+async function hudCalibrateNow() {
+  // Manual override for calibrateDeviceLatency()'s normal trigger (preSyncApproach,
+  // GPS-gated). Lets a "force enter" test device calibrate on the spot, regardless
+  // of zone distance or prior calibration state.
+  const wasPlaying = _webAudioPlaying && audio.src && !audio.paused;
+  if (wasPlaying) audio.pause();
+  showToast('📡 Calibrating — stay quiet for a sec...');
+  await calibrateDeviceLatency();
+  if (wasPlaying) {
+    if (activeZone) {
+      cancelDriftCorrection();
+      seekToSync(activeZone.playback_started_at, activeZone.play_at, activeZone.play_from_s);
+    }
+    audio.play().then(() => { _webAudioPlaying = true; }).catch(() => {});
+  }
 }
 
   
