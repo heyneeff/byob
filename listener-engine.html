@@ -2130,12 +2130,21 @@ function _expectedNow() {
   });
 }
 
-// Stripped corrector (Phase 5d) — no warp/duck state machine. Validated in
-// sync-sim.html: matches the warp/duck design's settled drift (~65ms) with
-// zero audible volume dips, mirroring the May 13 2026 listener.html
-// (10s loop, direct seekPreservingBT on >300ms drift) that worked well.
-const SNAP_THRESHOLD_MS = 60;
+// Wake/resume snap threshold — only for the coordinated recovery paths below
+// (resuming from a stall, or waking from a backgrounded tab), where audio is
+// already silent/paused and an instant seek is unnoticeable. The periodic
+// per-tick corrector below NEVER snaps on small drift — see Phase 5i.
+const SNAP_THRESHOLD_MS = 500;
 
+// Phase 5i — Phase 5d's "snap everything >=60ms" was only silent because the
+// unbound-timers bug (Phase 5h) made every snap throw before it landed. Now
+// that snaps actually fire, a steady ~150-190ms drift (well within the
+// engine's 15-500ms "warping" band) was re-ducking + clipping every ~3s
+// forever, which is exactly the audible glitching this corrector exists to
+// avoid. Restored to the engine's tiered requestCorrection(): <15ms ignored,
+// 15-500ms = inaudible +/-3% playbackRate nudge (visible in debug.html as
+// driftState='warping'), >500ms = duck+seek (driftState='ducking'). Validated
+// in sync-sim.html.
 function fastDriftCorrect() {
   _lastDriftCheckAt = performance.now();
   if (!activeZone?.playback_started_at) return;
@@ -2152,33 +2161,8 @@ function fastDriftCorrect() {
   window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
-  if (Math.abs(lagMs) >= SNAP_THRESHOLD_MS) {
-    window._snapCount = (window._snapCount || 0) + 1;
-    // Phase 5f/5g found computeLagMs()/driftMs agree (engineLagMs ~= |driftMs|)
-    // and this branch IS entered every tick, yet drift never closes — so
-    // something inside this block throws before the seek lands. Catch and
-    // surface it instead of letting it die silently in the timer/timeupdate
-    // handler.
-    try {
-      console.log('[Drift]', lagMs.toFixed(0) + 'ms — snapping');
-      const before = audio.currentTime;
-      const target = _expectedNow();
-      cancelDriftCorrection();
-      seekPreservingBT(target);
-      window._lastSnapError = null;
-      // Verify the seek actually moved currentTime — on some browsers a seek on
-      // an <audio> element wired through Web Audio (createMediaElementSource)
-      // is silently ignored, leaving the same constant drift forever. Read back
-      // shortly after to surface this in the HUD instead of guessing blind.
-      setTimeout(() => {
-        window._lastSnapVerifyMs = Math.round((audio.currentTime - target) * 1000);
-        window._lastSnapMovedMs = Math.round((audio.currentTime - before) * 1000);
-      }, 250);
-    } catch (e) {
-      window._lastSnapError = e.message;
-      console.warn('[Drift] snap threw:', e.message);
-    }
-  }
+  if (Math.abs(lagMs) > 500) window._snapCount = (window._snapCount || 0) + 1;
+  requestCorrection(lagMs);
 }
 audio.addEventListener('timeupdate', () => {
   if (performance.now() - _lastDriftCheckAt >= DRIFT_CHECK_MS) fastDriftCorrect();
@@ -5321,10 +5305,7 @@ function broadcastHUD() {
       stallCount:  window._stallCount || 0,
       isMuted:     _isMuted,
       engineLagMs: window._engineLagMs ?? null,
-      snapCount:   window._snapCount || 0,
-      snapError:   window._lastSnapError || null,
-      lastSnapVerifyMs: window._lastSnapVerifyMs ?? null,
-      lastSnapMovedMs: window._lastSnapMovedMs ?? null,
+      duckCount:   window._snapCount || 0,
       browser:     _detectBrowser(),
       build: 'listener-engine',
     }

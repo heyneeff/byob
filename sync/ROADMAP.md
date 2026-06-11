@@ -637,3 +637,50 @@ WebRTC skeleton + the engine's clocks first (6), then the live-latency
 measure → shrink → equalize → scale ladder (7). Live-path work is deliberately
 last: equalized playout depends on the server clock and BT calibration being
 trustworthy, and those are exactly what Phases 1–5 harden.
+
+### Phase 5i — restore the tiered corrector now that snaps actually fire (2026-06-11)
+9th debug session (post-5h): `snapError` empty, but `driftMs` sat at a
+steady -150 to -190ms for every device, and the user reported the music
+"ducking and clipping" constantly — every ~3s, nonstop, audible.
+
+With Phase 5h's fix landed, `fastDriftCorrect()`'s Phase 5d snap-everything-
+`>=60ms` branch was now actually executing `seekPreservingBT()` every tick.
+A steady ~150-190ms offset is squarely inside the engine's 15-500ms
+"warping" band — it should be closed with an inaudible ±3% playbackRate
+nudge, not a seek. Instead every tick was muting, jumping `currentTime`,
+and ramping volume back — the "clip" the user heard, forever, for a drift
+that was never going to be fixed by another identical seek next tick.
+
+Phase 5d's strip-down was validated back when the unbound-`timers` bug
+(5h) meant the snap silently threw and did nothing — so "no audible volume
+dips" in that validation was really "the corrector never ran at all", not
+evidence the snap-only design was sound once snaps started working.
+
+**Fix**: `fastDriftCorrect()` now calls `requestCorrection(lagMs)` directly
+(the engine's existing tiered corrector, already used elsewhere e.g. line
+~5031) instead of a hand-rolled threshold+snap:
+- `<15ms` → ignored
+- `15-500ms` → `'warping'`: ±3% `playbackRate` nudge, inaudible, visible in
+  debug.html as `driftState='warping'` and `rate` != 1.000
+- `>500ms` → `'ducking'`: fade-down/seek/fade-up (~2.5s), visible as
+  `driftState='ducking'`
+
+`SNAP_THRESHOLD_MS` (now 500, was 60) is kept only for the two coordinated
+recovery paths — `_resumeAndReseek()` (after a stall) and the
+`visibilitychange` wake handler — where audio is already silent/paused and
+an instant seek is the right call, not a steady-state drift response.
+
+Removed the now-dead Phase 5e/5g verification fields (`snapError`,
+`lastSnapVerifyMs`, `lastSnapMovedMs`) from `broadcastHUD()` and
+`debug.html` — they existed to diagnose the 5h throw, which is fixed and
+covered by `node --test`. `snapCount` renamed `duckCount`, incremented only
+when `|lagMs| > 500` (i.e. a real duck), shown in debug.html as `ducks`.
+
+`node --test` still 25/25 (engine module unchanged — only the caller's
+choice of which engine function to call changed).
+
+**Verification needed**: next session — `driftState` should show
+`'warping'` (with `rate` ~0.970/1.030) for the steady ~150-190ms offsets
+seen this session, closing smoothly over a few seconds with NO audible
+clip/duck. `driftState='ducking'` (and an audible-but-brief fade) should
+only appear right after track changes / hard_sync, where lag can be large.
