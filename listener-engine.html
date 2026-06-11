@@ -2153,20 +2153,31 @@ function fastDriftCorrect() {
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
   if (Math.abs(lagMs) >= SNAP_THRESHOLD_MS) {
-    console.log('[Drift]', lagMs.toFixed(0) + 'ms — snapping');
-    const before = audio.currentTime;
-    const target = _expectedNow();
-    cancelDriftCorrection();
-    seekPreservingBT(target);
     window._snapCount = (window._snapCount || 0) + 1;
-    // Verify the seek actually moved currentTime — on some browsers a seek on
-    // an <audio> element wired through Web Audio (createMediaElementSource)
-    // is silently ignored, leaving the same constant drift forever. Read back
-    // shortly after to surface this in the HUD instead of guessing blind.
-    setTimeout(() => {
-      window._lastSnapVerifyMs = Math.round((audio.currentTime - target) * 1000);
-      window._lastSnapMovedMs = Math.round((audio.currentTime - before) * 1000);
-    }, 250);
+    // Phase 5f/5g found computeLagMs()/driftMs agree (engineLagMs ~= |driftMs|)
+    // and this branch IS entered every tick, yet drift never closes — so
+    // something inside this block throws before the seek lands. Catch and
+    // surface it instead of letting it die silently in the timer/timeupdate
+    // handler.
+    try {
+      console.log('[Drift]', lagMs.toFixed(0) + 'ms — snapping');
+      const before = audio.currentTime;
+      const target = _expectedNow();
+      cancelDriftCorrection();
+      seekPreservingBT(target);
+      window._lastSnapError = null;
+      // Verify the seek actually moved currentTime — on some browsers a seek on
+      // an <audio> element wired through Web Audio (createMediaElementSource)
+      // is silently ignored, leaving the same constant drift forever. Read back
+      // shortly after to surface this in the HUD instead of guessing blind.
+      setTimeout(() => {
+        window._lastSnapVerifyMs = Math.round((audio.currentTime - target) * 1000);
+        window._lastSnapMovedMs = Math.round((audio.currentTime - before) * 1000);
+      }, 250);
+    } catch (e) {
+      window._lastSnapError = e.message;
+      console.warn('[Drift] snap threw:', e.message);
+    }
   }
 }
 audio.addEventListener('timeupdate', () => {
@@ -5311,6 +5322,7 @@ function broadcastHUD() {
       isMuted:     _isMuted,
       engineLagMs: window._engineLagMs ?? null,
       snapCount:   window._snapCount || 0,
+      snapError:   window._lastSnapError || null,
       lastSnapVerifyMs: window._lastSnapVerifyMs ?? null,
       lastSnapMovedMs: window._lastSnapMovedMs ?? null,
       browser:     _detectBrowser(),

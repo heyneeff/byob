@@ -106,7 +106,7 @@ let _records = [];
 const REC_COLS = ['timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
   'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
   'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
-  'engineLagMs','snapCount','lastSnapVerifyMs','lastSnapMovedMs','note'];
+  'engineLagMs','snapCount','lastSnapVerifyMs','lastSnapMovedMs','snapError','note'];
 
 function toggleRecord() {
   _recording = !_recording;
@@ -210,6 +210,7 @@ function renderSyncCard(d, age) {
         d.lastSnapVerifyMs!=null && Math.abs(d.lastSnapVerifyMs)>100 ? 'bad' : '')}
     ${r('snapMoved',   d.lastSnapMovedMs!=null ? d.lastSnapMovedMs+'ms' : '—',
         d.lastSnapMovedMs!=null && Math.abs(d.lastSnapMovedMs)<100 ? 'bad' : '')}
+    ${r('snapError',   d.snapError || '—', d.snapError ? 'bad' : '')}
   </div>`;
 }
 

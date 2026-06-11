@@ -475,6 +475,53 @@ as `engineLagMs` in HUD payload, shown on `debug.html` next to `DRIFT`
   condition or `Math.abs()` itself (very unlikely, but would mean re-reading
   the literal code running on-device vs. this source).
 
+**Update (7th debug session, 2026-06-11 22:05)** — first session with
+`sync_event` markers (track_change/hard_sync) and `engineLagMs`. Result:
+`engineLagMs` matches `|driftMs|` essentially exactly throughout (e.g.
+-4452/4452, -1594/1594, -2611/2611) — `computeLagMs()` IS returning the
+correct large lag. The `>= SNAP_THRESHOLD_MS` branch is entered every tick
+(|lag| 1400-141000ms, all >> 60), **yet `snapCount` is STILL 0 for every
+device, the entire session** — confirming the bug is inside the snap branch
+itself: something throws before `window._snapCount++` (which sat as the
+*first* line, so even the counter not incrementing means the throw must be
+happening... re-examine: counter was moved to first line in 5g, see below).
+
+This session also had far more `track_change`/`hard_sync` events (DJ actively
+testing) than the baseline session — explains the user's "less tight than
+baseline" feel: each track change produces a transient huge-lag window
+(observed: -2611ms → -77667ms after one track_change, -4452ms → -141809ms
+after another) that — because snaps still don't fire — never resolves until
+the NEXT track change. More events = more time spent in these large-lag
+windows. One more wrinkle seen mid-transition: `driftMs` and `engineLagMs`
+sometimes disagree by exactly one ~3s sample tick right after a track change
+(one reads the new `activeZone.playback_started_at`, the other still reads
+the old one for one cycle) — a transient staleness race, separate from the
+snap-not-firing bug.
+
+### Phase 5g — try/catch around the snap, surface the thrown error (2026-06-11)
+Restructured `fastDriftCorrect()`'s snap branch: `window._snapCount++` now
+happens immediately on entering the `>= SNAP_THRESHOLD_MS` branch (so a
+nonzero `snapCount` next session will at least confirm the branch is
+reached — if it's STILL 0, the `if` condition itself isn't true on-device
+despite what `engineLagMs` shows, which would be a stale-deployment question).
+The rest of the snap body (`_expectedNow()`, `cancelDriftCorrection()`,
+`seekPreservingBT()`, the verify-readback `setTimeout`) is wrapped in
+try/catch; any thrown error's `.message` is stored in `window._lastSnapError`
+and broadcast as `snapError`, shown on `debug.html` (flagged `bad` if
+non-empty) and recorded in the CSV. Leading hypothesis for the throw:
+`cancelDriftCorrection()`'s `transport.playbackRate = getBaseRate()` or
+`seekPreservingBT`'s `transport.currentTime = safeTime` receiving `NaN` from
+`_expectedNow()`/`_getBpmWarpRate()`, which throws
+`TypeError: ... non-finite` when assigned to an `HTMLMediaElement` property.
+
+`node --test` still 25/25 (instrumentation only).
+
+**Verification needed**: next session — `snapCount` should now be nonzero.
+If `snapError` is non-empty, that error message is the actual root cause —
+fix it directly (likely a NaN guard in `_expectedNow()` or `_getBpmWarpRate()`).
+If `snapCount` is nonzero and `snapError` is empty but drift still doesn't
+close, check `lastSnapMovedMs`/`lastSnapVerifyMs` as originally planned in 5e.
+
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
   the air with correct timing. Everything else (deck UI, scenes, crowd map) stays
