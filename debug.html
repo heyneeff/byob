@@ -79,7 +79,7 @@ db.channel('byob_debug')
 // payload shapes; unused fields per row are left blank.
 let _recording = false;
 let _records = [];
-const REC_COLS = ['timestamp','kind','deviceId','build','zone','elapsed','currentTime','expectedPos',
+const REC_COLS = ['timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
   'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
   'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted'];
 
@@ -157,7 +157,7 @@ function renderSyncCard(d, age) {
   const dc = Math.abs(dm) > 500 ? 'bad' : Math.abs(dm) > 100 ? 'warn' : '';
   return `<div class="card">
     <div class="card-hdr">
-      <span class="dev-id">🎧 ${d.deviceId} <span style="color:${d.build==='listener-engine'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'}</span></span>
+      <span class="dev-id">🎧 ${d.deviceId} <span style="color:${d.build==='listener-engine'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'} · ${d.browser || '?'}</span></span>
       <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
     </div>
     ${r('elapsed',     d.elapsed    ? d.elapsed + 's'    : '—')}
@@ -186,7 +186,7 @@ function renderHealthCard(d, age) {
   const dc = isNaN(distM) ? '' : (distM > 300 ? 'bad' : distM > (d.zone !== 'none' ? 100 : 1e9) ? 'warn' : '');
   return `<div class="card">
     <div class="card-hdr">
-      <span class="dev-id">📡 ${d.deviceId} <span style="color:${d.build==='listener-engine'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'}</span></span>
+      <span class="dev-id">📡 ${d.deviceId} <span style="color:${d.build==='listener-engine'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'} · ${d.browser || '?'}</span></span>
       <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
     </div>
     ${r('dist to zone', !isNaN(distM) ? distM.toFixed(0)+'m' : '—', dc)}

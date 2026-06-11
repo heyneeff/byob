@@ -1183,6 +1183,17 @@ const audio = document.getElementById('audio-player');
 // ── BOOT ─────────────────────────────────────────────────
 
 // ════════════════════════════════════════════════════════════
+// Browser identity for debug.html — A/B test sessions run multiple
+// builds/browsers per device with random per-load deviceIds, so this
+// is the only way to tell them apart on the dashboard afterward.
+function _detectBrowser() {
+  const ua = navigator.userAgent;
+  if (/CriOS/.test(ua)) return 'chrome-ios';
+  if (/FxiOS/.test(ua)) return 'firefox-ios';
+  if (/Chrome/.test(ua) && !/Edg/.test(ua)) return 'chrome';
+  if (/Safari/.test(ua) && !/Chrome/.test(ua)) return 'safari';
+  return 'other';
+}
 let _isMuted = false;
 let _webAudioPlaying = false;
 
@@ -5257,6 +5268,7 @@ function broadcastHUD() {
       readyState:  audio.readyState,
       stallCount:  window._stallCount || 0,
       isMuted:     _isMuted,
+      browser:     _detectBrowser(),
       build: 'listener-engine',
     }
   });
@@ -5472,6 +5484,7 @@ function broadcastDebug() {
         interval   ? '✓ interval': '✗ interval',
       ].join(' · '),
       src: hasZone ? `bearing:${getBearing(activeZone.lat,activeZone.lng,userLat||0,userLng||0).toFixed(0)}°` : '—',
+      browser: _detectBrowser(),
       build: 'listener-engine',
     }
   });
