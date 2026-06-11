@@ -17,8 +17,9 @@
   button { background:var(--teal); color:#000; border:none; border-radius:8px; padding:10px 18px; font-weight:600; cursor:pointer; font:inherit; }
   button:disabled { opacity:.5; cursor:default; }
   button.secondary { background:transparent; color:var(--teal); border:1px solid var(--teal); }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
-  @media (max-width:980px){ .grid{ grid-template-columns:1fr; } }
+  .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; }
+  @media (max-width:1400px){ .grid{ grid-template-columns:1fr 1fr; } }
+  @media (max-width:760px){ .grid{ grid-template-columns:1fr; } }
   .panel { background:var(--panel); border:1px solid var(--rim); border-radius:10px; padding:16px; }
   canvas { width:100%; height:260px; background:#0e1013; border-radius:8px; display:block; }
   table { width:100%; border-collapse:collapse; margin-top:12px; font-size:12px; }
@@ -46,9 +47,15 @@
   the <b>current</b> system — the real <code>sync/sync-engine.js</code> module,
   imported and driven directly (single gated corrector + one shared
   <code>playback_started_at</code> reference that spatial reassignment never
-  re-mints). Same seed, same event schedule, same listener population — only the
-  logic differs. No real audio, no Supabase — positions and clocks are just
-  numbers, run thousands of times faster than real time.
+  re-mints) — vs a <b>stripped</b> third design that drops the warp/duck state
+  machine entirely: every <code>fastDriftCorrect</code> tick, if
+  <code>|lag| &gt;= 60ms</code> it just calls <code>cancelDriftCorrection()</code>
+  + <code>seekPreservingBT()</code> directly (a single 180ms mute/seek/unmute
+  ramp), mirroring the May 13 2026 <code>listener.html</code> that the manual
+  HUD-sync workflow worked well against. Same seed, same event schedule, same
+  listener population — only the logic differs. No real audio, no Supabase —
+  positions and clocks are just numbers, run thousands of times faster than
+  real time.
 </p>
 
 <div class="controls">
@@ -76,6 +83,11 @@
     <h2>New — sync/sync-engine.js (single gate + one shared reference point)</h2>
     <canvas id="chart-new" width="900" height="260"></canvas>
     <table id="stats-new"></table>
+  </div>
+  <div class="panel">
+    <h2>Stripped — periodic threshold reseek (no warp/duck, May 13 style)</h2>
+    <canvas id="chart-stripped" width="900" height="260"></canvas>
+    <table id="stats-stripped"></table>
   </div>
 </div>
 <div class="legend" id="legend"></div>
@@ -297,6 +309,39 @@ function forcedSnapEngine(L, ctx, simState) {
   L.hardSeekCount++;
 }
 
+// ════════════════════════════════════════════════════════════
+// STRIPPED controller — drops requestCorrection's warp/duck state machine
+// entirely. Every fastDriftCorrect tick, |lag| >= STRIP_THRESHOLD_MS just
+// snaps directly via cancelDriftCorrection() + seekPreservingBT() — the
+// same primitive coordinated snaps already use, at the existing 5s cadence.
+// ════════════════════════════════════════════════════════════
+const STRIP_THRESHOLD_MS = 60;
+
+function stripTickEngine(L, simNow, dtMs, ctx, simState) {
+  advance(L, dtMs);
+
+  const maybeSnap = () => {
+    const lag = L.engine.computeLagMs();
+    if (lag != null && Math.abs(lag) >= STRIP_THRESHOLD_MS) forcedSnapEngine(L, ctx, simState);
+  };
+
+  if (simNow >= L.nextFastCheck) {
+    L.nextFastCheck = simNow + FAST_CHECK_MS;
+    maybeSnap();
+  }
+  if (ctx.events.visibilityWake) maybeSnap();
+
+  if (ctx.events.scatterChange) {
+    L.scatterOffsetMs = ctx.scatterFor(L);
+    forcedSnapEngine(L, ctx, simState);
+  }
+  if (ctx.events.hardSync) forcedSnapEngine(L, ctx, simState);
+  if (ctx.events.clusterAssign && ctx.pick(ctx.events.clusterAssign, L)) forcedSnapEngine(L, ctx, simState);
+  if (ctx.events.sceneFire) forcedSnapEngine(L, ctx, simState);
+
+  L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
+}
+
 function newTickEngine(L, simNow, dtMs, ctx, simState) {
   advance(L, dtMs);
 
@@ -406,7 +451,7 @@ function runSim(seed, listenerCount, totalMs, disruptRate, tickFn, eventToggles)
 // (warp snap-back, duck ramps, duck safety) resolve as the sim ticks.
 // playbackStartedAt starts at -1 (truthy "just started") rather than 0 —
 // computeLagMs treats 0 as "no reference yet" (see sync-engine.test.js).
-function runSimEngine(seed, listenerCount, totalMs, disruptRate, eventToggles) {
+function runSimEngine(seed, listenerCount, totalMs, disruptRate, eventToggles, tickFn = newTickEngine) {
   const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true }, eventToggles);
   const rng = mulberry32(seed);
   const timers = createFakeTimers();
@@ -459,7 +504,7 @@ function runSimEngine(seed, listenerCount, totalMs, disruptRate, eventToggles) {
       }
       if (ev.type === 'visibilityWake') eventLog.push(`📱 ${(simNow/60000).toFixed(1)}m — a phone wakes from locked screen`);
     }
-    for (const L of listeners) newTickEngine(L, simNow, TICK_MS, ctx, simState);
+    for (const L of listeners) tickFn(L, simNow, TICK_MS, ctx, simState);
   }
   return { listeners, eventLog };
 }
@@ -539,25 +584,29 @@ btnRun.addEventListener('click', () => {
       sceneFire:      document.getElementById('cf-ev-scene').checked,
     };
 
-    const legacy = runSim(seed, count, totalMs, disrupt, legacyTick, eventToggles);
-    const fresh  = runSimEngine(seed, count, totalMs, disrupt, eventToggles);
+    const legacy   = runSim(seed, count, totalMs, disrupt, legacyTick, eventToggles);
+    const fresh    = runSimEngine(seed, count, totalMs, disrupt, eventToggles);
+    const stripped = runSimEngine(seed, count, totalMs, disrupt, eventToggles, stripTickEngine);
 
-    drawChart(document.getElementById('chart-legacy'), legacy.listeners, totalMs);
-    drawChart(document.getElementById('chart-new'),    fresh.listeners,  totalMs);
-    const sLegacy = fillStats(document.getElementById('stats-legacy'), legacy.listeners, 'legacy');
-    const sNew    = fillStats(document.getElementById('stats-new'),    fresh.listeners,  'new');
+    drawChart(document.getElementById('chart-legacy'),   legacy.listeners,   totalMs);
+    drawChart(document.getElementById('chart-new'),      fresh.listeners,    totalMs);
+    drawChart(document.getElementById('chart-stripped'), stripped.listeners, totalMs);
+    const sLegacy   = fillStats(document.getElementById('stats-legacy'),   legacy.listeners,   'legacy');
+    const sNew      = fillStats(document.getElementById('stats-new'),      fresh.listeners,    'new');
+    const sStripped = fillStats(document.getElementById('stats-stripped'), stripped.listeners, 'new');
     buildLegend(legacy.listeners);
     document.getElementById('event-log').innerHTML = '<b>Party timeline (identical for both runs):</b><br>' + legacy.eventLog.map(e=>'• '+e).join('<br>');
 
     const verdict = document.getElementById('verdict');
     const better = (a,b) => a < b ? `<b>new wins</b>` : (a > b ? `<span class="bad">legacy wins</span>` : 'tie');
+    const betterStrip = (a,b) => a < b ? `<b>stripped wins</b>` : (a > b ? `<span class="bad">new wins</span>` : 'tie');
     verdict.innerHTML = `
       <b>Result</b> — same ${count}-listener party, same ${minutes}-minute timeline, same disruptions:<br><br>
-      <b>Avg settled drift:</b> legacy ${sLegacy.avgMax.toFixed(0)}ms vs new ${sNew.avgMax.toFixed(0)}ms — ${better(sNew.avgMax, sLegacy.avgMax)}<br>
-      <b>Total audible volume dips:</b> legacy ${sLegacy.totalDips} vs new ${sNew.totalDips} — ${better(sNew.totalDips, sLegacy.totalDips)}<br>
-      <b>Total hard seeks:</b> legacy ${sLegacy.totalSeeks} vs new ${sNew.totalSeeks} — ${better(sNew.totalSeeks, sLegacy.totalSeeks)}<br>
-      <b>Direct bypass seeks (the actual "roving" mechanism):</b> legacy had ${sLegacy.totalBypass} — the new design has <b>zero</b>, by construction (nothing can seek without going through the single gate).<br><br>
-      <span style="color:var(--muted)">Legacy lines that hover near the gridlines and occasionally spike past ±500ms before "fighting" their way back are the roving signature — a duck and a bypass-seek landing on the same listener within the same correction window. The new design's worst case is a single clean seek that the gate fully owns.</span>
+      <b>Avg settled drift:</b> legacy ${sLegacy.avgMax.toFixed(0)}ms vs new ${sNew.avgMax.toFixed(0)}ms vs stripped ${sStripped.avgMax.toFixed(0)}ms — ${better(sNew.avgMax, sLegacy.avgMax)}, ${betterStrip(sStripped.avgMax, sNew.avgMax)}<br>
+      <b>Total audible volume dips:</b> legacy ${sLegacy.totalDips} vs new ${sNew.totalDips} vs stripped ${sStripped.totalDips} — ${better(sNew.totalDips, sLegacy.totalDips)}, ${betterStrip(sStripped.totalDips, sNew.totalDips)}<br>
+      <b>Total hard seeks:</b> legacy ${sLegacy.totalSeeks} vs new ${sNew.totalSeeks} vs stripped ${sStripped.totalSeeks} — ${better(sNew.totalSeeks, sLegacy.totalSeeks)}, ${betterStrip(sStripped.totalSeeks, sNew.totalSeeks)}<br>
+      <b>Direct bypass seeks (the actual "roving" mechanism):</b> legacy had ${sLegacy.totalBypass} — new and stripped have <b>zero</b>, by construction (nothing can seek without going through the single gate).<br><br>
+      <span style="color:var(--muted)">Legacy lines that hover near the gridlines and occasionally spike past ±500ms before "fighting" their way back are the roving signature — a duck and a bypass-seek landing on the same listener within the same correction window. "New" relies on requestCorrection's warp/duck bands; "stripped" drops both and just snaps via seekPreservingBT whenever |lag| &gt;= ${STRIP_THRESHOLD_MS}ms — fewer states to get stuck in, at the cost of a brief 180ms ramp instead of an inaudible rate nudge for small drifts.</span>
     `;
 
     document.getElementById('status').textContent = `Simulated ${minutes}min × ${count} listeners (seed ${seed}) — ${legacy.eventLog.length} disruption events.`;

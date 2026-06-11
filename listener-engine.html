@@ -2114,14 +2114,26 @@ function _resumeAndReseek() {
   audio.play().then(() => {
     if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject) return;
     cancelDriftCorrection();
-    const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-    seekPreservingBT(window.SyncEngine.expectedPosition({
-      elapsedS: elapsed, duration: audio.duration,
-      deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
-      warpRate: _getBpmWarpRate(),
-    }));
+    seekPreservingBT(_expectedNow());
   }).catch(() => {});
 }
+
+// Canonical "where should playback be right now" — shared by _resumeAndReseek
+// and fastDriftCorrect's snap path so both agree with broadcastHUD's expectedPos.
+function _expectedNow() {
+  const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+  return window.SyncEngine.expectedPosition({
+    elapsedS: elapsed, duration: audio.duration,
+    deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
+    warpRate: _getBpmWarpRate(),
+  });
+}
+
+// Stripped corrector (Phase 5d) — no warp/duck state machine. Validated in
+// sync-sim.html: matches the warp/duck design's settled drift (~65ms) with
+// zero audible volume dips, mirroring the May 13 2026 listener.html
+// (10s loop, direct seekPreservingBT on >300ms drift) that worked well.
+const SNAP_THRESHOLD_MS = 60;
 
 function fastDriftCorrect() {
   _lastDriftCheckAt = performance.now();
@@ -2138,9 +2150,10 @@ function fastDriftCorrect() {
   const lagMs = computeLagMs();
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
-  if (Math.abs(lagMs) > 60) {
-    console.log('[Drift]', lagMs.toFixed(0) + 'ms');
-    requestCorrection(lagMs);
+  if (Math.abs(lagMs) >= SNAP_THRESHOLD_MS) {
+    console.log('[Drift]', lagMs.toFixed(0) + 'ms — snapping');
+    cancelDriftCorrection();
+    seekPreservingBT(_expectedNow());
   }
 }
 audio.addEventListener('timeupdate', () => {
@@ -2179,13 +2192,15 @@ document.addEventListener('visibilitychange', () => {
   if (audio.srcObject && _webAudioPlaying && audio.paused) {
     audio.play().catch(() => {});
   }
-  // Instant memory-based resync — no network needed. Routed through the single
-  // guarded corrector (requestCorrection) so it can't stack on top of an
-  // in-flight duck/seek or rate-warp from fastDriftCorrect — that fighting
-  // between independent direct-seek paths was the "roving" never-settles bug.
+  // Instant memory-based resync — no network needed. Same stripped snap path
+  // as fastDriftCorrect (cancelDriftCorrection + seekPreservingBT) so a
+  // visibility-wake snap can't fight an in-flight seek.
   if (audio.duration && activeZone.playback_started_at && !audio.srcObject) {
     const lagMs = computeLagMs();
-    if (lagMs != null && Math.abs(lagMs) > 60) requestCorrection(lagMs);
+    if (lagMs != null && Math.abs(lagMs) >= SNAP_THRESHOLD_MS) {
+      cancelDriftCorrection();
+      seekPreservingBT(_expectedNow());
+    }
   }
   // Background DB health check
   syncZoneAudio();

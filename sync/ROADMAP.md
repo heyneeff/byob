@@ -127,6 +127,16 @@ the simulated code *the same code*.
 
 ## Phases
 
+**North star (set 2026-06-11):** every phase below should move toward the
+same end state — a listener's playback stays within tens of milliseconds of
+the broadcaster, for both the timeline (pre-recorded track) path and the live
+(WebRTC) path, with corrections frequent and small enough to be inaudible.
+Phase 5d (stripped corrector) gets the timeline path there with the simplest
+possible mechanism; Phase 7 (live-path latency) does the equivalent for the
+live mic-stream path. If a future phase adds complexity back (warp curves,
+adaptive thresholds, etc.), it must justify itself against the 5d baseline in
+`sync-sim.html` first — "simpler and just as tight" wins by default.
+
 ### Phase 0 — Baseline
 - Commit the in-flight `debug.html` / `listener.html` changes (drift-spread readout,
   `paused`/`playing` HUD fields).
@@ -224,6 +234,13 @@ the simulated code *the same code*.
   - repeat with a phone backgrounded/screen-locked through a `visibilitychange`
     cycle, and with a phone going offline/online (reconnect path)
   - this is the gate for Phase 5 — don't merge on simulation results alone.
+  - **Post-5d**: the corrector has no `warping`/`ducking` states left to
+    observe in the periodic loop — `driftState` should read `idle` almost
+    always, with `driftMs` oscillating in a tight band around
+    `±SNAP_THRESHOLD_MS` (60ms) via frequent small `seekPreservingBT` snaps.
+    The pass criterion is simply: does `driftMs` stay bounded near ±60ms
+    indefinitely, with no flat multi-second plateaus (the 5b/5c/5d failure
+    signature)?
 
 ### Phase 5a — drift-check loop liveness (found via first debug-export session, 2026-06-11)
 A real-party `debug.html` CSV export (Record/Export added this session) showed
@@ -324,6 +341,51 @@ device's drift trajectory is now distinguishable from an unmuted one.
 transitions to `warping`/`ducking` on muted devices and that the long flat
 plateaus disappear (drift should oscillate near 0 like an unmuted device,
 not sit at a constant non-zero offset for minutes).
+
+**Update (4th debug session, 2026-06-11 18:30)**: Phase 5c shipped the fix,
+but the new session showed `requestCorrection`'s warp/duck still doesn't
+reliably engage even when unmuted (`isMuted: false`) — `dev_297vo4`
+(chrome-ios) sat at a flat -47080ms drift for 3 minutes, then -2582ms for
+another 3 minutes, `driftState` stuck `idle` throughout despite
+`lastDriftCheckAgoMs` confirming the loop runs and `audio.currentTime`
+advancing normally (not frozen — a different failure mode than 5b's stall).
+One device (`dev_hypy6g`, production `listener.html`/safari) DID show
+`driftState` transitioning (`warping:97 ducking:3 idle:32` over 132 samples)
+and converged to -224ms by the end — so the warp/duck path *can* work, but
+is unreliable across builds/browsers in a way we couldn't pin down from the
+telemetry alone.
+
+### Phase 5d — strip the warp/duck state machine entirely (2026-06-11)
+The user recalled that the May 13 2026 `listener.html` (`6f4f5b0`) — the one
+the manual HUD-sync workflow worked great against — had **no** `_driftState`,
+no rate-warping, no ducking. Its entire corrector was a 10s loop:
+`if (|drift| > 0.3s) seekPreservingBT(expected)`. Given three sessions of the
+warp/duck state machine getting stuck in `idle` for unclear reasons, and the
+user's go-ahead to strip it down, Phase 5d drops `requestCorrection`'s
+warp/duck bands from the periodic corrector entirely.
+
+Validated in `sync-sim.html` first (added a third "stripped" controller +
+panel, same seed/event schedule as legacy/new): stripped settles to ~65ms avg
+drift — statistically identical to the warp/duck design's 66ms — with **zero**
+audible volume dips (vs 23 for warp/duck), at the cost of more frequent quick
+180ms `seekPreservingBT` ramps (891 vs 718 hard seeks). Net: same precision,
+strictly less audible.
+
+Implemented in `listener-engine.html`:
+- New `SNAP_THRESHOLD_MS = 60` and shared `_expectedNow()` helper (factored
+  out of `_resumeAndReseek`, also used by `fastDriftCorrect`).
+- `fastDriftCorrect()`: when `|lagMs| >= 60`, call `cancelDriftCorrection()` +
+  `seekPreservingBT(_expectedNow())` directly — no `requestCorrection()`.
+- `visibilitychange` resync handler: same direct snap, same threshold,
+  replacing its `requestCorrection()` call.
+- `requestCorrection`/`_driftState`/warp/duck remain in `sync/sync-engine.js`
+  and are still used by the mic-based auto-sync verifier (`_syncState`,
+  unrelated state machine) — only the periodic drift loop stopped using them.
+
+`node --test` still 25/25 (engine module unchanged). Not yet ported to
+production `listener.html` — validate this on `listener-engine.html` first
+via another debug session, watching for `driftMs` staying within ~60-100ms
+band via frequent small snaps instead of the old flat multi-second plateaus.
 
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
