@@ -5,11 +5,14 @@
 // needs comes in through `transport`, `timers`, `clock`, `getContext`,
 // and `getBaseRate` — see createSyncEngine() below.
 //
-// Phase 1 note: this is a verbatim port of the corrector logic in
-// listener.html (~4782-4896) plus the seek-position math and clock-offset
-// estimator. Known bugs (no lag-wrap at the track loop point, BPM-warp
-// position math) are intentionally preserved here — sync/ROADMAP.md
-// Phase 3 fixes them with failing tests first.
+// Phase 1 ported the corrector logic in listener.html (~4782-4896) plus the
+// seek-position math and clock-offset estimator verbatim, bugs included.
+// Phase 3 fixed three of them here (see sync/ROADMAP.md defects #1, #3, #5):
+//  - computeLagMs() now wraps at the track boundary (wrapLag)
+//  - expectedPosition() / requestCorrection() are rate-aware, so BPM warp
+//    (playbackRate != 1) no longer throws off position math
+//  - cancelDriftCorrection() invalidates an in-flight duck via a generation
+//    counter, so an orphaned duck can't re-seek/dip volume after a snap
 // ════════════════════════════════════════════════════════════
 
 // Audio seek stabilization latency constant — must match listener.html,
@@ -17,14 +20,32 @@
 export const SEEK_STAB_S = 0.27;
 
 // ── Position math ─────────────────────────────────────────────
-// expected = ((elapsed + SEEK_STAB_S - deviceLatency - scatterOffset) % duration + duration) % duration
-export function expectedPosition({ elapsedS, duration, deviceLatencyMs, scatterOffsetMs }) {
-  return ((elapsedS + SEEK_STAB_S - deviceLatencyMs / 1000 - scatterOffsetMs / 1000) % duration + duration) % duration;
+// expected = ((elapsed + SEEK_STAB_S - deviceLatency - scatterOffset) * warpRate % duration + duration) % duration
+//
+// `warpRate` is the BPM-warp playbackRate (1.0 when no master BPM is set).
+// Track position advances at `rate` per wall-clock second, so the whole
+// wall-clock bracket — elapsed time plus the wall-clock-denominated latency/
+// stabilization offsets — is converted to track-position seconds by scaling
+// by `warpRate` before wrapping. At warpRate=1 this is exactly the original
+// formula.
+export function expectedPosition({ elapsedS, duration, deviceLatencyMs, scatterOffsetMs, warpRate = 1 }) {
+  const raw = (elapsedS + SEEK_STAB_S - deviceLatencyMs / 1000 - scatterOffsetMs / 1000) * warpRate;
+  return (raw % duration + duration) % duration;
 }
 
 // lag = expected - actual, in ms. Positive = audio is behind where it should be.
 export function computeLag({ expected, currentTime }) {
   return (expected - currentTime) * 1000;
+}
+
+// Wrap a lag value into [-durationMs/2, durationMs/2] — a lag near
+// +/-durationMs is really a small lag the other direction across the track's
+// loop point, not a near-full-track desync.
+export function wrapLag(lagMs, durationMs) {
+  const half = durationMs / 2;
+  while (lagMs > half) lagMs -= durationMs;
+  while (lagMs < -half) lagMs += durationMs;
+  return lagMs;
 }
 
 // Seek target for seekToSync(startedAt, playAt, playFromS) — listener.html:1405
@@ -95,9 +116,13 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
   let driftState = 'idle'; // 'idle' | 'warping' | 'ducking'
   let driftPendingRecheck = false;
   let driftWarpTimer = null;
+  let driftGeneration = 0; // bumped by cancelDriftCorrection / each new duck — invalidates in-flight duck callbacks
 
-  // Current drift in ms (expected position - actual), or null if there's
-  // nothing to compare against right now (no track loaded / WebRTC live).
+  // Current drift in ms (expected position - actual), wrapped to
+  // [-duration*1000/2, duration*1000/2] (defect #1 — a lag near a full track
+  // length is really a small lag across the loop point). Returns null if
+  // there's nothing to compare against right now (no track loaded / WebRTC
+  // live).
   function computeLagMs() {
     const ctx = getContext();
     if (!transport.duration || !ctx.playbackStartedAt || transport.hasSrcObject?.()) return null;
@@ -107,8 +132,9 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
       duration: transport.duration,
       deviceLatencyMs: ctx.deviceLatencyMs,
       scatterOffsetMs: ctx.scatterOffsetMs,
+      warpRate: getBaseRate(),
     });
-    return computeLag({ expected, currentTime: transport.currentTime });
+    return wrapLag(computeLag({ expected, currentTime: transport.currentTime }), transport.duration * 1000);
   }
 
   function settleToIdle() {
@@ -137,11 +163,15 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
       return;
     }
 
-    // Small drift = rate correction — completely inaudible at +/-3%
+    // Small drift = rate correction — completely inaudible at +/-3%.
+    // Closing rate is +/-3% of baseRate (track-position-seconds per
+    // wall-second), so the time to close |lagMs| scales inversely with
+    // baseRate (defect #3 — at 2x BPM warp, the rate nudge closes the gap
+    // twice as fast and must snap back twice as soon).
     const baseRate = getBaseRate();
     transport.playbackRate = lagMs > 0 ? baseRate * 1.03 : baseRate * 0.97;
     driftState = 'warping';
-    const correctionMs = Math.abs(lagMs) / 0.03;
+    const correctionMs = Math.abs(lagMs) / (0.03 * baseRate);
     driftWarpTimer = timers.setTimeout(() => {
       transport.playbackRate = getBaseRate();
       settleToIdle();
@@ -152,6 +182,7 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
   // scatter) seek immediately and must win — cancel any in-flight rate-warp/
   // duck first so it can't recompute and overwrite the snap a moment later.
   function cancelDriftCorrection() {
+    driftGeneration++; // invalidate any in-flight duck's pending callbacks
     timers.clearTimeout(driftWarpTimer);
     driftState = 'idle';
     driftPendingRecheck = false;
@@ -159,15 +190,20 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
   }
 
   function seekWithDuck(newTime) {
+    const myGeneration = ++driftGeneration;
     const targetVol = transport.volume || 1;
     // Safety: if something throws mid-duck, release the gate so sync doesn't die silently
-    const duckSafety = timers.setTimeout(() => { transport.volume = targetVol; settleToIdle(); }, 5000);
+    const duckSafety = timers.setTimeout(() => {
+      if (driftGeneration !== myGeneration) return; // cancelled — a snap already took over
+      transport.volume = targetVol; settleToIdle();
+    }, 5000);
 
     const DUCK_MS = 1500, RISE_MS = 1000, STEPS = 20;
     function ramp(durationMs, from, to, onDone) {
       const interval = Math.max(50, durationMs / STEPS);
       let step = 0;
       const timer = timers.setInterval(() => {
+        if (driftGeneration !== myGeneration) { timers.clearInterval(timer); return; } // cancelled mid-ramp
         step++;
         const t = Math.min(step / STEPS, 1);
         const eased = t * t * (3 - 2 * t);
@@ -177,6 +213,7 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
     }
 
     ramp(DUCK_MS, targetVol, 0, () => {
+      if (driftGeneration !== myGeneration) return; // cancelled during ramp-down
       // Recompute the target now, at seek time — the ~1.5s ramp we just ran
       // means the position passed in has gone stale.
       let safeTime = newTime;
@@ -188,12 +225,15 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
           duration: transport.duration,
           deviceLatencyMs: ctx.deviceLatencyMs,
           scatterOffsetMs: ctx.scatterOffsetMs,
+          warpRate: getBaseRate(),
         });
       }
       safeTime = Math.max(0, Math.min(safeTime, (transport.duration || 9999) - 0.1));
       transport.currentTime = safeTime;
       timers.setTimeout(() => {
+        if (driftGeneration !== myGeneration) return; // cancelled during the pause
         ramp(RISE_MS, 0, targetVol, () => {
+          if (driftGeneration !== myGeneration) return; // cancelled during ramp-up
           timers.clearTimeout(duckSafety);
           settleToIdle();
         });

@@ -82,26 +82,32 @@ the simulated code *the same code*.
 
 ## Known defects to fix in the engine (Phase 3) — found in the current inline code
 
-1. **`computeLagMs` doesn't wrap at the track boundary** (`listener.html:4788`).
+1. ✅ **FIXED (Phase 3). `computeLagMs` doesn't wrap at the track boundary** (`listener.html:4788`).
    Near the loop point (expected 199.9s, actual 0.1s on a 200s track) lag reads as
    ~±duration → spurious 2.5s duck every loop. `sync-sim.html` already has
-   `wrapLag()`; the real listener never got it.
+   `wrapLag()`; the real listener never got it. — `wrapLag()` is now exported from
+   `sync-engine.js` and `computeLagMs()` wraps its result to `[-duration*1000/2, duration*1000/2]`.
 2. **Sweep beam-hit seek violates the seek formula** (`listener.html:5478`):
    `seekPreservingBT((elapsed − deviceLatency/1000) % duration)` — missing
    `SEEK_STAB_S` and the `_scatterOffsetMs` term (which sweep itself just set at
    line 5471). The very next `fastDriftCorrect` tick sees ~delayMs of phantom
    drift and re-corrects. One canonical `expectedPosition()` makes this class of
-   bug impossible.
-3. **BPM-warp position math (audit finding C, still open).** When
+   bug impossible. — **deferred to Phase 5** (production wiring).
+3. ✅ **FIXED (Phase 3). BPM-warp position math (audit finding C).** When
    `playbackRate ≠ 1` (master BPM warp), track position advances at `rate ×`
    wall time, but `expectedPosition()` maps elapsed 1:1. Expected position must be
    rate-aware (`elapsed × warpRate`), and warp-correction duration math
-   (`lagMs / 0.03`) must account for the base rate. Until fixed: master BPM stays
-   off when testing sync.
+   (`lagMs / 0.03`) must account for the base rate. — `expectedPosition()` now takes
+   a `warpRate` param (default 1), `computeLagMs()` and `seekWithDuck()`'s recompute
+   pass `getBaseRate()` as `warpRate`, and `requestCorrection()`'s `correctionMs` is
+   `Math.abs(lagMs) / (0.03 * baseRate)`. Closed in the engine; still needs Phase 5
+   wiring before it takes effect in `listener.html`.
 4. **Formula duplication**: the four-term expression is inlined at ≥5 sites in
    `listener.html` (3657, 3727, 3754, 3775, 4867) plus `debug.html`'s expectedPos
-   plus `sync-sim.html` — three files to keep in step by hand today.
-5. **`cancelDriftCorrection` doesn't cancel an in-flight duck** (found while
+   plus `sync-sim.html` — three files to keep in step by hand today. — **deferred to
+   Phase 5** (production wiring); the engine's `expectedPosition()` is the canonical
+   replacement.
+5. ✅ **FIXED (Phase 3). `cancelDriftCorrection` doesn't cancel an in-flight duck** (found while
    building the Phase 2 harness — `sync/sync-engine.js`'s `cancelDriftCorrection`,
    ported verbatim from `listener.html:4833-4838`). It clears `_driftWarpTimer`
    (the 'warping' timeout) and resets `_driftState`/`_driftPendingRecheck`, but
@@ -111,8 +117,11 @@ the simulated code *the same code*.
    but the orphaned duck ramp keeps running underneath: it fades volume to 0,
    reseeks (to a now-stale or coincidentally-current `expectedPosition`), fades
    back up, and calls `settleToIdle()` again ~1.5-2.5s later. Audible side effect:
-   an unwanted volume dip right after a snap. Needs a cancellation token/generation
-   counter so `seekWithDuck`'s callbacks no-op after `cancelDriftCorrection`.
+   an unwanted volume dip right after a snap. — `cancelDriftCorrection()` and
+   `seekWithDuck()` now share a `driftGeneration` counter; `cancelDriftCorrection()`
+   bumps it, and every async callback in `seekWithDuck()` (ramp interval, ramp-down
+   `onDone`, the 80ms pause, ramp-up `onDone`, and the 5s duck-safety timeout)
+   no-ops if its captured generation is stale.
 
 ---
 
@@ -154,14 +163,22 @@ the simulated code *the same code*.
   change ships** (replaces "eyeball it in sync-sim" as the gate; the sim stays for
   visual exploration).
 
-### Phase 3 — Bulletproofing (fix the four defects above, tests first)
-- For each: write the failing test against the Phase-1 port, fix in the engine,
-  watch it go green, confirm fuzz metrics didn't regress.
-- Sweep the engine for edge cases the harness makes cheap to probe: duration ≤ 0,
-  paused transport, latency cache stale after BT device change, clock-offset
-  estimator under RTT spikes / all-samples-rejected.
-- Exit criterion: fuzz suite green across many seeds **with master BPM warp
-  enabled** (closes audit finding C).
+### Phase 3 — Bulletproofing (fix the four defects above, tests first) ✅ DONE
+- Defects #1, #3, #5 fixed in `sync-engine.js`, each landed as a new failing
+  test → fix → green (see "Known defects" above for details). #2 and #4 are
+  production-wiring issues, deferred to Phase 5.
+- `node --test 'sync/**/*.test.js'` is 25/25 green, including 3 new Phase-3
+  unit tests (lag wrap at the loop point, rate-aware `expectedPosition`/
+  `computeLagMs`, warp-duration scaling with `baseRate`) and a duck-cancellation
+  test for #5. Party fuzz (seeds 1-3) still green at the existing thresholds
+  (p50 < 150ms, max < 2500ms) — no regression from the lag-wrap change.
+- Remaining from the original scope, not yet done: an explicit edge-case sweep
+  (duration ≤ 0, paused transport, latency cache stale after BT device change,
+  clock-offset estimator under RTT spikes / all-samples-rejected) and a fuzz
+  run with `getBaseRate()` returning a non-1 warp rate end-to-end. Tracked here
+  for Phase 4+ rather than blocking the sequence — the rate-aware math is unit
+  tested directly (see `requestCorrection: warp correction duration scales
+  inversely with baseRate`).
 
 ### Phase 4 — Point sync-sim.html at the real engine
 - `sync-sim.html` imports `./sync/sync-engine.js` for the "new" controller instead

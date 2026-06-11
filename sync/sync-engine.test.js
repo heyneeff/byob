@@ -1,10 +1,10 @@
 // Phase 1 smoke tests for sync/sync-engine.js — run with:
-//   node --test sync/
+//   node --test 'sync/**/*.test.js'
 //
 // These pin the verbatim port against the corrector behavior described in
 // CLAUDE.md / SYNC_ENGINE.md. Phase 2 expands this into the full seeded-party
-// harness (ported from sync-sim.html); Phase 3 adds failing tests for the
-// known bugs (lag wrap, BPM-warp position math) before fixing them.
+// harness (ported from sync-sim.html); Phase 3 adds tests for defects #1
+// (lag wrap), #3 (BPM-warp position math), and #5 (duck cancellation token).
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -14,6 +14,7 @@ import {
   computeSeekTime,
   computeClockOffset,
   bpmWarpRate,
+  wrapLag,
   SEEK_STAB_S,
 } from './sync-engine.js';
 
@@ -247,4 +248,107 @@ test('computeLagMs matches expectedPosition - currentTime', () => {
   const lagMs = engine.computeLagMs();
   const expected = expectedPosition({ elapsedS: 10, duration: 200, deviceLatencyMs: 0, scatterOffsetMs: 0 });
   assert.ok(Math.abs(lagMs - (expected - 5) * 1000) < 1e-9);
+});
+
+// ── Phase 3: defect #1 — lag wrap at the track boundary ───────
+
+test('wrapLag: a near-full-track lag wraps to a small lag the other direction', () => {
+  // expected 199.9s, actual 0.1s on a 200s track -> raw lag ~ -199.8s,
+  // which should wrap to ~+0.2s (a tiny lag), not read as a near-full-track desync.
+  const wrapped = wrapLag((199.9 - 0.1) * -1000, 200000);
+  assert.ok(Math.abs(wrapped - 200) < 1e-6, `expected ~200ms, got ${wrapped}`);
+});
+
+test('computeLagMs wraps a near-loop-point lag to a small value, not a near-full-track one', () => {
+  const timers = createFakeTimers();
+  const ctx = noWarp(timers);
+  ctx.transport.duration = 200;
+  ctx.transport.currentTime = 0.1; // just past the loop point
+  ctx.getContext = () => ({ playbackStartedAt: -199900, deviceLatencyMs: 0, scatterOffsetMs: 0 });
+  // elapsed = 199.9s -> expected = expectedPosition(199.9 + SEEK_STAB_S, ...) wraps near 0,
+  // so raw (expected - currentTime) is near -199.8s -- should wrap to a small positive value.
+
+  const engine = createSyncEngine(ctx);
+  const lagMs = engine.computeLagMs();
+  assert.ok(Math.abs(lagMs) < 1000, `expected a small wrapped lag, got ${lagMs}ms`);
+});
+
+// ── Phase 3: defect #3 — BPM-warp-aware position math ─────────
+
+test('expectedPosition: warpRate scales elapsed time before wrapping', () => {
+  // At 2x rate, track position advances twice as fast as wall-clock elapsed time.
+  const rate1 = expectedPosition({ elapsedS: 10, duration: 200, deviceLatencyMs: 0, scatterOffsetMs: 0, warpRate: 1 });
+  const rate2 = expectedPosition({ elapsedS: 10, duration: 200, deviceLatencyMs: 0, scatterOffsetMs: 0, warpRate: 2 });
+  assert.ok(Math.abs(rate2 - rate1 * 2) < 1e-9, `expected rate2 (${rate2}) ~= 2x rate1 (${rate1})`);
+});
+
+test('computeLagMs uses getBaseRate() as the warpRate', () => {
+  const timers = createFakeTimers();
+  const ctx = noWarp(timers);
+  ctx.transport.duration = 200;
+  ctx.transport.currentTime = 5;
+  ctx.getContext = () => ({ playbackStartedAt: -10000, deviceLatencyMs: 0, scatterOffsetMs: 0 });
+  ctx.getBaseRate = () => 2; // master BPM warp at 2x
+
+  const engine = createSyncEngine(ctx);
+  const lagMs = engine.computeLagMs();
+  const expected = expectedPosition({ elapsedS: 10, duration: 200, deviceLatencyMs: 0, scatterOffsetMs: 0, warpRate: 2 });
+  assert.ok(Math.abs(lagMs - (expected - 5) * 1000) < 1e-9);
+});
+
+test('requestCorrection: warp correction duration scales inversely with baseRate', () => {
+  const timers1 = createFakeTimers();
+  const ctx1 = noWarp(timers1);
+  const engine1 = createSyncEngine(ctx1);
+  engine1.requestCorrection(150);
+  assert.equal(ctx1.transport.playbackRate, 1.03);
+  timers1.advance(150 / 0.03 + 1);
+  assert.equal(engine1.getDriftState(), 'idle');
+
+  // At 2x base rate, the same |lagMs| should resolve in half the wall-clock time.
+  const timers2 = createFakeTimers();
+  const ctx2 = noWarp(timers2);
+  ctx2.getBaseRate = () => 2;
+  const engine2 = createSyncEngine(ctx2);
+  engine2.requestCorrection(150);
+  assert.equal(ctx2.transport.playbackRate, 2 * 1.03);
+
+  timers2.advance(150 / (0.03 * 2) - 1);
+  assert.equal(engine2.getDriftState(), 'warping', 'should not have settled yet');
+
+  timers2.advance(2);
+  assert.equal(engine2.getDriftState(), 'idle');
+  assert.equal(ctx2.transport.playbackRate, 2);
+});
+
+// ── Phase 3: defect #5 — cancelDriftCorrection invalidates an in-flight duck ──
+
+test('cancelDriftCorrection during ducking prevents the orphaned duck from re-seeking or settling again', () => {
+  const timers = createFakeTimers();
+  const ctx = noWarp(timers);
+  ctx.transport.currentTime = 10;
+  const engine = createSyncEngine(ctx);
+
+  engine.requestCorrection(600); // -> ducking, ramp-down begins
+  assert.equal(engine.getDriftState(), 'ducking');
+
+  // Partway through the ramp-down, a coordinated snap arrives.
+  timers.advance(750); // halfway through the 1500ms duck-down
+  engine.cancelDriftCorrection();
+  assert.equal(engine.getDriftState(), 'idle');
+  assert.equal(ctx.transport.playbackRate, 1);
+
+  // The DJ-commanded snap takes over.
+  ctx.transport.volume = 1;
+  ctx.transport.currentTime = 42;
+  engine.seekPreservingBT(42);
+
+  // Advance past when the orphaned duck's remaining timers would have fired
+  // (ramp-down completion, 80ms pause, ramp-up, 5s safety timeout).
+  timers.advance(6000);
+
+  // The orphaned duck must not have re-seeked or dipped the volume again.
+  assert.equal(ctx.transport.currentTime, 42, 'orphaned duck must not overwrite the snap seek');
+  assert.equal(ctx.transport.volume, 1, 'orphaned duck must not dip volume after cancellation');
+  assert.equal(engine.getDriftState(), 'idle');
 });

@@ -5,23 +5,12 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createSyncEngine, expectedPosition } from './sync-engine.js';
+import { createSyncEngine, expectedPosition, wrapLag } from './sync-engine.js';
 
 // ── Constants — mirror listener.html / sync-sim.html ─────────
 const DURATION = 200;        // simulated track length, seconds
 const TICK_MS = 250;         // simulated ms advanced per step
 const FAST_CHECK_MS = 5000;  // fastDriftCorrect cadence
-
-// computeLagMs (as ported in Phase 1) does NOT wrap at the track boundary —
-// that's known defect #1 in ROADMAP.md, fixed in Phase 3. wrapLag() lives
-// here, in the test, as the "ground truth" measure of audible drift used to
-// judge the simulation's outcome regardless of that bug.
-function wrapLag(lagMs, durationMs) {
-  const half = durationMs / 2;
-  while (lagMs > half) lagMs -= durationMs;
-  while (lagMs < -half) lagMs += durationMs;
-  return lagMs;
-}
 
 // ── Fake timers (same as sync-engine.test.js) ─────────────────
 function createFakeTimers() {
