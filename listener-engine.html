@@ -1351,6 +1351,14 @@ function zoomToRally() {
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
   broadcastSyncEvent('track_change');
+  // activeZone.playback_started_at is updated (by the caller) to the NEW
+  // track's value before this runs, but audio.duration/currentTime still
+  // belong to the OLD track until 'loadedmetadata' fires (async, can take
+  // seconds on a slow BT connection). If fastDriftCorrect() runs in that
+  // window it mixes new playback_started_at with old duration/currentTime —
+  // a huge bogus lag that triggers a duck loop that can't resolve until the
+  // new track loads. Gate drift correction until the new track is ready.
+  window._trackLoading = true;
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -1375,6 +1383,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     audio.removeEventListener('loadedmetadata', onMeta);
     if (!audio.duration) return;
     seekToSync(startedAt, playAt, playFromS);
+    window._trackLoading = false;
     // Apply master BPM warp if DJ has set one
     const mySlot = window._spatialConfig ? getSpatialSlot(window._spatialConfig) : 'C';
     applyBpmWarp(mySlot, url);
@@ -2105,6 +2114,7 @@ let _healthInterval = null;
 let _lastDriftCheckAt = 0;
 const DRIFT_CHECK_MS = 5000;
 window._stallCount = 0;
+window._trackLoading = false;
 
 // Resume from a paused/stalled audio element and reseek to expectedPosition()
 // — resuming alone leaves currentTime frozen at its pre-pause value, which
@@ -2150,6 +2160,7 @@ function fastDriftCorrect() {
   if (!activeZone?.playback_started_at) return;
   if (!audio.duration) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
+  if (window._trackLoading) return; // new track's metadata not loaded yet — see loadTrack()
   // Audio element paused while we expect playback (OS/BT suspended it
   // without firing 'stalled'/'waiting'/'suspend') — recover instead of
   // silently bailing every tick.
@@ -2203,7 +2214,7 @@ document.addEventListener('visibilitychange', () => {
   // Instant memory-based resync — no network needed. Same stripped snap path
   // as fastDriftCorrect (cancelDriftCorrection + seekPreservingBT) so a
   // visibility-wake snap can't fight an in-flight seek.
-  if (audio.duration && activeZone.playback_started_at && !audio.srcObject) {
+  if (audio.duration && activeZone.playback_started_at && !audio.srcObject && !window._trackLoading) {
     const lagMs = computeLagMs();
     if (lagMs != null && Math.abs(lagMs) >= SNAP_THRESHOLD_MS) {
       cancelDriftCorrection();

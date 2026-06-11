@@ -684,3 +684,45 @@ choice of which engine function to call changed).
 seen this session, closing smoothly over a few seconds with NO audible
 clip/duck. `driftState='ducking'` (and an audible-but-brief fade) should
 only appear right after track changes / hard_sync, where lag can be large.
+
+### Phase 5j — track-change duck loop: bogus lag from stale duration/currentTime (2026-06-11)
+10th debug session (post-5i): the warp corrector works well — `dev_oasl08`
+and `dev_2njek4` mostly sat in `driftState='warping'` with `rate=1.030`,
+drift oscillating in the tens-to-low-hundreds of ms (10-400ms), closing and
+reopening smoothly with no reported clipping during steady playback. User
+confirmed normal correction (~10-130ms) was smooth, but **track changes
+("new song") still "got really tripped up"** with audible ducking/clipping.
+
+CSV showed why: at each track change, `dev_oasl08` and `dev_2njek4` both
+flip to `driftState='ducking'` with `driftMs`/`engineLagMs` around
+**-225820ms** (≈ -225.8s) or **-2776/2777ms**, and STAY ducking — `duckCount`
+climbing every ~2.5s (1→3→5→7→9→11→13→15→17→19) — for 30-50+ seconds,
+i.e. continuous fade-down/seek/fade-up on a loop.
+
+Root cause: `buildZoneChannel`'s track-change handler does
+`activeZone = { ...activeZone, ...zn }` (new `playback_started_at`)
+*synchronously*, then calls `loadTrack()`, which sets `audio.src` and calls
+`audio.load()` — `audio.duration`/`audio.currentTime` stay at the OLD
+track's values until `'loadedmetadata'` fires (async, can take seconds on a
+slow BT connection). If `fastDriftCorrect()` runs in that window,
+`computeLagMs()` combines the NEW `playback_started_at` with the OLD
+`duration`/`currentTime`, producing a lag of plus-or-minus the old track's
+near-full duration — `>500ms` every time, so it ducks; the duck's recompute
+(`seekWithDuck`'s `safeTime`) happens after only ~1.5s, often still before
+`loadedmetadata`, so it can land on another bogus value and duck again —
+looping until the new track finally loads.
+
+**Fix**: `loadTrack()` sets `window._trackLoading = true` on entry, cleared
+inside the `loadedmetadata` handler right after `seekToSync()`.
+`fastDriftCorrect()` and the `visibilitychange` wake-snap both bail early
+while `window._trackLoading` is true — no drift correction runs against a
+stale duration/currentTime pair.
+
+`node --test` still 25/25 (engine module unchanged — purely a caller-side
+sequencing guard).
+
+**Verification needed**: next session — on a track change, `driftState`
+should go `idle`/whatever it was → (briefly nothing, while `_trackLoading`)
+→ `idle` or a single small `warping`/`ducking` once the new track's real
+drift is known, NOT a multi-duck loop with `driftMs` in the hundreds-of-
+thousands of ms.
