@@ -48,7 +48,7 @@ Target layout:
 
 Constraint that shapes everything: **no bundler, no npm install** (CLAUDE.md).
 `sync-engine.js` is plain ESM — browsers load it via `<script type="module">`,
-node imports it natively for tests (`node --test sync/`). The `package.json` is a
+node imports it natively for tests (`node --test 'sync/**/*.test.js'`). The `package.json` is a
 one-line type marker, not a dependency manifest.
 
 ---
@@ -123,7 +123,7 @@ the simulated code *the same code*.
   Phase 3 fixes it. Two-step so every fix shows up as a test diff, not a port
   ambiguity.
 
-### Phase 2 — Test harness (`sync/sync-engine.test.js`, `node --test sync/`)
+### Phase 2 — Test harness (`sync/sync-engine.test.js`, `node --test 'sync/**/*.test.js'`)
 - Port sync-sim's seeded party machinery (mulberry32 RNG, listener population with
   clock error / BT latency / hw drift, event schedule) into the test file as a
   reusable scenario runner.
@@ -138,7 +138,7 @@ the simulated code *the same code*.
   - seek math: all four terms, mod-duration wrap, negative-elapsed wrap
 - Seeded fuzz runs: N seeds × 20-min simulated party, assert p95 drift < threshold
   and zero "roving" (corrections that increase |lag|).
-- These tests are the new pre-flight: **`node --test sync/` green before any sync
+- These tests are the new pre-flight: **`node --test 'sync/**/*.test.js'` green before any sync
   change ships** (replaces "eyeball it in sync-sim" as the gate; the sim stays for
   visual exploration).
 
@@ -168,8 +168,21 @@ the simulated code *the same code*.
 - `fastDriftCorrect` / `syncZoneAudio` loop *scheduling* and all Supabase/DOM glue
   stay in listener.html — they become thin adapters.
 - `debug.html` imports `expectedPosition` from the engine (kills its formula copy).
-- Verify: two-phone test against `debug.html` drift-spread readout; sweep, scatter,
-  hard_sync, track change, BPM warp on.
+- **Cross-device verification (required, can't be done by node:test):** the
+  fuzzed simulation models clock error, BT latency, and hw drift as numbers —
+  real phones have real BT stacks, real `outputLatency`, and real backgrounding
+  behavior the model can't capture. Before/after the swap, run the same fixed
+  multi-phone rig (mix of iOS + Android, at least one BT speaker, at least one
+  wired/earpiece) and watch `debug.html`'s drift-spread readout across all of
+  them simultaneously:
+  - baseline run on the current inline corrector → record drift-spread over a
+    multi-minute set with sweep/scatter/hard_sync/track-change/BPM-warp events
+  - same rig, same event sequence, on the engine-backed build → drift-spread
+    must match or improve, and no device should show a "roving" pattern
+    (drift sign flips that never settle)
+  - repeat with a phone backgrounded/screen-locked through a `visibilitychange`
+    cycle, and with a phone going offline/online (reconnect path)
+  - this is the gate for Phase 5 — don't merge on simulation results alone.
 
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
@@ -222,7 +235,7 @@ and `_deviceLatencyMs`.
   `sync/sync-engine.js` now).
 - Update CLAUDE.md: file roles, invariants ("seek formula lives in one place"
   replaces "keep three copies in step"), and the new pre-flight
-  (`node --test sync/`).
+  (`node --test 'sync/**/*.test.js'`).
 - Mark the superseded inline regions of `listener.html` history in the Roadmap
   session log.
 
