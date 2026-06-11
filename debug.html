@@ -69,16 +69,31 @@ function render() {
     return d._kind === 'sync' ? renderSyncCard(d, age) : renderHealthCard(d, age);
   }).join('');
 
-  const syncIds = ids.filter(id => devs[id]._kind === 'sync');
-  if (syncIds.length >= 2) {
-    const vals = syncIds.map(id => parseFloat(devs[id].currentTime)).filter(v => !isNaN(v));
-    if (vals.length >= 2) {
-      const delta = Math.abs(vals[0] - vals[1]) * 1000;
-      const el = document.getElementById('diff-val');
-      el.textContent = delta.toFixed(0) + 'ms apart';
-      el.style.color = delta > 500 ? '#ef3c23' : delta > 100 ? '#f57e20' : '#00cc99';
-      document.getElementById('diff').style.display = 'block';
-    }
+  // Only devices actually playing count — a phone parked at 0 waiting for its
+  // start-tap isn't "drifted", it's silent. Two honest numbers:
+  //   drift spread — how far apart the correctors think they are AFTER each
+  //     device's intentional latency/scatter compensation; this is the number
+  //     that approximates audible misalignment (if calibration is right).
+  //   position delta — raw currentTime gap, but projected to a common instant
+  //     first (snapshots arrive seconds apart; comparing them raw double-counts
+  //     the sampling skew, which is how this readout used to overstate).
+  const playing = ids.filter(id => devs[id]._kind === 'sync')
+    .map(id => devs[id])
+    .filter(d => d.playing && !d.paused && parseFloat(d.currentTime) > 0 && !isNaN(parseFloat(d.elapsed)));
+  if (playing.length >= 2) {
+    const drifts = playing.map(d => parseFloat(d.driftMs)).filter(v => !isNaN(v));
+    const spread = drifts.length >= 2 ? Math.max(...drifts) - Math.min(...drifts) : NaN;
+    const e0 = Math.max(...playing.map(d => parseFloat(d.elapsed)));
+    const pos = playing.map(d => parseFloat(d.currentTime) + (e0 - parseFloat(d.elapsed)) * (parseFloat(d.playbackRate) || 1));
+    const delta = (Math.max(...pos) - Math.min(...pos)) * 1000;
+    const el = document.getElementById('diff-val');
+    el.textContent = (isNaN(spread) ? '—' : spread.toFixed(0) + 'ms drift spread') +
+      ' · ' + delta.toFixed(0) + 'ms raw (incl. intentional latency offsets)';
+    const worst = isNaN(spread) ? delta : spread;
+    el.style.color = worst > 500 ? '#ef3c23' : worst > 100 ? '#f57e20' : '#00cc99';
+    document.getElementById('diff-label').textContent =
+      'sync across ' + playing.length + ' playing device' + (playing.length > 1 ? 's' : '');
+    document.getElementById('diff').style.display = 'block';
   }
 }
 

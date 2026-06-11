@@ -5294,6 +5294,8 @@ function broadcastHUD() {
       outputLatencyMs: getOutputLatencyMs(), // browser-reported output path latency (null = unsupported)
       syncState:   typeof _syncState !== 'undefined' ? _syncState : '—',
       playbackRate: audio.duration ? audio.playbackRate.toFixed(3) : null,
+      paused:      audio.paused,
+      playing:     _webAudioPlaying,
       driftState:  _driftState,
       driftPending: _driftPendingRecheck,
       zone:        activeZone?.name || null,
