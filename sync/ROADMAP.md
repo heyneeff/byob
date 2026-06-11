@@ -258,6 +258,37 @@ this rides along with the Phase 5 cross-device test):
 stays bounded and no device shows unbounded/flat drift like the 2026-06-11
 session. Roll into the Phase 5 cross-device gate.
 
+### Phase 5b — recover from `audio.paused` directly (2nd debug session, 2026-06-11 17:41)
+The Phase 5a fix worked — `lastDriftCheckAgoMs` stayed bounded (~0.5-4.5s) even
+on `hidden` tabs, confirming `fastDriftCorrect` is now reliably ticking. But
+drift was *still* unbounded on both builds (`dev_lpnz7e` reached -232s,
+`dev_w2wif2` -95s, `dev_ytqxw8` +234s) — `driftState` stuck `idle` throughout.
+
+Root cause: `audio.currentTime` was completely frozen (e.g. pinned at 78.431
+for `dev_lpnz7e` for 100+ seconds while `expectedPos` climbed past 200) —
+`audio.paused === true`, and `fastDriftCorrect` just `return`ed on
+`audio.paused` every tick, doing nothing. `_handleStall` only listens for
+`stalled`/`waiting`/`suspend` events, which apparently don't fire for whatever
+paused these elements (OS/BT-driven pause, or a `pause` event with no
+preceding stall event). This is the same failure mode in `dev_w2wif2`
+(production `listener.html`, not just the engine build) — pre-existing, not a
+Phase 5a regression.
+
+Fix in `listener-engine.html`:
+- New shared `_resumeAndReseek()` — `audio.play()` then
+  `cancelDriftCorrection()` + `seekPreservingBT(expectedPosition(...))`.
+- `fastDriftCorrect()` now checks `audio.paused` itself: if `_webAudioPlaying`
+  is true but `audio.paused`, increment `stallCount` and call
+  `_resumeAndReseek()` instead of silently bailing.
+- `_handleStall()` now just calls `_resumeAndReseek()` (deduped).
+
+**Verification needed**: another Record/Export session — watch for `paused`
+flipping to `true` with `stallCount` incrementing and `driftMs` recovering
+toward 0 afterward, instead of the unbounded climb seen in both 2026-06-11
+sessions. If this fixes it, this same `_resumeAndReseek` pattern should be
+ported to `listener.html` too (it's a real production bug, independent of the
+engine wiring) — flag for after the Phase 5 gate.
+
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
   the air with correct timing. Everything else (deck UI, scenes, crowd map) stays

@@ -2093,11 +2093,37 @@ let _healthInterval = null;
 let _lastDriftCheckAt = 0;
 const DRIFT_CHECK_MS = 5000;
 window._stallCount = 0;
+
+// Resume from a paused/stalled audio element and reseek to expectedPosition()
+// — resuming alone leaves currentTime frozen at its pre-pause value, which
+// reads as ever-growing drift with nothing to correct it (a 2026-06-11
+// session showed devices frozen for 200s+ this way). Shared by
+// fastDriftCorrect's paused-but-should-be-playing check and _handleStall.
+function _resumeAndReseek() {
+  audio.play().then(() => {
+    if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject) return;
+    cancelDriftCorrection();
+    const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+    seekPreservingBT(window.SyncEngine.expectedPosition({
+      elapsedS: elapsed, duration: audio.duration,
+      deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
+      warpRate: _getBpmWarpRate(),
+    }));
+  }).catch(() => {});
+}
+
 function fastDriftCorrect() {
   _lastDriftCheckAt = performance.now();
   if (!activeZone?.playback_started_at) return;
-  if (!audio.duration || audio.paused || _isMuted) return;
+  if (!audio.duration || _isMuted) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
+  // Audio element paused while we expect playback (OS/BT suspended it
+  // without firing 'stalled'/'waiting'/'suspend') — recover instead of
+  // silently bailing every tick.
+  if (audio.paused) {
+    if (_webAudioPlaying) { window._stallCount = (window._stallCount || 0) + 1; _resumeAndReseek(); }
+    return;
+  }
   const lagMs = computeLagMs();
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
@@ -3933,12 +3959,10 @@ audio.addEventListener('timeupdate',()=>{
 });
 
 // Audio stall recovery — auto-resume after 2.5s if we expected playback.
-// A stall can last minutes (BT dropout, backgrounded tab); resuming from
-// the frozen currentTime would leave currentTime stuck behind expectedPos
-// by however long the stall lasted, with no automatic re-check (the
-// timeupdate-driven drift check above only runs while time is updating).
-// So: cancel any in-flight correction and reseek to expectedPosition()
-// before resuming, same as a coordinated snap.
+// _resumeAndReseek() (defined with fastDriftCorrect above) handles both the
+// resume and the reseek-to-expectedPosition (a stall can last minutes;
+// resuming from the frozen currentTime alone leaves it stuck behind
+// expectedPos with nothing to correct it).
 let _stallTimer = null;
 function _handleStall() {
   if (!_webAudioPlaying || !activeZone || _isMuted) return;
@@ -3946,16 +3970,7 @@ function _handleStall() {
   _stallTimer = setTimeout(() => {
     if (audio.paused && _webAudioPlaying && !_isMuted) {
       window._stallCount = (window._stallCount || 0) + 1;
-      audio.play().then(() => {
-        if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject) return;
-        cancelDriftCorrection();
-        const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-        seekPreservingBT(window.SyncEngine.expectedPosition({
-          elapsedS: elapsed, duration: audio.duration,
-          deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
-          warpRate: _getBpmWarpRate(),
-        }));
-      }).catch(() => {});
+      _resumeAndReseek();
     }
   }, 2500);
 }
