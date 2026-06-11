@@ -5241,6 +5241,7 @@ function broadcastHUD() {
       lastDriftCheckAgoMs: _lastDriftCheckAt ? Math.round(performance.now() - _lastDriftCheckAt) : null,
       readyState:  audio.readyState,
       stallCount:  window._stallCount || 0,
+      build: 'listener-engine',
     }
   });
 }
@@ -5454,7 +5455,8 @@ function broadcastDebug() {
         hasChannel ? '✓ channel' : '✗ channel',
         interval   ? '✓ interval': '✗ interval',
       ].join(' · '),
-      src: hasZone ? `bearing:${getBearing(activeZone.lat,activeZone.lng,userLat||0,userLng||0).toFixed(0)}°` : '—'
+      src: hasZone ? `bearing:${getBearing(activeZone.lat,activeZone.lng,userLat||0,userLng||0).toFixed(0)}°` : '—',
+      build: 'listener-engine',
     }
   });
 }

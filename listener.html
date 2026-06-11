@@ -5300,6 +5300,7 @@ function broadcastHUD() {
       driftPending: _driftPendingRecheck,
       zone:        activeZone?.name || null,
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
+      build: 'listener',
     }
   });
 }
@@ -5509,7 +5510,8 @@ function broadcastDebug() {
         hasChannel ? '✓ channel' : '✗ channel',
         interval   ? '✓ interval': '✗ interval',
       ].join(' · '),
-      src: hasZone ? `bearing:${getBearing(activeZone.lat,activeZone.lng,userLat||0,userLng||0).toFixed(0)}°` : '—'
+      src: hasZone ? `bearing:${getBearing(activeZone.lat,activeZone.lng,userLat||0,userLng||0).toFixed(0)}°` : '—',
+      build: 'listener',
     }
   });
 }
