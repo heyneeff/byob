@@ -1350,6 +1350,7 @@ function zoomToRally() {
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
+  broadcastSyncEvent('track_change');
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -3788,6 +3789,7 @@ function buildSyncChannel(zoneId) {
    .on('broadcast', { event: 'hard_sync' }, ({ payload }) => {
     const waitMs = payload.resyncAt - syncedNow();
     if (Math.abs(waitMs) > 10000) return;
+    broadcastSyncEvent('hard_sync');
     // _deviceLatencyMs is a hardware constant (speaker output delay) — a SNAP/sync
     // command must never wipe it, or the listener loses BT compensation until they
     // physically leave and re-enter the zone (the only place recalibration runs).
@@ -5250,6 +5252,18 @@ function ensureHUDChannel() {
   // broadcasts unconditionally for every listener, doubling up channel
   // subscriptions per device would needlessly multiply realtime connections.
   _hudChannel = window._debugChannel = window._debugChannel || db.channel('byob_debug').subscribe();
+}
+
+// Marks a forced re-sync (track change or DJ's hard_sync) on debug.html's
+// timeline so drift right before/after can be compared — these are the
+// moments sync is freshly anchored to playback_started_at and tends to be
+// tightest.
+function broadcastSyncEvent(kind) {
+  ensureHUDChannel();
+  _hudChannel.send({
+    type: 'broadcast', event: 'sync_event',
+    payload: { deviceId: _hudDeviceId, kind, ts: syncedNow() },
+  });
 }
 
 function broadcastHUD() {

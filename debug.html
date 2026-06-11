@@ -40,6 +40,9 @@ h1{font-size:14px;color:var(--teal);letter-spacing:.2em;text-transform:uppercase
   <div id="diff-label">position delta between devices</div>
   <div id="diff-val">—</div>
 </div>
+<div id="events" class="card" style="display:none;margin-bottom:12px;">
+  <div class="card-hdr"><span class="dev-id">↻ resync events</span></div>
+</div>
 <div class="grid" id="grid"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -50,6 +53,17 @@ const db = createClient(
 );
 
 const devs = {};
+const _events = [];
+
+function renderEvents() {
+  const el = document.getElementById('events');
+  if (!_events.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = '<div class="card-hdr"><span class="dev-id">↻ resync events</span></div>' +
+    _events.map(e =>
+      `<div class="row"><span class="k">${e.deviceId}</span><span class="v">${e.kind} · ${Math.round((Date.now()-e.at)/1000)}s ago</span></div>`
+    ).join('');
+}
 
 // Two distinct telemetry streams share the byob_debug channel with incompatible
 // schemas — keep them tagged and rendered separately rather than merging (that's
@@ -68,6 +82,16 @@ db.channel('byob_debug')
     if (_recording) recordRow('health', payload);
     render();
   })
+  // Forced re-sync markers (track change / DJ's hard_sync) — broadcast by
+  // listener-engine.html so the recorded timeline shows exactly when each
+  // device freshly anchored to playback_started_at, for comparing drift
+  // right before/after.
+  .on('broadcast', { event: 'sync_event' }, ({ payload }) => {
+    _events.unshift({ ...payload, at: Date.now() });
+    if (_events.length > 20) _events.length = 20;
+    if (_recording) recordRow('event', { ...payload, note: payload.kind });
+    renderEvents();
+  })
   .subscribe(s => {
     document.getElementById('status').textContent =
       s === 'SUBSCRIBED' ? '● Listening — open a listener\'s HUD for full sync data; GPS/connection health streams automatically' : s;
@@ -82,7 +106,7 @@ let _records = [];
 const REC_COLS = ['timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
   'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
   'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
-  'engineLagMs','snapCount','lastSnapVerifyMs','lastSnapMovedMs'];
+  'engineLagMs','snapCount','lastSnapVerifyMs','lastSnapMovedMs','note'];
 
 function toggleRecord() {
   _recording = !_recording;
