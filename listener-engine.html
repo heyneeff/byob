@@ -2174,26 +2174,18 @@ function fastDriftCorrect() {
   window._lastDriftMs = Math.round(lagMs);
   if (Math.abs(lagMs) > 500) {
     window._snapCount = (window._snapCount || 0) + 1;
-    // On some devices/browsers, the duck's seek (audio.currentTime = safeTime)
-    // is a silent no-op — the gap never closes, so requestCorrection ducks
-    // again next tick, forever (continuous fade-down/seek/fade-up = constant
-    // clipping). If two consecutive duck-triggering lags haven't shrunk, the
-    // seek isn't landing here — fall back to a sustained warp instead. Slower
-    // (a 500ms gap takes ~17s at +/-3%) but inaudible, vs. clipping forever.
-    if (window._lastDuckLagMs != null && Math.abs(Math.abs(lagMs) - Math.abs(window._lastDuckLagMs)) < 30) {
-      window._stuckDuckCount = (window._stuckDuckCount || 0) + 1;
-    } else {
-      window._stuckDuckCount = 0;
-    }
-    window._lastDuckLagMs = lagMs;
-    if (window._stuckDuckCount >= 2) {
-      cancelDriftCorrection();
-      requestCorrection(Math.sign(lagMs) * 499);
-      return;
-    }
-  } else {
-    window._stuckDuckCount = 0;
-    window._lastDuckLagMs = null;
+    // Phase 5l — never duck from the periodic corrector. Ducking
+    // (fade-down/seek/fade-up) was added to handle large drift, but it IS the
+    // clipping: on some devices the seek is a silent no-op (5k, constant
+    // ~525ms drift, duck forever), and after hard_sync/track-change bogus-lag
+    // spikes it can latch into 'ducking' on a GROWING drift that never
+    // resolves (-2786ms -> -4826ms over 60s, 5l). Clamp to the warping tier's
+    // ceiling instead: a sustained +/-3% rate nudge is slower (~17s per
+    // 500ms) but always inaudible, and recomputes fresh every tick — a
+    // one-tick bogus spike self-corrects on the very next tick.
+    window._snapCount = (window._snapCount || 0) + 1;
+    requestCorrection(Math.sign(lagMs) * 499);
+    return;
   }
   requestCorrection(lagMs);
 }
@@ -5338,7 +5330,7 @@ function broadcastHUD() {
       stallCount:  window._stallCount || 0,
       isMuted:     _isMuted,
       engineLagMs: window._engineLagMs ?? null,
-      duckCount:   window._snapCount || 0,
+      bigLagCount: window._snapCount || 0,
       browser:     _detectBrowser(),
       build: 'listener-engine',
     }

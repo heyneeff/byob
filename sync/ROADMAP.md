@@ -763,3 +763,69 @@ sustained for ~15-20s while the gap closes, with NO further fade/clip. Also
 revisit the `z0194x`/`jpi7be` sawtooth — if it persists once kgfip9-style
 clipping is gone, it's the next thing to dig into (possibly BPM-warp rate
 recompute timing or a `_scatterOffsetMs` that's changing periodically).
+
+### Phase 5l — stop ducking entirely from the periodic corrector (2026-06-11)
+12th debug session (post-5j/5k). User: "CLoser, still a bit of clipping, but
+much closer to what we want! until it's syncing in and out now upon a new
+song." The CSV contained `sync_event` markers for both `track_change` and
+`hard_sync`. Around each event, ALL THREE devices saw a transient
+bogus-huge-lag spike (tens to hundreds of thousands of ms, `driftState`
+briefly `'idle'` then re-evaluated) — consistent with 5j's stale-context
+race, but this time around `hard_sync`/`resync_at` too, not just track
+loads.
+
+Two of the three devices recovered cleanly within ~10-15s
+(`dev_cpswyc` back to normal warping oscillation, `dev_wfyl5s` settling to
+`driftMs` -8 to -17ms, `idle`, for the rest of the session — proof the
+corrector CAN land essentially perfect sync). But `dev_t0sqxy` landed in
+`driftState='ducking'` from 23:29:14 onward and NEVER recovered: `driftMs`
+*grew* roughly -400ms every ~12-16s (-2786 -> -3197 -> -3609 -> -4006 ->
+-4409 -> -4826), `duckCount` climbing 3->23, continuous clipping through the
+end of the session (~60s). 5k's stuck-duck check didn't catch this — it
+requires two consecutive duck-triggering `|lagMs|` values within 30ms of
+each other, but here each duck cycle's lag differed by ~400ms from the last.
+
+At this point the user said directly: "i really feel like we shouldn't keep
+ducking at all. i had introduced it[duck], to replace the clipping, but best
+case scenario is it doesn't do other[harm], either" — i.e. ducking was meant
+to fix clipping, but across 5i/5k/5l it has only ever BEEN the clipping (a
+steady drift duck-looping every ~3s in 5i pre-fix, a no-op-seek duck-looping
+forever in 5k, and now a growing-drift duck-loop in 5l) — there's no
+scenario observed yet where it actually helps.
+
+**Fix** (caller-side, `fastDriftCorrect()`): the `>500ms` branch no longer
+calls `requestCorrection(lagMs)` with the raw value (which enters the
+engine's `'ducking'` tier). Instead it clamps to
+`requestCorrection(Math.sign(lagMs) * 499)` — always the `15-500ms`
+"warping" tier, a sustained +/-3% rate nudge. This:
+- Never fades/seeks/fades — no clipping, ever, from the periodic corrector.
+- Re-evaluates fresh every tick (per the engine's "a new request during
+  'warping' recomputes immediately" rule), so a one-tick bogus spike around
+  a `sync_event` self-corrects on the very next tick instead of latching into
+  a multi-duck loop.
+- For genuinely large real drift, closing ~500ms takes ~17s at 3% — slower
+  than a 2.5s duck, but always inaudible. Real large drift should be rare in
+  steady state (coordinated snaps via `seekPreservingBT` after
+  `cancelDriftCorrection()` handle the big jumps at track-change/hard_sync —
+  this corrector only needs to mop up residual/bogus drift between those).
+
+Removed the now-dead Phase 5k stuck-duck-detection (`_stuckDuckCount`/
+`_lastDuckLagMs`) — `requestCorrection` can no longer be called with
+`|lagMs| > 500` from this path, so the engine's `'ducking'` state should
+never be entered via the periodic corrector at all. Renamed the HUD/CSV
+field `duckCount` -> `bigLagCount` (debug.html row "ducks" -> "big lags") to
+reflect that it now counts forced-warp events, not actual ducks.
+
+`node --test` still 25/25 (engine module unchanged — caller-side choice of
+which correction to request; the engine's `'ducking'` tier and
+`seekWithDuck()` remain defined/tested but should be unreachable from
+`fastDriftCorrect()`'s wiring now).
+
+**Verification needed**: next session — `driftState` should never read
+`'ducking'` during steady-state drift correction (only possibly momentarily
+right after a coordinated snap, if at all). Around `track_change`/`hard_sync`
+`sync_event`s, expect a brief `'warping'` burst (rate 0.970/1.030) that
+settles to `idle` within ~15-20s, with NO audible fade/clip — including for
+devices like `dev_t0sqxy` that previously got stuck. If a device still shows
+persistent large drift after this, it should show as sustained `'warping'`
+(audible as a slight pitch shift, not clipping) rather than ducking.
