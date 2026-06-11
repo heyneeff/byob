@@ -387,6 +387,46 @@ production `listener.html` — validate this on `listener-engine.html` first
 via another debug session, watching for `driftMs` staying within ~60-100ms
 band via frequent small snaps instead of the old flat multi-second plateaus.
 
+**Update (5th debug session, 2026-06-11 21:05)** — first run after Phase 5d
+shipped. All 5 devices were `listener-engine`/chrome-ios. Result: **the strip
+didn't fix it**. `driftMs` is not bounded near ±60ms — it's pinned at large,
+rock-solid CONSTANT offsets for minutes at a time (e.g. `dev_9kxjhd`: -1491 to
+-1494ms steady for 58s straight, jitter <3ms; `dev_l06s91`: -1383ms for ~20s,
+then -1755ms for ~20s, then a track change, then -2585ms steady for the
+remaining ~3 minutes). `|lagMs|` is 1383-2585ms — far above `SNAP_THRESHOLD_MS
+= 60` — every single 5s tick, with `driftState='idle'`, `syncState='idle'`,
+`isMuted=false`, `stallCount=0`, `playbackRate=1.000`, `audio.currentTime`
+advancing normally (not frozen). If `seekPreservingBT(_expectedNow())` were
+firing and taking effect, drift would snap toward 0 every ~5s and we'd see it
+oscillate in a small band — instead it's perfectly flat, meaning either the
+snap branch isn't being reached, or `audio.currentTime = x` is being silently
+ignored on chrome-ios for this audio element.
+
+### Phase 5e — instrument the snap itself (2026-06-11)
+Rather than guess further, added direct verification to
+`listener-engine.html`'s `fastDriftCorrect()`: when `|lagMs| >= 60`, capture
+`before = audio.currentTime` and `target = _expectedNow()`, call the snap as
+before, then 250ms later read `audio.currentTime` again and broadcast:
+- `snapCount` — running total of snap attempts
+- `lastSnapMovedMs` — how much `audio.currentTime` actually changed
+  (`after - before`); should be roughly `target - before` if the seek worked,
+  ~0 if it was ignored
+- `lastSnapVerifyMs` — how close `audio.currentTime` landed to `target`
+  after the seek (`after - target`); near 0 = seek worked and held
+
+Surfaced in `debug.html`'s sync card (`snaps`/`snapVerify`/`snapMoved` rows,
+`snapVerify` flagged `bad` if |value| > 100ms) and added to `REC_COLS`.
+
+`node --test` still 25/25 (no engine changes — instrumentation only).
+
+**Verification needed**: next session on `listener-engine.html`/chrome-ios —
+if `snapCount` climbs but `lastSnapMovedMs` stays ~0 while `driftMs` stays
+flat, the seek is being silently ignored (likely a chrome-ios `audio.currentTime`
+quirk — next step would be trying `audio.fastSeek()` or a pause/seek/play
+sequence). If `lastSnapMovedMs` ≈ `target - before` but `driftMs` is STILL
+flat afterward, the seek works but something re-seeks back, or `_expectedNow()`
+itself is computing the wrong target (formula bug, not a browser quirk).
+
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
   the air with correct timing. Everything else (deck UI, scenes, crowd map) stays

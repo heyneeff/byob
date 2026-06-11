@@ -81,7 +81,8 @@ let _recording = false;
 let _records = [];
 const REC_COLS = ['timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
   'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
-  'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted'];
+  'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
+  'snapCount','lastSnapVerifyMs','lastSnapMovedMs'];
 
 function toggleRecord() {
   _recording = !_recording;
@@ -178,6 +179,11 @@ function renderSyncCard(d, age) {
     ${r('readyState',  d.readyState ?? '—', (d.readyState!=null && d.readyState<3)?'warn':'')}
     ${r('stalls',      d.stallCount ?? 0, (d.stallCount>0)?'warn':'')}
     ${r('muted',       d.isMuted ? 'yes' : 'no', d.isMuted?'warn':'')}
+    ${r('snaps',       d.snapCount ?? 0)}
+    ${r('snapVerify',  d.lastSnapVerifyMs!=null ? d.lastSnapVerifyMs+'ms' : '—',
+        d.lastSnapVerifyMs!=null && Math.abs(d.lastSnapVerifyMs)>100 ? 'bad' : '')}
+    ${r('snapMoved',   d.lastSnapMovedMs!=null ? d.lastSnapMovedMs+'ms' : '—',
+        d.lastSnapMovedMs!=null && Math.abs(d.lastSnapMovedMs)<100 ? 'bad' : '')}
   </div>`;
 }
 
