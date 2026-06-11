@@ -5846,7 +5846,19 @@ const engine = createSyncEngine({
     set volume(v) { audio.volume = v; },
     hasSrcObject: () => !!audio.srcObject,
   },
-  timers: { setTimeout, clearTimeout, setInterval, clearInterval, requestAnimationFrame, now: () => performance.now() },
+  // Bound to window — calling e.g. window.clearTimeout as a bare function
+  // (`timers.clearTimeout(id)`) throws "Illegal invocation" / "Can only call
+  // Window.clearTimeout on instances of Window" because `this` becomes
+  // `timers`, not `window`. This silently broke cancelDriftCorrection() (its
+  // first line) on every snap attempt until Phase 5g's try/catch surfaced it.
+  timers: {
+    setTimeout: window.setTimeout.bind(window),
+    clearTimeout: window.clearTimeout.bind(window),
+    setInterval: window.setInterval.bind(window),
+    clearInterval: window.clearInterval.bind(window),
+    requestAnimationFrame: window.requestAnimationFrame.bind(window),
+    now: () => performance.now(),
+  },
   clock: { syncedNow: () => syncedNow() },
   getContext: () => ({
     playbackStartedAt: activeZone?.playback_started_at ? new Date(activeZone.playback_started_at).getTime() : null,

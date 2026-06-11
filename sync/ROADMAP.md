@@ -522,6 +522,52 @@ fix it directly (likely a NaN guard in `_expectedNow()` or `_getBpmWarpRate()`).
 If `snapCount` is nonzero and `snapError` is empty but drift still doesn't
 close, check `lastSnapMovedMs`/`lastSnapVerifyMs` as originally planned in 5e.
 
+### Phase 5h — root cause found: unbound `timers.clearTimeout` Illegal Invocation (2026-06-11)
+8th debug session confirmed the leading hypothesis was wrong but surfaced the
+real bug: `snapError = "Can only call Window.clearTimeout on instances of
+Window"` on EVERY snap attempt, for every device, all session
+(`snapCount` climbing to 40-91, `snapError` non-empty every time).
+
+Root cause: in `listener-engine.html`'s `createSyncEngine({...})` setup, the
+`timers:` object passed bare unbound references —
+`{ setTimeout, clearTimeout, setInterval, clearInterval,
+requestAnimationFrame, now: () => performance.now() }`. Calling
+`timers.clearTimeout(id)` invokes it with `this === timers`, not
+`this === window`. WebKit's branded `Window.prototype.clearTimeout` (and the
+other four) reject that with "Illegal invocation" before doing anything else.
+
+`cancelDriftCorrection()`'s very first line is `timers.clearTimeout(driftWarpTimer)`
+— so it threw immediately, every time, meaning `seekPreservingBT()` was NEVER
+reached across the entirety of Phases 5d-5g. This is THE primary bug: every
+constant-offset drift pattern seen in sessions 5-8 (~-1.4 to -2.6s baseline,
+huge transient excursions after track changes that never resolved) is
+explained by snaps never actually executing despite `computeLagMs()` /
+`engineLagMs` correctly showing the lag every tick.
+
+**Fix**: bind all five timer functions to `window`:
+```js
+timers: {
+  setTimeout: window.setTimeout.bind(window),
+  clearTimeout: window.clearTimeout.bind(window),
+  setInterval: window.setInterval.bind(window),
+  clearInterval: window.clearInterval.bind(window),
+  requestAnimationFrame: window.requestAnimationFrame.bind(window),
+  now: () => performance.now(),
+},
+```
+
+Verified via headless Chrome (iframe harness calling
+`window.SyncEngine.cancelDriftCorrection()` directly): now returns
+`{cancelOk:true}` instead of throwing. `node --test` still 25/25 — the engine
+module itself was always correct; this was purely a caller-side wiring bug.
+
+**Verification needed**: next session — `snapError` should now be empty,
+`snapCount` should increment, `lastSnapMovedMs` should be close to
+`target - before` (the snap actually moves `currentTime`), and
+`lastSnapVerifyMs` should be near 0 (the seek held 250ms later). `driftMs`/
+`engineLagMs` should finally start closing toward the ±60ms `SNAP_THRESHOLD_MS`
+band instead of sitting at a constant multi-second offset.
+
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
   the air with correct timing. Everything else (deck UI, scenes, crowd map) stays
