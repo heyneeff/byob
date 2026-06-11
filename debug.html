@@ -21,11 +21,21 @@ h1{font-size:14px;color:var(--teal);letter-spacing:.2em;text-transform:uppercase
 .row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:2px 0;}
 .k{color:#555;}.v{color:#0f0;text-align:right;}
 .warn{color:var(--orange);}.bad{color:var(--red);}
+#rec-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
+#rec-toolbar button{background:#0a0a0a;border:1px solid #333;color:#0f0;font-family:monospace;font-size:11px;padding:6px 10px;border-radius:4px;cursor:pointer;}
+#rec-toolbar button:hover{border-color:var(--teal);}
+#rec-btn.active{border-color:var(--red);color:var(--red);}
+#rec-count{color:#555;font-size:10px;}
 </style>
 </head>
 <body>
 <h1>📡 BYOB Sync Dashboard</h1>
 <div id="status">Connecting…</div>
+<div id="rec-toolbar">
+  <button id="rec-btn" onclick="toggleRecord()">⏺ Record</button>
+  <button onclick="exportCSV()">⬇ Export CSV</button>
+  <span id="rec-count">0 rows</span>
+</div>
 <div id="diff">
   <div id="diff-label">position delta between devices</div>
   <div id="diff-val">—</div>
@@ -50,16 +60,61 @@ const devs = {};
 db.channel('byob_debug')
   .on('broadcast', { event: 'hud_data' }, ({ payload }) => {
     devs[payload.deviceId] = { ...payload, _kind: 'sync', lastSeen: Date.now() };
+    if (_recording) recordRow('sync', payload);
     render();
   })
   .on('broadcast', { event: 'listener_health' }, ({ payload }) => {
     devs[payload.deviceId] = { ...payload, _kind: 'health', lastSeen: Date.now() };
+    if (_recording) recordRow('health', payload);
     render();
   })
   .subscribe(s => {
     document.getElementById('status').textContent =
       s === 'SUBSCRIBED' ? '● Listening — open a listener\'s HUD for full sync data; GPS/connection health streams automatically' : s;
   });
+
+// Session recording — buffers every hud_data/listener_health row (with a wall-clock
+// timestamp) so a baseline-vs-engine comparison run can be exported and diffed
+// offline rather than eyeballed live. CSV columns cover both 'sync' and 'health'
+// payload shapes; unused fields per row are left blank.
+let _recording = false;
+let _records = [];
+const REC_COLS = ['timestamp','kind','deviceId','zone','elapsed','currentTime','expectedPos',
+  'driftMs','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
+  'driftState','driftPending','src'];
+
+function toggleRecord() {
+  _recording = !_recording;
+  const btn = document.getElementById('rec-btn');
+  btn.textContent = _recording ? '⏺ Recording…' : '⏺ Record';
+  btn.classList.toggle('active', _recording);
+  if (_recording) { _records = []; document.getElementById('rec-count').textContent = '0 rows'; }
+}
+
+function recordRow(kind, p) {
+  const row = { timestamp: new Date().toISOString(), kind };
+  REC_COLS.slice(2).forEach(c => row[c] = p[c]);
+  _records.push(row);
+  document.getElementById('rec-count').textContent = _records.length + ' rows';
+}
+
+function exportCSV() {
+  if (!_records.length) { return; }
+  const lines = [REC_COLS.join(',')];
+  _records.forEach(row => {
+    lines.push(REC_COLS.map(c => {
+      const v = row[c];
+      return v === undefined || v === null ? '' : String(v).replace(/,/g, ';');
+    }).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'byob-debug-session-' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function render() {
   const ids = Object.keys(devs);
