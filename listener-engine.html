@@ -1359,6 +1359,8 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   // a huge bogus lag that triggers a duck loop that can't resolve until the
   // new track loads. Gate drift correction until the new track is ready.
   window._trackLoading = true;
+  window._currentTrackUrl = url;
+  window._currentTrackTitle = title;
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -2129,6 +2131,18 @@ function _resumeAndReseek() {
   }).catch(() => {});
 }
 
+// Last resort when _resumeAndReseek() keeps reporting audio.play() success
+// but currentTime never moves and audio.paused stays true (2026-06-11
+// session, dev_bwlh40: froze at currentTime=39.309 right after a track
+// change for the rest of the session, stallCount climbing 1->12, drift
+// growing unbounded to -58779ms). Re-running .play() on the same element
+// doesn't unstick it — reload the track from scratch via loadTrack(), which
+// reassigns audio.src and calls audio.load() (fresh decode pipeline).
+function _hardReloadTrack() {
+  if (!window._currentTrackUrl || !activeZone?.playback_started_at) return;
+  loadTrack(window._currentTrackUrl, window._currentTrackTitle, activeZone.playback_started_at, activeZone.play_at, activeZone.play_from_s);
+}
+
 // Canonical "where should playback be right now" — shared by _resumeAndReseek
 // and fastDriftCorrect's snap path so both agree with broadcastHUD's expectedPos.
 function _expectedNow() {
@@ -2165,9 +2179,28 @@ function fastDriftCorrect() {
   // without firing 'stalled'/'waiting'/'suspend') — recover instead of
   // silently bailing every tick.
   if (audio.paused) {
-    if (_webAudioPlaying) { window._stallCount = (window._stallCount || 0) + 1; _resumeAndReseek(); }
+    if (_webAudioPlaying) {
+      window._stallCount = (window._stallCount || 0) + 1;
+      // If currentTime hasn't moved across several consecutive paused ticks,
+      // _resumeAndReseek()'s play()+seek isn't unsticking this element —
+      // escalate to a full track reload (see _hardReloadTrack).
+      if (window._lastPausedCurrentTime === audio.currentTime) {
+        window._frozenTicks = (window._frozenTicks || 0) + 1;
+      } else {
+        window._frozenTicks = 0;
+      }
+      window._lastPausedCurrentTime = audio.currentTime;
+      if (window._frozenTicks >= 3) {
+        window._frozenTicks = 0;
+        _hardReloadTrack();
+      } else {
+        _resumeAndReseek();
+      }
+    }
     return;
   }
+  window._frozenTicks = 0;
+  window._lastPausedCurrentTime = null;
   const lagMs = computeLagMs();
   window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   if (lagMs == null) return;

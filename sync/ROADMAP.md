@@ -829,3 +829,49 @@ settles to `idle` within ~15-20s, with NO audible fade/clip — including for
 devices like `dev_t0sqxy` that previously got stuck. If a device still shows
 persistent large drift after this, it should show as sustained `'warping'`
 (audible as a slight pitch shift, not clipping) rather than ducking.
+
+### Phase 5m — hard-reload fallback for a frozen-paused audio element after track change (2026-06-11)
+13th debug session (post-5l). Confirmed 5l worked exactly as intended:
+`driftState` never read `'ducking'` anywhere in this CSV. `dev_syp0il` and
+`dev_f8vluc` each hit a transient bogus ~147000ms spike around the
+`hard_sync`/`track_change` events (23:41:10-14), then sat in sustained
+`'warping'` (rate 1.030) for ~80-90s while a real ~2.5-2.7s post-wrap gap
+closed at the expected ~30ms/s — slow, but continuously inaudible, no
+fade/clip. Good.
+
+But `dev_bwlh40` hit a NEW failure mode after its `track_change` (23:41:47.751):
+`currentTime` froze at exactly `39.309` for the rest of the session (~60s+),
+`readyState` stayed `4` (HAVE_ENOUGH_DATA), `audio.paused` was true every
+tick (`stallCount` climbed 1->12, i.e. `_resumeAndReseek()` was called on
+every tick), `driftMs` grew unbounded to -58779ms. `_resumeAndReseek()`
+(`audio.play().then(cancelDriftCorrection + seekPreservingBT)`) was firing
+every tick but never unstuck it — either `.play()` resolves but the element
+re-pauses immediately, or `.paused`/`.currentTime` are unreliable on this
+device after the `loadTrack()` src swap (same family of
+`createMediaElementSource` quirks as 5k's no-op seek, but worse: total
+freeze).
+
+**Fix** (caller-side, `fastDriftCorrect()`'s paused branch): track
+`window._lastPausedCurrentTime` / `window._frozenTicks`. If `currentTime`
+hasn't changed across 3 consecutive paused ticks (~10-12s) despite
+`_resumeAndReseek()` running each tick, escalate to `_hardReloadTrack()` —
+re-runs `loadTrack(url, title, startedAt, playAt, playFromS)` with the
+current track's URL/title (now cached in `window._currentTrackUrl` /
+`window._currentTrackTitle`, set at the top of `loadTrack()`), which
+reassigns `audio.src` and calls `audio.load()` for a fresh decode pipeline —
+a full reload succeeds where repeated `.play()` on the stuck element didn't.
+`_frozenTicks`/`_lastPausedCurrentTime` reset whenever audio isn't paused.
+
+`node --test` still 25/25 (engine module unchanged — caller-side stall
+escalation).
+
+**Verification needed**: next session — after a track change, if a device's
+`currentTime` ever freezes while `paused`, expect at most ~3 stalled ticks
+(~10-12s) before a `track_change` `sync_event` re-fires for that device
+(the hard reload) and `currentTime`/`driftMs` resume normal movement — not
+a multi-minute freeze with `driftMs` growing into the tens of thousands.
+Also keep an eye on the ~80-90s slow-warp recovery for ~2.5s+ gaps after
+hard_sync/track_change (5l's tradeoff for never ducking) — if that reads as
+"syncing in and out" for a noticeably long stretch, may need a faster (but
+still inaudible) warp rate for large-but-not-bogus gaps specifically in the
+post-sync_event window.
