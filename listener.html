@@ -2089,7 +2089,7 @@ let _healthInterval = null;
 // Fast drift correction — memory only, no network, runs every 5s
 function fastDriftCorrect() {
   if (!activeZone?.playback_started_at) return;
-  if (!audio.duration || audio.paused || _isMuted) return;
+  if (!audio.duration || audio.paused) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
   const lagMs = computeLagMs();
   if (lagMs == null) return;
@@ -5300,6 +5300,7 @@ function broadcastHUD() {
       driftPending: _driftPendingRecheck,
       zone:        activeZone?.name || null,
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
+      isMuted:     _isMuted,
       build: 'listener',
     }
   });

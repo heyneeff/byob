@@ -289,6 +289,42 @@ sessions. If this fixes it, this same `_resumeAndReseek` pattern should be
 ported to `listener.html` too (it's a real production bug, independent of the
 engine wiring) — flag for after the Phase 5 gate.
 
+### Phase 5c — `_isMuted` silently disabled drift correction entirely (3rd debug session, 2026-06-11 17:58)
+Phase 5b's `_resumeAndReseek` is working — `stallCount` increments and large
+excursions (e.g. `dev_bjqjtt` -157900ms) do recover toward smaller values.
+But on most engine devices, drift then settles onto a *stable, non-zero*
+plateau (e.g. -2580ms, -2702ms, -98556ms) for minutes at a time, with
+`driftState` stuck `idle` the whole time despite `|driftMs| >> 60ms`. Two
+devices showed this for 130+ samples each (`dev_bjqjtt`, `dev_nj1jr5`).
+
+`lastDriftCheckAgoMs` stayed bounded throughout, which looked like Phase 5a
+was insufficient — but `_lastDriftCheckAt = performance.now()` is the *first*
+line of `fastDriftCorrect()`, so it updates even when every subsequent line
+bails out. It does NOT prove `computeLagMs()`/`requestCorrection()` ran.
+
+Root cause: `fastDriftCorrect()` had `if (!audio.duration || _isMuted) return;`
+— a muted listener (the normal state for test phones in close proximity, to
+avoid feedback) never gets drift-corrected at all. The plateau jumps are from
+elsewhere (likely the 60s `syncZoneAudio()` health check reseeking); between
+those jumps, drift just sits wherever it landed, forever, while muted.
+
+`_isMuted` only needs to gate things that are *audible* — `seekWithDuck()`
+ramps `transport.volume`, but `audio.muted = true` overrides volume entirely,
+so a duck while muted is silent regardless. There's no reason to skip
+correction.
+
+Fix: removed `_isMuted` from the `fastDriftCorrect()` bail condition in both
+`listener-engine.html` and `listener.html` (production had the same bug, with
+the added `audio.paused` check folded into the same line — now split per
+Phase 5b's pattern). Added `isMuted` to both builds' `hud_data` payload and
+`duration`/`isMuted` to `debug.html`'s `REC_COLS` + sync card, so a muted
+device's drift trajectory is now distinguishable from an unmuted one.
+
+**Verification needed**: next session, confirm `driftState` actually
+transitions to `warping`/`ducking` on muted devices and that the long flat
+plateaus disappear (drift should oscillate near 0 like an unmuted device,
+not sit at a constant non-zero offset for minutes).
+
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
   the air with correct timing. Everything else (deck UI, scenes, crowd map) stays

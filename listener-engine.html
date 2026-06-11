@@ -2115,7 +2115,7 @@ function _resumeAndReseek() {
 function fastDriftCorrect() {
   _lastDriftCheckAt = performance.now();
   if (!activeZone?.playback_started_at) return;
-  if (!audio.duration || _isMuted) return;
+  if (!audio.duration) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
   // Audio element paused while we expect playback (OS/BT suspended it
   // without firing 'stalled'/'waiting'/'suspend') — recover instead of
@@ -5256,6 +5256,7 @@ function broadcastHUD() {
       lastDriftCheckAgoMs: _lastDriftCheckAt ? Math.round(performance.now() - _lastDriftCheckAt) : null,
       readyState:  audio.readyState,
       stallCount:  window._stallCount || 0,
+      isMuted:     _isMuted,
       build: 'listener-engine',
     }
   });

@@ -80,8 +80,8 @@ db.channel('byob_debug')
 let _recording = false;
 let _records = [];
 const REC_COLS = ['timestamp','kind','deviceId','build','zone','elapsed','currentTime','expectedPos',
-  'driftMs','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
-  'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount'];
+  'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
+  'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted'];
 
 function toggleRecord() {
   _recording = !_recording;
@@ -177,6 +177,7 @@ function renderSyncCard(d, age) {
         d.lastDriftCheckAgoMs!=null && d.lastDriftCheckAgoMs>10000 ? 'bad' : d.lastDriftCheckAgoMs!=null && d.lastDriftCheckAgoMs>6000 ? 'warn' : '')}
     ${r('readyState',  d.readyState ?? '—', (d.readyState!=null && d.readyState<3)?'warn':'')}
     ${r('stalls',      d.stallCount ?? 0, (d.stallCount>0)?'warn':'')}
+    ${r('muted',       d.isMuted ? 'yes' : 'no', d.isMuted?'warn':'')}
   </div>`;
 }
 
