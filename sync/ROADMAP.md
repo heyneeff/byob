@@ -101,6 +101,18 @@ the simulated code *the same code*.
 4. **Formula duplication**: the four-term expression is inlined at ≥5 sites in
    `listener.html` (3657, 3727, 3754, 3775, 4867) plus `debug.html`'s expectedPos
    plus `sync-sim.html` — three files to keep in step by hand today.
+5. **`cancelDriftCorrection` doesn't cancel an in-flight duck** (found while
+   building the Phase 2 harness — `sync/sync-engine.js`'s `cancelDriftCorrection`,
+   ported verbatim from `listener.html:4833-4838`). It clears `_driftWarpTimer`
+   (the 'warping' timeout) and resets `_driftState`/`_driftPendingRecheck`, but
+   `seekWithDuck`'s ramp `setInterval`s and 5s safety `setTimeout` are local
+   closures it has no handle to. If a coordinated snap (hard_sync/scatter/etc.)
+   arrives mid-'ducking', the cancel resets state to 'idle' and the snap seeks —
+   but the orphaned duck ramp keeps running underneath: it fades volume to 0,
+   reseeks (to a now-stale or coincidentally-current `expectedPosition`), fades
+   back up, and calls `settleToIdle()` again ~1.5-2.5s later. Audible side effect:
+   an unwanted volume dip right after a snap. Needs a cancellation token/generation
+   counter so `seekWithDuck`'s callbacks no-op after `cancelDriftCorrection`.
 
 ---
 
