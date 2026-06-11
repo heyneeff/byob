@@ -726,3 +726,40 @@ should go `idle`/whatever it was → (briefly nothing, while `_trackLoading`)
 → `idle` or a single small `warping`/`ducking` once the new track's real
 drift is known, NOT a multi-duck loop with `driftMs` in the hundreds-of-
 thousands of ms.
+
+### Phase 5k — duck loop when the seek doesn't land: stuck-duck fallback to warp (2026-06-11)
+11th debug session (post-5j, no track changes this session — purely
+steady-state). User reported "desynced the whole time" and "really jarring
+clipping". `dev_z0194x`/`dev_jpi7be` showed a slow sawtooth (warp closes the
+gap, then it reopens by a similar amount — separate, lower-priority tuning
+issue, not yet addressed). But `dev_kgfip9` was the dominant problem:
+`driftState='ducking'` for the ENTIRE ~3.5min session, `driftMs` pinned at a
+constant -524 to -541ms, `duckCount` climbing 3→65. `currentTime` and
+`expectedPos` advanced in lockstep at the same rate the whole time — the gap
+never moved despite 15+ duck attempts.
+
+Root cause: on this device/browser, `seekWithDuck`'s `transport.currentTime
+= safeTime` (an `<audio>` element routed through Web Audio via
+`createMediaElementSource`) is a silent no-op — the seek doesn't take. Each
+duck fades down, "seeks" (no-op), fades back up, and 2.5s later the same
+~525ms gap triggers another duck. Continuous fade/seek/fade-up = the
+"jarring clipping".
+
+**Fix** (caller-side, `fastDriftCorrect()`): track `_lastDuckLagMs` /
+`_stuckDuckCount`. If two consecutive duck-triggering lags are within 30ms
+of each other (the previous duck didn't move the needle), `cancelDriftCorrection()`
+then `requestCorrection(Math.sign(lagMs) * 499)` — forces the 15-500ms
+"warping" branch (a sustained +/-3% rate nudge) instead of ducking again.
+Slower (closing a 500ms gap takes ~17s at 3%) but completely inaudible —
+versus clipping every ~2.5s forever.
+
+`node --test` still 25/25 (engine module unchanged — caller-side choice of
+which correction to request).
+
+**Verification needed**: next session — `dev_kgfip9`-type devices should
+show `driftState='ducking'` at most twice in a row for a given persistent
+large gap, then switch to `driftState='warping'` with `rate`~0.970/1.030
+sustained for ~15-20s while the gap closes, with NO further fade/clip. Also
+revisit the `z0194x`/`jpi7be` sawtooth — if it persists once kgfip9-style
+clipping is gone, it's the next thing to dig into (possibly BPM-warp rate
+recompute timing or a `_scatterOffsetMs` that's changing periodically).

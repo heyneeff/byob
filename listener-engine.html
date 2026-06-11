@@ -2172,7 +2172,29 @@ function fastDriftCorrect() {
   window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
-  if (Math.abs(lagMs) > 500) window._snapCount = (window._snapCount || 0) + 1;
+  if (Math.abs(lagMs) > 500) {
+    window._snapCount = (window._snapCount || 0) + 1;
+    // On some devices/browsers, the duck's seek (audio.currentTime = safeTime)
+    // is a silent no-op — the gap never closes, so requestCorrection ducks
+    // again next tick, forever (continuous fade-down/seek/fade-up = constant
+    // clipping). If two consecutive duck-triggering lags haven't shrunk, the
+    // seek isn't landing here — fall back to a sustained warp instead. Slower
+    // (a 500ms gap takes ~17s at +/-3%) but inaudible, vs. clipping forever.
+    if (window._lastDuckLagMs != null && Math.abs(Math.abs(lagMs) - Math.abs(window._lastDuckLagMs)) < 30) {
+      window._stuckDuckCount = (window._stuckDuckCount || 0) + 1;
+    } else {
+      window._stuckDuckCount = 0;
+    }
+    window._lastDuckLagMs = lagMs;
+    if (window._stuckDuckCount >= 2) {
+      cancelDriftCorrection();
+      requestCorrection(Math.sign(lagMs) * 499);
+      return;
+    }
+  } else {
+    window._stuckDuckCount = 0;
+    window._lastDuckLagMs = null;
+  }
   requestCorrection(lagMs);
 }
 audio.addEventListener('timeupdate', () => {
