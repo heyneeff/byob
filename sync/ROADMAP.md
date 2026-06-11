@@ -180,10 +180,22 @@ the simulated code *the same code*.
   tested directly (see `requestCorrection: warp correction duration scales
   inversely with baseRate`).
 
-### Phase 4 — Point sync-sim.html at the real engine
-- `sync-sim.html` imports `./sync/sync-engine.js` for the "new" controller instead
-  of carrying a copy; the legacy controller copy stays for comparison.
+### Phase 4 — Point sync-sim.html at the real engine ✅ DONE
+- `sync-sim.html` is now `<script type="module">` and imports
+  `createSyncEngine`/`expectedPosition` from `./sync/sync-engine.js` for the
+  "new" panel; the legacy controller (scattered flags / fragmented references)
+  stays as its own transcription for comparison.
+- Each "new" listener gets its own `createSyncEngine()` instance wired to a
+  transport adapter over its `{ currentTime, playbackRate, volume }`, plus a
+  shared fake-timer queue (same virtual clock as `sync-engine.test.js`) so
+  warp snap-back / duck ramps / duck-safety resolve as the sim ticks.
+  `playbackStartedAt` starts at `-1` (truthy "just started"), matching the
+  party-test convention.
 - From here on the sim exercises the shipped code, not a transcription of it.
+  Verified via headless Chrome (`google-chrome --headless=new --dump-dom`):
+  seed 42 / 8 listeners / 20min — new-panel avg settled drift ~66ms (vs ~55ms
+  for the old transcription, vs legacy's ~89.6s), 23 dips, 718 hard seeks,
+  0 bypass seeks — consistent with the pre-Phase-4 baseline, no regression.
 
 ### Phase 5 — Plug into listener.html
 - `<script type="module">` loads the engine and exposes it to the existing classic

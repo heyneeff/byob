@@ -43,7 +43,8 @@
   system (scattered <code>_isDucking</code>/<code>_driftCorrectionActive</code> flags,
   direct bypass seeks, <code>cluster_assign</code> minting a private "started NOW"
   reference per reassignment, scene fires that never re-seek unchanged stems) vs.
-  the <b>current</b> system (single gated corrector + one shared
+  the <b>current</b> system — the real <code>sync/sync-engine.js</code> module,
+  imported and driven directly (single gated corrector + one shared
   <code>playback_started_at</code> reference that spatial reassignment never
   re-mints). Same seed, same event schedule, same listener population — only the
   logic differs. No real audio, no Supabase — positions and clocks are just
@@ -72,7 +73,7 @@
     <table id="stats-legacy"></table>
   </div>
   <div class="panel">
-    <h2>New — single gate + one shared reference point</h2>
+    <h2>New — sync/sync-engine.js (single gate + one shared reference point)</h2>
     <canvas id="chart-new" width="900" height="260"></canvas>
     <table id="stats-new"></table>
   </div>
@@ -81,7 +82,41 @@
 <div class="events" id="event-log"></div>
 <div class="verdict" id="verdict">Press <b>Run simulation</b> to compare the two designs.</div>
 
-<script>
+<script type="module">
+import { createSyncEngine, expectedPosition } from './sync/sync-engine.js';
+
+// ════════════════════════════════════════════════════════════
+// Fake timers — same virtual clock as sync/sync-engine.test.js, shared by
+// every "new" listener's engine instance so duck/warp timing resolves
+// deterministically as the sim ticks.
+// ════════════════════════════════════════════════════════════
+function createFakeTimers() {
+  let now = 0;
+  let idCounter = 1;
+  const tasks = new Map();
+  function setTimeoutFn(fn, delay) { const id = idCounter++; tasks.set(id, { time: now + delay, fn, interval: null }); return id; }
+  function clearTimeoutFn(id) { tasks.delete(id); }
+  function setIntervalFn(fn, delay) { const id = idCounter++; tasks.set(id, { time: now + delay, fn, interval: delay }); return id; }
+  function clearIntervalFn(id) { tasks.delete(id); }
+  function requestAnimationFrame(fn) { return setTimeoutFn(() => fn(now), 16); }
+  function advance(ms) {
+    const target = now + ms;
+    for (;;) {
+      let earliestId = null;
+      for (const [id, t] of tasks) {
+        if (t.time <= target && (earliestId === null || t.time < tasks.get(earliestId).time)) earliestId = id;
+      }
+      if (earliestId === null) break;
+      const t = tasks.get(earliestId);
+      now = t.time;
+      if (t.interval != null) { t.time = now + t.interval; t.fn(); }
+      else { tasks.delete(earliestId); t.fn(); }
+    }
+    now = target;
+  }
+  return { setTimeout: setTimeoutFn, clearTimeout: clearTimeoutFn, setInterval: setIntervalFn, clearInterval: clearIntervalFn, requestAnimationFrame, now: () => now, advance };
+}
+
 // ════════════════════════════════════════════════════════════
 // Seeded RNG — same seed ⇒ identical "party" for both controllers
 // ════════════════════════════════════════════════════════════
@@ -222,89 +257,79 @@ function legacyApply(L, lag, simNow) {
 }
 
 // ════════════════════════════════════════════════════════════
-// NEW controller — single _syncState gate. Every trigger calls
-// requestCorrection(); only a forced "snap" can interrupt — and it
-// explicitly cancels whatever's running first (cancelDriftCorrection).
+// NEW controller — drives a real createSyncEngine() instance from
+// sync/sync-engine.js (the same module sync/sync-engine.test.js exercises).
+// This sim no longer carries its own transcription of the corrector: the
+// engine's requestCorrection/cancelDriftCorrection/seekPreservingBT calls
+// ARE the logic under test.
 // ════════════════════════════════════════════════════════════
-function newTick(L, simNow, dtMs, ctx) {
+function makeEngineListener(rng, id, baseRate, timers, simState, ctx) {
+  const L = makeListener(rng, id, baseRate);
+  const transport = {
+    duration: DURATION,
+    get currentTime() { return L.currentTime; },
+    set currentTime(v) { L.currentTime = v; },
+    get playbackRate() { return L.playbackRate; },
+    set playbackRate(v) { L.playbackRate = v; },
+    volume: 1,
+    hasSrcObject: () => false,
+  };
+  const clock = { syncedNow: () => simState.simNow + L.clockOffset };
+  const getContext = () => ({ playbackStartedAt: ctx.startedAt, deviceLatencyMs: L.deviceLatencyMs, scatterOffsetMs: L.scatterOffsetMs });
+  const getBaseRate = () => L.baseRate;
+  L.engine = createSyncEngine({ transport, timers, clock, getContext, getBaseRate });
+  return L;
+}
+
+// Coordinated snap: cancel whatever the engine is mid-way through, then jump
+// straight to expectedPosition for the (possibly just-changed) reference/scatter —
+// mirrors hard_sync / scatter / cluster_assign / scene-fire handlers.
+function forcedSnapEngine(L, ctx, simState) {
+  L.engine.cancelDriftCorrection();
+  const expected = expectedPosition({
+    elapsedS: (simState.simNow + L.clockOffset - ctx.startedAt) / 1000,
+    duration: DURATION,
+    deviceLatencyMs: L.deviceLatencyMs,
+    scatterOffsetMs: L.scatterOffsetMs,
+    warpRate: L.baseRate,
+  });
+  L.engine.seekPreservingBT(expected);
+  L.hardSeekCount++;
+}
+
+function newTickEngine(L, simNow, dtMs, ctx, simState) {
   advance(L, dtMs);
 
-  function requestCorrection(lag, force) {
-    if (force) {                       // cancelDriftCorrection() — wins immediately
-      L.playbackRate = L.baseRate; L.duckPhase = null; L.pendingRecheck = false;
-      snapTo(L, simNow, ctx.startedAt);  // resolve synchronously, same tick — a
-      L.state = 'idle';                  // deferred snap would log one stale
-      return;                            // pre-snap "drift" sample (~half the track)
-    }
-    // 'ducking' is mid volume-ramp — interrupting it is audible, so it must
-    // finish; remember to recheck once it does. 'warping' is just a
-    // playbackRate multiplier with no audible artifact from changing it —
-    // always safe to recompute in place with fresh numbers. Without this, a
-    // rate chosen for OLD lag (e.g. before a scatterChange moved the target)
-    // keeps running in the wrong direction for its full remaining duration,
-    // growing drift instead of shrinking it.
-    if (L.state === 'ducking') { L.pendingRecheck = true; return; }
-    if (Math.abs(lag) < 15) {
-      L.playbackRate = L.baseRate; L.state = 'idle';
-      return;
-    }
-    if (Math.abs(lag) > 500) {
-      L.playbackRate = L.baseRate;
-      L.state = 'ducking'; L.dipCount++;
-      L.duckPhase = { stage:'down', nextAt: simNow + 1500 };
-    } else {
-      L.playbackRate = lag > 0 ? L.baseRate * 1.03 : L.baseRate * 0.97;
-      L.state = 'warping'; L.warpCount++;
-      L.warpEndsAt = simNow + Math.abs(lag) / 0.03;
-    }
-  }
-  // The missing piece a naive gate gets wrong: when a correction is dropped
-  // because the gate was busy, something MUST recheck once it frees up — or
-  // drift just accumulates forever, silently. This is what makes "single gate"
-  // actually safe rather than just "less wrong than scattered flags."
-  function settleToIdle() {
-    L.state = 'idle';
-    if (L.pendingRecheck) {
-      L.pendingRecheck = false;
-      requestCorrection(computeLag(L, simNow, ctx.startedAt), false);
-    }
-  }
-
-  if (L.state === 'warping' && simNow >= L.warpEndsAt) { L.playbackRate = L.baseRate; settleToIdle(); }
-  if (L.state === 'ducking' && simNow >= L.duckPhase.nextAt) {
-    if (L.duckPhase.stage === 'down') { snapTo(L, simNow, ctx.startedAt); L.duckPhase = { stage:'up', nextAt: simNow + 1080 }; }
-    else { L.duckPhase = null; settleToIdle(); }
-  }
+  const before = L.engine.getDriftState();
 
   if (simNow >= L.nextFastCheck) {
     L.nextFastCheck = simNow + FAST_CHECK_MS;
-    const lag = computeLag(L, simNow, ctx.startedAt);
-    if (Math.abs(lag) > 60) requestCorrection(lag, false);
+    const lag = L.engine.computeLagMs();
+    if (lag != null && Math.abs(lag) > 60) L.engine.requestCorrection(lag);
   }
   if (ctx.events.visibilityWake) {
-    const lag = computeLag(L, simNow, ctx.startedAt);
-    if (Math.abs(lag) > 60) requestCorrection(lag, false);
+    const lag = L.engine.computeLagMs();
+    if (lag != null && Math.abs(lag) > 60) L.engine.requestCorrection(lag);
   }
-  // scatterChange isn't drift to be corrected gradually — it's a deliberate
-  // shift of the reference point itself (same family as hardSync, per
-  // SYNC_ENGINE.md step 5). Treat it as a forced snap: cancel whatever's
-  // running and jump immediately, rather than feeding the new gap into the
-  // gradual warp/duck path where it gets misread as "drift".
+  const after = L.engine.getDriftState();
+  if (before !== 'ducking' && after === 'ducking') L.dipCount++;
+  if (before !== 'warping' && after === 'warping') L.warpCount++;
+
+  // scatterChange/hardSync/clusterAssign/sceneFire are all coordinated snaps —
+  // cancel whatever's running and jump immediately, rather than feeding the
+  // new gap into the gradual warp/duck path where it gets misread as "drift".
   if (ctx.events.scatterChange) {
     L.scatterOffsetMs = ctx.scatterFor(L);
-    requestCorrection(0, true);
+    forcedSnapEngine(L, ctx, simState);
   }
-  if (ctx.events.hardSync) { requestCorrection(0, true); }
-
+  if (ctx.events.hardSync) forcedSnapEngine(L, ctx, simState);
   // POST-FIX cluster_assign: the broadcast carries the zone's EXISTING
   // playback_started_at (currentStartedAt() in playmin.html) — the stem
-  // reload lands in-phase. One clean seek the gate fully owns.
-  if (ctx.events.clusterAssign && ctx.pick(ctx.events.clusterAssign, L)) {
-    requestCorrection(0, true);
-  }
+  // reload lands in-phase. One clean seek the engine fully owns.
+  if (ctx.events.clusterAssign && ctx.pick(ctx.events.clusterAssign, L)) forcedSnapEngine(L, ctx, simState);
   // POST-FIX scene fire: every listener adopts the new reference immediately —
   // the spatial_config handler force-snaps even when the stem didn't change.
-  if (ctx.events.sceneFire) { requestCorrection(0, true); }
+  if (ctx.events.sceneFire) forcedSnapEngine(L, ctx, simState);
 
   L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
 }
@@ -372,6 +397,69 @@ function runSim(seed, listenerCount, totalMs, disruptRate, tickFn, eventToggles)
       if (ev.type === 'visibilityWake') eventLog.push(`📱 ${(simNow/60000).toFixed(1)}m — a phone wakes from locked screen`);
     }
     for (const L of listeners) tickFn(L, simNow, TICK_MS, ctx);
+  }
+  return { listeners, eventLog };
+}
+
+// Same driver as runSim, but for engine-backed listeners: builds a shared
+// fake-timer queue + simState so requestCorrection's setTimeout/setInterval
+// (warp snap-back, duck ramps, duck safety) resolve as the sim ticks.
+// playbackStartedAt starts at -1 (truthy "just started") rather than 0 —
+// computeLagMs treats 0 as "no reference yet" (see sync-engine.test.js).
+function runSimEngine(seed, listenerCount, totalMs, disruptRate, eventToggles) {
+  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true }, eventToggles);
+  const rng = mulberry32(seed);
+  const timers = createFakeTimers();
+  const simState = { simNow: 0 };
+  const ctx = { startedAt: -1, events: {}, scatterFor: () => 0 };
+  ctx.pick = (ev, L, frac) => {
+    const x = Math.abs(Math.sin((L.id + 1) * 12.9898 + ev.r * 78.233) * 43758.5453);
+    return (x - Math.floor(x)) < (frac !== undefined ? frac : ev.frac);
+  };
+  const listeners = Array.from({length:listenerCount}, (_,i) => makeEngineListener(rng, i, 1.0, timers, simState, ctx));
+  const eventLog = [];
+
+  const schedule = [];
+  for (let t = 5000; t < totalMs; t += 1) {
+    if (rng() < 0.00006 * disruptRate) { if (enable.visibilityWake) schedule.push({ t, type:'visibilityWake' }); }
+    if (rng() < 0.00004 * disruptRate) {
+      const voices = 2 + Math.floor(rng()*4), maxMs = 400 + rng()*900;
+      if (enable.scatterChange) schedule.push({ t, type:'scatterChange', voices, maxMs });
+    }
+    if (rng() < 0.000015 * disruptRate) { if (enable.hardSync) schedule.push({ t, type:'hardSync' }); }
+    if (rng() < 0.00004 * disruptRate) {
+      const frac = 0.2 + rng()*0.5, r = rng();
+      if (enable.clusterAssign) schedule.push({ t, type:'clusterAssign', frac, r });
+    }
+    if (rng() < 0.00001 * disruptRate) {
+      const changedFrac = 0.3 + rng()*0.5, r = rng();
+      if (enable.sceneFire) schedule.push({ t, type:'sceneFire', changedFrac, r });
+    }
+  }
+  schedule.sort((a,b) => a.t - b.t);
+
+  let idx = 0;
+  for (let simNow = 0; simNow < totalMs; simNow += TICK_MS) {
+    simState.simNow = simNow;
+    timers.advance(TICK_MS);
+    ctx.events = {};
+    while (idx < schedule.length && schedule[idx].t <= simNow) {
+      const ev = schedule[idx++];
+      ctx.events[ev.type] = ev;
+      if (ev.type === 'hardSync') { ctx.startedAt = simNow; eventLog.push(`⏱ ${(simNow/60000).toFixed(1)}m — coordinated hard-sync (new track / resync)`); }
+      if (ev.type === 'clusterAssign') eventLog.push(`⬡ ${(simNow/60000).toFixed(1)}m — DJ spatial reassign (~${Math.round(ev.frac*100)}% of crowd switches stems)`);
+      if (ev.type === 'sceneFire') {
+        ctx.startedAt = simNow;
+        eventLog.push(`🎬 ${(simNow/60000).toFixed(1)}m — scene fire (reference reset; ~${Math.round(ev.changedFrac*100)}% change stems)`);
+      }
+      if (ev.type === 'scatterChange') {
+        const voices = ev.voices, maxMs = ev.maxMs;
+        ctx.scatterFor = (L) => Math.round(((L.id % voices) / Math.max(1,voices-1)) * maxMs);
+        eventLog.push(`◎ ${(simNow/60000).toFixed(1)}m — DJ broadcasts scatter (${voices} voices, ±${Math.round(maxMs)}ms)`);
+      }
+      if (ev.type === 'visibilityWake') eventLog.push(`📱 ${(simNow/60000).toFixed(1)}m — a phone wakes from locked screen`);
+    }
+    for (const L of listeners) newTickEngine(L, simNow, TICK_MS, ctx, simState);
   }
   return { listeners, eventLog };
 }
@@ -452,7 +540,7 @@ btnRun.addEventListener('click', () => {
     };
 
     const legacy = runSim(seed, count, totalMs, disrupt, legacyTick, eventToggles);
-    const fresh  = runSim(seed, count, totalMs, disrupt, newTick, eventToggles);
+    const fresh  = runSimEngine(seed, count, totalMs, disrupt, eventToggles);
 
     drawChart(document.getElementById('chart-legacy'), legacy.listeners, totalMs);
     drawChart(document.getElementById('chart-new'),    fresh.listeners,  totalMs);
