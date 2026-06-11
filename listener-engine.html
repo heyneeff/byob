@@ -2082,8 +2082,19 @@ let _syncInterval = null;
 let _driftInterval = null;
 let _healthInterval = null;
 
-// Fast drift correction — memory only, no network, runs every 5s
+// Fast drift correction — memory only, no network, target cadence ~5s.
+// Driven by BOTH setInterval (below) and audio's 'timeupdate' event
+// (further down): a 2026-06-11 debug session showed setInterval(...,5000)
+// goes silent on backgrounded/screen-locked tabs (BYOB's primary mode —
+// phone as BT speaker, screen off) for minutes at a time, during which
+// drift grew unbounded with driftState stuck 'idle'. 'timeupdate' keeps
+// firing during real playback regardless of JS timer throttling, so it's
+// the reliable trigger; the interval is a redundant backstop.
+let _lastDriftCheckAt = 0;
+const DRIFT_CHECK_MS = 5000;
+window._stallCount = 0;
 function fastDriftCorrect() {
+  _lastDriftCheckAt = performance.now();
   if (!activeZone?.playback_started_at) return;
   if (!audio.duration || audio.paused || _isMuted) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
@@ -2095,6 +2106,9 @@ function fastDriftCorrect() {
     requestCorrection(lagMs);
   }
 }
+audio.addEventListener('timeupdate', () => {
+  if (performance.now() - _lastDriftCheckAt >= DRIFT_CHECK_MS) fastDriftCorrect();
+});
 
 // Zone health check — DB fetch, runs every 60s to detect zone end / missed track changes
 async function syncZoneAudio() {
@@ -3918,14 +3932,30 @@ audio.addEventListener('timeupdate',()=>{
   document.getElementById('time-dur').textContent=fmt(audio.duration);
 });
 
-// Audio stall recovery — auto-resume after 2.5s if we expected playback
+// Audio stall recovery — auto-resume after 2.5s if we expected playback.
+// A stall can last minutes (BT dropout, backgrounded tab); resuming from
+// the frozen currentTime would leave currentTime stuck behind expectedPos
+// by however long the stall lasted, with no automatic re-check (the
+// timeupdate-driven drift check above only runs while time is updating).
+// So: cancel any in-flight correction and reseek to expectedPosition()
+// before resuming, same as a coordinated snap.
 let _stallTimer = null;
 function _handleStall() {
   if (!_webAudioPlaying || !activeZone || _isMuted) return;
   clearTimeout(_stallTimer);
   _stallTimer = setTimeout(() => {
     if (audio.paused && _webAudioPlaying && !_isMuted) {
-      audio.play().catch(() => {});
+      window._stallCount = (window._stallCount || 0) + 1;
+      audio.play().then(() => {
+        if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject) return;
+        cancelDriftCorrection();
+        const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+        seekPreservingBT(window.SyncEngine.expectedPosition({
+          elapsedS: elapsed, duration: audio.duration,
+          deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
+          warpRate: _getBpmWarpRate(),
+        }));
+      }).catch(() => {});
     }
   }, 2500);
 }
@@ -5203,6 +5233,14 @@ function broadcastHUD() {
       driftPending: window.SyncEngine.getDriftPendingRecheck(),
       zone:        activeZone?.name || null,
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
+      // Diagnostics for the timeupdate-driven drift-check fix (2026-06-11
+      // session showed driftState stuck 'idle' for minutes on backgrounded
+      // tabs) — visibilityState/lastDriftCheckAgoMs/readyState/stallCount
+      // confirm whether the check loop is actually running.
+      visibilityState: document.visibilityState,
+      lastDriftCheckAgoMs: _lastDriftCheckAt ? Math.round(performance.now() - _lastDriftCheckAt) : null,
+      readyState:  audio.readyState,
+      stallCount:  window._stallCount || 0,
     }
   });
 }

@@ -225,6 +225,39 @@ the simulated code *the same code*.
     cycle, and with a phone going offline/online (reconnect path)
   - this is the gate for Phase 5 — don't merge on simulation results alone.
 
+### Phase 5a — drift-check loop liveness (found via first debug-export session, 2026-06-11)
+A real-party `debug.html` CSV export (Record/Export added this session) showed
+`driftState: idle` for **7 of 10 devices** for minutes at a time despite drift
+of -1.5s to -310s (and growing unbounded on 4 of them — `currentTime` frozen
+while `expectedPos` kept advancing). The corrector math (Phase 3) was never the
+problem; `requestCorrection()` simply wasn't being *called*:
+- `fastDriftCorrect()` ran on `setInterval(..., 5000)` only. Browsers throttle
+  `setInterval` on backgrounded/screen-locked tabs — BYOB's primary listening
+  mode (phone as BT speaker, screen off) — sometimes to less than once/minute.
+- `_handleStall()` (stall/waiting/suspend recovery) called `audio.play()` to
+  resume but never reseeked, so a multi-minute stall left `currentTime` frozen
+  at its pre-stall value even after "recovery."
+
+Fixes landed in `listener-engine.html` (not yet ported to `listener.html` —
+this rides along with the Phase 5 cross-device test):
+- `audio.addEventListener('timeupdate', ...)` now triggers `fastDriftCorrect()`
+  (throttled to ~5s via `_lastDriftCheckAt`) — `timeupdate` fires off the media
+  clock, not the JS timer queue, so it survives backgrounding. The
+  `setInterval(fastDriftCorrect, 5000)` stays as a redundant backstop.
+- `_handleStall()` now cancels any in-flight correction and reseeks to
+  `expectedPosition()` via `seekPreservingBT()` before resuming, same as a
+  coordinated snap — same pattern as `audio.addEventListener('error', ...)`.
+- `broadcastHUD()` now also sends `visibilityState`, `lastDriftCheckAgoMs`,
+  `readyState`, `stallCount` so the *next* debug export can directly confirm
+  the check loop is alive on backgrounded devices (look for
+  `lastDriftCheckAgoMs` staying under ~6-7s even when `visibilityState:hidden`).
+  `debug.html` records and renders all four.
+
+**Verification needed**: run another `debug.html` Record/Export session on
+`listener-engine.html` with phones screen-locked — confirm `lastDriftCheckAgoMs`
+stays bounded and no device shows unbounded/flat drift like the 2026-06-11
+session. Roll into the Phase 5 cross-device gate.
+
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
   the air with correct timing. Everything else (deck UI, scenes, crowd map) stays

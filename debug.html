@@ -81,7 +81,7 @@ let _recording = false;
 let _records = [];
 const REC_COLS = ['timestamp','kind','deviceId','zone','elapsed','currentTime','expectedPos',
   'driftMs','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
-  'driftState','driftPending','src'];
+  'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount'];
 
 function toggleRecord() {
   _recording = !_recording;
@@ -172,6 +172,11 @@ function renderSyncCard(d, age) {
     ${r('rate',        d.playbackRate || '—', d.playbackRate && d.playbackRate!=='1.000' ? 'warn' : '')}
     ${r('driftState',  (d.driftState || '—') + (d.driftPending ? ' (pending)' : ''), d.driftState==='ducking'?'bad':d.driftState==='warping'?'warn':'')}
     ${r('src',         d.src || '—')}
+    ${r('visibility',  d.visibilityState || '—', d.visibilityState==='hidden'?'warn':'')}
+    ${r('lastDriftChk', d.lastDriftCheckAgoMs!=null ? d.lastDriftCheckAgoMs+'ms ago' : '—',
+        d.lastDriftCheckAgoMs!=null && d.lastDriftCheckAgoMs>10000 ? 'bad' : d.lastDriftCheckAgoMs!=null && d.lastDriftCheckAgoMs>6000 ? 'warn' : '')}
+    ${r('readyState',  d.readyState ?? '—', (d.readyState!=null && d.readyState<3)?'warn':'')}
+    ${r('stalls',      d.stallCount ?? 0, (d.stallCount>0)?'warn':'')}
   </div>`;
 }
 
