@@ -427,6 +427,54 @@ sequence). If `lastSnapMovedMs` ≈ `target - before` but `driftMs` is STILL
 flat afterward, the seek works but something re-seeks back, or `_expectedNow()`
 itself is computing the wrong target (formula bug, not a browser quirk).
 
+**`baseline-phase5e` tag** — marks this commit (`3b9f489`) as a recovery
+checkpoint: Phase 5d+5e shipped, drift down to a stable ~1.4-2.6s constant
+offset (vs. multi-minute plateaus / six-figure-ms excursions pre-5d), no
+audible volume dips. `git checkout baseline-phase5e` to come back here if a
+later attempt at closing the remaining ~1.4s gap regresses things.
+
+**Update (6th debug session, 2026-06-11 21:37)** — 5 chrome-ios
+`listener-engine` devices. 4 of 5 sat at a rock-solid CONSTANT drift around
+-1418 to -1477ms (essentially the same ~1.4s gap as session 5), all with
+`snapCount=0` for the entire session — `computeLagMs()` (the engine's lag,
+which gates the snap) is evidently NOT returning the same ~1400ms that
+`driftMs` (broadcastHUD's independently-computed `currentTime - expectedPos`)
+reports, even though both call `expectedPosition()` with what looks like
+identical inputs. The 5th device (`dev_peq7l4`) showed a DIFFERENT, known
+issue: `audio.currentTime` frozen at 11.957 for 66+ seconds while `expectedPos`
+climbed normally (drift growing linearly from -18564 to -81660), then a track
+loop snapped `currentTime` to 0.242 (drift -96380) — this is the same
+frozen-`currentTime`-despite-`audio.paused===false`-or-`_webAudioPlaying`-out-
+of-sync pattern as `dev_t42o7l` in session 4. Treated as a separate, lower-
+priority issue from the main ~1.4s gap (it self-recovers on track loop/change,
+just badly out of sync until then).
+
+### Phase 5f — instrument computeLagMs() vs broadcastHUD's driftMs (2026-06-11)
+To resolve the `snapCount=0` mystery: `fastDriftCorrect()` now also stores
+`window._engineLagMs` — the raw `computeLagMs()` result (or `null` if the
+engine bailed) — on every tick, regardless of whether a snap fires. Broadcast
+as `engineLagMs` in HUD payload, shown on `debug.html` next to `DRIFT`
+(flagged `warn` if it differs from `driftMs` by >100ms).
+
+`node --test` still 25/25 (instrumentation only).
+
+**Verification needed**: next session — compare `engineLag` to `DRIFT` on the
+4 "stuck at ~1.4s" devices.
+- If `engineLag` ≈ `—` (null) the whole time → `computeLagMs()`'s bail
+  condition (`!ctx.playbackStartedAt` / `!transport.duration` /
+  `transport.hasSrcObject?.()`) is true when `driftMs` says it shouldn't be —
+  likely `getContext()`/`activeZone` desync between the module and classic
+  script scopes.
+- If `engineLag` reads ~0-50ms while `DRIFT` reads ~-1400ms → the two
+  `expectedPosition()` calls are getting different `deviceLatencyMs` /
+  `scatterOffsetMs` / `warpRate` / `elapsedS` inputs despite reading the same
+  globals — narrow down which input differs.
+- If `engineLag` ≈ `DRIFT` (~-1400, matches) → `computeLagMs()` IS returning
+  the right value and the `>= SNAP_THRESHOLD_MS` branch should be entered;
+  re-check `snapCount` — if it's still 0 here, the bug is in the `if`
+  condition or `Math.abs()` itself (very unlikely, but would mean re-reading
+  the literal code running on-device vs. this source).
+
 ### Phase 6 — /dj-tools/dj-tools.js
 - Strip the DJ side down to its core function: put a timeline or a live stream on
   the air with correct timing. Everything else (deck UI, scenes, crowd map) stays

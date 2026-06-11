@@ -2148,6 +2148,7 @@ function fastDriftCorrect() {
     return;
   }
   const lagMs = computeLagMs();
+  window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
   if (Math.abs(lagMs) >= SNAP_THRESHOLD_MS) {
@@ -5294,6 +5295,7 @@ function broadcastHUD() {
       readyState:  audio.readyState,
       stallCount:  window._stallCount || 0,
       isMuted:     _isMuted,
+      engineLagMs: window._engineLagMs ?? null,
       snapCount:   window._snapCount || 0,
       lastSnapVerifyMs: window._lastSnapVerifyMs ?? null,
       lastSnapMovedMs: window._lastSnapMovedMs ?? null,

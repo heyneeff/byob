@@ -82,7 +82,7 @@ let _records = [];
 const REC_COLS = ['timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
   'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
   'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
-  'snapCount','lastSnapVerifyMs','lastSnapMovedMs'];
+  'engineLagMs','snapCount','lastSnapVerifyMs','lastSnapMovedMs'];
 
 function toggleRecord() {
   _recording = !_recording;
@@ -165,6 +165,8 @@ function renderSyncCard(d, age) {
     ${r('currentTime', d.currentTime? d.currentTime+'s'  : '—')}
     ${r('expectedPos', d.expectedPos? d.expectedPos+'s'  : '—')}
     ${r('DRIFT',       d.driftMs !== null && d.driftMs !== undefined ? d.driftMs+'ms':'—', dc)}
+    ${r('engineLag',   d.engineLagMs!=null ? d.engineLagMs+'ms' : '—',
+        d.engineLagMs!=null && Math.abs(d.engineLagMs - (parseFloat(d.driftMs)||0)) > 100 ? 'warn' : '')}
     ${r('BT latency',  d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
     ${r('outputLatency', d.outputLatencyMs != null ? d.outputLatencyMs+'ms' : 'n/a',
         d.outputLatencyMs != null && Math.abs(d.outputLatencyMs - d.deviceLatencyMs) > 150 ? 'warn' : '')}
