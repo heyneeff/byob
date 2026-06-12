@@ -2265,7 +2265,13 @@ function startSyncEngine() {
   _healthInterval = setInterval(syncZoneAudio,    60000);  // DB health check
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible' || !activeZone) return;
+  if (document.visibilityState !== 'visible') return;
+  // Always refresh the zone list / rebuild zones_global — covers a listener
+  // waiting outside any zone whose realtime channel died while the screen
+  // was locked, so a newly-created zone doesn't require a manual refresh.
+  buildZonesChannel();
+  loadZones();
+  if (!activeZone) return;
   // WebRTC live — resume if OS suspended playback while screen was locked
   if (audio.srcObject && _webAudioPlaying && audio.paused) {
     audio.play().catch(() => {});
@@ -2303,9 +2309,11 @@ document.addEventListener('visibilitychange', () => {
 // Network reconnection — no refresh needed
 let _reconnectTimer = null;
 window.addEventListener('online', () => {
-  if (!activeZone) return;
   clearTimeout(_reconnectTimer);
   _reconnectTimer = setTimeout(async () => {
+    buildZonesChannel();
+    loadZones();
+    if (!activeZone) return;
     await measureClockOffset();
     buildSyncChannel(activeZone.id);
     if (window._guestChannel) { window._guestChannel.unsubscribe(); initGuestListChannel(activeZone.id); }
@@ -2646,21 +2654,7 @@ function launchApp() {
   subscribeFriendRequests();
 
   // Live zone list — reload when a zone is created or deactivated.
-  // Mid-session updates (track change, listener count) are handled by the
-  // per-zone _zoneChannel and don't need a full list refresh.
-  let _zonesRefreshTimer = null;
-  function scheduleZoneRefresh() {
-    clearTimeout(_zonesRefreshTimer);
-    _zonesRefreshTimer = setTimeout(() => loadZones(), 400);
-  }
-  db.channel('zones_global')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'zones' }, scheduleZoneRefresh)
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zones' }, ({ new: zn }) => {
-      // Only reload for deactivations or zones we haven't seen yet.
-      // Frequent updates (track, listeners, playback) are skipped here.
-      if (!zn.active || !knownZones.find(z => z.id === zn.id)) scheduleZoneRefresh();
-    })
-    .subscribe();
+  buildZonesChannel();
 
   // Keep Supabase awake — ping every 2 minutes
   const keepAlive = async () => { try { await db.from('zones').select('id').limit(1);  } catch(e) { console.warn('babble:', e.message, e.stack); }
@@ -3858,6 +3852,33 @@ function buildZoneChannel(z) {
         _zoneChannelRetryTimer = setTimeout(() => {
           if (activeZone?.id === z.id) buildZoneChannel(z);
         }, 3000);
+      }
+    });
+}
+
+// ── ZONES_GLOBAL CHANNEL — extracted so it can be rebuilt on reconnect ────
+// Mid-session updates (track change, listener count) are handled by the
+// per-zone _zoneChannel and don't need a full list refresh.
+let _zonesChannel = null;
+let _zonesRefreshTimer = null;
+let _zonesChannelRetryTimer = null;
+function scheduleZoneRefresh() {
+  clearTimeout(_zonesRefreshTimer);
+  _zonesRefreshTimer = setTimeout(() => loadZones(), 400);
+}
+function buildZonesChannel() {
+  if (_zonesChannel) { _zonesChannel.unsubscribe(); _zonesChannel = null; }
+  _zonesChannel = db.channel('zones_global')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'zones' }, scheduleZoneRefresh)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'zones' }, ({ new: zn }) => {
+      // Only reload for deactivations or zones we haven't seen yet.
+      // Frequent updates (track, listeners, playback) are skipped here.
+      if (!zn.active || !knownZones.find(z => z.id === zn.id)) scheduleZoneRefresh();
+    })
+    .subscribe((status) => {
+      if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        clearTimeout(_zonesChannelRetryTimer);
+        _zonesChannelRetryTimer = setTimeout(buildZonesChannel, 3000);
       }
     });
 }
@@ -5453,7 +5474,7 @@ function broadcastDebug() {
       currentTime: Date.now(),
       expectedPos: hasGPS ? userLat.toFixed(5) + ',' + userLng.toFixed(5) : 'no GPS',
       driftMs:    hasZone && hasGPS
-        ? (distM(userLat, userLng, activeZone.lat, activeZone.lng) * 1609.34).toFixed(0)
+        ? distM(userLat, userLng, activeZone.lat, activeZone.lng).toFixed(0)
         : null,
       deviceLatencyMs: interval ? 1 : 0,
       channelOk:  hasChannel ? 1 : 0,
