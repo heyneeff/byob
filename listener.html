@@ -2097,6 +2097,12 @@ let _syncInterval = null;
 let _driftInterval = null;
 let _healthInterval = null;
 
+// Phase 5p — snap-only, no playbackRate warping (the May 13 baseline design).
+// Continuous ±3% rate nudges sat almost permanently in the "warping" band on
+// real devices, producing an audible, constant pitch wobble ("a finger on a
+// record"). Below this threshold we do nothing; at/above it we snap once.
+const DRIFT_SNAP_THRESHOLD_MS = 300;
+
 // Fast drift correction — memory only, no network, runs every 5s
 function fastDriftCorrect() {
   if (!activeZone?.playback_started_at) return;
@@ -2105,9 +2111,11 @@ function fastDriftCorrect() {
   const lagMs = computeLagMs();
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
-  if (Math.abs(lagMs) > 60) {
-    console.log('[Drift]', lagMs.toFixed(0) + 'ms');
-    requestCorrection(lagMs);
+  if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
+    window._snapCount = (window._snapCount || 0) + 1;
+    console.log('[Drift] snap', lagMs.toFixed(0) + 'ms');
+    cancelDriftCorrection();
+    seekPreservingBT(_expectedNow());
   }
 }
 
@@ -2143,13 +2151,18 @@ document.addEventListener('visibilitychange', () => {
   if (audio.srcObject && _webAudioPlaying && audio.paused) {
     audio.play().catch(() => {});
   }
-  // Instant memory-based resync — no network needed. Routed through the single
-  // guarded corrector (requestCorrection) so it can't stack on top of an
-  // in-flight duck/seek or rate-warp from fastDriftCorrect — that fighting
+  // Instant memory-based resync — no network needed. A coordinated snap, like
+  // the periodic drift loop: cancelDriftCorrection() first so it can't stack
+  // on top of an in-flight duck/seek from fastDriftCorrect — that fighting
   // between independent direct-seek paths was the "roving" never-settles bug.
+  // Audio was silent/paused on the locked screen, so an instant seek here is
+  // unnoticeable — no need to wait for the 300ms drift-loop threshold.
   if (audio.duration && activeZone.playback_started_at && !audio.srcObject) {
     const lagMs = computeLagMs();
-    if (lagMs != null && Math.abs(lagMs) > 60) requestCorrection(lagMs);
+    if (lagMs != null && Math.abs(lagMs) > 60) {
+      cancelDriftCorrection();
+      seekPreservingBT(_expectedNow());
+    }
   }
   // Background DB health check
   syncZoneAudio();
@@ -4803,6 +4816,13 @@ function computeLagMs() {
   return (expected - audio.currentTime) * 1000;
 }
 
+// Expected playback position right now, per the shared seek formula — the
+// target for any corrective seek (drift-loop snap, visibilitychange wake).
+function _expectedNow() {
+  const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+  return ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
+}
+
 function settleToIdle() {
   _driftState = 'idle';
   if (_driftPendingRecheck) {
@@ -5312,6 +5332,7 @@ function broadcastHUD() {
       zone:        activeZone?.name || null,
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
       isMuted:     _isMuted,
+      snapCount:   window._snapCount || 0,
       browser:     _detectBrowser(),
       build: 'listener',
     }

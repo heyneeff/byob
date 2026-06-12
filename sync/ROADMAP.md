@@ -1039,3 +1039,55 @@ are firing far more often than every ~10-20s per device, 300ms may still be
 too low for this cadence/device population and could need raising; if drift
 regularly overshoots well past 300ms before a snap lands, the threshold or
 check cadence may need tightening instead.
+
+**CONFIRMED** by the 17th debug session
+(`byob-debug-session-2026-06-12T02-20-48-053Z.csv`): both `listener-engine`
+devices held `driftState='idle'`/`rate='1.000'` for the entire session
+(72/72 and 106/106 rows respectively), settling to a small constant drift
+(~-148ms and ~-221ms) with only 0-2 snaps total — no continuous warping.
+Meanwhile the one `build='listener'` device (production `listener.html`,
+which had not yet received this change) showed the old behavior: 64/87 rows
+`driftState='warping'`, `rate='1.030'`, oscillating drift between roughly
+-55ms and -345/-540ms continuously — i.e. the exact "finger on a record"
+sound, isolated to the un-ported file.
+
+## Phase 5q — port the Phase 5p/5o corrector design into production `listener.html`
+
+`listener.html` predates the `sync/sync-engine.js` extraction (Phase 1) and
+has its own inline `_driftState`/`requestCorrection`/`cancelDriftCorrection`/
+`seekPreservingBT`/`settleToIdle`/`computeLagMs` — none of Phase 5a-5p's
+fixes had reached it, which is why the 17th session's `build='listener'`
+device was still warping continuously (see "CONFIRMED" above) while the two
+`listener-engine` devices held rock solid.
+
+**Change** (`listener.html`):
+- New `DRIFT_SNAP_THRESHOLD_MS = 300` constant.
+- New `_expectedNow()` helper (mirrors `computeLagMs()`'s `expected` term) —
+  the seek target for both the drift-loop snap and the visibilitychange wake
+  snap.
+- `fastDriftCorrect()`'s tail: replaced `if (Math.abs(lagMs) > 60)
+  requestCorrection(lagMs)` with `if (Math.abs(lagMs) >=
+  DRIFT_SNAP_THRESHOLD_MS) { snapCount++; cancelDriftCorrection();
+  seekPreservingBT(_expectedNow()); }` — same snap-only design as Phase 5p.
+  `audio.playbackRate` is never touched by this loop.
+- `visibilitychange` wake handler: was calling `requestCorrection(lagMs)` at
+  a 60ms threshold (i.e. could trigger a warp/duck on wake). Changed to a
+  coordinated snap — `cancelDriftCorrection()` then
+  `seekPreservingBT(_expectedNow())` — at the same 60ms threshold (audio is
+  silent on a locked screen at wake, so an instant seek is inaudible; no
+  need to wait for 300ms here).
+- `settleToIdle()` already had Phase 5o's pending-recheck logic in
+  `listener.html` — no change needed there.
+- `requestCorrection`/`cancelDriftCorrection`/`_driftState`/warping/ducking
+  remain inline, unused by the periodic loop now, still used by the
+  mic-based BT-latency auto-sync verifier (`_syncState`).
+- `broadcastHUD()`: added `snapCount: window._snapCount || 0` so
+  `debug.html`'s "snaps" row populates for `build='listener'` devices too.
+
+`node --test` still 25/25 (`sync/sync-engine.js` untouched — this is a
+caller-side port of an already-validated design, not a new corrector).
+
+**Verification needed**: next session — `build='listener'` devices should
+now show the same `driftState='idle'`/`rate='1.000'` holding pattern as the
+`listener-engine` devices, with infrequent `snapCount` increments instead of
+continuous `warping`/`rate=1.030`.
