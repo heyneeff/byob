@@ -1211,3 +1211,77 @@ becomes an audio-buffering investigation (e.g. `preload`, source format,
 Bluetooth output pipeline), not a corrector change. If `stallCount` stays
 flat while snaps keep firing, look elsewhere (e.g. GPS/position recompute
 cost on the main thread blocking the audio element).
+
+**Update from a 20th, 8-minute session**
+(`byob-debug-session-2026-06-12T04-40-28-206Z.csv`, 804 rows, 6 devices):
+`dev_nles3b` (`listener-engine`) is the Phase 5r/5s success story — drift
+held mostly under ~20ms for the full 8 minutes, only 2 snaps total, with the
+micro-trim (`rate` floating 0.994-1.006) visibly pulling periodic ~100-190ms
+excursions back to ~0 over 15-20s *without* a snap. `stallCount` stayed 0.
+Phase 5r is working as designed for healthy devices.
+
+But `dev_uc0t2p` (`listener-engine`) hit something much worse: `currentTime`
+froze at `45.391` for the remaining ~7.5 minutes, `driftMs` grew unbounded to
+-85,000ms, and both `snapCount` (stuck at 1) and `stallCount` (stuck at 5)
+stopped moving entirely — the corrector wasn't just failing to fix this
+device, it had stopped running for it altogether.
+
+## Phase 5t — fix the silent-freeze dead end (no recovery from a rejected resume)
+
+Traced the stuck `dev_uc0t2p` case through `fastDriftCorrect()`:
+
+```js
+if (audio.paused) {
+  if (_webAudioPlaying) { /* stall counting, _frozenTicks, _hardReloadTrack() escalation */ }
+  return;
+}
+```
+
+If `_webAudioPlaying` is `false` while `audio.paused` is `true`, this
+**returns immediately every tick, forever** — no stall counting, no reload
+escalation, no snap. That's the stuck-at-5/stuck-at-1 signature.
+
+How it gets there: `_hardReloadTrack()` (Phase from 2026-06-11, for the
+*previous* `dev_bwlh40` freeze) calls `loadTrack()` →  `audio.load()` +
+`audio.play()`. If that `play()` is rejected by autoplay policy — very
+plausible for a programmatic resume on a backgrounded/locked-screen tab,
+BYOB's primary listening mode — `.catch()` sets `_webAudioPlaying = false`
+and shows a "Tap to start" banner the user can't see with the screen locked.
+From that point, `fastDriftCorrect()` permanently no-ops. The existing
+`visibilitychange` wake handler only calls `audio.play()` if
+`_webAudioPlaying` is *already* `true`, so even when the user looks at their
+phone again, nothing retries playback. Net effect: silent and stuck for the
+rest of the party, with only unbounded `driftMs` as a symptom.
+
+**Change** (`listener.html` and `listener-engine.html`): the
+`visibilitychange` handler now also retries when `!_webAudioPlaying` (not
+just the existing WebRTC `_webAudioPlaying && paused` branch):
+
+```js
+if (!_webAudioPlaying && !audio.srcObject && audio.src) {
+  audio.play().then(() => {
+    _webAudioPlaying = true;
+    if (audio.duration && activeZone.playback_started_at && !window._trackLoading) {
+      cancelDriftCorrection();
+      seekPreservingBT(_expectedNow());
+    }
+  }).catch(() => {});
+}
+```
+
+A visibility-wake event is a user-gesture context (the user just looked at
+their phone), so `play()` is far more likely to succeed here than the
+original programmatic retry inside `_hardReloadTrack()`. On success, also
+clears the stale position via the same coordinated-snap pattern as the rest
+of the wake handler. `node --test` still 33/33 (no engine changes — this is
+purely a listener-side recovery path).
+
+**Verification needed**: next session — watch for any device whose
+`stallCount`/`snapCount` previously would have gone stuck. If one freezes
+and `_webAudioPlaying` drops to false, the next screen-wake should bring
+`playing` back to `true` and `driftMs` back near 0, instead of staying stuck
+at a huge value for the rest of the session. If a device *never* wakes the
+screen during a freeze (truly locked the whole time), this won't help — that
+would point toward needing a non-gesture recovery (e.g. periodically
+re-attempting `_hardReloadTrack()` rather than giving up after one attempt),
+but try the cheap fix first.

@@ -2154,6 +2154,21 @@ document.addEventListener('visibilitychange', () => {
   if (audio.srcObject && _webAudioPlaying && audio.paused) {
     audio.play().catch(() => {});
   }
+  // Recover from a stuck _webAudioPlaying=false (e.g. a programmatic resume
+  // got rejected by autoplay policy while the screen was locked —
+  // fastDriftCorrect bails out entirely while audio.paused, so without this
+  // retry here the device stays silent and frozen for the rest of the
+  // session, drift growing unbounded). A wake event is a user gesture
+  // context, so play() is far more likely to succeed here.
+  if (!_webAudioPlaying && !audio.srcObject && audio.src) {
+    audio.play().then(() => {
+      _webAudioPlaying = true;
+      if (audio.duration && activeZone.playback_started_at) {
+        cancelDriftCorrection();
+        seekPreservingBT(_expectedNow());
+      }
+    }).catch(() => {});
+  }
   // Instant memory-based resync — no network needed. A coordinated snap, like
   // the periodic drift loop: cancelDriftCorrection() first so it can't stack
   // on top of an in-flight duck/seek from fastDriftCorrect — that fighting
