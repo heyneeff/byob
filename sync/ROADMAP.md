@@ -1285,3 +1285,44 @@ screen during a freeze (truly locked the whole time), this won't help — that
 would point toward needing a non-gesture recovery (e.g. periodically
 re-attempting `_hardReloadTrack()` rather than giving up after one attempt),
 but try the cheap fix first.
+
+## Phase 5u — core engine validated (21st session)
+
+(`byob-debug-session-2026-06-12T05-17-01-921Z.csv`, 830 rows, 4 sync devices
+across `listener` and `listener-engine`, ~8-minute session.) No freezes, no
+stuck `_webAudioPlaying`, `driftState` stayed `'idle'` throughout for every
+device, `playbackRate` stayed in the tight 0.995-1.006 micro-trim band.
+
+**New metric**: %-of-samples-within-tolerance, computed against `driftMs`
+(excluding single-tick track-change transients — see below). This turns a
+session into one comparable number instead of eyeballing a drift trace, and
+is the number to track as the engine evolves toward live-audio sync (where
+the equivalent metric becomes pairwise `currentTime` spread between
+listeners, since there's no fixed-duration `expectedPos` formula for a
+WebRTC stream).
+
+| device | n (excl. transients) | median drift | % <50ms | % <100ms |
+|---|---|---|---|---|
+| `dev_fnwf30` (listener, safari) | 121 | -6ms | 67.8% | 77.7% |
+| `dev_jr3p3m` (listener-engine, chrome-ios) | 27 | -6ms | 81.5% | 92.6% |
+| `dev_jh6ok4` (listener-engine, chrome-ios) | 122 | -13ms | 70.5% | 77.9% |
+| `dev_3cywi3` (listener-engine, safari) | 71 | -3ms | 78.9% | 90.1% |
+
+Medians sit in the single-digit-to-low-teens ms range — exactly the
+steady-state Phase 5r's micro-trim was designed to converge to. The two
+~47,000ms outliers (one on `dev_fnwf30`, one on `dev_jh6ok4`) are each a
+*single* sample taken mid-track-change: `expectedPos` had already jumped to
+the new track's reference while `currentTime` was still mid-snap from the
+old one (`snapCount` incremented on the very next sample). Not a bug — a
+one-tick sampling artifact of a coordinated snap — and excluded from the
+table above.
+
+**Conclusion**: the core sync engine (shared `playback_started_at` +
+`syncedNow()` + snap-above-300ms `seekPreservingBT()` + Phase 5r micro-trim)
+is holding listeners within ~10-50ms of the broadcast reference for the
+large majority of playtime, recovers cleanly through track changes, and has
+no known freeze/dead-end paths left open (Phase 5t). Treating the file-based
+sync engine as **validated** — further file-based tuning is low-priority.
+Next focus: carrying this control loop's lessons over to **live audio
+(WebRTC) sync**, where the reference shifts from "position in a known track"
+to "relative position between listeners' live buffers."
