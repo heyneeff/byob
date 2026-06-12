@@ -973,3 +973,69 @@ abrupt rate step entirely, e.g. by not fully returning to `baseRate` when
 residual drift is small but nonzero (a "trim rate" slightly off 1.0 to
 continuously compensate for the device's apparent natural skew, rather than
 oscillating between 1.030 and 1.000).
+
+### Phase 5p — drop playbackRate warping entirely; back to May 13 baseline snap-only (2026-06-12)
+16th debug session (post-5o, `dev_sancq3`/`dev_xri1y6`/`dev_mvtoff`). 5o's
+immediate-recheck made `settleToIdle` self-renewing, but the data showed why
+that wasn't the right axis to push on: `driftState='warping'`
+(`playbackRate=1.030`) was active in nearly every single row across the
+whole session — `engineLagMs` sat continuously in the 60-460ms range, i.e.
+inside the 15-500ms "warping" band essentially permanently. The corrector
+was technically "working" (drift stayed bounded, mostly -50 to -460ms,
+never blew up), but the practical effect was audio pitched up ~3% almost
+the entire time, continuously — which the user described as making the
+music "crazy to listen to, like a finger on a record."
+
+User's direction: stop treating this as a tuning problem on the warp/duck
+state machine and go back to what was confirmed to actually sound good —
+the May 13 2026 `listener.html` (`6f4f5b0`) baseline. That design had **no**
+`_driftState`, no rate-warping, no ducking: a periodic check (10s there)
+that does nothing unless `|drift| > 300ms`, in which case it calls
+`seekPreservingBT(expected)` (mute/seek/180ms-ramp) and otherwise leaves
+`audio.playbackRate` untouched at exactly 1.0.
+
+Phase 5d tried almost this in `listener-engine.html` (snap-only, but at a
+60ms threshold) — and at the time it looked like it made things WORSE
+("ducking and clipping" every ~3s, Phase 5i). But that test ran BEFORE the
+unbound-`timers.clearTimeout` fix (5h): every snap was silently throwing and
+doing nothing, so "no audible dips" in 5d's validation just meant "the
+corrector never ran." Once snaps started actually firing (5i), a 60ms
+threshold against the ~5s check cadence meant a seek+ramp almost every
+tick — that's the clipping 5i described, not a flaw in snap-only per se.
+
+**Change** (`listener-engine.html`):
+- `fastDriftCorrect()`'s tail no longer calls `requestCorrection()` at all.
+  Replaced the `>500ms` clamp-to-warp (5l) and the `<=500ms` `requestCorrection`
+  call with one branch: `if (|lagMs| >= DRIFT_SNAP_THRESHOLD_MS) { snapCount++;
+  cancelDriftCorrection(); seekPreservingBT(_expectedNow()); }` — else do
+  nothing. `audio.playbackRate` is never modified by this loop; it stays at
+  `getBaseRate()` (1.0, since Phase 5n) at all times.
+- New `DRIFT_SNAP_THRESHOLD_MS = 300` (the May 13 baseline's value) —
+  separate from the existing `SNAP_THRESHOLD_MS = 500` used by the
+  stall-recovery/visibilitychange wake paths (those are coordinated
+  recovery snaps, different purpose, left as-is).
+- `requestCorrection`/`cancelDriftCorrection`/`_driftState`/warping/ducking
+  remain in `sync/sync-engine.js` and `listener-engine.html` — still used by
+  the mic-based BT-latency auto-sync verifier (`_syncState`, a different
+  state machine per CLAUDE.md). Only the periodic drift loop stopped calling
+  `requestCorrection`.
+- Renamed the HUD/debug field `bigLagCount` -> `snapCount` (now genuinely
+  counts `seekPreservingBT` snaps, not warp-clamp events) in
+  `broadcastHUD()`, `debug.html`'s `REC_COLS`, and its card row ("big lags"
+  -> "snaps").
+- `sync-sim.html`'s existing "stripped" controller (added in 5d, dormant
+  since) already models exactly this design — bumped its
+  `STRIP_THRESHOLD_MS` from 60 to 300 to match.
+
+`node --test` still 25/25 (engine module itself unchanged — only the
+caller's corrector choice and a field rename).
+
+**Verification needed**: next session — `driftState`/`rate` should now sit
+at `'idle'`/`1.000` essentially always (the mic-verifier may occasionally
+nudge it, briefly). Drift should sawtooth between roughly 0 and -300ms with
+infrequent `seekPreservingBT` snaps (`snapCount` incrementing slowly, not
+every tick) — and critically, no continuous pitch/tempo wobble. If snaps
+are firing far more often than every ~10-20s per device, 300ms may still be
+too low for this cadence/device population and could need raising; if drift
+regularly overshoots well past 300ms before a snap lands, the threshold or
+check cadence may need tightening instead.

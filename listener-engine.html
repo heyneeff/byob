@@ -2154,21 +2154,26 @@ function _expectedNow() {
   });
 }
 
-// Wake/resume snap threshold — only for the coordinated recovery paths below
+// Wake/resume snap threshold — for the coordinated recovery paths below
 // (resuming from a stall, or waking from a backgrounded tab), where audio is
-// already silent/paused and an instant seek is unnoticeable. The periodic
-// per-tick corrector below NEVER snaps on small drift — see Phase 5i.
+// already silent/paused and an instant seek is unnoticeable.
 const SNAP_THRESHOLD_MS = 500;
 
-// Phase 5i — Phase 5d's "snap everything >=60ms" was only silent because the
-// unbound-timers bug (Phase 5h) made every snap throw before it landed. Now
-// that snaps actually fire, a steady ~150-190ms drift (well within the
-// engine's 15-500ms "warping" band) was re-ducking + clipping every ~3s
-// forever, which is exactly the audible glitching this corrector exists to
-// avoid. Restored to the engine's tiered requestCorrection(): <15ms ignored,
-// 15-500ms = inaudible +/-3% playbackRate nudge (visible in debug.html as
-// driftState='warping'), >500ms = duck+seek (driftState='ducking'). Validated
-// in sync-sim.html.
+// Phase 5p — back to the May 13 baseline (`6f4f5b0`) design the user
+// confirmed sounded right: no continuous playbackRate warping at all. 5o's
+// data showed the +/-3% "warping" tier was active almost permanently
+// (engineLagMs sat in the 60-460ms band essentially continuously), which is
+// a constant audible pitch wobble ("a finger on a record") — not the
+// occasional inaudible nudge the design intended. The May 13 baseline never
+// touched playbackRate: a periodic check, and if drift exceeds a threshold
+// (300ms there), an instant seekPreservingBT snap (mute/seek/ramp, ~180ms).
+// Phase 5d tried this at a 60ms threshold but that was BEFORE the
+// unbound-timers fix (5h) — once snaps actually fired (5i), 60ms snapped
+// almost every tick and felt like constant clipping. 300ms keeps snaps rare
+// (only for real drift), with audio at exactly base rate the rest of the
+// time — no warping, no ducking, from this loop.
+const DRIFT_SNAP_THRESHOLD_MS = 300;
+
 function fastDriftCorrect() {
   _lastDriftCheckAt = performance.now();
   if (!activeZone?.playback_started_at) return;
@@ -2205,22 +2210,11 @@ function fastDriftCorrect() {
   window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
-  if (Math.abs(lagMs) > 500) {
+  if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
     window._snapCount = (window._snapCount || 0) + 1;
-    // Phase 5l — never duck from the periodic corrector. Ducking
-    // (fade-down/seek/fade-up) was added to handle large drift, but it IS the
-    // clipping: on some devices the seek is a silent no-op (5k, constant
-    // ~525ms drift, duck forever), and after hard_sync/track-change bogus-lag
-    // spikes it can latch into 'ducking' on a GROWING drift that never
-    // resolves (-2786ms -> -4826ms over 60s, 5l). Clamp to the warping tier's
-    // ceiling instead: a sustained +/-3% rate nudge is slower (~17s per
-    // 500ms) but always inaudible, and recomputes fresh every tick — a
-    // one-tick bogus spike self-corrects on the very next tick.
-    window._snapCount = (window._snapCount || 0) + 1;
-    requestCorrection(Math.sign(lagMs) * 499);
-    return;
+    cancelDriftCorrection();
+    seekPreservingBT(_expectedNow());
   }
-  requestCorrection(lagMs);
 }
 audio.addEventListener('timeupdate', () => {
   if (performance.now() - _lastDriftCheckAt >= DRIFT_CHECK_MS) fastDriftCorrect();
@@ -5336,7 +5330,7 @@ function broadcastHUD() {
       stallCount:  window._stallCount || 0,
       isMuted:     _isMuted,
       engineLagMs: window._engineLagMs ?? null,
-      bigLagCount: window._snapCount || 0,
+      snapCount: window._snapCount || 0,
       browser:     _detectBrowser(),
       build: 'listener-engine',
     }

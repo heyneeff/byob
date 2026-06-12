@@ -59,8 +59,11 @@ expected = (elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/100
 
 - **`fastDriftCorrect()`** — runs every 5 seconds, purely from memory (no
   network call). Computes `expected` vs. `audio.currentTime` (via
-  `computeLagMs()`), and if they've drifted apart by more than 60ms, calls
-  `requestCorrection()`.
+  `computeLagMs()`), and if they've drifted apart by `DRIFT_SNAP_THRESHOLD_MS`
+  (300ms) or more, snaps directly: `cancelDriftCorrection()` then
+  `seekPreservingBT(expected)` (mute, jump, ~180ms ramp back up). Below
+  300ms, it does nothing — `audio.playbackRate` is never touched by this
+  loop.
 - **`syncZoneAudio()`** — runs every 60 seconds, does an actual database fetch.
   Its job isn't fine-tuning — it's a safety net that catches things memory
   can miss: "did the zone end?", "did the track change and I missed the
@@ -70,45 +73,48 @@ These stay deliberately separate: one is a tight feedback loop for staying
 glued to the beat, the other is a slow heartbeat for catching structural
 changes (zone ended, track changed, etc).
 
-## Step 4: how a correction actually gets applied — `requestCorrection()`
+## Step 4: how a correction actually gets applied
 
-Not all drift is equal, and how you fix it matters for what it sounds like:
+**Phase 5p (2026-06-12): the periodic loop no longer warps `playbackRate` at
+all.** Earlier designs (Phase 5h-5o) tiered the response — small drift got an
+inaudible ±3% `playbackRate` nudge (`'warping'`), only large drift got a
+seek+fade (`'ducking'`). In practice, real devices' drift sat continuously
+inside the 15-500ms "warping" band, which meant `playbackRate` was pinned at
+1.03 almost permanently — an audible, continuous pitch wobble ("a finger on
+a record"), the opposite of "inaudible."
 
-- **Drift under 15ms** → ignored. Not worth correcting.
-- **Drift 15–500ms** → nudge the *playback speed* by ±3% (`audio.playbackRate`)
-  for just long enough to close the gap, then snap back to normal speed.
-  At ±3%, this is completely inaudible — the listener never hears a seek,
-  the track just very subtly speeds up or slows down for a few seconds.
-  This is the **`'warping'`** state.
-- **Drift over 500ms** → too big to fix by speeding up — instead, fade the
-  volume down, jump (`seek`) to the correct position, fade back up. This is
-  the "duck" (`seekWithDuck()`), the **`'ducking'`** state. It's audible as a
-  brief dip in volume, which is why you want it to happen as rarely as
-  possible.
+The May 13 2026 baseline (`6f4f5b0`) — which the manual HUD-sync workflow
+worked great against — never touched `playbackRate` at all: a periodic
+check, and if `|drift| > 300ms`, an instant `seekPreservingBT()` snap
+(mute/seek/~180ms ramp). Otherwise, nothing. Phase 5p restores this for
+`fastDriftCorrect()`:
 
-### One gate: `_driftState`
+- **Drift under 300ms** → ignored. Audio plays at exactly base rate
+  (1.0, or the BPM-warp rate if one is set) — no modulation, ever, from this
+  loop.
+- **Drift 300ms or more** → `cancelDriftCorrection()` (clears any in-flight
+  state from the mechanism below) then `seekPreservingBT(expected)` — an
+  instant jump with a brief mute/ramp to mask the discontinuity. Audible as
+  a very short (~180ms) dip, but rare: only when real drift has actually
+  accumulated past 300ms, not every tick.
 
-All of this is governed by a single state variable, `_driftState`
-(`'idle'` / `'warping'` / `'ducking'`), through one entry point —
-`requestCorrection(lagMs)`:
+### The tiered `requestCorrection()` / `_driftState` machine still exists — for the BT-latency auto-sync verifier only
 
-- If `_driftState === 'ducking'` (mid volume-ramp, audible if interrupted),
-  the new request is remembered via `_driftPendingRecheck` instead of acting
-  immediately — interrupting a duck would be jarring. Once the duck finishes,
-  `settleToIdle()` re-checks drift and fires a fresh correction if still needed.
-- If `_driftState === 'warping'`, a new request is **not** deferred — a
-  rate-warp is just a `playbackRate` multiplier with no audible artifact, so
-  it's always safe to recompute with fresh numbers. (Earlier designs deferred
-  this too, which let a stale ±3% rate — chosen for drift that no longer
-  exists — keep running in the *wrong direction* for its full remaining
-  duration, making things worse instead of better.)
-- Otherwise, drift is classified as above and `_driftState` moves to
-  `'warping'` or `'ducking'`.
+`sync/sync-engine.js` still exports the single-gated `_driftState`
+(`'idle'` / `'warping'` / `'ducking'`) state machine and its entry point
+`requestCorrection(lagMs)`, with the same `<15ms` / `15-500ms` (±3% warp,
+`'warping'`) / `>500ms` (fade/seek/fade, `seekWithDuck()`, `'ducking'`)
+tiers described in earlier revisions of this doc. **`fastDriftCorrect()`
+no longer calls it.** It's still used by the mic-based BT-latency
+auto-sync verifier (`_syncState` — a *different* state machine, see CLAUDE.md),
+which occasionally calls `requestCorrection()` with a small lag measured via
+cross-correlation. Because that's rare and short-lived, `_driftState` should
+sit at `'idle'` / `playbackRate === 1.000` almost all the time in practice.
 
-`settleToIdle()` is the piece a naive gate gets wrong: when a correction is
-deferred because the gate was busy, *something* must recheck once it frees up
-— otherwise drift just accumulates silently. This is what makes "single gate"
-actually safe rather than merely "less wrong than scattered flags."
+`settleToIdle()` (called when a warp/duck completes) still rechecks live
+drift and re-fires `requestCorrection()` if still ≥15ms (Phase 5o) — this
+remains correct for the verifier's occasional use, even though the periodic
+loop no longer exercises it.
 
 ## Step 5: deliberate "everyone snap together NOW" moments
 
@@ -166,23 +172,27 @@ timestamp differs from the current one by >250ms).
 ## The golden rule: one corrector to rule them all
 
 The single most important invariant in this system: **every code path that
-wants to nudge a listener's playback position funnels through
-`requestCorrection()` / `seekWithDuck()` / `cancelDriftCorrection()`.**
-Nothing calls `seekPreservingBT()` directly except the deliberate,
-DJ-coordinated snap moments described above (and those clear any in-flight
-correction first).
+wants to nudge a listener's playback position calls `cancelDriftCorrection()`
+first, then either `seekPreservingBT()` (instant snap) or
+`requestCorrection()` (the tiered warp/duck machine, now verifier-only —
+see Step 4).** Nothing calls `seekPreservingBT()` directly without first
+clearing any in-flight correction via `cancelDriftCorrection()`.
 
 This matters because BYOB has many independent triggers that *could* want to
-adjust position — the 5s drift loop, the 60s health check, waking the phone
-from a locked screen, reconnecting to the network, scatter/sweep spatial
-effects, slot reassignment. If even one of these jumps straight to a raw seek
-without checking whether another correction is already in progress, you get
-two (or more) corrections actively fighting over the same `audio.currentTime`
-— each one "fixing" drift that the other one just introduced. That's the
-*roving* bug: audio that endlessly dips and re-seeks, never settling, because
-no single part of the system has the full picture of what's currently being
-corrected. Funneling everything through one gated entry point is what gives
-that one part the full picture.
+adjust position — the 5s drift loop (now itself a `cancelDriftCorrection()` +
+`seekPreservingBT()` snap above 300ms, Phase 5p), the 60s health check, waking
+the phone from a locked screen, reconnecting to the network, scatter/sweep
+spatial effects, slot reassignment, and the mic-based BT-latency verifier's
+occasional `requestCorrection()`. If even one of these jumps straight to a raw
+seek without clearing whatever another path left in flight, you get two (or
+more) corrections actively fighting over the same `audio.currentTime` — each
+one "fixing" drift that the other one just introduced. That's the *roving*
+bug: audio that endlessly dips and re-seeks, never settling, because no single
+part of the system has the full picture of what's currently being corrected.
+`cancelDriftCorrection()` resets `_driftState` to `'idle'`, clears
+`_driftPendingRecheck`, cancels any in-flight rate-warp timer, and restores
+`playbackRate` to baseline — giving whichever path calls it next a clean
+slate.
 
 ## Calibration: the missing piece for Bluetooth speakers
 

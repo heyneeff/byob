@@ -315,7 +315,7 @@ function forcedSnapEngine(L, ctx, simState) {
 // snaps directly via cancelDriftCorrection() + seekPreservingBT() — the
 // same primitive coordinated snaps already use, at the existing 5s cadence.
 // ════════════════════════════════════════════════════════════
-const STRIP_THRESHOLD_MS = 60;
+const STRIP_THRESHOLD_MS = 300;
 
 function stripTickEngine(L, simNow, dtMs, ctx, simState) {
   advance(L, dtMs);
