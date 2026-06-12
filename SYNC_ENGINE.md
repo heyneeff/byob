@@ -177,7 +177,7 @@ it as a forced snap (cancel + immediate seek, like `hard_sync`) fixed this.
 The DJ side has an equivalent invariant: **spatial reassignment changes WHICH
 stem a phone plays, never WHEN the set started.** Every `cluster_assign`
 broadcast (cluster, ring, remix, movement ticks) must carry the zone's
-*existing* `playback_started_at` — `currentStartedAt()` in `playmin.html` —
+*existing* `playback_started_at` — `currentStartedAt()` in `artist.html` —
 not a freshly minted "now".
 
 This was the June 2026 spatial-era regression: the four `cluster_assign`

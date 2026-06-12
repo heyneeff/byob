@@ -3,14 +3,14 @@
 // and the cluster_assign / spatial_config / sweep_* broadcast handlers.
 //
 // Lives entirely separate from the sync engine on purpose: spatial/DJ-tool
-// changes go here, never into listener-engine.html's sync-engine block
+// changes go here, never into listener.html's sync-engine block
 // (see CLAUDE.md invariants — "spatial/DJ-tool logic must stay separate
 // from the sync engine's reference/corrector code").
 //
 // This is a module script (loaded via <script type="module" src=
 // "spatial-routing.js">), deferred like sync/sync-engine.js's wiring module
 // — by the time any broadcast handler fires, this module has already run.
-// Per the documented pattern (see listener-engine.html's sync-engine module
+// Per the documented pattern (see listener.html's sync-engine module
 // comment), top-level `let`/`const`/`function` declarations in the page's
 // classic <script> live in the realm's shared global environment, so this
 // module reads/writes them directly: userLat, userLng, liveGuests,

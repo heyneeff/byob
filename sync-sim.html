@@ -409,7 +409,7 @@ function newTickEngine(L, simNow, dtMs, ctx, simState) {
   }
   if (ctx.events.hardSync) forcedSnapEngine(L, ctx, simState);
   // POST-FIX cluster_assign: the broadcast carries the zone's EXISTING
-  // playback_started_at (currentStartedAt() in playmin.html) — the stem
+  // playback_started_at (currentStartedAt() in artist.html) — the stem
   // reload lands in-phase. One clean seek the engine fully owns.
   if (ctx.events.clusterAssign && ctx.pick(ctx.events.clusterAssign, L)) forcedSnapEngine(L, ctx, simState);
   // POST-FIX scene fire: every listener adopts the new reference immediately —

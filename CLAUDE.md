@@ -20,20 +20,27 @@ Deploy: push to `main` — GitHub Pages serves automatically via the `CNAME` rec
 
 | File | Role |
 |------|------|
-| `listener.html` | Listener app — GPS, audio playback, geofence entry, spatial routing, fellowship/social |
-| `listener-engine.html` | Dev/validation build of the listener — wired to the extracted `sync/sync-engine.js` module and `spatial-routing.js`; sync-engine changes land and get validated here before porting to `listener.html` (long-term, intended to replace it) |
-| `playmin.html` | DJ engine — zone creation, live stream, sync broadcast, crowd view, deck, scenes |
+| `listener.html` | Listener app — GPS, audio playback, geofence entry, spatial routing, fellowship/social. Wired to the extracted `sync/sync-engine.js` module and `spatial-routing.js`. As of Jun 12 2026 this is the renamed former `listener-engine.html`, now production (see "Jun 12 2026 rename" below) |
+| `artist.html` | DJ/host engine — zone creation, live stream, sync broadcast, crowd view, deck, scenes. As of Jun 12 2026 this is the renamed former `playmin.html` |
 | `orchestra.js` | Shared `SpatialOrchestra` class — radar canvas with sweep beam and listener dots |
-| `spatial-routing.js` | Spatial/DJ-tool routing module for `listener-engine.html` — slot assignment, BPM warp, sweep/scatter offsets, and the `spatial_config`/`sweep_*`/`scatter`/`cluster_assign` broadcast handlers. Kept separate from the sync-engine block per the invariant below; only moves playback via `cancelDriftCorrection()` + `seekPreservingBT()` |
+| `spatial-routing.js` | Spatial/DJ-tool routing module for `listener.html` — slot assignment, BPM warp, sweep/scatter offsets, and the `spatial_config`/`sweep_*`/`scatter`/`cluster_assign` broadcast handlers. Kept separate from the sync-engine block per the invariant below; only moves playback via `cancelDriftCorrection()` + `seekPreservingBT()` |
 | `debug.html` | Sync dashboard — subscribes to `byob_debug` broadcasts, one card per device: currentTime, expectedPos, driftMs, deviceLatencyMs, playbackRate, driftState. Aggregate readout counts only playing devices (`playing && !paused && currentTime > 0`) and shows two numbers: drift spread (max−min driftMs, approximates audible misalignment) and raw position delta projected to a common instant (includes intentional latency/scatter offsets) |
 | `sync-sim.html` | Standalone sync-engine simulator — no audio, no Supabase. Runs old vs new corrector designs side by side with identical seeds. Validate corrector changes here before porting to `listener.html` |
 | `SYNC_ENGINE.md` | Deep-dive doc on how sync works — the reasoning behind the corrector design. **Update it when changing sync behavior** |
-| `dj.html` | **Legacy — do not edit.** Absorbed into `playmin.html`. |
-| `play.html` | **Legacy — do not edit.** Earlier version of the DJ engine. |
-| `index.html` | Public landing page — upcoming events list (free vs paid, location reveal), city filter, links to `listener.html` / `playmin.html` |
+| `index.html` | Public landing page — upcoming events list (free vs paid, location reveal), city filter, links to `listener.html` / `artist.html` |
 | `Roadmap` | Product vision, open bugs, queued features, session log |
-| `byob-capture.html`, `organismvisualizer.html` | Standalone prototypes — not linked from the main app, not wired to Supabase tables above |
+| `legacy/` | **Do not edit.** Archived prior versions: `listener-classic.html` (pre-Jun-12-2026 production `listener.html`, older inline drift corrector), `dj.html` and `play.html` (earlier DJ engines, absorbed into `artist.html`), `byob-capture.html` and `organismvisualizer.html` (standalone prototypes, never wired to the Supabase tables above) |
 | `migration_*.sql` | One-off schema migrations — run manually in the Supabase SQL editor, not applied automatically |
+
+### Jun 12 2026 rename
+`listener-engine.html` (the dev/validation build, wired to `sync/sync-engine.js` +
+`spatial-routing.js`, Phase 5u-validated) was renamed to `listener.html` and is
+now production. The previous `listener.html` (older inline `_driftState` copy,
+missing the Phase 3 BPM-warp fix) was archived as `legacy/listener-classic.html`.
+`playmin.html` was renamed to `artist.html`. Historical references to
+`listener-engine.html` / `playmin.html` / old `listener.html` elsewhere in this
+repo (especially `sync/ROADMAP.md`'s session log) describe the state *at the
+time they were written* — read them with this rename in mind, don't "fix" them.
 
 ## Architecture
 
@@ -116,7 +123,7 @@ DJ taps "Go Live" → `current_track_url = 'webrtc-live'`. Listeners call `joinW
 ### Zone slots (dynamic, C + 1–N)
 DJ assigns tracks to zone slots. Dynamic count: Center (C) plus numbered slots. Key functions: `getSlotKeys()`, `slotColor(key)`, `addSlot()`, `removeSlot()`. `SLOT_PALETTE` holds 12 colors. `zone_tracks` is JSON on `zones`: `{slotKey → trackUrl}`.
 
-### Spatial modes (DJ side, `playmin.html`)
+### Spatial modes (DJ side, `artist.html`)
 - **Single** — all listeners get Center (C) track
 - **Cluster** — k-means by GPS proximity, assigns stem slots
 - **Ring** — concentric rings by distance from zone center
@@ -129,7 +136,7 @@ All modes broadcast `cluster_assign` via `sync_{zone_id}` with `{listenerId → 
 ### Listener slot assignment
 `getSpatialSlot(config)` — bearing-quadrant self-assignment. Needs `config.zone_lat`, `config.zone_lng`, `config.zone_radius_m`, `config.zone_tracks`, `config.voices`. `l.dist` in `liveGuests` is in **meters** — do NOT multiply by 1609.34.
 
-### Master BPM + scene launcher (DJ, `playmin.html`)
+### Master BPM + scene launcher (DJ, `artist.html`)
 `_masterBPM` — DJ-set master tempo. `tapTempo()` — tap-to-set. `onMasterBpm()` — manual entry. Scenes fire beat-quantized via `slFireScene` → waits `beatMs - (serverNow() % beatMs)` then calls `_doFireScene`. `broadcastAllZones()` payload includes `master_bpm` and `track_bpms`. Listeners apply `applyBpmWarp(slot, url)` from `audio.playbackRate`. Drift correction uses `_getBpmWarpRate()` as base rate so BPM warp and drift correction don't fight.
 
 ### Rally point
@@ -184,7 +191,7 @@ Boomy speech (`playBabble`) is currently muted — `playBabble()` returns immedi
 - `fastDriftCorrect` and `syncZoneAudio` are separate loops — do not merge them back
 - `buildSyncChannel(zoneId)` is the only way to set up the sync channel — never inline it
 - Every drift trigger funnels through `requestCorrection()` — nothing calls `seekPreservingBT()` directly except coordinated snaps, and those must call `cancelDriftCorrection()` first. Two uncoordinated correctors fighting over `audio.currentTime` is the "roving" bug
-- One reference point per zone: `cluster_assign` broadcasts must carry the zone's existing `playback_started_at` via `currentStartedAt()` (playmin.html) — never mint `new Date(serverNow())`. Spatial reassignment changes WHICH stem, not WHEN the set started. Sites that legitimately restart playback must call `noteStartedAt(startedAt)`
+- One reference point per zone: `cluster_assign` broadcasts must carry the zone's existing `playback_started_at` via `currentStartedAt()` (artist.html) — never mint `new Date(serverNow())`. Spatial reassignment changes WHICH stem, not WHEN the set started. Sites that legitimately restart playback must call `noteStartedAt(startedAt)`
 - Validate corrector design changes in `sync-sim.html` before porting to `listener.html`; keep `SYNC_ENGINE.md` and `debug.html`'s expectedPos formula in step with the code
 - Spatial/DJ-tool logic (cluster/ring/sweep/scatter/movement, BPM warp, scene launcher) must stay separate from the sync engine's reference/corrector code — never inline spatial assignment or BPM-warp math into `fastDriftCorrect`, `requestCorrection`, or the seek formula. The Jun 10 2026 spatial-era regression (reference fragmentation from `cluster_assign` broadcasts) happened because spatial code reached into the corrector's reference point; spatial code may only ever call the documented entry points (`noteStartedAt`, `currentStartedAt`, `cancelDriftCorrection` + `seekPreservingBT`)
 - Zones are isolated per `host_id` — multiple DJs can run independent zones (own tracks, `zone_tracks`, realtime channels) at the same time without collision. Creating a new zone only deactivates the *creating user's own* zones (`eq('host_id', currentUser.id)`), never another host's

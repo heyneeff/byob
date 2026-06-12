@@ -4444,9 +4444,9 @@ window.addEventListener('DOMContentLoaded',()=>{
 
   function setImg(id, src){ const el=document.getElementById(id); if(el) el.src=src; }
 
-  // Try fetching dj.html from same server to extract real base64
+  // Try fetching legacy/dj.html from same server to extract real base64
   try {
-    const res = await fetch('dj.html', {signal: AbortSignal.timeout(3000)});
+    const res = await fetch('legacy/dj.html', {signal: AbortSignal.timeout(3000)});
     if(res.ok){
       const txt = await res.text();
       const extract = (varName) => {
@@ -4463,10 +4463,10 @@ window.addEventListener('DOMContentLoaded',()=>{
       if(lips) setImg('lips-img',lips);
       if(kill) setImg('kill-img',kill);
       if(eye)  setImg('eye-img',eye);
-      console.log('[BYOB] Assets loaded from dj.html');
+      console.log('[BYOB] Assets loaded from legacy/dj.html');
       return;
     }
-  } catch(e){ console.log('[BYOB] dj.html not found, using SVG placeholders'); }
+  } catch(e){ console.log('[BYOB] legacy/dj.html not found, using SVG placeholders'); }
 
   // Fallback SVGs
   setImg('logo-img', svgLogo);

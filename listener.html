@@ -1350,6 +1350,17 @@ function zoomToRally() {
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
+  broadcastSyncEvent('track_change');
+  // activeZone.playback_started_at is updated (by the caller) to the NEW
+  // track's value before this runs, but audio.duration/currentTime still
+  // belong to the OLD track until 'loadedmetadata' fires (async, can take
+  // seconds on a slow BT connection). If fastDriftCorrect() runs in that
+  // window it mixes new playback_started_at with old duration/currentTime —
+  // a huge bogus lag that triggers a duck loop that can't resolve until the
+  // new track loads. Gate drift correction until the new track is ready.
+  window._trackLoading = true;
+  window._currentTrackUrl = url;
+  window._currentTrackTitle = title;
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -1374,6 +1385,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     audio.removeEventListener('loadedmetadata', onMeta);
     if (!audio.duration) return;
     seekToSync(startedAt, playAt, playFromS);
+    window._trackLoading = false;
     // Apply master BPM warp if DJ has set one
     const mySlot = window._spatialConfig ? getSpatialSlot(window._spatialConfig) : 'C';
     applyBpmWarp(mySlot, url);
@@ -1412,19 +1424,15 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   audio.load();
 }
 
-const SEEK_STAB_S = 0.27; // audio seek stabilization latency ~160ms
+const SEEK_STAB_S = 0.27; // audio seek stabilization latency ~160ms — must match sync/sync-engine.js
 function seekToSync(startedAt, playAt, playFromS) {
   if (!audio.duration) return;
-  let seekTo = 0;
-  if (playAt && playFromS !== undefined) {
-    const delayMs = playAt - syncedNow();
-    seekTo = (playFromS || 0) + SEEK_STAB_S;
-    if (delayMs < 0) seekTo += (-delayMs / 1000);
-  } else if (startedAt) {
-    const elapsed = (syncedNow() - new Date(startedAt).getTime()) / 1000;
-        seekTo = elapsed - (_deviceLatencyMs / 1000) + SEEK_STAB_S - (_scatterOffsetMs / 1000);
-
-  }
+  const seekTo = window.SyncEngine.computeSeekTime({
+    startedAt, playAt, playFromS,
+    syncedNowMs: syncedNow(),
+    deviceLatencyMs: _deviceLatencyMs,
+    scatterOffsetMs: _scatterOffsetMs,
+  });
   audio.currentTime = Math.max(0, seekTo % audio.duration);
 }
 
@@ -2092,9 +2100,52 @@ function stopEverything() {
 
 // ════════════════════════════════════════════════════════════
 // SYNC ENGINE — drift correction only
-//
-// VALIDATED — tagged `sync-validated-5u` (Phase 5u, 21st live session:
-// median drift -3 to -13ms, 68-93% of samples <50ms, no freezes).
+// ════════════════════════════════════════════════════════════
+let _syncInterval = null;
+let _driftInterval = null;
+let _healthInterval = null;
+
+// Fast drift correction — memory only, no network, target cadence ~5s.
+// Driven by BOTH setInterval (below) and audio's 'timeupdate' event
+// (further down): a 2026-06-11 debug session showed setInterval(...,5000)
+// goes silent on backgrounded/screen-locked tabs (BYOB's primary mode —
+// phone as BT speaker, screen off) for minutes at a time, during which
+// drift grew unbounded with driftState stuck 'idle'. 'timeupdate' keeps
+// firing during real playback regardless of JS timer throttling, so it's
+// the reliable trigger; the interval is a redundant backstop.
+let _lastDriftCheckAt = 0;
+const DRIFT_CHECK_MS = 5000;
+window._stallCount = 0;
+window._trackLoading = false;
+
+// Resume from a paused/stalled audio element and reseek to expectedPosition()
+// — resuming alone leaves currentTime frozen at its pre-pause value, which
+// reads as ever-growing drift with nothing to correct it (a 2026-06-11
+// session showed devices frozen for 200s+ this way). Shared by
+// fastDriftCorrect's paused-but-should-be-playing check and _handleStall.
+function _resumeAndReseek() {
+  audio.play().then(() => {
+    if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject) return;
+    cancelDriftCorrection();
+    seekPreservingBT(_expectedNow());
+  }).catch(() => {});
+}
+
+// Last resort when _resumeAndReseek() keeps reporting audio.play() success
+// but currentTime never moves and audio.paused stays true (2026-06-11
+// session, dev_bwlh40: froze at currentTime=39.309 right after a track
+// change for the rest of the session, stallCount climbing 1->12, drift
+// growing unbounded to -58779ms). Re-running .play() on the same element
+// doesn't unstick it — reload the track from scratch via loadTrack(), which
+// reassigns audio.src and calls audio.load() (fresh decode pipeline).
+function _hardReloadTrack() {
+  if (!window._currentTrackUrl || !activeZone?.playback_started_at) return;
+  loadTrack(window._currentTrackUrl, window._currentTrackTitle, activeZone.playback_started_at, activeZone.play_at, activeZone.play_from_s);
+}
+
+// ════════════════════════════════════════════════════════════
+// SYNC ENGINE — VALIDATED, tagged `sync-validated-5u` (Phase 5u, 21st live
+// session: median drift -3 to -13ms, 68-93% of samples <50ms, no freezes).
 // Do not modify this block for spatial/DJ-tool work. If you're here to wire
 // in cluster/ring/sweep/scatter/movement or BPM-warp logic, route it through
 // noteStartedAt() / currentStartedAt() / cancelDriftCorrection() +
@@ -2102,34 +2153,90 @@ function stopEverything() {
 // If a real flaw is found, fix it, re-validate via sync-sim.html + a live
 // debug.html session, and re-tag.
 // ════════════════════════════════════════════════════════════
-let _syncInterval = null;
-let _driftInterval = null;
-let _healthInterval = null;
 
-// Phase 5p — snap-only, no playbackRate warping (the May 13 baseline design).
-// Continuous ±3% rate nudges sat almost permanently in the "warping" band on
-// real devices, producing an audible, constant pitch wobble ("a finger on a
-// record"). Below this threshold we do nothing; at/above it we snap once.
+// Canonical "where should playback be right now" — shared by _resumeAndReseek
+// and fastDriftCorrect's snap path so both agree with broadcastHUD's expectedPos.
+function _expectedNow() {
+  const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
+  return window.SyncEngine.expectedPosition({
+    elapsedS: elapsed, duration: audio.duration,
+    deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
+    warpRate: _getBpmWarpRate(),
+  });
+}
+
+// Wake/resume snap threshold — for the coordinated recovery paths below
+// (resuming from a stall, or waking from a backgrounded tab), where audio is
+// already silent/paused and an instant seek is unnoticeable.
+const SNAP_THRESHOLD_MS = 500;
+
+// Phase 5p — back to the May 13 baseline (`6f4f5b0`) design the user
+// confirmed sounded right: no continuous playbackRate warping at all. 5o's
+// data showed the +/-3% "warping" tier was active almost permanently
+// (engineLagMs sat in the 60-460ms band essentially continuously), which is
+// a constant audible pitch wobble ("a finger on a record") — not the
+// occasional inaudible nudge the design intended. The May 13 baseline never
+// touched playbackRate: a periodic check, and if drift exceeds a threshold
+// (300ms there), an instant seekPreservingBT snap (mute/seek/ramp, ~180ms).
+// Phase 5d tried this at a 60ms threshold but that was BEFORE the
+// unbound-timers fix (5h) — once snaps actually fired (5i), 60ms snapped
+// almost every tick and felt like constant clipping. 300ms keeps snaps rare
+// (only for real drift), with audio at exactly base rate the rest of the
+// time — no warping, no ducking, from this loop.
 const DRIFT_SNAP_THRESHOLD_MS = 300;
 
-// Fast drift correction — memory only, no network, runs every 5s
 function fastDriftCorrect() {
-  window._lastDriftCheckAt = performance.now();
+  _lastDriftCheckAt = performance.now();
   if (!activeZone?.playback_started_at) return;
-  if (!audio.duration || audio.paused) return;
+  if (!audio.duration) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
+  if (window._trackLoading) return; // new track's metadata not loaded yet — see loadTrack()
+  // Audio element paused while we expect playback (OS/BT suspended it
+  // without firing 'stalled'/'waiting'/'suspend') — recover instead of
+  // silently bailing every tick.
+  if (audio.paused) {
+    if (_webAudioPlaying) {
+      window._stallCount = (window._stallCount || 0) + 1;
+      // If currentTime hasn't moved across several consecutive paused ticks,
+      // _resumeAndReseek()'s play()+seek isn't unsticking this element —
+      // escalate to a full track reload (see _hardReloadTrack).
+      if (window._lastPausedCurrentTime === audio.currentTime) {
+        window._frozenTicks = (window._frozenTicks || 0) + 1;
+      } else {
+        window._frozenTicks = 0;
+      }
+      window._lastPausedCurrentTime = audio.currentTime;
+      if (window._frozenTicks >= 3) {
+        window._frozenTicks = 0;
+        _hardReloadTrack();
+      } else {
+        _resumeAndReseek();
+      }
+    }
+    return;
+  }
+  window._frozenTicks = 0;
+  window._lastPausedCurrentTime = null;
   const lagMs = computeLagMs();
+  window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
   if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
     window._snapCount = (window._snapCount || 0) + 1;
-    console.log('[Drift] snap', lagMs.toFixed(0) + 'ms');
     cancelDriftCorrection();
     seekPreservingBT(_expectedNow());
   } else {
+    // Phase 5r — below the snap threshold, trim playbackRate by a tiny
+    // (+/-0.6% max) amount to cancel each device's constant hardware
+    // clock-rate error. Without this, drift sawtooths from ~0 up to
+    // DRIFT_SNAP_THRESHOLD_MS and back every couple minutes (median
+    // drift -60 to -180ms); the trim holds it near 0 between snaps.
     applyMicroCorrection(lagMs);
   }
 }
+audio.addEventListener('timeupdate', () => {
+  if (performance.now() - _lastDriftCheckAt >= DRIFT_CHECK_MS) fastDriftCorrect();
+});
 
 // Zone health check — DB fetch, runs every 60s to detect zone end / missed track changes
 async function syncZoneAudio() {
@@ -2170,29 +2277,27 @@ document.addEventListener('visibilitychange', () => {
     audio.play().catch(() => {});
   }
   // Recover from a stuck _webAudioPlaying=false (e.g. a programmatic resume
-  // got rejected by autoplay policy while the screen was locked —
-  // fastDriftCorrect bails out entirely while audio.paused, so without this
-  // retry here the device stays silent and frozen for the rest of the
-  // session, drift growing unbounded). A wake event is a user gesture
-  // context, so play() is far more likely to succeed here.
+  // from _hardReloadTrack() got rejected by autoplay policy while the screen
+  // was locked — fastDriftCorrect's paused-audio recovery branch requires
+  // _webAudioPlaying to even run, so without this retry here the device
+  // stays silent and frozen for the rest of the session, drift growing
+  // unbounded with snapCount/stallCount stuck. A wake event is a user
+  // gesture context, so play() is far more likely to succeed here.
   if (!_webAudioPlaying && !audio.srcObject && audio.src) {
     audio.play().then(() => {
       _webAudioPlaying = true;
-      if (audio.duration && activeZone.playback_started_at) {
+      if (audio.duration && activeZone.playback_started_at && !window._trackLoading) {
         cancelDriftCorrection();
         seekPreservingBT(_expectedNow());
       }
     }).catch(() => {});
   }
-  // Instant memory-based resync — no network needed. A coordinated snap, like
-  // the periodic drift loop: cancelDriftCorrection() first so it can't stack
-  // on top of an in-flight duck/seek from fastDriftCorrect — that fighting
-  // between independent direct-seek paths was the "roving" never-settles bug.
-  // Audio was silent/paused on the locked screen, so an instant seek here is
-  // unnoticeable — no need to wait for the 300ms drift-loop threshold.
-  if (audio.duration && activeZone.playback_started_at && !audio.srcObject) {
+  // Instant memory-based resync — no network needed. Same stripped snap path
+  // as fastDriftCorrect (cancelDriftCorrection + seekPreservingBT) so a
+  // visibility-wake snap can't fight an in-flight seek.
+  if (audio.duration && activeZone.playback_started_at && !audio.srcObject && !window._trackLoading) {
     const lagMs = computeLagMs();
-    if (lagMs != null && Math.abs(lagMs) > 60) {
+    if (lagMs != null && Math.abs(lagMs) >= SNAP_THRESHOLD_MS) {
       cancelDriftCorrection();
       seekPreservingBT(_expectedNow());
     }
@@ -2336,7 +2441,7 @@ async function handleOffer(sdp) {
 // BOOM MENU — logout, DJ link
 // ════════════════════════════════════════════════════════════
 function onBoomClick() { document.getElementById('boom-menu').classList.toggle('open'); }
-function openDJMode() { document.getElementById('boom-menu').classList.remove('open'); window.open('dj.html','_blank'); }
+function openDJMode() { document.getElementById('boom-menu').classList.remove('open'); window.open('artist.html','_blank'); }
 async function lsLogout() { document.getElementById('boom-menu').classList.remove('open'); await db.auth.signOut(); location.reload(); }
 document.addEventListener('click', e => {
   if (!e.target.closest('#boom-menu') && !e.target.closest('#hdr-boom'))
@@ -3620,6 +3725,7 @@ async function previewZone(z) {
 
 // Called when geofence is physically crossed — this plays the music
 async function activateZone(z) {
+  await window._syncEngineReady; // sync/sync-engine.js module — see Phase 5, sync/ROADMAP.md
   activeZone = z;
   _scatterOffsetMs = 0; // clear any sweep offset from a previous zone
   unlockUI(z);
@@ -3699,7 +3805,11 @@ function buildZoneChannel(z) {
             if (!activeZone || !audio.duration) return;
             cancelDriftCorrection();
             const elapsed = (syncedNow() - new Date(zn.playback_started_at).getTime()) / 1000;
-            seekPreservingBT(((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration);
+            seekPreservingBT(window.SyncEngine.expectedPosition({
+              elapsedS: elapsed, duration: audio.duration,
+              deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
+              warpRate: _getBpmWarpRate(),
+            }));
             setSyncIndicator('synced', 0);
           }, Math.max(0, waitMs));
         }
@@ -3781,6 +3891,7 @@ function buildSyncChannel(zoneId) {
    .on('broadcast', { event: 'hard_sync' }, ({ payload }) => {
     const waitMs = payload.resyncAt - syncedNow();
     if (Math.abs(waitMs) > 10000) return;
+    broadcastSyncEvent('hard_sync');
     // _deviceLatencyMs is a hardware constant (speaker output delay) — a SNAP/sync
     // command must never wipe it, or the listener loses BT compensation until they
     // physically leave and re-enter the zone (the only place recalibration runs).
@@ -3796,67 +3907,22 @@ function buildSyncChannel(zoneId) {
       if (!audio.duration) return;
       cancelDriftCorrection();
       const elapsed = (syncedNow() - new Date(payload.playback_started_at).getTime()) / 1000;
-      seekPreservingBT(((elapsed + SEEK_STAB_S - (_deviceLatencyMs/1000) - (_scatterOffsetMs/1000)) % audio.duration + audio.duration) % audio.duration);
+      seekPreservingBT(window.SyncEngine.expectedPosition({
+        elapsedS: elapsed, duration: audio.duration,
+        deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
+        warpRate: _getBpmWarpRate(),
+      }));
       setSyncIndicator('synced', 0);
     }, delay);
   })
-  .on('broadcast', { event: 'spatial_config' }, ({ payload }) => {
-    window._spatialConfig = payload;
-    window._masterBPM = payload.master_bpm || null;
-    window._trackBpms = payload.track_bpms || {};
-    if (payload.suggested_donation) { window._suggestedDonation = payload.suggested_donation; showPlayerTipBtn(); }
-    if (payload.tip_url) { window._zoneTipUrl = payload.tip_url; showPlayerTipBtn(); }
-    const mySlot = getSpatialSlot(payload);
-    const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
-    if (trackUrl && trackUrl !== audio.src) {
-      loadTrack(trackUrl, 'Zone ' + mySlot, payload.playback_started_at);
-      showToast('🔊 Slot ' + mySlot);
-    } else if (trackUrl && trackUrl === audio.src) {
-      applyBpmWarp(mySlot, trackUrl);
-      // Scene fires reset playback_started_at for the whole zone. A listener
-      // whose stem didn't change must still adopt the new reference point —
-      // otherwise it limps on the old one until fastDriftCorrect ducks it
-      // (up to 5s late). Forced snap, same family as hard_sync/scatter.
-      const newStart = payload.playback_started_at ? new Date(payload.playback_started_at).getTime() : null;
-      const curStart = activeZone?.playback_started_at ? new Date(activeZone.playback_started_at).getTime() : null;
-      if (newStart && audio.duration && (!curStart || Math.abs(newStart - curStart) > 250)) {
-        if (activeZone) activeZone.playback_started_at = payload.playback_started_at;
-        cancelDriftCorrection();
-        const elapsed = (syncedNow() - newStart) / 1000;
-        seekPreservingBT(((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration);
-      }
-    }
-  })
-  .on('broadcast', { event: 'sweep_start' }, ({ payload }) => { window._sweepConfig = payload; applySweepOffset(payload); })
-  .on('broadcast', { event: 'sweep_stop' }, () => { window._sweepConfig = null; _scatterOffsetMs = 0; })
-  .on('broadcast', { event: 'scatter' }, ({ payload }) => {
-    const maxMs  = payload.maxMs  || 1000;
-    const voices = payload.voices || 4;
-    const slot   = simpleHash(listenerId) % voices;
-    _scatterOffsetMs = voices > 1 ? Math.round((slot / (voices - 1)) * maxMs) : 0;
-    boomSay(`♩ +${(_scatterOffsetMs/1000).toFixed(2)}s`, 1800, false, 'devious');
-    // A scatter offset is a deliberate shift of the reference point itself —
-    // not drift to be corrected gradually. Feeding it through the gradual
-    // warp/duck path lets drift balloon to the full offset size while the duck
-    // ramps (proven out in sync-sim.html). Cancel and snap immediately, same as
-    // hard_sync/resync_at/sweep.
-    if (activeZone?.playback_started_at && audio.duration) {
-      cancelDriftCorrection();
-      const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-      const expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
-      seekPreservingBT(expected);
-    }
-  })
-  .on('broadcast', { event: 'cluster_assign' }, ({ payload }) => {
-    const mySlot = payload.assignments?.[listenerId];
-    const trackUrl = mySlot
-      ? (payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'])
-      : payload.zone_tracks?.['C'];
-    if (!trackUrl || trackUrl === audio.src) return;
-    const label = 'Cluster ' + (mySlot || 'C');
-    const waitMs = payload.play_at ? Math.max(0, payload.play_at - syncedNow()) : 0;
-    setTimeout(() => { loadTrack(trackUrl, label, payload.playback_started_at); boomSay('⬡ ' + (mySlot || 'C'), 2000, false, 'regular'); }, waitMs);
-  })
+  // Spatial/DJ-tool broadcast handlers — all logic lives in
+  // spatial-routing.js (see CLAUDE.md invariants: spatial code must stay
+  // separate from this sync-engine block).
+  .on('broadcast', { event: 'spatial_config' }, ({ payload }) => window.SpatialRouting?.onSpatialConfig(payload))
+  .on('broadcast', { event: 'sweep_start' }, ({ payload }) => window.SpatialRouting?.onSweepStart(payload))
+  .on('broadcast', { event: 'sweep_stop' }, () => window.SpatialRouting?.onSweepStop())
+  .on('broadcast', { event: 'scatter' }, ({ payload }) => window.SpatialRouting?.onScatter(payload))
+  .on('broadcast', { event: 'cluster_assign' }, ({ payload }) => window.SpatialRouting?.onClusterAssign(payload))
   .on('broadcast', { event: 'rally' }, ({ payload }) => {
     if (!payload?.lat || !payload?.lng) return;
     window._rallyPoint = { lat: payload.lat, lng: payload.lng, label: payload.label || '' };
@@ -3977,7 +4043,11 @@ audio.addEventListener('timeupdate',()=>{
   document.getElementById('time-dur').textContent=fmt(audio.duration);
 });
 
-// Audio stall recovery — auto-resume after 2.5s if we expected playback
+// Audio stall recovery — auto-resume after 2.5s if we expected playback.
+// _resumeAndReseek() (defined with fastDriftCorrect above) handles both the
+// resume and the reseek-to-expectedPosition (a stall can last minutes;
+// resuming from the frozen currentTime alone leaves it stuck behind
+// expectedPos with nothing to correct it).
 let _stallTimer = null;
 function _handleStall() {
   if (!_webAudioPlaying || !activeZone || _isMuted) return;
@@ -3985,7 +4055,7 @@ function _handleStall() {
   _stallTimer = setTimeout(() => {
     if (audio.paused && _webAudioPlaying && !_isMuted) {
       window._stallCount = (window._stallCount || 0) + 1;
-      audio.play().catch(() => {});
+      _resumeAndReseek();
     }
   }, 2500);
 }
@@ -4843,154 +4913,17 @@ async function _enterLockingState(){
     _syncState = 'idle';
   }
 }
-// ── Drift corrector: single gated state machine ───────────────────────────
-// _driftState: 'idle' | 'warping' | 'ducking'. Every continuous-drift trigger
-// (fastDriftCorrect, visibilitychange wake) funnels through requestCorrection().
-// 'warping' is just a playbackRate nudge — silent, so it's always safe to
-// recompute with fresh numbers. 'ducking' is mid volume-ramp — interrupting it
-// is audible, so a correction that arrives mid-duck is remembered via
-// _driftPendingRecheck and re-evaluated via settleToIdle() once the duck
-// finishes. Without that recheck, drift that grows during a duck would never
-// get corrected (proven out in sync-sim.html).
-let _driftState = 'idle';
-let _driftPendingRecheck = false;
-let _driftWarpTimer = null;
-
-// Current drift in ms (expected position − actual), or null if there's
-// nothing to compare against right now (no track loaded / WebRTC live).
-function computeLagMs() {
-  if (!audio.duration || !activeZone?.playback_started_at || audio.srcObject) return null;
-  const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-  const expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
-  return (expected - audio.currentTime) * 1000;
-}
-
-// Expected playback position right now, per the shared seek formula — the
-// target for any corrective seek (drift-loop snap, visibilitychange wake).
-function _expectedNow() {
-  const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-  return ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
-}
-
-// Phase 5r — continuous micro-rate trim (mirrors sync/sync-engine.js's
-// microCorrectionRate). Real devices carry a small, constant hardware
-// clock-rate error, which made drift sawtooth from ~0 up to
-// DRIFT_SNAP_THRESHOLD_MS and back every couple minutes under the Phase 5p
-// snap-only design (median drift -60 to -180ms). This trim is far gentler
-// than the old +/-3% warp band (the "finger on a record" wobble) — capped
-// at +/-0.6%, and it settles to a small constant offset rather than
-// continuously flipping direction, so there's nothing to hear flutter
-// against. No-op while the verifier's warp/duck machine is active.
-const MICRO_GAIN_PER_MS = 0.0002;
-const MICRO_MAX_PCT     = 0.006;
-function applyMicroCorrection(lagMs) {
-  if (_driftState !== 'idle') return;
-  const pct = Math.max(-MICRO_MAX_PCT, Math.min(MICRO_MAX_PCT, lagMs * MICRO_GAIN_PER_MS));
-  audio.playbackRate = _getBpmWarpRate() * (1 + pct);
-}
-
-function settleToIdle() {
-  _driftState = 'idle';
-  if (_driftPendingRecheck) {
-    _driftPendingRecheck = false;
-    const lagMs = computeLagMs();
-    if (lagMs != null) requestCorrection(lagMs);
-  }
-}
-
-function requestCorrection(lagMs) {
-  if (_driftState === 'ducking') { _driftPendingRecheck = true; return; }
-  clearTimeout(_driftWarpTimer);
-  if (Math.abs(lagMs) < 15) {
-    audio.playbackRate = _getBpmWarpRate();
-    _driftState = 'idle';
-    return;
-  }
-  if (Math.abs(lagMs) > 500) {
-    audio.playbackRate = _getBpmWarpRate();
-    _driftState = 'ducking';
-    seekWithDuck(audio.currentTime + lagMs / 1000);
-    return;
-  }
-  // Small drift = rate correction — completely inaudible at ±3%
-  const baseRate = _getBpmWarpRate();
-  audio.playbackRate = lagMs > 0 ? baseRate * 1.03 : baseRate * 0.97;
-  _driftState = 'warping';
-  const correctionMs = Math.abs(lagMs) / 0.03;
-  _driftWarpTimer = setTimeout(() => {
-    audio.playbackRate = _getBpmWarpRate();
-    settleToIdle();
-  }, correctionMs);
-}
-
-// Coordinated DJ-commanded snaps (hard_sync / resync_at / sweep beam-hit /
-// scatter) seek immediately and must win — cancel any in-flight rate-warp/
-// duck first so it can't recompute and overwrite the snap a moment later
-// (a "roving" fight source).
-function cancelDriftCorrection() {
-  clearTimeout(_driftWarpTimer);
-  _driftState = 'idle';
-  _driftPendingRecheck = false;
-  audio.playbackRate = _getBpmWarpRate();
-}
-
-function seekWithDuck(newTime) {
-  const targetVol = audio.volume || 1;
-  // Safety: if something throws mid-duck, release the gate so sync doesn't die silently
-  const _duckSafety = setTimeout(() => { audio.volume = targetVol; settleToIdle(); }, 5000);
-  // setInterval (not rAF) — rAF is throttled/paused on locked phone screens, which is
-  // BYOB's primary listening mode (phone as Bluetooth speaker, screen off). An rAF ramp
-  // would freeze mid-duck, leaving audio silent until the 5s safety timer fires, then
-  // immediately re-duck on the next drift cycle — a near-permanent silence loop.
-  const DUCK_MS = 1500, RISE_MS = 1000, STEPS = 20;
-  function ramp(durationMs, from, to, onDone) {
-    const interval = Math.max(50, durationMs / STEPS);
-    let step = 0;
-    const timer = setInterval(() => {
-      step++;
-      const t = Math.min(step / STEPS, 1);
-      const eased = t * t * (3 - 2 * t);
-      audio.volume = from + (to - from) * eased;
-      if (step >= STEPS) { audio.volume = to; clearInterval(timer); onDone(); }
-    }, interval);
-  }
-  ramp(DUCK_MS, targetVol, 0, () => {
-    // Recompute the target now, at seek time — the ~1.5s ramp we just ran means
-    // the position passed in has gone stale (audio kept playing through it), so
-    // seeking to it would reintroduce ~1.5s of fresh drift and the loop never settles.
-    let safeTime = newTime;
-    if (activeZone?.playback_started_at && audio.duration) {
-      const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-      safeTime = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
-    }
-    safeTime = Math.max(0, Math.min(safeTime, (audio.duration || 9999) - 0.1));
-    audio.currentTime = safeTime;
-    setTimeout(() => {
-      ramp(RISE_MS, 0, targetVol, () => {
-        clearTimeout(_duckSafety);
-        settleToIdle();
-      });
-    }, 80);
-  });
-}
-
-
-function seekPreservingBT(newTime) {
-  const safeTime = Math.max(0, Math.min(newTime, (audio.duration || 9999) - 0.1));
-  const targetVol = audio.volume || 1;
-  audio.volume = 0;
-  audio.currentTime = safeTime;
-  // RAF-based ramp — smoother than setInterval, no timer drift
-  const rampMs = 180;
-  const start = performance.now();
-  function ramp(now) {
-    const t = Math.min((now - start) / rampMs, 1);
-    audio.volume = targetVol * (t * t * (3 - 2 * t)); // smooth step
-    if (t < 1) requestAnimationFrame(ramp);
-    else audio.volume = targetVol;
-  }
-  requestAnimationFrame(ramp);
-}
+// ── Drift corrector: delegates to sync/sync-engine.js (window.SyncEngine) ──
+// _driftState ('idle'|'warping'|'ducking'), requestCorrection/
+// cancelDriftCorrection/seekPreservingBT, and the seek-position math
+// (computeLagMs/expectedPosition/SEEK_STAB_S) all live in the engine module
+// now — see sync/ROADMAP.md Phase 5. These wrappers keep every call site in
+// this file unchanged.
+function computeLagMs() { return window.SyncEngine.computeLagMs(); }
+function requestCorrection(lagMs) { window.SyncEngine.requestCorrection(lagMs); }
+function cancelDriftCorrection() { window.SyncEngine.cancelDriftCorrection(); }
+function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime); }
+function applyMicroCorrection(lagMs) { window.SyncEngine.applyMicroCorrection(lagMs); }
 
 async function _runLockingPass(){
   if (_syncState !== 'locking' && _syncState !== 'verifying') return;
@@ -5367,6 +5300,18 @@ function ensureHUDChannel() {
   _hudChannel = window._debugChannel = window._debugChannel || db.channel('byob_debug').subscribe();
 }
 
+// Marks a forced re-sync (track change or DJ's hard_sync) on debug.html's
+// timeline so drift right before/after can be compared — these are the
+// moments sync is freshly anchored to playback_started_at and tends to be
+// tightest.
+function broadcastSyncEvent(kind) {
+  ensureHUDChannel();
+  _hudChannel.send({
+    type: 'broadcast', event: 'sync_event',
+    payload: { deviceId: _hudDeviceId, kind, ts: syncedNow() },
+  });
+}
+
 function broadcastHUD() {
   ensureHUDChannel();
   const now = syncedNow();
@@ -5374,7 +5319,11 @@ function broadcastHUD() {
     ? new Date(activeZone.playback_started_at).getTime() : null;
   const elapsed = startedAt ? ((now - startedAt) / 1000) : null;
   const expectedPos = elapsed !== null && audio.duration
-    ? (((elapsed + SEEK_STAB_S - _deviceLatencyMs / 1000 - _scatterOffsetMs / 1000) % audio.duration + audio.duration) % audio.duration)
+    ? window.SyncEngine.expectedPosition({
+        elapsedS: elapsed, duration: audio.duration,
+        deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
+        warpRate: _getBpmWarpRate(),
+      })
     : null;
   const drift = expectedPos !== null ? (audio.currentTime - expectedPos) : null;
   _hudChannel.send({
@@ -5393,20 +5342,21 @@ function broadcastHUD() {
       playbackRate: audio.duration ? audio.playbackRate.toFixed(3) : null,
       paused:      audio.paused,
       playing:     _webAudioPlaying,
-      driftState:  _driftState,
-      driftPending: _driftPendingRecheck,
+      driftState:  window.SyncEngine.getDriftState(),
+      driftPending: window.SyncEngine.getDriftPendingRecheck(),
       zone:        activeZone?.name || null,
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
-      isMuted:     _isMuted,
-      snapCount:   window._snapCount || 0,
-      // Phase 5s diagnostics — checking whether the rapid-fire snapping seen
-      // in the 19th session (drift sawtoothing 0 -> -250 -> -450ms every
-      // ~8s, far faster than hardware-drift) correlates with real audio
-      // buffer stalls (readyState dips, stalled/waiting/suspend events).
+      // Diagnostics for the timeupdate-driven drift-check fix (2026-06-11
+      // session showed driftState stuck 'idle' for minutes on backgrounded
+      // tabs) — visibilityState/lastDriftCheckAgoMs/readyState/stallCount
+      // confirm whether the check loop is actually running.
+      visibilityState: document.visibilityState,
+      lastDriftCheckAgoMs: _lastDriftCheckAt ? Math.round(performance.now() - _lastDriftCheckAt) : null,
       readyState:  audio.readyState,
       stallCount:  window._stallCount || 0,
-      visibilityState: document.visibilityState,
-      lastDriftCheckAgoMs: window._lastDriftCheckAt ? Math.round(performance.now() - window._lastDriftCheckAt) : null,
+      isMuted:     _isMuted,
+      engineLagMs: window._engineLagMs ?? null,
+      snapCount: window._snapCount || 0,
       browser:     _detectBrowser(),
       build: 'listener',
     }
@@ -5485,108 +5435,24 @@ function ensureZoneSubscription() {
 setInterval(ensureZoneSubscription, 5000);
 
   // ── SPATIAL CLUSTER ASSIGNMENT ────────────────────────────
-// Deterministic — every listener runs the same algo on the same data
-// Result: self-organizing clusters with no server round-trip
+// Delegates to spatial-routing.js — slot assignment, BPM warp, and sweep
+// offsets are spatial/DJ-tool concerns and must not be reimplemented here.
+// See CLAUDE.md invariants and spatial-routing.js's header comment.
 
 function _getBpmWarpRate() {
-  const masterBpm = window._masterBPM;
-  if (!masterBpm) return 1.0;
-  const config = window._spatialConfig;
-  if (!config) return 1.0;
-  const mySlot = getSpatialSlot(config);
-  const trackBpm = (window._trackBpms || {})[mySlot];
-  if (!trackBpm) return 1.0;
-  return Math.max(0.25, Math.min(4.0, masterBpm / trackBpm));
+  return window.SpatialRouting ? window.SpatialRouting.getBpmWarpRate() : 1.0;
 }
 
 function applyBpmWarp(slot, url) {
-  const masterBpm = window._masterBPM;
-  if (!masterBpm) { audio.playbackRate = 1.0; return; }
-  // Try slot-specific track BPM first, then scan for matching URL
-  const trackBpms = window._trackBpms || {};
-  let trackBpm = trackBpms[slot];
-  if (!trackBpm) {
-    // Fall back to scanning all slots for a URL match
-    const config = window._spatialConfig;
-    if (config?.zone_tracks) {
-      for (const [s, u] of Object.entries(config.zone_tracks)) {
-        if (u === url && trackBpms[s]) { trackBpm = trackBpms[s]; break; }
-      }
-    }
-  }
-  if (!trackBpm) return; // unknown BPM — don't warp
-  const rate = masterBpm / trackBpm;
-  // Clamp to safe range
-  const clamped = Math.max(0.25, Math.min(4.0, rate));
-  audio.playbackRate = clamped;
+  window.SpatialRouting?.applyBpmWarp(slot, url);
 }
 
-function getSpatialSlot(config){
-  if(!userLat || !config?.zone_lat) return 'C';
-
-  const voices   = config.voices || 4;
-  const zoneLat  = config.zone_lat;
-  const zoneLng  = config.zone_lng;
-  const radiusM  = config.zone_radius_m || 200;
-
-  // My distance from zone center
-  const myDist = distM(userLat, userLng, zoneLat, zoneLng);
-  const myBearing = getBearing(zoneLat, zoneLng, userLat, userLng);
-
-  // Get all listener positions from liveGuests
-  const allListeners = Object.values(liveGuests || {});
-
-  if(!allListeners.length) return 'C'; // solo = center
-
-  // Find listeners within 30m of me = my cluster
-  const myCluster = allListeners.filter(l => {
-    if(!l.dist) return false;
-    return Math.abs(l.dist - myDist) < 30; // within 30m radial distance (dist already in meters)
-  });
-
-  // Cluster center = average bearing of my cluster
-  const clusterBearing = myCluster.length
-    ? myCluster.reduce((sum,l) => sum + (l.bearing||0), myBearing) / (myCluster.length+1)
-    : myBearing;
-
-  // Assign slot by bearing quadrant
-  const slotKeys = Object.keys(config.zone_tracks || {}).filter(k=>k!=='C');
-  if(!slotKeys.length) return 'C';
-
-  // Distribute slots evenly around 360°
-  const slotCount = Math.min(slotKeys.length, voices);
-  const sector    = 360 / slotCount;
-  const slotIdx   = Math.floor(((clusterBearing % 360) + sector/2) % 360 / sector) % slotCount;
-
-  return slotKeys[slotIdx] || 'C';
+function getSpatialSlot(config) {
+  return window.SpatialRouting ? window.SpatialRouting.getSlot(config) : 'C';
 }
 
-// ── CIRCULAR SWEEP RESPONSE ───────────────────────────────
-// Each listener delays based on when the sweep beam hits their bearing
-
-function applySweepOffset(sweep){
-  if(!userLat || !activeZone?.lat) return;
-
-  const myBearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
-  const rpm       = sweep.rpm || 4;
-  const dir       = sweep.dir || 1;
-  const msPerRev  = (60 / rpm) * 1000;
-
-  // How many ms until the beam reaches my bearing
-  const startAngle = sweep.startAngle || 0;
-  let   angleDiff  = ((myBearing - startAngle) * dir + 360) % 360;
-  const delayMs    = (angleDiff / 360) * msPerRev;
-
-  _scatterOffsetMs = delayMs;
-
-  // Apply seek offset when beam hits us
-  setTimeout(()=>{
-    if(!audio.duration || !activeZone?.playback_started_at) return;
-    cancelDriftCorrection();
-    const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-    seekPreservingBT(((elapsed - _deviceLatencyMs/1000) % audio.duration));
-    showToast('◎ Sweep hit — '+Math.round(delayMs)+'ms');
-  }, delayMs);
+function applySweepOffset(sweep) {
+  window.SpatialRouting?.applySweepOffset(sweep);
 }
 
 // ── DEBUG BROADCAST ──────────────────────────────────────
@@ -5896,8 +5762,62 @@ function onBigBoomyTap(){
   }
 }
 
-  
 
+
+</script>
+<script type="module" src="spatial-routing.js"></script>
+<script type="module">
+// ── Sync engine — sync/sync-engine.js, the same module sync-engine.test.js
+// and sync-sim.html exercise. Module scripts are deferred (run after the
+// classic script above has finished evaluating), so by the time any
+// user-triggered code calls window.SyncEngine, it's ready — but
+// activateZone() still awaits window._syncEngineReady to be explicit.
+//
+// `transport`/`clock`/`getContext`/`getBaseRate` are thin getters over the
+// classic script's globals (audio, activeZone, _deviceLatencyMs,
+// _scatterOffsetMs, syncedNow, _getBpmWarpRate) — top-level `let`/`const`/
+// `function` declarations in a classic <script> live in the realm's shared
+// global environment, so a module script can reference them directly.
+import { createSyncEngine, expectedPosition, computeSeekTime, wrapLag, bpmWarpRate, computeClockOffset, SEEK_STAB_S as ENGINE_SEEK_STAB_S } from './sync/sync-engine.js';
+
+const engine = createSyncEngine({
+  transport: {
+    get duration() { return audio.duration; },
+    get currentTime() { return audio.currentTime; },
+    set currentTime(v) { audio.currentTime = v; },
+    get playbackRate() { return audio.playbackRate; },
+    set playbackRate(v) { audio.playbackRate = v; },
+    get volume() { return audio.volume; },
+    set volume(v) { audio.volume = v; },
+    hasSrcObject: () => !!audio.srcObject,
+  },
+  // Bound to window — calling e.g. window.clearTimeout as a bare function
+  // (`timers.clearTimeout(id)`) throws "Illegal invocation" / "Can only call
+  // Window.clearTimeout on instances of Window" because `this` becomes
+  // `timers`, not `window`. This silently broke cancelDriftCorrection() (its
+  // first line) on every snap attempt until Phase 5g's try/catch surfaced it.
+  timers: {
+    setTimeout: window.setTimeout.bind(window),
+    clearTimeout: window.clearTimeout.bind(window),
+    setInterval: window.setInterval.bind(window),
+    clearInterval: window.clearInterval.bind(window),
+    requestAnimationFrame: window.requestAnimationFrame.bind(window),
+    now: () => performance.now(),
+  },
+  clock: { syncedNow: () => syncedNow() },
+  getContext: () => ({
+    playbackStartedAt: activeZone?.playback_started_at ? new Date(activeZone.playback_started_at).getTime() : null,
+    deviceLatencyMs: _deviceLatencyMs,
+    scatterOffsetMs: _scatterOffsetMs,
+  }),
+  getBaseRate: () => _getBpmWarpRate(),
+});
+
+window.SyncEngine = Object.assign(engine, {
+  expectedPosition, computeSeekTime, wrapLag, bpmWarpRate, computeClockOffset,
+  SEEK_STAB_S: ENGINE_SEEK_STAB_S,
+});
+window._syncEngineReady = Promise.resolve();
 </script>
 </body>
 </html>

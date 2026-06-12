@@ -83,7 +83,7 @@ db.channel('byob_debug')
     render();
   })
   // Forced re-sync markers (track change / DJ's hard_sync) — broadcast by
-  // listener-engine.html so the recorded timeline shows exactly when each
+  // listener.html so the recorded timeline shows exactly when each
   // device freshly anchored to playback_started_at, for comparing drift
   // right before/after.
   .on('broadcast', { event: 'sync_event' }, ({ payload }) => {
@@ -182,7 +182,7 @@ function renderSyncCard(d, age) {
   const dc = Math.abs(dm) > 500 ? 'bad' : Math.abs(dm) > 100 ? 'warn' : '';
   return `<div class="card">
     <div class="card-hdr">
-      <span class="dev-id">🎧 ${d.deviceId} <span style="color:${d.build==='listener-engine'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'} · ${d.browser || '?'}</span></span>
+      <span class="dev-id">🎧 ${d.deviceId} <span style="color:${d.build==='listener'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'} · ${d.browser || '?'}</span></span>
       <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
     </div>
     ${r('elapsed',     d.elapsed    ? d.elapsed + 's'    : '—')}
@@ -214,7 +214,7 @@ function renderHealthCard(d, age) {
   const dc = isNaN(distM) ? '' : (distM > 300 ? 'bad' : distM > (d.zone !== 'none' ? 100 : 1e9) ? 'warn' : '');
   return `<div class="card">
     <div class="card-hdr">
-      <span class="dev-id">📡 ${d.deviceId} <span style="color:${d.build==='listener-engine'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'} · ${d.browser || '?'}</span></span>
+      <span class="dev-id">📡 ${d.deviceId} <span style="color:${d.build==='listener'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'} · ${d.browser || '?'}</span></span>
       <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
     </div>
     ${r('dist to zone', !isNaN(distM) ? distM.toFixed(0)+'m' : '—', dc)}

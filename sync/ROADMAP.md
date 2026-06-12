@@ -1,5 +1,13 @@
 # Sync Engine Extraction Roadmap
 
+> **Jun 12 2026 rename note**: `listener-engine.html` was renamed to
+> `listener.html` (now production) and the old `listener.html` was archived as
+> `legacy/listener-classic.html`; `playmin.html` was renamed to `artist.html`.
+> Everything below is a session log written *before* this rename — read
+> `listener-engine.html`/`listener.html`/`playmin.html` references as the names
+> in use at the time, not the current file layout. See CLAUDE.md's "Jun 12 2026
+> rename" section.
+
 **Mission: sync as many Bluetooth speakers as possible, as tightly as possible,
 with the broadcast — and keep listener-to-broadcast latency minimal when a DJ is
 playing live.**
