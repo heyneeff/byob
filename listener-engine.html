@@ -2214,6 +2214,13 @@ function fastDriftCorrect() {
     window._snapCount = (window._snapCount || 0) + 1;
     cancelDriftCorrection();
     seekPreservingBT(_expectedNow());
+  } else {
+    // Phase 5r — below the snap threshold, trim playbackRate by a tiny
+    // (+/-0.6% max) amount to cancel each device's constant hardware
+    // clock-rate error. Without this, drift sawtooths from ~0 up to
+    // DRIFT_SNAP_THRESHOLD_MS and back every couple minutes (median
+    // drift -60 to -180ms); the trim holds it near 0 between snaps.
+    applyMicroCorrection(lagMs);
   }
 }
 audio.addEventListener('timeupdate', () => {
@@ -4898,6 +4905,7 @@ function computeLagMs() { return window.SyncEngine.computeLagMs(); }
 function requestCorrection(lagMs) { window.SyncEngine.requestCorrection(lagMs); }
 function cancelDriftCorrection() { window.SyncEngine.cancelDriftCorrection(); }
 function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime); }
+function applyMicroCorrection(lagMs) { window.SyncEngine.applyMicroCorrection(lagMs); }
 
 async function _runLockingPass(){
   if (_syncState !== 'locking' && _syncState !== 'verifying') return;

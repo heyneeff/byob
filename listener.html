@@ -2116,6 +2116,8 @@ function fastDriftCorrect() {
     console.log('[Drift] snap', lagMs.toFixed(0) + 'ms');
     cancelDriftCorrection();
     seekPreservingBT(_expectedNow());
+  } else {
+    applyMicroCorrection(lagMs);
   }
 }
 
@@ -4821,6 +4823,23 @@ function computeLagMs() {
 function _expectedNow() {
   const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
   return ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration;
+}
+
+// Phase 5r — continuous micro-rate trim (mirrors sync/sync-engine.js's
+// microCorrectionRate). Real devices carry a small, constant hardware
+// clock-rate error, which made drift sawtooth from ~0 up to
+// DRIFT_SNAP_THRESHOLD_MS and back every couple minutes under the Phase 5p
+// snap-only design (median drift -60 to -180ms). This trim is far gentler
+// than the old +/-3% warp band (the "finger on a record" wobble) — capped
+// at +/-0.6%, and it settles to a small constant offset rather than
+// continuously flipping direction, so there's nothing to hear flutter
+// against. No-op while the verifier's warp/duck machine is active.
+const MICRO_GAIN_PER_MS = 0.0002;
+const MICRO_MAX_PCT     = 0.006;
+function applyMicroCorrection(lagMs) {
+  if (_driftState !== 'idle') return;
+  const pct = Math.max(-MICRO_MAX_PCT, Math.min(MICRO_MAX_PCT, lagMs * MICRO_GAIN_PER_MS));
+  audio.playbackRate = _getBpmWarpRate() * (1 + pct);
 }
 
 function settleToIdle() {

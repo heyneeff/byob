@@ -15,6 +15,9 @@ import {
   computeClockOffset,
   bpmWarpRate,
   wrapLag,
+  microCorrectionRate,
+  MICRO_GAIN_PER_MS,
+  MICRO_MAX_PCT,
   SEEK_STAB_S,
 } from './sync-engine.js';
 
@@ -351,4 +354,91 @@ test('cancelDriftCorrection during ducking prevents the orphaned duck from re-se
   assert.equal(ctx.transport.currentTime, 42, 'orphaned duck must not overwrite the snap seek');
   assert.equal(ctx.transport.volume, 1, 'orphaned duck must not dip volume after cancellation');
   assert.equal(engine.getDriftState(), 'idle');
+});
+
+// ── Phase 5r: micro-rate correction ────────────────────────────────────────
+
+test('microCorrectionRate: zero lag returns baseRate unchanged', () => {
+  assert.equal(microCorrectionRate(0, 1), 1);
+  assert.equal(microCorrectionRate(0, 2), 2);
+});
+
+test('microCorrectionRate: positive lag (behind) speeds up, negative (ahead) slows down', () => {
+  assert.ok(microCorrectionRate(50, 1) > 1);
+  assert.ok(microCorrectionRate(-50, 1) < 1);
+});
+
+test('microCorrectionRate: scales linearly with lagMs via MICRO_GAIN_PER_MS below the cap', () => {
+  const lagMs = 10; // 10 * MICRO_GAIN_PER_MS = 0.002, well under MICRO_MAX_PCT
+  assert.ok(Math.abs(MICRO_GAIN_PER_MS * lagMs) < MICRO_MAX_PCT);
+  const rate = microCorrectionRate(lagMs, 1);
+  assert.ok(Math.abs(rate - (1 + MICRO_GAIN_PER_MS * lagMs)) < 1e-12);
+});
+
+test('microCorrectionRate: clamps to +/-MICRO_MAX_PCT for large lag', () => {
+  assert.equal(microCorrectionRate(100000, 1), 1 + MICRO_MAX_PCT);
+  assert.equal(microCorrectionRate(-100000, 1), 1 - MICRO_MAX_PCT);
+});
+
+test('microCorrectionRate: scales with baseRate (BPM warp)', () => {
+  const rate = microCorrectionRate(10, 2);
+  assert.ok(Math.abs(rate - 2 * (1 + 10 * MICRO_GAIN_PER_MS)) < 1e-12);
+});
+
+test('applyMicroCorrection: trims playbackRate around baseRate while idle', () => {
+  const timers = createFakeTimers();
+  const ctx = noWarp(timers);
+  const engine = createSyncEngine(ctx);
+
+  engine.applyMicroCorrection(10); // below the cap (10 * MICRO_GAIN_PER_MS < MICRO_MAX_PCT)
+  assert.equal(engine.getDriftState(), 'idle');
+  assert.ok(Math.abs(ctx.transport.playbackRate - (1 + 10 * MICRO_GAIN_PER_MS)) < 1e-12);
+});
+
+test('applyMicroCorrection: does not fight an in-flight warp/duck (no-op unless idle)', () => {
+  const timers = createFakeTimers();
+  const ctx = noWarp(timers);
+  const engine = createSyncEngine(ctx);
+
+  engine.requestCorrection(600); // -> ducking
+  assert.equal(engine.getDriftState(), 'ducking');
+  const rateDuringDuck = ctx.transport.playbackRate;
+
+  engine.applyMicroCorrection(50);
+  assert.equal(ctx.transport.playbackRate, rateDuringDuck, 'micro correction must not touch playbackRate mid-duck');
+});
+
+// ── Phase 5r: a constant hardware clock-rate error converges toward 0,
+// not just toward the snap threshold ──────────────────────────────────────
+
+test('micro correction converges a constant hardware-drift lag toward 0 over time', () => {
+  const timers = createFakeTimers();
+  const ctx = noWarp(timers);
+  ctx.transport.duration = 200;
+  ctx.transport.currentTime = 0;
+  const startedAt = -1; // computeLagMs treats 0 as "no reference yet" (see sync-sim.html)
+  const hwDriftPct = 0.005; // worst-case +/-0.5% modeled in sync-sim.html
+  ctx.getContext = () => ({ playbackStartedAt: startedAt, deviceLatencyMs: 0, scatterOffsetMs: 0 });
+  const engine = createSyncEngine(ctx);
+
+  const TICK_MS = 5000; // fastDriftCorrect cadence
+  let lagMs = engine.computeLagMs();
+  const history = [lagMs];
+  for (let t = 0; t < 600000; t += TICK_MS) { // 10 simulated minutes
+    // advance playback at the current (possibly trimmed) rate, with the
+    // device's constant hardware clock-rate error applied
+    ctx.transport.currentTime = (ctx.transport.currentTime + (TICK_MS / 1000) * ctx.transport.playbackRate * (1 + hwDriftPct) + ctx.transport.duration) % ctx.transport.duration;
+    timers.advance(TICK_MS);
+    lagMs = engine.computeLagMs();
+    engine.applyMicroCorrection(lagMs);
+    history.push(lagMs);
+  }
+
+  // Steady state (last quarter of the run) should sit close to 0 — well
+  // under the old 300ms snap threshold, and under the ~50ms target —
+  // converging from the initial ~270ms SEEK_STAB_S offset.
+  assert.ok(Math.abs(history[0]) > 200, `expected a real initial offset to converge from, got ${history[0]}`);
+  const steady = history.slice(-30);
+  const maxAbsSteady = Math.max(...steady.map(Math.abs));
+  assert.ok(maxAbsSteady < 50, `expected steady-state |lag| < 50ms, got ${maxAbsSteady}`);
 });

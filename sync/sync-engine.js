@@ -87,6 +87,34 @@ export function bpmWarpRate(masterBpm, trackBpm) {
   return Math.max(0.25, Math.min(4.0, masterBpm / trackBpm));
 }
 
+// ── Micro-rate correction ───────────────────────────────────────
+// Phase 5r: real devices carry a small, *constant* hardware clock-rate error
+// (their audio clock runs a fixed fraction fast or slow relative to
+// syncedNow()) — this is what made drift sawtooth from ~0 to -300ms every
+// ~2 minutes under the Phase 5p snap-only design (median drift -60 to
+// -180ms, well above the ~50ms target). A continuous, tiny proportional
+// rate trim cancels that constant error so drift settles near 0 between
+// snaps, instead of just bouncing inside the snap threshold.
+//
+// This is deliberately much gentler than the old +/-3% warp band (the
+// "finger on a record" wobble): +/-0.6% is below typical pitch-discrimination
+// thresholds, and — critically — it settles to a small *constant* offset
+// rather than continuously flipping direction, so there's nothing to hear
+// flutter against.
+export const MICRO_GAIN_PER_MS = 0.0002;  // fractional rate adjustment per ms of lag
+export const MICRO_MAX_PCT     = 0.006;   // cap +/-0.6%
+
+// rate = baseRate * (1 + clamp(lagMs * MICRO_GAIN_PER_MS, +/-MICRO_MAX_PCT))
+// Positive lag (audio behind expected) -> speed up; negative -> slow down.
+// At the worst-case +/-0.5% hardware drift modeled in sync-sim.html, this
+// converges to a steady-state |lag| of ~25ms (0.5% / MICRO_GAIN_PER_MS),
+// comfortably under the cap (pct=0.005 < 0.006) so it's not saturated at
+// equilibrium.
+export function microCorrectionRate(lagMs, baseRate = 1) {
+  const pct = Math.max(-MICRO_MAX_PCT, Math.min(MICRO_MAX_PCT, lagMs * MICRO_GAIN_PER_MS));
+  return baseRate * (1 + pct);
+}
+
 // ── Drift corrector ────────────────────────────────────────────
 //
 // Single gate `_driftState` ('idle' | 'warping' | 'ducking'), one entry
@@ -268,6 +296,16 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
     timers.requestAnimationFrame(ramp);
   }
 
+  // Continuous micro-rate trim — called every fastDriftCorrect tick alongside
+  // the snap check. No-op while the verifier's warp/duck machine is active
+  // (driftState !== 'idle') so the two never fight over playbackRate; once
+  // that settles back to 'idle' (via cancelDriftCorrection/settleToIdle,
+  // which both reset playbackRate to baseRate), this resumes trimming.
+  function applyMicroCorrection(lagMs) {
+    if (driftState !== 'idle') return;
+    transport.playbackRate = microCorrectionRate(lagMs, getBaseRate());
+  }
+
   return {
     computeLagMs,
     requestCorrection,
@@ -275,6 +313,7 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
     seekWithDuck,
     seekPreservingBT,
     settleToIdle,
+    applyMicroCorrection,
     getDriftState: () => driftState,
     getDriftPendingRecheck: () => driftPendingRecheck,
   };

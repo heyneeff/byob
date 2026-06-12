@@ -62,8 +62,8 @@ expected = (elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/100
   `computeLagMs()`), and if they've drifted apart by `DRIFT_SNAP_THRESHOLD_MS`
   (300ms) or more, snaps directly: `cancelDriftCorrection()` then
   `seekPreservingBT(expected)` (mute, jump, ~180ms ramp back up). Below
-  300ms, it does nothing — `audio.playbackRate` is never touched by this
-  loop.
+  300ms, it applies a tiny continuous `playbackRate` trim via
+  `applyMicroCorrection()` (Phase 5r, capped at ±0.6%) — see Step 4a.
 - **`syncZoneAudio()`** — runs every 60 seconds, does an actual database fetch.
   Its job isn't fine-tuning — it's a safety net that catches things memory
   can miss: "did the zone end?", "did the track change and I missed the
@@ -97,6 +97,37 @@ check, and if `|drift| > 300ms`, an instant `seekPreservingBT()` snap
   instant jump with a brief mute/ramp to mask the discontinuity. Audible as
   a very short (~180ms) dip, but rare: only when real drift has actually
   accumulated past 300ms, not every tick.
+
+### Step 4a: closing the residual gap — `applyMicroCorrection()` (Phase 5r)
+
+Snap-only held drift *bounded* (never past 300ms) but not *tight*: real
+devices carry a small, constant hardware clock-rate error (their audio clock
+runs a fixed fraction fast or slow relative to `syncedNow()`), which made
+drift sawtooth from ~0 up to 300ms and back every couple of minutes — median
+drift sat around -60 to -180ms across a 67-minute session, well above the
+~50ms target.
+
+`applyMicroCorrection(lagMs)` — called every `fastDriftCorrect()` tick
+whenever `|lagMs| < DRIFT_SNAP_THRESHOLD_MS` — applies:
+
+```
+pct  = clamp(lagMs * MICRO_GAIN_PER_MS, ±MICRO_MAX_PCT)   // MICRO_GAIN_PER_MS = 0.0002, MICRO_MAX_PCT = 0.006
+rate = baseRate * (1 + pct)
+```
+
+This is a proportional controller: a constant hardware-drift error is
+cancelled once the trim's magnitude matches it, so drift converges to a
+small constant offset (`|lag| ≈ hwDriftPct / MICRO_GAIN_PER_MS`) instead of
+sawtoothing up to the snap threshold. At the worst-case ±0.5% hardware drift
+modeled in `sync-sim.html`, steady-state `|lag|` converges to ~25ms — under
+the cap (0.5% < 0.6%), so it's never saturated at equilibrium.
+
+This is deliberately the *opposite* shape of the Phase 5h-5o tiered warp that
+caused the "finger on a record" complaint: that was a large (±3%), frequently
+*flipping* correction — audible as flutter. This trim is small (≤±0.6%,
+~5x gentler) and settles to a *constant* offset — nothing to hear oscillate.
+It's a no-op whenever `_driftState !== 'idle'` (the verifier's warp/duck is
+active), so the two mechanisms never fight over `playbackRate`.
 
 ### The tiered `requestCorrection()` / `_driftState` machine still exists — for the BT-latency auto-sync verifier only
 

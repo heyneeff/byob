@@ -1091,3 +1091,64 @@ caller-side port of an already-validated design, not a new corrector).
 now show the same `driftState='idle'`/`rate='1.000'` holding pattern as the
 `listener-engine` devices, with infrequent `snapCount` increments instead of
 continuous `warping`/`rate=1.030`.
+
+**CONFIRMED** by an 18th, 67-minute debug session
+(`byob-debug-session-2026-06-12T03-42-46-312Z.csv`): `dev_939j12`
+(`build='listener'`, production) held `driftState='idle'`/`rate='1.000'` for
+474/475 rows with `snapCount` reaching 31 over the session — no warping, no
+"finger on a record." User confirmed: "the warping is no longer unsettling."
+
+## Phase 5r — close the residual gap: continuous micro-rate trim
+
+The same 18th session also quantified what's left: drift sawtooths between
+snaps rather than holding flat. `dev_939j12` and `dev_2gntq9` (one of each
+build) both ran the full 67 minutes — median drift -57 to -60ms, p10 around
+-130 to -300ms, snapping ~31-32 times (roughly every 2 minutes). That ~2-3ms/s
+climb between snaps is a *constant* per-device hardware clock-rate error
+(the audio clock runs a fixed fraction fast/slow relative to `syncedNow()`),
+not one-time calibration error — `dev_824w1u` sat at a steady median -180ms
+the whole session, never approaching 0.
+
+User's target: get this under 50ms. Lowering `DRIFT_SNAP_THRESHOLD_MS` would
+mean a 180ms mute/seek/ramp roughly every 20s instead of every ~2min — likely
+too frequent. Instead: cancel the constant drift-rate error directly with a
+**continuous, proportional, much gentler** rate trim than the Phase 5h-5o
+±3% warp that caused the original "finger on a record" complaint.
+
+**Change**:
+- `sync/sync-engine.js`: new `microCorrectionRate(lagMs, baseRate)` —
+  `rate = baseRate * (1 + clamp(lagMs * MICRO_GAIN_PER_MS, ±MICRO_MAX_PCT))`,
+  `MICRO_GAIN_PER_MS = 0.0002`, `MICRO_MAX_PCT = 0.006` (±0.6%, ~5x gentler
+  than the old ±3%). New `createSyncEngine().applyMicroCorrection(lagMs)` —
+  sets `transport.playbackRate` to this, but only while `driftState ===
+  'idle'` (no-op during the verifier's warp/duck, so the two never fight over
+  `playbackRate`).
+- `fastDriftCorrect()` in both `listener-engine.html` and `listener.html`:
+  when `|lagMs| < DRIFT_SNAP_THRESHOLD_MS`, call `applyMicroCorrection(lagMs)`
+  instead of doing nothing. `listener.html` got its own inline
+  `applyMicroCorrection()` mirroring the engine's (it doesn't import
+  `sync/sync-engine.js`).
+- `sync-sim.html`: new "Micro" panel/controller (`microTickEngine`) — stripped
+  (snap at `STRIP_THRESHOLD_MS`) plus `applyMicroCorrection` below it. Verdict
+  table now compares legacy / new / stripped / micro.
+- `debug.html`: the `rate` row's warn threshold changed from `!== '1.000'`
+  to `|rate - 1| > 0.006` — a permanent small trim is now expected, not a
+  fault.
+- New tests in `sync/sync-engine.test.js`: `microCorrectionRate` math (zero
+  lag, sign, linearity below cap, clamping, baseRate scaling),
+  `applyMicroCorrection` (trims while idle, no-ops mid-duck), and a
+  600-tick (10-minute) convergence test — a constant ±0.5% hardware-drift
+  lag converges to `|lag| < 50ms` steady-state. `node --test` 33/33.
+
+A standalone check (`/tmp/sim_check.mjs`, same engine + 5s cadence, 20
+simulated minutes) confirmed convergence across the full hardware-drift
+range modeled in `sync-sim.html`: hwDriftPct ∈ {-0.5%, -0.25%, 0, +0.25%,
++0.5%} → steady-state `|lag|` ∈ {25.1, 12.5, 0.0, 12.5, 24.9} ms, zero snaps
+needed in any case — the trim alone keeps drift under the 50ms target for
+the worst-case device modeled.
+
+**Verification needed**: next session — `driftMs` for both builds should now
+hold close to 0 (within ~25ms) between snaps instead of sawtoothing toward
+-300ms, `rate` will float a little (e.g. 0.994-1.006) continuously rather
+than pinning at exactly 1.000, and `snapCount` should grow much more slowly
+(or not at all) since the trim removes the steady climb that drove snaps.
