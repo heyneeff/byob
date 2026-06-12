@@ -3897,40 +3897,13 @@ function buildSyncChannel(zoneId) {
       }
     }
   })
-  .on('broadcast', { event: 'sweep_start' }, ({ payload }) => { window._sweepConfig = payload; applySweepOffset(payload); })
-  .on('broadcast', { event: 'sweep_stop' }, () => { window._sweepConfig = null; _scatterOffsetMs = 0; })
-  .on('broadcast', { event: 'scatter' }, ({ payload }) => {
-    const maxMs  = payload.maxMs  || 1000;
-    const voices = payload.voices || 4;
-    const slot   = simpleHash(listenerId) % voices;
-    _scatterOffsetMs = voices > 1 ? Math.round((slot / (voices - 1)) * maxMs) : 0;
-    boomSay(`♩ +${(_scatterOffsetMs/1000).toFixed(2)}s`, 1800, false, 'devious');
-    // A scatter offset is a deliberate shift of the reference point itself —
-    // not drift to be corrected gradually. Feeding it through the gradual
-    // warp/duck path lets drift balloon to the full offset size while the duck
-    // ramps (proven out in sync-sim.html). Cancel and snap immediately, same as
-    // hard_sync/resync_at/sweep.
-    if (activeZone?.playback_started_at && audio.duration) {
-      cancelDriftCorrection();
-      const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-      const expected = window.SyncEngine.expectedPosition({
-        elapsedS: elapsed, duration: audio.duration,
-        deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
-        warpRate: _getBpmWarpRate(),
-      });
-      seekPreservingBT(expected);
-    }
-  })
-  .on('broadcast', { event: 'cluster_assign' }, ({ payload }) => {
-    const mySlot = payload.assignments?.[listenerId];
-    const trackUrl = mySlot
-      ? (payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'])
-      : payload.zone_tracks?.['C'];
-    if (!trackUrl || trackUrl === audio.src) return;
-    const label = 'Cluster ' + (mySlot || 'C');
-    const waitMs = payload.play_at ? Math.max(0, payload.play_at - syncedNow()) : 0;
-    setTimeout(() => { loadTrack(trackUrl, label, payload.playback_started_at); boomSay('⬡ ' + (mySlot || 'C'), 2000, false, 'regular'); }, waitMs);
-  })
+  // Phase 5n — sweep/scatter/cluster_assign disabled while isolating the
+  // drift corrector (see ROADMAP Phase 5n). _scatterOffsetMs stays 0;
+  // everyone stays on whatever track they're already on.
+  .on('broadcast', { event: 'sweep_start' }, () => {})
+  .on('broadcast', { event: 'sweep_stop' }, () => {})
+  .on('broadcast', { event: 'scatter' }, () => {})
+  .on('broadcast', { event: 'cluster_assign' }, () => {})
   .on('broadcast', { event: 'rally' }, ({ payload }) => {
     if (!payload?.lat || !payload?.lng) return;
     window._rallyPoint = { lat: payload.lat, lng: payload.lng, label: payload.label || '' };
@@ -5446,6 +5419,11 @@ setInterval(ensureZoneSubscription, 5000);
 // Result: self-organizing clusters with no server round-trip
 
 function _getBpmWarpRate() {
+  // Phase 5n — DJ-side spatial/BPM-warp machinery disabled while isolating
+  // the drift corrector (see ROADMAP Phase 5n). Always base rate 1.0; the
+  // corrector's warping/idle rates are then exactly 1.030/1.000 with nothing
+  // else able to move audio.playbackRate underneath it.
+  return 1.0;
   const masterBpm = window._masterBPM;
   if (!masterBpm) return 1.0;
   const config = window._spatialConfig;
@@ -5457,6 +5435,10 @@ function _getBpmWarpRate() {
 }
 
 function applyBpmWarp(slot, url) {
+  // Phase 5n — disabled, see _getBpmWarpRate(). Force the element back to
+  // base rate so nothing but the drift corrector ever touches playbackRate.
+  audio.playbackRate = 1.0;
+  return;
   const masterBpm = window._masterBPM;
   if (!masterBpm) { audio.playbackRate = 1.0; return; }
   // Try slot-specific track BPM first, then scan for matching URL
@@ -5479,6 +5461,9 @@ function applyBpmWarp(slot, url) {
 }
 
 function getSpatialSlot(config){
+  // Phase 5n — cluster/sweep/ring slot assignment disabled while isolating
+  // the drift corrector (see ROADMAP Phase 5n). Everyone gets Center ('C').
+  return 'C';
   if(!userLat || !config?.zone_lat) return 'C';
 
   const voices   = config.voices || 4;

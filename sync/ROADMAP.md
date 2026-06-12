@@ -875,3 +875,46 @@ hard_sync/track_change (5l's tradeoff for never ducking) — if that reads as
 "syncing in and out" for a noticeably long stretch, may need a faster (but
 still inaudible) warp rate for large-but-not-bogus gaps specifically in the
 post-sync_event window.
+
+### Phase 5n — strip spatial/BPM-warp machinery to isolate the corrector (2026-06-12)
+14th debug session (post-5l/5m). Good news: zero ducking, zero stalls across
+all 3 active devices for the full ~3.5min session — 5l/5m holding. But all
+three (`dev_4u64j8`, `dev_jyld5j`, `dev_rgugtn`) settled into a persistent
+sawtooth that never converged: `driftMs` cycling between roughly -320ms and
+-30/-50ms with a ~12-16s period, repeating for the entire session, roughly
+in sync across devices. User confirmed no Movement/Sweep/Scatter scene was
+running. User's read: "the stable baseline was actually really good and
+didn't feel like chance" — i.e. compare honestly against the pre-Phase-5
+baseline, and the spatial/BPM-warp/DJ-side machinery may be "corrupted"
+and worth stripping out while isolating the corrector.
+
+Rather than chase the exact mechanism (BPM-warp rate, spatial slot
+flapping via `getSpatialSlot()`'s GPS-bearing-based cluster assignment, or
+scatter-offset reassignment all touch `audio.playbackRate` / `_scatterOffsetMs`
+/ which track loads — any of which could produce a periodic step that the
+corrector then chases), disabled the whole stack for now so the next CSV
+isolates the corrector itself with nothing else able to move
+`audio.playbackRate`/`_scatterOffsetMs`/track selection underneath it:
+
+- `_getBpmWarpRate()` -> always returns `1.0` (was `masterBpm/trackBpm`).
+- `applyBpmWarp()` -> no-op, forces `audio.playbackRate = 1.0`.
+- `getSpatialSlot()` -> always returns `'C'` (was GPS-bearing cluster/ring
+  assignment — degrades to CLAUDE.md's "Single" mode, everyone on Center).
+- `sweep_start`/`sweep_stop`/`scatter`/`cluster_assign` sync-channel
+  handlers -> no-ops (were the only other writers of `_scatterOffsetMs`
+  besides `hard_sync`'s `resetOffsets`/`clearScatter`, which still works).
+
+All changes are caller-side, behind early-returns with "Phase 5n" comments
+for easy reversal once the corrector is validated clean. `hard_sync`,
+`spatial_config`'s Center-track loading/tip handling, and the core
+drift-correction loop are untouched. `node --test` still 25/25.
+
+**Verification needed**: next session — with nothing else able to move
+`audio.playbackRate` or `_scatterOffsetMs`, does the sawtooth disappear? If
+`driftMs` settles near 0 (idle) and stays there, the spatial/BPM-warp stack
+was the cause (and the fix is either: don't reapply `applyBpmWarp`/slot
+reassignment except on real track changes, or smooth `_scatterOffsetMs`
+transitions through the corrector instead of stepping it). If the sawtooth
+PERSISTS even with this stack fully disabled, it's purely a corrector/timing
+issue independent of spatial code — revisit `requestCorrection`'s "snap
+back to base rate" timer math in `sync-engine.js` and `sync-sim.html`.
