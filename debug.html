@@ -106,7 +106,7 @@ let _records = [];
 const REC_COLS = ['timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
   'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
   'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
-  'engineLagMs','snapCount','note'];
+  'engineLagMs','snapCount','seekIntendedMs','seekMeasuredMs','note'];
 
 function toggleRecord() {
   _recording = !_recording;
@@ -206,6 +206,9 @@ function renderSyncCard(d, age) {
     ${r('stalls',      d.stallCount ?? 0, (d.stallCount>0)?'warn':'')}
     ${r('muted',       d.isMuted ? 'yes' : 'no', d.isMuted?'warn':'')}
     ${r('snaps',       d.snapCount ?? 0)}
+    ${r('seek intend', d.seekIntendedMs!=null ? d.seekIntendedMs+'ms' : '—')}
+    ${r('seek landed', d.seekMeasuredMs!=null ? d.seekMeasuredMs+'ms' : '—',
+        d.seekIntendedMs!=null && d.seekMeasuredMs!=null && Math.abs(d.seekIntendedMs) > 100 && Math.abs(d.seekMeasuredMs) < Math.abs(d.seekIntendedMs) * 0.3 ? 'bad' : '')}
   </div>`;
 }
 
