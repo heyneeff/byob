@@ -110,7 +110,11 @@ function applySweepOffset(sweep) {
     if (!audio.duration || !activeZone?.playback_started_at) return;
     cancelDriftCorrection();
     const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-    seekPreservingBT(((elapsed - _deviceLatencyMs / 1000) % audio.duration));
+    seekPreservingBT(window.SyncEngine.expectedPosition({
+      elapsedS: elapsed, duration: audio.duration,
+      deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
+      warpRate: getBpmWarpRate(),
+    }));
     showToast('◎ Sweep hit — ' + Math.round(delayMs) + 'ms');
   }, delayMs);
 }
