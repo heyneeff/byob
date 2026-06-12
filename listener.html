@@ -2105,6 +2105,7 @@ const DRIFT_SNAP_THRESHOLD_MS = 300;
 
 // Fast drift correction — memory only, no network, runs every 5s
 function fastDriftCorrect() {
+  window._lastDriftCheckAt = performance.now();
   if (!activeZone?.playback_started_at) return;
   if (!audio.duration || audio.paused) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
@@ -3938,6 +3939,7 @@ function _handleStall() {
   clearTimeout(_stallTimer);
   _stallTimer = setTimeout(() => {
     if (audio.paused && _webAudioPlaying && !_isMuted) {
+      window._stallCount = (window._stallCount || 0) + 1;
       audio.play().catch(() => {});
     }
   }, 2500);
@@ -5352,6 +5354,14 @@ function broadcastHUD() {
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
       isMuted:     _isMuted,
       snapCount:   window._snapCount || 0,
+      // Phase 5s diagnostics — checking whether the rapid-fire snapping seen
+      // in the 19th session (drift sawtoothing 0 -> -250 -> -450ms every
+      // ~8s, far faster than hardware-drift) correlates with real audio
+      // buffer stalls (readyState dips, stalled/waiting/suspend events).
+      readyState:  audio.readyState,
+      stallCount:  window._stallCount || 0,
+      visibilityState: document.visibilityState,
+      lastDriftCheckAgoMs: window._lastDriftCheckAt ? Math.round(performance.now() - window._lastDriftCheckAt) : null,
       browser:     _detectBrowser(),
       build: 'listener',
     }

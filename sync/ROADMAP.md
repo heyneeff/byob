@@ -1152,3 +1152,62 @@ hold close to 0 (within ~25ms) between snaps instead of sawtoothing toward
 -300ms, `rate` will float a little (e.g. 0.994-1.006) continuously rather
 than pinning at exactly 1.000, and `snapCount` should grow much more slowly
 (or not at all) since the trim removes the steady climb that drove snaps.
+
+## Phase 5s — investigating a new fast-snap pattern (19th session)
+
+A 19th, 6-minute session (`byob-debug-session-2026-06-12T04-11-11-178Z.csv`,
+654 rows, 3 devices — 1 `listener`, 2 `listener-engine`) showed something
+different from, and worse than, the 18th session: `snapCount` climbed from
+single digits to 26-54 within ~6 minutes — roughly **one snap every 7-9
+seconds**, vs. one every ~2 minutes in the 18th session. User asked how to
+stop the audible "jumping"; this session shows it got more frequent, not
+less.
+
+The pattern is a clean, repeating sawtooth, e.g. `dev_4hpqb3`:
+`driftMs` 0 -> -250 -> -430 -> snap -> 0 -> -250 -> -430 -> snap..., every
+~8s. Looking at `currentTime`/`expectedPos` directly: `expectedPos` advances
+by exactly the real-time delta each tick (~4.0s), but `currentTime` only
+advances ~3.55-3.82s in the same window — `audio.currentTime` is losing
+~150-280ms of real time roughly every 4 seconds, *while `playbackRate` reads
+exactly 1.000 or 1.006* (i.e. the micro-trim, which is far too small —
+±0.6% ≈ ±24ms/4s — to explain a 150-280ms/4s loss).
+
+Two hypotheses considered:
+1. **BPM-warp / position-formula mismatch** — `_getBpmWarpRate()` sets
+   `audio.playbackRate` as the *correction* base rate, but the seek
+   `expected` formula (`computeLagMs`/`_expectedNow`/`broadcastHUD`) assumes
+   1x real-time progression regardless of warp rate. If `_getBpmWarpRate()
+   != 1` (master BPM set, track BPM mismatched), `currentTime` and `expected`
+   would diverge at a *constant* rate forever. **Ruled out** — the reported
+   `playbackRate` is 1.000/1.006, and the loss-per-tick isn't constant
+   (3.75/4.00 vs 3.59/4.00 in adjacent windows), which a constant-ratio warp
+   mismatch wouldn't produce.
+2. **Real audio buffer stalls** — `<audio>` periodically stalls/rebuffers
+   (`stalled`/`waiting`/`suspend`), losing real playback time in bursts of
+   varying size. `listener.html` already has a `_handleStall()` watchdog for
+   exactly this (resumes via `audio.play()` after 2.5s) but — unlike
+   `listener-engine.html` — never counted these events or reported
+   `audio.readyState`, so `stallCount`/`readyState` were blank in the CSV for
+   `build='listener'` devices. This is the leading hypothesis: a varying
+   150-280ms loss every few seconds looks exactly like recurring short
+   rebuffers, not a rate/formula bug.
+
+**Change** (`listener.html`, diagnostics only — no corrector behavior
+changed):
+- `_handleStall()` now increments `window._stallCount` when its 2.5s
+  watchdog actually fires a resume (mirrors `listener-engine.html`).
+- `fastDriftCorrect()` now stamps `window._lastDriftCheckAt =
+  performance.now()` on every tick.
+- `broadcastHUD()` now reports `readyState: audio.readyState`, `stallCount`,
+  `visibilityState: document.visibilityState`, and `lastDriftCheckAgoMs` —
+  the same fields `listener-engine.html` already sends, so `debug.html`'s
+  existing "stalls"/"readyState"/"visibility"/"lastDriftChk" rows populate
+  for `build='listener'` too.
+
+**Verification needed**: next session — if `stallCount` climbs in step with
+`snapCount` (roughly 1:1, every ~8s) and/or `readyState` dips below 4 right
+before each snap, that confirms recurring buffer stalls as the cause — fix
+becomes an audio-buffering investigation (e.g. `preload`, source format,
+Bluetooth output pipeline), not a corrector change. If `stallCount` stays
+flat while snaps keep firing, look elsewhere (e.g. GPS/position recompute
+cost on the main thread blocking the audio element).
