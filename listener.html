@@ -2092,6 +2092,15 @@ function stopEverything() {
 
 // ════════════════════════════════════════════════════════════
 // SYNC ENGINE — drift correction only
+//
+// VALIDATED — tagged `sync-validated-5u` (Phase 5u, 21st live session:
+// median drift -3 to -13ms, 68-93% of samples <50ms, no freezes).
+// Do not modify this block for spatial/DJ-tool work. If you're here to wire
+// in cluster/ring/sweep/scatter/movement or BPM-warp logic, route it through
+// noteStartedAt() / currentStartedAt() / cancelDriftCorrection() +
+// seekPreservingBT() instead — see CLAUDE.md invariants and SYNC_ENGINE.md.
+// If a real flaw is found, fix it, re-validate via sync-sim.html + a live
+// debug.html session, and re-tag.
 // ════════════════════════════════════════════════════════════
 let _syncInterval = null;
 let _driftInterval = null;

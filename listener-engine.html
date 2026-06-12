@@ -2143,6 +2143,17 @@ function _hardReloadTrack() {
   loadTrack(window._currentTrackUrl, window._currentTrackTitle, activeZone.playback_started_at, activeZone.play_at, activeZone.play_from_s);
 }
 
+// ════════════════════════════════════════════════════════════
+// SYNC ENGINE — VALIDATED, tagged `sync-validated-5u` (Phase 5u, 21st live
+// session: median drift -3 to -13ms, 68-93% of samples <50ms, no freezes).
+// Do not modify this block for spatial/DJ-tool work. If you're here to wire
+// in cluster/ring/sweep/scatter/movement or BPM-warp logic, route it through
+// noteStartedAt() / currentStartedAt() / cancelDriftCorrection() +
+// seekPreservingBT() instead — see CLAUDE.md invariants and SYNC_ENGINE.md.
+// If a real flaw is found, fix it, re-validate via sync-sim.html + a live
+// debug.html session, and re-tag.
+// ════════════════════════════════════════════════════════════
+
 // Canonical "where should playback be right now" — shared by _resumeAndReseek
 // and fastDriftCorrect's snap path so both agree with broadcastHUD's expectedPos.
 function _expectedNow() {
