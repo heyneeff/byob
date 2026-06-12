@@ -1326,3 +1326,104 @@ sync engine as **validated** — further file-based tuning is low-priority.
 Next focus: carrying this control loop's lessons over to **live audio
 (WebRTC) sync**, where the reference shifts from "position in a known track"
 to "relative position between listeners' live buffers."
+
+This commit is tagged `sync-validated-5u` — the listener-side sync engine
+blocks in `listener.html`/`listener-engine.html` now carry a banner pointing
+back to this tag. Spatial/DJ-tool work (below) must not cross into those
+blocks; route through `noteStartedAt()`/`currentStartedAt()`/
+`cancelDriftCorrection()`+`seekPreservingBT()` only.
+
+## Phase 5v — spatial panel code audit (no live test yet)
+
+Prep for handing `playmin.html`'s spatial panel to a second composer
+(Dr. Nathan Hall, on his own zone — zones are `host_id`-isolated, see
+CLAUDE.md). Code-only pass (no devices) re-checking the open Jun 10 findings
+B and E against the current code.
+
+**B — movement-mode churn — reassessed, lower priority than thought.**
+`tickMovement()` (`playmin.html`) still broadcasts `cluster_assign` on every
+tick unconditionally (no diff against the previous tick's assignments). But
+`listener.html`'s `cluster_assign` handler already guards with
+`if (!trackUrl || trackUrl === audio.src) return;` — so a broadcast that
+doesn't change a given listener's track is a no-op for them (no reload, no
+`boomSay`). The remaining cost is just extra realtime traffic, not audible
+churn. **However**: when movement *does* change a listener's slot (which is
+the entire point of wave/pulse/orbit/swing), `cluster_assign`'s handler calls
+`loadTrack()` — a full `audio.src` swap + reseek. At the default `mv-rate`
+(2000ms), any listener whose slot changes every tick gets a full track reload
+every ~2s. That's likely to sound like a stutter/dropout, not a smooth
+spatial sweep. Recommendation: for live use, start with a much slower
+`mv-rate` (10s+) until/unless `cluster_assign`'s handler gets a lighter-weight
+"just trim a stem's gain/pan" path instead of a full reload — that's a bigger
+change, not a Monday-night fix.
+
+**Also found**: `listener-engine.html`'s `cluster_assign` handler is a no-op
+(`.on('broadcast', { event: 'cluster_assign' }, () => {})`, disabled since
+Phase 5n). **Movement/cluster/ring spatial modes currently have zero effect
+on `listener-engine` builds** — only `build=listener` (the default
+`listener.html`) responds to them. Worth telling Nathan explicitly: test
+spatial modes on `listener.html`, not `listener-engine.html`.
+
+**E — spatial_config vs cluster_assign slot-truth conflict — confirmed.**
+Two independent slot-assignment paths exist with no shared "current slot"
+state:
+- `cluster_assign` → DJ-computed explicit `assignments[listenerId]` (cluster
+  k-means, ring, movement). Listener stores nothing about this beyond
+  whatever `audio.src` it loaded.
+- `spatial_config` → listener self-assigns via `getSpatialSlot(payload)`
+  (bearing-quadrant), independent of any prior `cluster_assign`.
+
+`spatial_config` is (re)broadcast by `broadcastAllZones()`, which fires on
+every scene launch (`slFireScene` → `_doFireScene` → `broadcastAllZones()`).
+So: DJ runs movement/cluster mode (listeners on `cluster_assign` slots) →
+fires a scene → every listener's `spatial_config` handler recomputes
+`mySlot` via bearing and may silently reassign them away from their cluster
+slot — overriding the spatial mode without the DJ asking for that.
+
+Separately, even when a listener's `audio.src` doesn't change on
+`spatial_config` (line ~3794), `applyBpmWarp(mySlot, trackUrl)` is called
+with the **bearing-derived** `mySlot` — if that listener is actually playing
+a `cluster_assign`-assigned stem from a different slot, the BPM-warp rate
+looked up is for the wrong slot's BPM, mis-warping `playbackRate`.
+
+**Not fixed tonight** — needs a single source of truth (e.g.
+`window._currentSlot`, set by whichever of `cluster_assign` /
+`spatial_config` last assigned this listener, read by both `applyBpmWarp` and
+any future reassignment logic) plus a decision on whether scene-fire
+`spatial_config` should *preserve* an active cluster/movement assignment
+instead of overriding it. This is exactly the kind of "DJ tools mess up the
+engine" interaction the new CLAUDE.md invariant calls out — fix belongs in
+the spatial-panel files, must not reach into the sync-engine blocks.
+
+**Verification needed (live, tomorrow)**: run movement mode at a slow
+`mv-rate` on `listener.html` devices with `debug.html` recording, then fire a
+scene mid-movement and watch for the slot-revert described above (track
+changes back to a bearing slot, `playbackRate` jumps unexpectedly via stale
+BPM-warp lookup).
+
+### Spatial extraction: `spatial-routing.js`
+
+Per the user's request ("can we build this so the spatial tools don't touch
+the listener-engine or listener? last time edited it directly it went to
+hell"), all spatial/DJ-tool routing logic has been pulled out of
+`listener-engine.html` into a new standalone module, `spatial-routing.js`
+(`window.SpatialRouting`), loaded via `<script type="module" src=
+"spatial-routing.js">`. It contains `getSlot`, `getBpmWarpRate`,
+`applyBpmWarp`, `applySweepOffset`, and the `onSpatialConfig` /
+`onSweepStart` / `onSweepStop` / `onScatter` / `onClusterAssign` broadcast
+handlers — faithful ports of `listener.html`'s working versions.
+
+`listener-engine.html`'s `buildSyncChannel()` now just dispatches:
+`spatial_config`/`sweep_start`/`sweep_stop`/`scatter`/`cluster_assign` →
+`window.SpatialRouting.on*(payload)`. These were previously disabled no-ops
+(Phase 5n) — **`cluster_assign`, `sweep_start`/`stop`, and `scatter` are now
+re-enabled on `listener-engine.html`**, ported straight from
+`listener.html`'s active implementations.
+
+Findings B and E above are unchanged by this extraction — they're carried
+over verbatim into `spatial-routing.js` and still need the live verification
+described above, and any fix belongs in `spatial-routing.js` only (never in
+`listener-engine.html`'s sync-engine block, per the CLAUDE.md invariant).
+
+`node --check` passes on both files; `node --test 'sync/**/*.test.js'` still
+33/33 (the engine module itself was untouched).

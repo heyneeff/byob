@@ -21,8 +21,10 @@ Deploy: push to `main` — GitHub Pages serves automatically via the `CNAME` rec
 | File | Role |
 |------|------|
 | `listener.html` | Listener app — GPS, audio playback, geofence entry, spatial routing, fellowship/social |
+| `listener-engine.html` | Dev/validation build of the listener — wired to the extracted `sync/sync-engine.js` module and `spatial-routing.js`; sync-engine changes land and get validated here before porting to `listener.html` (long-term, intended to replace it) |
 | `playmin.html` | DJ engine — zone creation, live stream, sync broadcast, crowd view, deck, scenes |
 | `orchestra.js` | Shared `SpatialOrchestra` class — radar canvas with sweep beam and listener dots |
+| `spatial-routing.js` | Spatial/DJ-tool routing module for `listener-engine.html` — slot assignment, BPM warp, sweep/scatter offsets, and the `spatial_config`/`sweep_*`/`scatter`/`cluster_assign` broadcast handlers. Kept separate from the sync-engine block per the invariant below; only moves playback via `cancelDriftCorrection()` + `seekPreservingBT()` |
 | `debug.html` | Sync dashboard — subscribes to `byob_debug` broadcasts, one card per device: currentTime, expectedPos, driftMs, deviceLatencyMs, playbackRate, driftState. Aggregate readout counts only playing devices (`playing && !paused && currentTime > 0`) and shows two numbers: drift spread (max−min driftMs, approximates audible misalignment) and raw position delta projected to a common instant (includes intentional latency/scatter offsets) |
 | `sync-sim.html` | Standalone sync-engine simulator — no audio, no Supabase. Runs old vs new corrector designs side by side with identical seeds. Validate corrector changes here before porting to `listener.html` |
 | `SYNC_ENGINE.md` | Deep-dive doc on how sync works — the reasoning behind the corrector design. **Update it when changing sync behavior** |

@@ -3894,44 +3894,14 @@ function buildSyncChannel(zoneId) {
       setSyncIndicator('synced', 0);
     }, delay);
   })
-  .on('broadcast', { event: 'spatial_config' }, ({ payload }) => {
-    window._spatialConfig = payload;
-    window._masterBPM = payload.master_bpm || null;
-    window._trackBpms = payload.track_bpms || {};
-    if (payload.suggested_donation) { window._suggestedDonation = payload.suggested_donation; showPlayerTipBtn(); }
-    if (payload.tip_url) { window._zoneTipUrl = payload.tip_url; showPlayerTipBtn(); }
-    const mySlot = getSpatialSlot(payload);
-    const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
-    if (trackUrl && trackUrl !== audio.src) {
-      loadTrack(trackUrl, 'Zone ' + mySlot, payload.playback_started_at);
-      showToast('🔊 Slot ' + mySlot);
-    } else if (trackUrl && trackUrl === audio.src) {
-      applyBpmWarp(mySlot, trackUrl);
-      // Scene fires reset playback_started_at for the whole zone. A listener
-      // whose stem didn't change must still adopt the new reference point —
-      // otherwise it limps on the old one until fastDriftCorrect ducks it
-      // (up to 5s late). Forced snap, same family as hard_sync/scatter.
-      const newStart = payload.playback_started_at ? new Date(payload.playback_started_at).getTime() : null;
-      const curStart = activeZone?.playback_started_at ? new Date(activeZone.playback_started_at).getTime() : null;
-      if (newStart && audio.duration && (!curStart || Math.abs(newStart - curStart) > 250)) {
-        if (activeZone) activeZone.playback_started_at = payload.playback_started_at;
-        cancelDriftCorrection();
-        const elapsed = (syncedNow() - newStart) / 1000;
-        seekPreservingBT(window.SyncEngine.expectedPosition({
-          elapsedS: elapsed, duration: audio.duration,
-          deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
-          warpRate: _getBpmWarpRate(),
-        }));
-      }
-    }
-  })
-  // Phase 5n — sweep/scatter/cluster_assign disabled while isolating the
-  // drift corrector (see ROADMAP Phase 5n). _scatterOffsetMs stays 0;
-  // everyone stays on whatever track they're already on.
-  .on('broadcast', { event: 'sweep_start' }, () => {})
-  .on('broadcast', { event: 'sweep_stop' }, () => {})
-  .on('broadcast', { event: 'scatter' }, () => {})
-  .on('broadcast', { event: 'cluster_assign' }, () => {})
+  // Spatial/DJ-tool broadcast handlers — all logic lives in
+  // spatial-routing.js (see CLAUDE.md invariants: spatial code must stay
+  // separate from this sync-engine block).
+  .on('broadcast', { event: 'spatial_config' }, ({ payload }) => window.SpatialRouting?.onSpatialConfig(payload))
+  .on('broadcast', { event: 'sweep_start' }, ({ payload }) => window.SpatialRouting?.onSweepStart(payload))
+  .on('broadcast', { event: 'sweep_stop' }, () => window.SpatialRouting?.onSweepStop())
+  .on('broadcast', { event: 'scatter' }, ({ payload }) => window.SpatialRouting?.onScatter(payload))
+  .on('broadcast', { event: 'cluster_assign' }, ({ payload }) => window.SpatialRouting?.onClusterAssign(payload))
   .on('broadcast', { event: 'rally' }, ({ payload }) => {
     if (!payload?.lat || !payload?.lng) return;
     window._rallyPoint = { lat: payload.lat, lng: payload.lng, label: payload.label || '' };
@@ -5444,124 +5414,24 @@ function ensureZoneSubscription() {
 setInterval(ensureZoneSubscription, 5000);
 
   // ── SPATIAL CLUSTER ASSIGNMENT ────────────────────────────
-// Deterministic — every listener runs the same algo on the same data
-// Result: self-organizing clusters with no server round-trip
+// Delegates to spatial-routing.js — slot assignment, BPM warp, and sweep
+// offsets are spatial/DJ-tool concerns and must not be reimplemented here.
+// See CLAUDE.md invariants and spatial-routing.js's header comment.
 
 function _getBpmWarpRate() {
-  // Phase 5n — DJ-side spatial/BPM-warp machinery disabled while isolating
-  // the drift corrector (see ROADMAP Phase 5n). Always base rate 1.0; the
-  // corrector's warping/idle rates are then exactly 1.030/1.000 with nothing
-  // else able to move audio.playbackRate underneath it.
-  return 1.0;
-  const masterBpm = window._masterBPM;
-  if (!masterBpm) return 1.0;
-  const config = window._spatialConfig;
-  if (!config) return 1.0;
-  const mySlot = getSpatialSlot(config);
-  const trackBpm = (window._trackBpms || {})[mySlot];
-  if (!trackBpm) return 1.0;
-  return Math.max(0.25, Math.min(4.0, masterBpm / trackBpm));
+  return window.SpatialRouting ? window.SpatialRouting.getBpmWarpRate() : 1.0;
 }
 
 function applyBpmWarp(slot, url) {
-  // Phase 5n — disabled, see _getBpmWarpRate(). Force the element back to
-  // base rate so nothing but the drift corrector ever touches playbackRate.
-  audio.playbackRate = 1.0;
-  return;
-  const masterBpm = window._masterBPM;
-  if (!masterBpm) { audio.playbackRate = 1.0; return; }
-  // Try slot-specific track BPM first, then scan for matching URL
-  const trackBpms = window._trackBpms || {};
-  let trackBpm = trackBpms[slot];
-  if (!trackBpm) {
-    // Fall back to scanning all slots for a URL match
-    const config = window._spatialConfig;
-    if (config?.zone_tracks) {
-      for (const [s, u] of Object.entries(config.zone_tracks)) {
-        if (u === url && trackBpms[s]) { trackBpm = trackBpms[s]; break; }
-      }
-    }
-  }
-  if (!trackBpm) return; // unknown BPM — don't warp
-  const rate = masterBpm / trackBpm;
-  // Clamp to safe range
-  const clamped = Math.max(0.25, Math.min(4.0, rate));
-  audio.playbackRate = clamped;
+  window.SpatialRouting?.applyBpmWarp(slot, url);
 }
 
-function getSpatialSlot(config){
-  // Phase 5n — cluster/sweep/ring slot assignment disabled while isolating
-  // the drift corrector (see ROADMAP Phase 5n). Everyone gets Center ('C').
-  return 'C';
-  if(!userLat || !config?.zone_lat) return 'C';
-
-  const voices   = config.voices || 4;
-  const zoneLat  = config.zone_lat;
-  const zoneLng  = config.zone_lng;
-  const radiusM  = config.zone_radius_m || 200;
-
-  // My distance from zone center
-  const myDist = distM(userLat, userLng, zoneLat, zoneLng);
-  const myBearing = getBearing(zoneLat, zoneLng, userLat, userLng);
-
-  // Get all listener positions from liveGuests
-  const allListeners = Object.values(liveGuests || {});
-
-  if(!allListeners.length) return 'C'; // solo = center
-
-  // Find listeners within 30m of me = my cluster
-  const myCluster = allListeners.filter(l => {
-    if(!l.dist) return false;
-    return Math.abs(l.dist - myDist) < 30; // within 30m radial distance (dist already in meters)
-  });
-
-  // Cluster center = average bearing of my cluster
-  const clusterBearing = myCluster.length
-    ? myCluster.reduce((sum,l) => sum + (l.bearing||0), myBearing) / (myCluster.length+1)
-    : myBearing;
-
-  // Assign slot by bearing quadrant
-  const slotKeys = Object.keys(config.zone_tracks || {}).filter(k=>k!=='C');
-  if(!slotKeys.length) return 'C';
-
-  // Distribute slots evenly around 360°
-  const slotCount = Math.min(slotKeys.length, voices);
-  const sector    = 360 / slotCount;
-  const slotIdx   = Math.floor(((clusterBearing % 360) + sector/2) % 360 / sector) % slotCount;
-
-  return slotKeys[slotIdx] || 'C';
+function getSpatialSlot(config) {
+  return window.SpatialRouting ? window.SpatialRouting.getSlot(config) : 'C';
 }
 
-// ── CIRCULAR SWEEP RESPONSE ───────────────────────────────
-// Each listener delays based on when the sweep beam hits their bearing
-
-function applySweepOffset(sweep){
-  if(!userLat || !activeZone?.lat) return;
-
-  const myBearing = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
-  const rpm       = sweep.rpm || 4;
-  const dir       = sweep.dir || 1;
-  const msPerRev  = (60 / rpm) * 1000;
-
-  // How many ms until the beam reaches my bearing
-  const startAngle = sweep.startAngle || 0;
-  let   angleDiff  = ((myBearing - startAngle) * dir + 360) % 360;
-  const delayMs    = (angleDiff / 360) * msPerRev;
-
-  _scatterOffsetMs = delayMs;
-
-  // Apply seek offset when beam hits us
-  setTimeout(()=>{
-    if(!audio.duration || !activeZone?.playback_started_at) return;
-    cancelDriftCorrection();
-    const elapsed = (syncedNow() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-    seekPreservingBT(window.SyncEngine.expectedPosition({
-      elapsedS: elapsed, duration: audio.duration,
-      deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
-      warpRate: _getBpmWarpRate(),
-    }));
-    showToast('◎ Sweep hit — '+Math.round(delayMs)+'ms');
-  }, delayMs);
+function applySweepOffset(sweep) {
+  window.SpatialRouting?.applySweepOffset(sweep);
 }
 
 // ── DEBUG BROADCAST ──────────────────────────────────────
@@ -5874,6 +5744,7 @@ function onBigBoomyTap(){
 
 
 </script>
+<script type="module" src="spatial-routing.js"></script>
 <script type="module">
 // ── Sync engine — sync/sync-engine.js, the same module sync-engine.test.js
 // and sync-sim.html exercise. Module scripts are deferred (run after the
