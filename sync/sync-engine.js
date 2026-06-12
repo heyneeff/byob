@@ -137,12 +137,21 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
     return wrapLag(computeLag({ expected, currentTime: transport.currentTime }), transport.duration * 1000);
   }
 
+  // Called whenever a warp/duck's timer naturally completes. Always
+  // rechecks live drift before settling — a warp's correctionMs timer is
+  // computed from the lag at the moment the warp STARTED, but real playback
+  // (rate-change glitches, BT buffer hiccups, the next few seconds of
+  // natural skew) can leave residual drift by the time the timer fires.
+  // Snapping straight back to baseRate and waiting for the next ~3s
+  // periodic tick let that residual balloon before anything reacted to it
+  // (the "sawtooth" — drift gets close to 0, then jumps back up every
+  // cycle). Re-issuing requestCorrection immediately closes that gap.
   function settleToIdle() {
     driftState = 'idle';
-    if (driftPendingRecheck) {
-      driftPendingRecheck = false;
-      const lagMs = computeLagMs();
-      if (lagMs != null) requestCorrection(lagMs);
+    driftPendingRecheck = false;
+    const lagMs = computeLagMs();
+    if (lagMs != null && Math.abs(lagMs) >= 15) {
+      requestCorrection(lagMs);
     }
   }
 

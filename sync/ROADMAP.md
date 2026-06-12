@@ -918,3 +918,58 @@ transitions through the corrector instead of stepping it). If the sawtooth
 PERSISTS even with this stack fully disabled, it's purely a corrector/timing
 issue independent of spatial code — revisit `requestCorrection`'s "snap
 back to base rate" timer math in `sync-engine.js` and `sync-sim.html`.
+
+### Phase 5o — settleToIdle always rechecks drift, not just on driftPendingRecheck (2026-06-12)
+15th debug session (post-5n, zero `sync_events`, devices `dev_1xum4b`,
+`dev_2q1vjd`, `dev_veycv0`). Sawtooth from 5n PERSISTED with the entire
+spatial/BPM-warp stack disabled — per 5n's own stated criterion, this points
+at the corrector/timer logic in `sync-engine.js` itself, not the spatial
+layer.
+
+Per-device time series showed a strikingly consistent shape: while
+`'warping'` (rate 1.030), `driftMs` closes toward 0 at ~90ms per ~3s tick
+(matches the nominal 3% rate). It gets down to single digits to ~80ms
+(the "82ms"/"12ms moments" the user called out). Then, on the tick where
+the warp's `correctionMs` timer fires and `settleToIdle()` resets
+`playbackRate` to `baseRate` (1.000) and `driftState` to `'idle'`,
+`driftMs` jumps straight back up by ~130-300ms — and the cycle restarts
+from there, never settling. `dev_1xum4b`'s idle troughs landed at
+-164/-165/-162/-164/-165/-164ms — suspiciously tight for hardware jitter,
+suggesting a structural cause rather than random BT buffer noise.
+
+The bug: `settleToIdle()` only rechecked live drift when
+`driftPendingRecheck` was set — which only ever happens mid-`'ducking'`.
+For `'warping'`, the warp timer just snapped `playbackRate` back to
+`baseRate` and went idle unconditionally, regardless of whether the lag at
+that exact moment (computed from `correctionMs`, fixed at warp-start) had
+actually closed to <15ms. Any residual lag — or any rate-change glitch the
+snap-back itself introduced — then sat unaddressed until the next ~5s
+periodic `fastDriftCorrect` tick, during which it could grow further. This
+is exactly "getting close, then jumping back up": the corrector wasn't
+holding position once it got close, because it stopped checking the moment
+it arrived.
+
+Fix: `settleToIdle()` now ALWAYS calls `computeLagMs()` when a warp/duck
+timer completes (not just when `driftPendingRecheck` is set), and
+immediately calls `requestCorrection(lagMs)` again if `|lagMs| >= 15`. This
+makes the corrector self-renewing — the moment a warp's timer fires, it
+checks "are we actually close now?" and either goes idle (if yes) or
+re-engages correction at the fresh lag (if no), instead of blindly trusting
+the timer's start-of-warp estimate and waiting up to ~5s for the next
+external check. `driftPendingRecheck` is now somewhat redundant for the
+ducking path (its recheck would happen anyway) but left in place — it's
+harmless and documents intent.
+
+`node --test` still 25/25 (including the 3 seeded party-sim tests — no
+bounds needed loosening).
+
+**Verification needed**: next session — does the sawtooth's amplitude
+shrink and/or its trough get closer to/stay near 0 for longer? If
+`driftMs` still jumps by ~130ms+ right at the warping->idle transition even
+with the immediate recheck, the rate-change itself (1.030 -> 1.000) is
+likely causing a real `currentTime` stall/glitch on these devices (a known
+Web Audio behavior on some platforms) — next step would be to avoid the
+abrupt rate step entirely, e.g. by not fully returning to `baseRate` when
+residual drift is small but nonzero (a "trim rate" slightly off 1.0 to
+continuously compensate for the device's apparent natural skew, rather than
+oscillating between 1.030 and 1.000).
