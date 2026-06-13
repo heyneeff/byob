@@ -115,25 +115,6 @@ export function microCorrectionRate(lagMs, baseRate = 1) {
   return baseRate * (1 + pct);
 }
 
-// ── Background-tab catch-up rate ──────────────────────────────────────────
-// iOS Safari silently no-ops `audio.currentTime = x` while the document is
-// hidden and audio is playing over Bluetooth (confirmed via a live debug
-// session: a backgrounded device sat at a constant ~-270ms lag for 4.5
-// hours, snapCount climbing every tick, playbackRate frozen at exactly 1.0
-// because cancelDriftCorrection() kept resetting it right before each no-op
-// seek). Rate changes DO take effect while hidden, so once a hidden device's
-// lag crosses the snap threshold, use a larger proportional rate trim
-// instead of attempting a seek — same shape as microCorrectionRate but with
-// 10x the gain and a 5x cap (saturates at +/-3% once |lag| >= 300ms, closing
-// a 300ms gap in ~10s of wall time).
-export const BG_CATCHUP_GAIN_PER_MS = 0.0001;
-export const BG_CATCHUP_MAX_PCT     = 0.03;
-
-export function backgroundCatchupRate(lagMs, baseRate = 1) {
-  const pct = Math.max(-BG_CATCHUP_MAX_PCT, Math.min(BG_CATCHUP_MAX_PCT, lagMs * BG_CATCHUP_GAIN_PER_MS));
-  return baseRate * (1 + pct);
-}
-
 // ── Drift corrector ────────────────────────────────────────────
 //
 // Single gate `_driftState` ('idle' | 'warping' | 'ducking'), one entry
@@ -325,14 +306,6 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
     transport.playbackRate = microCorrectionRate(lagMs, getBaseRate());
   }
 
-  // Same gating as applyMicroCorrection (only while idle), but a much
-  // larger rate trim for use when a seek won't land (backgrounded tab).
-  // Never touches transport.currentTime.
-  function applyBackgroundCatchup(lagMs) {
-    if (driftState !== 'idle') return;
-    transport.playbackRate = backgroundCatchupRate(lagMs, getBaseRate());
-  }
-
   return {
     computeLagMs,
     requestCorrection,
@@ -341,7 +314,6 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
     seekPreservingBT,
     settleToIdle,
     applyMicroCorrection,
-    applyBackgroundCatchup,
     getDriftState: () => driftState,
     getDriftPendingRecheck: () => driftPendingRecheck,
   };

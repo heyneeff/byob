@@ -94,11 +94,6 @@
     <canvas id="chart-micro" width="900" height="260"></canvas>
     <table id="stats-micro"></table>
   </div>
-  <div class="panel">
-    <h2>BG-aware — micro + background catch-up rate for hidden tabs</h2>
-    <canvas id="chart-bgaware" width="900" height="260"></canvas>
-    <table id="stats-bgaware"></table>
-  </div>
 </div>
 <div class="legend" id="legend"></div>
 <div class="events" id="event-log"></div>
@@ -194,14 +189,9 @@ function makeListener(rng, id, baseRate) {
     currentTime:    rng() * DURATION,
     playbackRate:   baseRate, baseRate,
     nextFastCheck:  rng() * FAST_CHECK_MS,
-    // ~35% of listeners simulate a permanently-backgrounded tab (phone in
-    // pocket) — for engine-backed controllers, transport.currentTime writes
-    // silently no-op for these (see makeEngineListener), mirroring the iOS
-    // Safari behavior confirmed in the Jun 13 2026 live debug session.
-    hidden:         rng() < 0.35,
     state: 'idle', pendingRecheck: false,    // for the new controller
     isDucking: false, correctionActive: false, // for the legacy controller
-    dipCount: 0, warpCount: 0, hardSeekCount: 0, directBypassCount: 0, bgCatchupCount: 0,
+    dipCount: 0, warpCount: 0, hardSeekCount: 0, directBypassCount: 0,
     history: []
   };
 }
@@ -295,10 +285,7 @@ function makeEngineListener(rng, id, baseRate, timers, simState, ctx) {
   const transport = {
     duration: DURATION,
     get currentTime() { return L.currentTime; },
-    // iOS Safari: audio.currentTime = x silently no-ops on a backgrounded
-    // tab playing over Bluetooth — seekPreservingBT/seekWithDuck calls land
-    // here and do nothing for hidden listeners.
-    set currentTime(v) { if (!L.hidden) L.currentTime = v; },
+    set currentTime(v) { L.currentTime = v; },
     get playbackRate() { return L.playbackRate; },
     set playbackRate(v) { L.playbackRate = v; },
     volume: 1,
@@ -391,45 +378,6 @@ function microTickEngine(L, simNow, dtMs, ctx, simState) {
   if (ctx.events.hardSync) forcedSnapEngine(L, ctx, simState);
   if (ctx.events.clusterAssign && ctx.pick(ctx.events.clusterAssign, L)) forcedSnapEngine(L, ctx, simState);
   if (ctx.events.sceneFire) forcedSnapEngine(L, ctx, simState);
-
-  L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
-}
-
-// ════════════════════════════════════════════════════════════
-// BG-AWARE controller — micro, plus: when a snap is needed (|lag| >=
-// STRIP_THRESHOLD_MS) on a listener whose tab is backgrounded (L.hidden),
-// seekPreservingBT will silently no-op (see transport.currentTime above),
-// so don't call it — apply engine.applyBackgroundCatchup(lag) instead, a
-// larger (+/-3%) rate trim that doesn't touch currentTime. Visible
-// listeners are unaffected (still snap normally).
-// ════════════════════════════════════════════════════════════
-function bgawareTickEngine(L, simNow, dtMs, ctx, simState) {
-  advance(L, dtMs);
-
-  if (simNow >= L.nextFastCheck) {
-    L.nextFastCheck = simNow + FAST_CHECK_MS;
-    const lag = L.engine.computeLagMs();
-    if (lag != null) {
-      if (Math.abs(lag) >= STRIP_THRESHOLD_MS) {
-        if (L.hidden) { L.engine.applyBackgroundCatchup(lag); L.bgCatchupCount++; }
-        else forcedSnapEngine(L, ctx, simState);
-      } else {
-        L.engine.applyMicroCorrection(lag);
-      }
-    }
-  }
-  if (ctx.events.visibilityWake) {
-    const lag = L.engine.computeLagMs();
-    if (lag != null && Math.abs(lag) >= STRIP_THRESHOLD_MS && !L.hidden) forcedSnapEngine(L, ctx, simState);
-  }
-
-  if (ctx.events.scatterChange) {
-    L.scatterOffsetMs = ctx.scatterFor(L);
-    if (!L.hidden) forcedSnapEngine(L, ctx, simState);
-  }
-  if (ctx.events.hardSync && !L.hidden) forcedSnapEngine(L, ctx, simState);
-  if (ctx.events.clusterAssign && ctx.pick(ctx.events.clusterAssign, L) && !L.hidden) forcedSnapEngine(L, ctx, simState);
-  if (ctx.events.sceneFire && !L.hidden) forcedSnapEngine(L, ctx, simState);
 
   L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
 }
@@ -632,21 +580,18 @@ function drawChart(canvas, listeners, totalMs) {
 
 function fillStats(table, listeners, label) {
   const settleFrom = listeners[0]?.history.length ? listeners[0].history.length * 0.2 | 0 : 0; // ignore first 20% (initial lock-in)
-  const showBg = label === 'bgaware';
-  let rows = `<tr><th>Listener</th><th>Hidden?</th><th>Max |drift| (settled)</th><th>Volume dips</th><th>Rate-warps</th><th>Hard seeks</th>${label==='legacy' ? '<th>Bypass seeks</th>' : ''}${showBg ? '<th>BG catch-ups</th>' : ''}</tr>`;
-  let sumMax=0, sumDips=0, sumWarps=0, sumSeeks=0, sumBypass=0, sumBgCatchup=0;
-  let hiddenMax=0, hiddenCount=0;
+  let rows = `<tr><th>Listener</th><th>Max |drift| (settled)</th><th>Volume dips</th><th>Rate-warps</th><th>Hard seeks</th>${label==='legacy' ? '<th>Bypass seeks</th>' : ''}</tr>`;
+  let sumMax=0, sumDips=0, sumWarps=0, sumSeeks=0, sumBypass=0;
   listeners.forEach(L => {
     const settled = L.history.slice(settleFrom);
     const maxDrift = settled.reduce((m,p) => Math.max(m, Math.abs(p.drift)), 0);
-    sumMax += maxDrift; sumDips += L.dipCount; sumWarps += L.warpCount; sumSeeks += L.hardSeekCount; sumBypass += (L.directBypassCount||0); sumBgCatchup += (L.bgCatchupCount||0);
-    if (L.hidden) { hiddenCount++; hiddenMax = Math.max(hiddenMax, maxDrift); }
-    rows += `<tr><td><span class="swatch" style="background:${L.color}"></span>#${L.id}</td><td>${L.hidden ? 'yes' : '—'}</td>`
+    sumMax += maxDrift; sumDips += L.dipCount; sumWarps += L.warpCount; sumSeeks += L.hardSeekCount; sumBypass += (L.directBypassCount||0);
+    rows += `<tr><td><span class="swatch" style="background:${L.color}"></span>#${L.id}</td>`
           + `<td>${maxDrift.toFixed(0)}ms</td><td>${L.dipCount}</td><td>${L.warpCount}</td><td>${L.hardSeekCount}</td>`
-          + (label==='legacy' ? `<td>${L.directBypassCount||0}</td>` : '') + (showBg ? `<td>${L.bgCatchupCount||0}</td>` : '') + `</tr>`;
+          + (label==='legacy' ? `<td>${L.directBypassCount||0}</td>` : '') + `</tr>`;
   });
   table.innerHTML = rows;
-  return { avgMax: sumMax/listeners.length, totalDips: sumDips, totalWarps: sumWarps, totalSeeks: sumSeeks, totalBypass: sumBypass, totalBgCatchup: sumBgCatchup, hiddenMax, hiddenCount };
+  return { avgMax: sumMax/listeners.length, totalDips: sumDips, totalWarps: sumWarps, totalSeeks: sumSeeks, totalBypass: sumBypass };
 }
 
 function buildLegend(listeners) {
@@ -683,18 +628,15 @@ btnRun.addEventListener('click', () => {
     const fresh    = runSimEngine(seed, count, totalMs, disrupt, eventToggles);
     const stripped = runSimEngine(seed, count, totalMs, disrupt, eventToggles, stripTickEngine);
     const micro    = runSimEngine(seed, count, totalMs, disrupt, eventToggles, microTickEngine);
-    const bgaware  = runSimEngine(seed, count, totalMs, disrupt, eventToggles, bgawareTickEngine);
 
     drawChart(document.getElementById('chart-legacy'),   legacy.listeners,   totalMs);
     drawChart(document.getElementById('chart-new'),      fresh.listeners,    totalMs);
     drawChart(document.getElementById('chart-stripped'), stripped.listeners, totalMs);
     drawChart(document.getElementById('chart-micro'),    micro.listeners,    totalMs);
-    drawChart(document.getElementById('chart-bgaware'),  bgaware.listeners,  totalMs);
     const sLegacy   = fillStats(document.getElementById('stats-legacy'),   legacy.listeners,   'legacy');
     const sNew      = fillStats(document.getElementById('stats-new'),      fresh.listeners,    'new');
     const sStripped = fillStats(document.getElementById('stats-stripped'), stripped.listeners, 'new');
     const sMicro    = fillStats(document.getElementById('stats-micro'),    micro.listeners,    'new');
-    const sBgaware  = fillStats(document.getElementById('stats-bgaware'),  bgaware.listeners,  'bgaware');
     buildLegend(legacy.listeners);
     document.getElementById('event-log').innerHTML = '<b>Party timeline (identical for both runs):</b><br>' + legacy.eventLog.map(e=>'• '+e).join('<br>');
 
@@ -707,11 +649,8 @@ btnRun.addEventListener('click', () => {
       <b>Avg settled drift:</b> legacy ${sLegacy.avgMax.toFixed(0)}ms vs new ${sNew.avgMax.toFixed(0)}ms vs stripped ${sStripped.avgMax.toFixed(0)}ms vs micro ${sMicro.avgMax.toFixed(0)}ms — ${better(sNew.avgMax, sLegacy.avgMax)}, ${betterStrip(sStripped.avgMax, sNew.avgMax)}, ${betterMicro(sMicro.avgMax, sStripped.avgMax)}<br>
       <b>Total audible volume dips:</b> legacy ${sLegacy.totalDips} vs new ${sNew.totalDips} vs stripped ${sStripped.totalDips} vs micro ${sMicro.totalDips} — ${better(sNew.totalDips, sLegacy.totalDips)}, ${betterStrip(sStripped.totalDips, sNew.totalDips)}, ${betterMicro(sMicro.totalDips, sStripped.totalDips)}<br>
       <b>Total hard seeks:</b> legacy ${sLegacy.totalSeeks} vs new ${sNew.totalSeeks} vs stripped ${sStripped.totalSeeks} vs micro ${sMicro.totalSeeks} — ${better(sNew.totalSeeks, sLegacy.totalSeeks)}, ${betterStrip(sStripped.totalSeeks, sNew.totalSeeks)}, ${betterMicro(sMicro.totalSeeks, sStripped.totalSeeks)}<br>
-      <b>Direct bypass seeks (the actual "roving" mechanism):</b> legacy had ${sLegacy.totalBypass} — new, stripped, micro, and bg-aware have <b>zero</b>, by construction (nothing can seek without going through the single gate).<br><br>
-      <b>Backgrounded-tab drift (${sBgaware.hiddenCount} of ${count} listeners simulate a permanently-hidden tab — seekPreservingBT silently no-ops for these):</b><br>
-      Worst-case settled drift on a hidden listener: micro ${sMicro.hiddenMax.toFixed(0)}ms vs bg-aware ${sBgaware.hiddenMax.toFixed(0)}ms — ${sBgaware.hiddenMax < sMicro.hiddenMax ? '<b>bg-aware wins</b>' : (sBgaware.hiddenMax > sMicro.hiddenMax ? '<span class="bad">micro wins</span>' : 'tie')}.
-      Bg-aware applied ${sBgaware.totalBgCatchup} background catch-up corrections across the run.<br><br>
-      <span style="color:var(--muted)">Legacy lines that hover near the gridlines and occasionally spike past ±500ms before "fighting" their way back are the roving signature — a duck and a bypass-seek landing on the same listener within the same correction window. "New" relies on requestCorrection's warp/duck bands; "stripped" drops both and just snaps via seekPreservingBT whenever |lag| &gt;= ${STRIP_THRESHOLD_MS}ms; "micro" is stripped plus a continuous +/-0.6% playbackRate trim (engine.applyMicroCorrection) that cancels each device's constant hardware clock-rate error, so drift settles near 0 between snaps instead of sawtoothing up to the threshold. "BG-aware" is micro, but a hidden listener whose lag crosses the snap threshold gets a larger (+/-3%) rate trim (engine.applyBackgroundCatchup) instead of a seek that would silently no-op — confirmed against the Jun 13 2026 live session where a backgrounded device sat at ~-270ms for 4.5 hours with playbackRate frozen at 1.000 and snapCount climbing every tick.</span>
+      <b>Direct bypass seeks (the actual "roving" mechanism):</b> legacy had ${sLegacy.totalBypass} — new, stripped, and micro have <b>zero</b>, by construction (nothing can seek without going through the single gate).<br><br>
+      <span style="color:var(--muted)">Legacy lines that hover near the gridlines and occasionally spike past ±500ms before "fighting" their way back are the roving signature — a duck and a bypass-seek landing on the same listener within the same correction window. "New" relies on requestCorrection's warp/duck bands; "stripped" drops both and just snaps via seekPreservingBT whenever |lag| &gt;= ${STRIP_THRESHOLD_MS}ms; "micro" is stripped plus a continuous +/-0.6% playbackRate trim (engine.applyMicroCorrection) that cancels each device's constant hardware clock-rate error, so drift settles near 0 between snaps instead of sawtoothing up to the threshold.</span>
     `;
 
     document.getElementById('status').textContent = `Simulated ${minutes}min × ${count} listeners (seed ${seed}) — ${legacy.eventLog.length} disruption events.`;
