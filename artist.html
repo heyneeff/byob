@@ -3400,7 +3400,7 @@ function onEvtRevealAlwaysChange(){
 }
 async function populateEvtZones(){
   const sel=document.getElementById('evt-zone');
-  const {data}=await db.from('zones').select('id,name,lat,lng,radius_m').eq('host_id',currentUser.id).eq('active',true).order('created_at',{ascending:false});
+  const {data}=await db.from('zones').select('id,name,lat,lng,radius_m').eq('host_id',currentUser.id).order('created_at',{ascending:false}).limit(20);
   sel.innerHTML='';
   if(!data?.length){
     sel.innerHTML='<option value="">No zones yet — set up a zone first</option>';
