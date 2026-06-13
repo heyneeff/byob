@@ -62,7 +62,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .stem-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
 .stem-title{flex:1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
 .stem-btns{display:flex;gap:2px;flex-shrink:0;}
-.stem-btn{width:16px;height:16px;border-radius:3px;border:none;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;cursor:pointer;background:#1c1c1c;color:var(--muted);transition:all .1s;}
+.stem-btn{width:22px;height:22px;border-radius:4px;border:none;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;cursor:pointer;background:#1c1c1c;color:var(--muted);transition:all .1s;}
 .stem-btn:hover{background:var(--orange);color:#000;}
 
 /* Center: radar */
@@ -390,8 +390,8 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;h
 .tr-bpm{font-size:10px;font-family:'DM Mono',monospace;color:var(--orange);}
 .tr-key{font-size:9px;font-family:'DM Mono',monospace;color:var(--teal);}
 .tr-dur{font-size:9px;font-family:'DM Mono',monospace;color:var(--muted2);}
-.tr-acts{display:flex;gap:2px;justify-content:flex-end;}
-.tr-btn{padding:2px 5px;border:none;border-radius:3px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:900;background:var(--card2);color:var(--muted2);}
+.tr-acts{display:flex;gap:4px;justify-content:flex-end;}
+.tr-btn{padding:5px 9px;border:none;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;background:var(--card2);color:var(--muted2);}
 .tr-btn:hover{background:var(--orange);color:#000;}.tr-btn.b{background:rgba(0,204,153,.08);color:var(--teal);}.tr-btn.b:hover{background:var(--teal);color:#000;}
 body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;opacity:.4;mix-blend-mode:overlay;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");}
 </style>
@@ -1798,23 +1798,32 @@ document.getElementById('progress-bar').addEventListener('touchmove', seekFromEv
 document.getElementById('volume').addEventListener('input',e=>audio.volume=e.target.value/100);
 
 document.getElementById('file-input').addEventListener('change',async(e)=>{
-  const file=e.target.files[0];if(!file)return;
+  const files=Array.from(e.target.files);
+  if(!files.length)return;
   const statusEl=document.getElementById('upload-status');
-  statusEl.textContent='Uploading…';statusEl.style.color='var(--teal)';
-  try{
-    const path='tracks/'+(currentUser?.id||'anon')+'/'+Date.now()+'_'+file.name;
-    const {error:upErr}=await db.storage.from('boombox').upload(path,file);
-    if(upErr)throw upErr;
-    const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
-    await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
+  let done=0;
+  for(const file of files){
+    statusEl.textContent='Uploading '+(done+1)+'/'+files.length+'…';statusEl.style.color='var(--teal)';
+    try{
+      const path='tracks/'+(currentUser?.id||'anon')+'/'+Date.now()+'_'+file.name;
+      const {error:upErr}=await db.storage.from('boombox').upload(path,file);
+      if(upErr)throw upErr;
+      const {data:urlData}=db.storage.from('boombox').getPublicUrl(path);
+      const {error:insErr}=await db.from('tracks').insert({user_id:currentUser?.id||null,zone_id:activeZone?.id||null,title:file.name.replace(/\.[^/.]+$/,''),file_path:path,public_url:urlData.publicUrl});
+      if(insErr)throw insErr;
+      done++;
+    }catch(err){
+      console.error('Upload error:',err);
+      showToast('⚠ '+file.name+' failed: '+err.message);
+    }
+  }
+  if(done){
     _realTracks=[]; buildLibs('',true);
-    statusEl.textContent='✓ Added to library';statusEl.style.color='var(--teal)';
+    statusEl.textContent='✓ '+done+' track'+(done>1?'s':'')+' added';statusEl.style.color='var(--teal)';
     setTimeout(()=>{statusEl.textContent='';},3000);
-    showToast('Track added to library');
-  }catch(err){
-    console.error('Upload error:',err);
-    statusEl.textContent='⚠ '+err.message;
-    statusEl.style.color='var(--red)';
+    showToast(done+' track'+(done>1?'s':'')+' added to library');
+  } else {
+    statusEl.textContent='⚠ Upload failed';statusEl.style.color='var(--red)';
   }
   e.target.value='';
 });
@@ -3161,40 +3170,7 @@ function assignTrackToZone(zone,url,name){
   zoneTracks[zone]={url,name};
   _updateWarpStatus();
   const slot=document.getElementById('slot-'+zone);
-    const nameEl=document.getElementById('slot-'+zone+'-name');
-function tapAssignTrack(id){
-  const t=(_realTracks||[]).find(t=>t.id===id)||TRACKS.find(t=>t.id===id);
-  if(!t){showToast('Track not found');return;}
-  if(!selectedSlot){
-    // No slot selected — show slot picker
-    showSlotPicker(id);
-    return;
-  }
-  assignTrackToZone(selectedSlot,t.url||t.id,t.name);
-}
-
-function showSlotPicker(id){
-  const t=(_realTracks||[]).find(t=>t.id===id)||TRACKS.find(t=>t.id===id);
-  if(!t)return;
-  document.getElementById('slot-picker')?.remove();
-  const picker=document.createElement('div');
-  picker.id='slot-picker';
-  picker.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:9999;background:var(--surface2);border-top:3px solid var(--orange);padding:16px 18px 40px;';
-  const keys=getSlotKeys();
-  const btnHTML=keys.map(k=>{
-    const bg=slotColor(k).replace('var(--orange)','#f57e20').replace('var(--teal)','#00cc99').replace('var(--red)','#ef3c23');
-    const fg=(k==='C'||['#00cc99','#a78bfa','#f472b6','#34d399','#fbbf24','#60a5fa','#a3e635'].some(c=>bg===c))?'#000':'#fff';
-    return `<button onclick="assignTrackToZone('${k}','${(t.url||t.id).replace(/'/g,"\\'")}','${t.name.replace(/'/g,"\\'")}');document.getElementById('slot-picker').remove();" style="padding:14px;background:${bg};color:${fg};border:none;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:900;cursor:pointer;">${k}</button>`;
-  }).join('');
-  picker.innerHTML=`
-    <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--orange);margin-bottom:12px;">Assign to slot</div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">${btnHTML}
-      <button onclick="document.getElementById('slot-picker').remove();" style="padding:14px;background:transparent;color:var(--muted);border:1px solid #333;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:16px;cursor:pointer;">✕</button>
-    </div>
-  `;
-  document.body.appendChild(picker);
-}
-
+  const nameEl=document.getElementById('slot-'+zone+'-name');
   const controls=document.getElementById('slot-'+zone+'-controls');
   const trackName=name||url.split('/').pop();
   if(nameEl)nameEl.textContent=trackName;
@@ -3738,6 +3714,7 @@ async function fetchRealTracks() {
   try {
     const { data } = await db.from('tracks')
       .select('id,title,public_url,file_path,created_at')
+      .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false })
       .limit(200);
     return (data || []).map((t,i) => ({
@@ -3760,11 +3737,21 @@ async function deleteTrack(id) {
   if (!t?.dbId) return;
   if (!confirm(`Delete "${t.name}"?`)) return;
   try {
-    await db.from('tracks').delete().eq('id', t.dbId);
+    const { error: delErr } = await db.from('tracks').delete().eq('id', t.dbId);
+    if (delErr) throw delErr;
     if (t.filePath) await db.storage.from('boombox').remove([t.filePath]);
     _realTracks = _realTracks.filter(r => r.id !== id);
+    // A deleted track may still be assigned to a spatial slot — clear those
+    // assignments too, otherwise the slot keeps pointing at a dead URL.
+    let clearedSlots = 0;
+    Object.entries(zoneTracks).forEach(([slot, assigned]) => {
+      if (assigned?.url === t.url) {
+        clearZoneSlot({ stopPropagation: () => {} }, slot);
+        clearedSlots++;
+      }
+    });
     buildLibs(_libFilter);
-    showToast('Deleted: ' + t.name);
+    showToast('Deleted: ' + t.name + (clearedSlots ? ' (cleared ' + clearedSlots + ' slot' + (clearedSlots>1?'s':'') + ')' : ''));
   } catch(err) { showToast('Delete failed: ' + err.message); }
 }
 
@@ -3986,13 +3973,14 @@ document.getElementById('stem-file-input').addEventListener('change', async (e) 
       const { error } = await db.storage.from('boombox').upload(path, file);
       if (error) throw error;
       const { data: urlData } = db.storage.from('boombox').getPublicUrl(path);
-      await db.from('tracks').insert({
+      const { error: insErr } = await db.from('tracks').insert({
         user_id: currentUser.id,
         zone_id: activeZone?.id || null,
         title: file.name.replace(/\.[^/.]+$/, ''),
         file_path: path,
         public_url: urlData.publicUrl
       });
+      if (insErr) throw insErr;
       done++;
     } catch(err) { showToast('Upload failed: ' + err.message); }
   }
