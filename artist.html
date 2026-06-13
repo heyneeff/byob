@@ -445,6 +445,11 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">City (shown on front page)</div><input class="zdp-name" id="evt-city" type="text" placeholder="e.g. Denver, CO" style="margin:0;font-size:11px;"/></div>
     <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Ticket price (blank = free)</div><input class="zdp-name" id="evt-price" type="number" min="0" step="1" placeholder="0" style="margin:0;font-size:11px;"/></div>
   </div>
+  <div style="margin-top:6px;">
+    <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Cover image (shown on front page)</div>
+    <input type="file" id="evt-image" accept="image/*" style="display:none;"/>
+    <div id="evt-image-preview" onclick="document.getElementById('evt-image').click()" style="height:64px;border-radius:6px;border:1px dashed var(--rim);background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;cursor:pointer;background-size:cover;background-position:center;">+ Add image</div>
+  </div>
   <div style="font-size:10px;color:var(--muted);margin:8px 0;">Location uses current zone center. Free events reveal at the reveal time; paid events reveal after purchase.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <button class="zdp-confirm" style="background:var(--red);" onclick="confirmEvent()">✓ Schedule</button>
@@ -3379,7 +3384,22 @@ function openEventPanel(){
 function closeEventPanel(){
   document.getElementById('event-panel').style.transform='translateY(100%)';
   ['evt-name','evt-artists','evt-desc'].forEach(id=>document.getElementById(id).value='');
+  _evtImageFile = null;
+  document.getElementById('evt-image').value = '';
+  const preview = document.getElementById('evt-image-preview');
+  preview.style.backgroundImage = '';
+  preview.textContent = '+ Add image';
 }
+
+let _evtImageFile = null;
+document.getElementById('evt-image').addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  _evtImageFile = file;
+  const preview = document.getElementById('evt-image-preview');
+  preview.style.backgroundImage = `url('${URL.createObjectURL(file)}')`;
+  preview.textContent = '';
+});
 function toLocalInput(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
 async function confirmEvent(){
   const name=document.getElementById('evt-name').value.trim();
@@ -3397,7 +3417,14 @@ async function confirmEvent(){
   const priceRaw=document.getElementById('evt-price').value.trim();
   const ticket_price=priceRaw&&parseFloat(priceRaw)>0?parseFloat(priceRaw):null;
   try{
-    const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at:new Date(reveal).toISOString(),lat,lng,radius_m:activeZone?.radius_m||draftRadius||200,zone_id:activeZone?.id||null,created_by:currentUser.id,city,ticket_price});
+    let image_url=null;
+    if(_evtImageFile){
+      const path='events/'+currentUser.id+'/'+Date.now()+'_'+_evtImageFile.name;
+      const{error:upErr}=await db.storage.from('boombox').upload(path,_evtImageFile);
+      if(upErr)throw upErr;
+      image_url=db.storage.from('boombox').getPublicUrl(path).data.publicUrl;
+    }
+    const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at:new Date(reveal).toISOString(),lat,lng,radius_m:activeZone?.radius_m||draftRadius||200,zone_id:activeZone?.id||null,created_by:currentUser.id,city,ticket_price,image_url});
     if(error)throw error;
     closeEventPanel();showToast('"'+name+'" scheduled 📅');loadEvents();
   }catch(e){showToast('Error: '+e.message);}

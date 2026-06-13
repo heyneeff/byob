@@ -469,6 +469,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .nav-status{font-size:10px;margin-top:3px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}
 .nav-status.inside{color:var(--teal);}
 .nav-status.outside{color:var(--orange);}
+.nav-maps-btn{flex-shrink:0;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;font-weight:700;color:var(--offwhite);text-decoration:none;letter-spacing:.04em;white-space:nowrap;}
 /* user accuracy circle */
 .leaflet-user-accuracy{fill:#f57e20;fill-opacity:.1;stroke:#f57e20;stroke-width:1;stroke-opacity:.4;}
 
@@ -775,6 +776,7 @@ audio{display:none;}
         <div class="nav-name" id="nav-name">—</div>
         <div class="nav-status outside" id="nav-status">Head this way</div>
       </div>
+      <a class="nav-maps-btn" id="nav-maps-btn" target="_blank" rel="noopener">🧭 Maps</a>
     </div>
 
     <!-- FELLOWSHIP BUTTONS — locked until in-zone -->
@@ -1925,153 +1927,35 @@ function playBabble() {
 
 
 // ── WARP ENTRY SOUND — wet womp ─────────────────────────
+// Short "power-up" arpeggio (C5-E5-G5-C6, square wave) — Boomy's zone-entry/resync
+// chime. Replaces the old multi-second "portal" sound, which was reported as
+// grating after repeated zone entries. A rendered copy lives at sfx/boomy-chime.wav
+// for preview/reference — keep the two in sync if this is retuned.
 function playWarpSound() {
   try {
     const ctx = typeof getSfxCtx === 'function' ? getSfxCtx() :
       (window._sfxCtx = window._sfxCtx || new (window.AudioContext || window.webkitAudioContext)());
     if (!ctx) return;
     ctx.resume().then(() => {
-
       const now = ctx.currentTime;
-
-      // ── ACT 1: PRESSURE DROP ─────────────────────────────
-      // Sub-bass thud — air pressure change, like a door to another world opening
-      // 0.0 → 0.4s
-      const sub = ctx.createOscillator();
-      sub.type = 'sine';
-      sub.frequency.setValueAtTime(55, now);
-      sub.frequency.exponentialRampToValueAtTime(28, now + 0.4);
-
-      const subEnv = ctx.createGain();
-      subEnv.gain.setValueAtTime(0, now);
-      subEnv.gain.linearRampToValueAtTime(0.9, now + 0.02);
-      subEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
-
-      // Noise whoosh underneath — wind through the portal
-      const whooshBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.5), ctx.sampleRate);
-      const wd = whooshBuf.getChannelData(0);
-      for (let i = 0; i < wd.length; i++) wd[i] = Math.random() * 2 - 1;
-      const whoosh = ctx.createBufferSource();
-      whoosh.buffer = whooshBuf;
-
-      const whooshFilter = ctx.createBiquadFilter();
-      whooshFilter.type = 'bandpass';
-      whooshFilter.frequency.setValueAtTime(80, now);
-      whooshFilter.frequency.exponentialRampToValueAtTime(600, now + 0.4);
-      whooshFilter.Q.value = 1.2;
-
-      const whooshEnv = ctx.createGain();
-      whooshEnv.gain.setValueAtTime(0, now);
-      whooshEnv.gain.linearRampToValueAtTime(0.35, now + 0.05);
-      whooshEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
-
-      // ── ACT 2: BIOLUMINESCENT BLOOM ──────────────────────
-      // Shimmer of harmonic overtones rising like light spreading outward
-      // 0.2 → 1.4s — overlaps with pressure drop fading
-      const shimmerFreqs = [220, 330, 440, 550, 660, 880, 1100, 1320];
-      shimmerFreqs.forEach((freq, i) => {
-        const delay = 0.2 + i * 0.07; // each tone enters slightly after previous
-        const osc = ctx.createOscillator();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        // Slight detune = warmth, not clinical
-        osc.detune.value = (Math.random() - 0.5) * 12;
-
-        const shimEnv = ctx.createGain();
-        shimEnv.gain.setValueAtTime(0, now + delay);
-        shimEnv.gain.linearRampToValueAtTime(0.07 - i * 0.006, now + delay + 0.08);
-        shimEnv.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.6);
-
-        // Each overtone pans slightly differently = stereo spread feeling
-        osc.connect(shimEnv);
-        shimEnv.connect(ctx.destination);
-        osc.start(now + delay);
-        osc.stop(now + delay + 0.7);
+      const notes = [
+        { freq: 523.25, delay: 0.00, dur: 0.16, peak: 0.18 }, // C5
+        { freq: 659.25, delay: 0.07, dur: 0.16, peak: 0.18 }, // E5
+        { freq: 783.99, delay: 0.14, dur: 0.18, peak: 0.18 }, // G5
+        { freq: 1046.50, delay: 0.21, dur: 0.34, peak: 0.22 } // C6 (sustained tail)
+      ];
+      notes.forEach(({ freq, delay, dur, peak }) => {
+        const t = now + delay;
+        const o = ctx.createOscillator();
+        o.type = 'square';
+        o.frequency.value = freq;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0, t);
+        g.gain.linearRampToValueAtTime(peak, t + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+        o.connect(g); g.connect(ctx.destination);
+        o.start(t); o.stop(t + dur + 0.02);
       });
-
-      // Crystalline noise burst — the shimmer texture
-      const crystalBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.8), ctx.sampleRate);
-      const cd = crystalBuf.getChannelData(0);
-      for (let i = 0; i < cd.length; i++)
-        cd[i] = Math.random() < 0.15 ? (Math.random() * 2 - 1) : 0;
-      const crystal = ctx.createBufferSource();
-      crystal.buffer = crystalBuf;
-
-      const crystalFilter = ctx.createBiquadFilter();
-      crystalFilter.type = 'highpass';
-      crystalFilter.frequency.value = 3000;
-      crystalFilter.Q.value = 0.5;
-
-      const crystalEnv = ctx.createGain();
-      crystalEnv.gain.setValueAtTime(0, now + 0.18);
-      crystalEnv.gain.linearRampToValueAtTime(0.18, now + 0.28);
-      crystalEnv.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
-
-      // ── ACT 3: ARRIVAL TONE ───────────────────────────────
-      // One warm resonant chord that blooms and sustains
-      // Says: you're in. you belong here. welcome.
-      // 0.7 → 2.2s
-      const chordFreqs = [130.8, 164.8, 196.0, 261.6]; // C3 E3 G3 C4 — C major open
-      chordFreqs.forEach((freq, i) => {
-        const delay = 0.7 + i * 0.04;
-        const osc = ctx.createOscillator();
-        osc.type = i === 0 ? 'sine' : 'sine';
-        osc.frequency.value = freq;
-        osc.detune.value = (Math.random() - 0.5) * 8; // tiny warmth
-
-        const chordEnv = ctx.createGain();
-        chordEnv.gain.setValueAtTime(0, now + delay);
-        chordEnv.gain.linearRampToValueAtTime(
-          i === 0 ? 0.22 : 0.12 - i * 0.02,
-          now + delay + 0.15
-        );
-        // Long sustain with slow fade — the "welcome" feeling
-        chordEnv.gain.setValueAtTime(
-          i === 0 ? 0.22 : 0.12 - i * 0.02,
-          now + delay + 0.8
-        );
-        chordEnv.gain.exponentialRampToValueAtTime(0.001, now + delay + 1.8);
-
-        // Soft lowpass — warm not bright
-        const lp = ctx.createBiquadFilter();
-        lp.type = 'lowpass';
-        lp.frequency.value = 1200 - i * 80;
-        lp.Q.value = 0.5;
-
-        osc.connect(lp); lp.connect(chordEnv); chordEnv.connect(ctx.destination);
-        osc.start(now + delay);
-        osc.stop(now + delay + 2.0);
-      });
-
-      // Final shimmer wash over the chord — like stars appearing
-      const washBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 1.5), ctx.sampleRate);
-      const washd = washBuf.getChannelData(0);
-      for (let i = 0; i < washd.length; i++)
-        washd[i] = Math.random() < 0.08 ? (Math.random() * 2 - 1) : 0;
-      const wash = ctx.createBufferSource();
-      wash.buffer = washBuf;
-
-      const washFilter = ctx.createBiquadFilter();
-      washFilter.type = 'bandpass';
-      washFilter.frequency.value = 4000;
-      washFilter.Q.value = 0.4;
-
-      const washEnv = ctx.createGain();
-      washEnv.gain.setValueAtTime(0, now + 0.7);
-      washEnv.gain.linearRampToValueAtTime(0.08, now + 1.0);
-      washEnv.gain.exponentialRampToValueAtTime(0.001, now + 2.2);
-
-      // ── WIRE EVERYTHING ──────────────────────────────────
-      sub.connect(subEnv);       subEnv.connect(ctx.destination);
-      whoosh.connect(whooshFilter); whooshFilter.connect(whooshEnv); whooshEnv.connect(ctx.destination);
-      crystal.connect(crystalFilter); crystalFilter.connect(crystalEnv); crystalEnv.connect(ctx.destination);
-      wash.connect(washFilter);  washFilter.connect(washEnv); washEnv.connect(ctx.destination);
-
-      sub.start(now);     sub.stop(now + 0.5);
-      whoosh.start(now);  whoosh.stop(now + 0.6);
-      crystal.start(now + 0.18); crystal.stop(now + 1.1);
-      wash.start(now + 0.7);    wash.stop(now + 2.3);
-
     });
   } catch(e) {}
 }
@@ -2690,6 +2574,19 @@ function launchApp() {
   loadZones(false);
   loadFriendships();
   subscribeFriendRequests();
+
+  // Deep link from index.html event cards: listener.html?zone=<id> — preview
+  // that zone and start navigation toward it even if it's not in the most
+  // recent active-zones list.
+  const deepLinkZoneId = new URLSearchParams(window.location.search).get('zone');
+  if (deepLinkZoneId) {
+    db.from('zones').select('*').eq('id', deepLinkZoneId).single().then(({ data: z }) => {
+      if (!z) return;
+      zones_cache[z.id] = z;
+      addZoneToMap(z);
+      previewZone(z);
+    });
+  }
 
   // Live zone list — reload when a zone is created or deactivated.
   buildZonesChannel();
@@ -3742,6 +3639,7 @@ async function previewZone(z) {
   // Show navigation arrow toward zone
   document.getElementById('zone-nav').classList.add('visible');
   document.getElementById('nav-name').textContent = z.name;
+  document.getElementById('nav-maps-btn').href = `https://www.google.com/maps/dir/?api=1&destination=${z.lat},${z.lng}`;
   startNavigation(z);
 
   // Update party modal data

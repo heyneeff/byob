@@ -41,6 +41,8 @@
     .hero{padding:0 16px;margin-top:16px;}
     .hero-card{border-radius:20px;overflow:hidden;position:relative;background:linear-gradient(145deg,#1a1a1a 0%,#0f0f0f 100%);border:1px solid #222;min-height:300px;display:flex;flex-direction:column;justify-content:flex-end;padding:28px 24px 32px;}
     .hero-bg-art{position:absolute;top:0;right:0;bottom:0;width:50%;background:linear-gradient(135deg,var(--orange) 0%,var(--red) 100%);opacity:.07;clip-path:polygon(30% 0%,100% 0%,100% 100%,0% 100%);pointer-events:none;}
+    .hero-bg-img{position:absolute;inset:0;background-size:cover;background-position:center;}
+    .hero-bg-img::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.92) 10%,rgba(0,0,0,.35) 70%);}
     .hero-eyebrow{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--orange);margin-bottom:6px;position:relative;}
     .hero-name{font-family:'Barlow Condensed',sans-serif;font-size:52px;font-weight:900;line-height:.92;letter-spacing:-.01em;text-transform:uppercase;color:var(--white);position:relative;margin-bottom:6px;}
     .hero-sub{font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;color:rgba(255,255,255,.5);letter-spacing:.06em;position:relative;margin-bottom:18px;}
@@ -55,6 +57,20 @@
     .hero-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:240px;text-align:center;}
     .hero-empty-title{font-family:'Barlow Condensed',sans-serif;font-size:28px;font-weight:900;text-transform:uppercase;color:rgba(255,255,255,.13);}
     .hero-empty-sub{font-size:13px;color:var(--muted);}
+
+    /* ── LIVE NOW ── */
+    .live-now{padding:16px 16px 0;}
+    .live-now-hdr{display:flex;align-items:center;gap:8px;margin-bottom:10px;}
+    .live-dot{width:9px;height:9px;border-radius:50%;background:var(--red);animation:livePulse 1.4s ease-in-out infinite;}
+    .live-now-title{font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:var(--white);}
+    .live-row{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding-bottom:4px;}
+    .live-row::-webkit-scrollbar{display:none;}
+    .live-card{flex-shrink:0;min-width:200px;background:linear-gradient(145deg,#1a0f0c 0%,#150a08 100%);border:1px solid rgba(239,60,35,.3);border-radius:14px;padding:14px 16px;text-decoration:none;color:var(--white);transition:transform .15s;}
+    .live-card:active{transform:scale(.98);}
+    .live-card-badge{display:flex;align-items:center;gap:5px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;color:var(--red);margin-bottom:8px;}
+    .live-card-name{font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:900;line-height:1;text-transform:uppercase;margin-bottom:4px;}
+    .live-card-meta{font-size:12px;color:rgba(255,255,255,.5);}
+    @keyframes livePulse{0%,100%{opacity:1;}50%{opacity:.25;}}
 
     /* ── FILTERS ── */
     .filters{padding:16px 16px 0;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
@@ -74,6 +90,7 @@
     .evt-card{border-radius:16px;overflow:hidden;background:var(--cream);color:var(--text-dark);cursor:pointer;transition:transform .15s;}
     .evt-card:active{transform:scale(.99);}
     .evt-accent-bar{height:4px;}
+    .evt-image{height:120px;background-size:cover;background-position:center;}
     .evt-card-inner{padding:20px 20px 22px;}
     .evt-badge-row{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
     .evt-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;}
@@ -169,6 +186,11 @@
 
 <section class="hero" id="hero-section">
   <div class="hero-card"><div class="hero-empty"><div style="color:rgba(255,255,255,.12);font-family:'Barlow Condensed',sans-serif;font-size:16px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;">Loading…</div></div></div>
+</section>
+
+<section class="live-now" id="live-now-section" style="display:none;">
+  <div class="live-now-hdr"><span class="live-dot"></span><span class="live-now-title">Live Now</span></div>
+  <div class="live-row" id="live-row"></div>
 </section>
 
 <div class="filters" id="filter-row">
@@ -335,10 +357,11 @@ function renderHero(events) {
   const tonight = isTonight(e.event_start);
   const artists = e.artists?.join(', ') || '';
 
+  const zoneParam = e.zone_id ? `?zone=${e.zone_id}` : '';
   let locChip = '', cta = '';
   if (state === 'revealed') {
     locChip = `<span class="hero-chip">📍 ${e.city || 'Location revealed'}</span>`;
-    cta = `<a class="hero-cta" href="listener.html">Get In${isFree ? ' — Free' : ''} →</a>`;
+    cta = `<a class="hero-cta" href="listener.html${zoneParam}">Get In${isFree ? ' — Free' : ''} →</a>`;
   } else if (state === 'paid') {
     locChip = `<span class="hero-chip locked">🔒 Location unlocks with ticket</span>`;
     cta = `<button class="hero-cta notify" onclick="openNotify('${e.id}','${e.name.replace(/'/g,"\\'").replace(/"/g,"&quot;")}')">Get Notified 🔔</button>`;
@@ -348,7 +371,7 @@ function renderHero(events) {
   }
 
   el.innerHTML = `<div class="hero-card">
-    <div class="hero-bg-art"></div>
+    ${e.image_url ? `<div class="hero-bg-img" style="background-image:url('${e.image_url}')"></div>` : '<div class="hero-bg-art"></div>'}
     <div class="hero-eyebrow">${tonight ? '🔴 Tonight' : 'Coming Up'}</div>
     <div class="hero-name">${e.name}</div>
     ${artists ? `<div class="hero-sub">${artists}</div>` : ''}
@@ -385,10 +408,11 @@ function renderGrid(events) {
     const accent = ACCENT_COLORS[i % ACCENT_COLORS.length];
     const safeName = e.name.replace(/'/g,"\\'").replace(/"/g,"&quot;");
 
+    const zoneParam = e.zone_id ? `?zone=${e.zone_id}` : '';
     let locHtml = '', ctaHtml = '';
     if (state === 'revealed') {
       locHtml = `<div class="evt-info-item"><div class="evt-info-label">Location</div><div class="evt-info-val">📍 ${e.city || 'Revealed — open app'}</div></div>`;
-      ctaHtml = `<a class="evt-cta primary" href="listener.html">Get In →</a>
+      ctaHtml = `<a class="evt-cta primary" href="listener.html${zoneParam}">Get In →</a>
                  <button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">🔔</button>`;
     } else if (state === 'paid') {
       locHtml = `<div class="evt-loc-locked">🔒 Buy ticket to unlock location</div>`;
@@ -399,6 +423,7 @@ function renderGrid(events) {
     }
 
     return `<div class="evt-card${dark ? ' dark' : ''}">
+      ${e.image_url ? `<div class="evt-image" style="background-image:url('${e.image_url}')"></div>` : ''}
       <div class="evt-accent-bar" style="background:${accent}"></div>
       <div class="evt-card-inner">
         <div class="evt-badge-row">
@@ -416,12 +441,48 @@ function renderGrid(events) {
   }).join('');
 }
 
+// ── LIVE NOW ──────────────────────────────────────────────
+async function loadLiveZones() {
+  try {
+    const { data: zones, error } = await db.from('zones')
+      .select('id,name,listeners')
+      .eq('active', true);
+    if (error) throw error;
+    if (!zones || !zones.length) { renderLiveNow([]); return; }
+    const zoneIds = zones.map(z => z.id);
+    const { data: events } = await db.from('events')
+      .select('name,artists,city,zone_id')
+      .in('zone_id', zoneIds);
+    const merged = zones.map(z => ({ ...z, event: events?.find(e => e.zone_id === z.id) }));
+    renderLiveNow(merged);
+  } catch (err) {
+    renderLiveNow([]);
+  }
+}
+
+function renderLiveNow(liveZones) {
+  const section = document.getElementById('live-now-section');
+  if (!liveZones.length) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  document.getElementById('live-row').innerHTML = liveZones.map(z => {
+    const name = z.event?.name || z.name || 'Live Set';
+    const artists = z.event?.artists?.join(', ') || '';
+    const city = z.event?.city || '';
+    const listeners = z.listeners || 0;
+    return `<a class="live-card" href="listener.html?zone=${z.id}">
+      <div class="live-card-badge">🔴 Live${city ? ' · ' + city : ''}</div>
+      <div class="live-card-name">${name}</div>
+      <div class="live-card-meta">${artists ? artists + ' · ' : ''}${listeners} listening</div>
+    </a>`;
+  }).join('');
+}
+
 // ── LOAD EVENTS ───────────────────────────────────────────
 async function loadEvents() {
   try {
     const { data, error } = await db
       .from('events')
-      .select('id,name,artists,description,event_start,location_reveal_at,lat,lng,radius_m,zone_id,ticket_price,city')
+      .select('id,name,artists,description,event_start,location_reveal_at,lat,lng,radius_m,zone_id,ticket_price,city,image_url')
       .gte('event_start', new Date(Date.now() - 4 * 3600 * 1000).toISOString())
       .order('event_start', { ascending: true })
       .limit(20);
@@ -511,15 +572,21 @@ function subscribeToUpdates() {
     .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'events' }, loadEvents)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'events' }, loadEvents)
     .subscribe();
+  db.channel('zones_public')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'zones' }, loadLiveZones)
+    .subscribe();
 }
 
 // ── INIT ─────────────────────────────────────────────────
 loadEvents();
+loadLiveZones();
 initAuth();
 showA2HSIfNeeded();
 subscribeToUpdates();
 // Re-render reveal countdowns every minute without refetching
 setInterval(() => { if (_allEvents.length) { renderHero(_allEvents); renderGrid(_allEvents); } }, 60000);
+// Poll live zones (covers listener-count changes, which aren't always realtime-friendly)
+setInterval(loadLiveZones, 30000);
 </script>
 </body>
 </html>
