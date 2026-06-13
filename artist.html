@@ -448,7 +448,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <div style="margin-top:6px;">
     <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Cover image (shown on front page)</div>
     <input type="file" id="evt-image" accept="image/*" style="display:none;"/>
-    <div id="evt-image-preview" onclick="document.getElementById('evt-image').click()" style="height:64px;border-radius:6px;border:1px dashed var(--rim);background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;cursor:pointer;background-size:cover;background-position:center;">+ Add image</div>
+    <div id="evt-image-preview" onclick="document.getElementById('evt-image').click()" style="height:64px;border-radius:6px;border:1px dashed var(--rim);background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;cursor:pointer;background-size:cover;background-position:center;filter:grayscale(1) contrast(1.1);">+ Add image</div>
+    <div style="font-size:9px;color:var(--muted);margin-top:4px;">Landscape, ~1200×675px. Shown in black &amp; white on the front page.</div>
   </div>
   <div style="font-size:10px;color:var(--muted);margin:8px 0;">Location uses current zone center. Free events reveal at the reveal time; paid events reveal after purchase.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
