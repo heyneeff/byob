@@ -247,6 +247,82 @@ Monthly dues. Has existing website + basic backend (not yet on Supabase).
 
 -----
 
+## 🎪 Decentralized Festival — "Live Now" Beacon
+
+**The vision:** many DJs/musicians each run their own zones/events under their
+own accounts. People sign up ahead of time; the zone location reveals a few
+hours before. Result — a weekend where a whole city has pop-up sets happening,
+discoverable in real time. People bring their own speakers (BT sync already
+solved), so there's no PA/venue dependency.
+
+**Current state — closer than it looks:**
+
+- ✅ **Multi-DJ isolation** — already solid. Any logged-in user can create an
+  `events` row via `artist.html` (`db.from('events').insert(...)`, tied to
+  their own zone/`host_id`). Creating a new zone only deactivates *that user's*
+  own zones.
+- ✅ **Front page** (`index.html`) — already lists all events publicly, with
+  free/paid `location_reveal_at` logic, city filters, "tonight/weekend"
+  filters, and a realtime `postgres_changes` subscription on `events` (new
+  events appear without refresh).
+- ✅ **Sign-up / interest** — `submitNotify()` already writes to an
+  `event_interest` table (`{event_id, user_id}` upsert) when a logged-in user
+  taps "Notify Me," plus a `localStorage` fallback for anonymous visitors.
+
+**The actual gap — nothing *sends* anything:**
+
+`event_interest`/`byob_notify` *collect* who wants to know, but nothing pings
+them when `location_reveal_at` passes or a DJ flips their zone `active`.
+People would have to manually refresh the front page. Two pieces close this:
+
+1. **Web Push delivery** (ties into the Push Notifications section above) —
+   register a push subscription on "Notify Me," then a scheduled check
+   (Supabase edge function on `pg_cron`, or similar) fires when
+   `location_reveal_at` passes for events with registered interest, or when
+   `zones.active` flips true for a zone tied to an `events` row.
+2. **"🔴 LIVE NOW" section on `index.html`** — quick win, no push needed.
+   Query `zones` where `active=true` (joined to `events`), render as its own
+   section above the scheduled-events grid. Even without push, this turns the
+   front page itself into "the beacon" — check it, see what's happening *right
+   now* across the city.
+
+**Suggested order:** (2) first — it's a read-only query + render, no new
+infra, and immediately useful. Then (1) as the real "ping me" mechanism once
+the push subscription plumbing exists.
+
+-----
+
+## 🎙 Future: Live Audio/Instrument Sync Engine
+
+The current sync engine (`sync/sync-engine.js`) is built around a *seekable*
+file with a known duration and a fixed reference point (`playback_started_at`).
+Live audio (WebRTC `current_track_url = 'webrtc-live'`) has neither — each
+listener just gets whatever the WebRTC jitter buffer hands them, with its own
+per-connection latency, uncorrected.
+
+**Idea (long-term, not scheduled):** a second, smaller corrector for the live
+path, reusing as much of the existing architecture as possible:
+
+- **Reference point** — DJ broadcasts periodic beacons `{serverTs, seq}` on a
+  `live_sync_{zone_id}` channel; listener compares `syncedNow()` at receipt vs
+  `serverTs` to estimate rolling **path latency** (same median-of-samples
+  pattern as `measureClockOffset()`)
+- **Correction mechanism** — delay-based, not seek-based: audio graph
+  `MediaStreamAudioSourceNode → DelayNode → destination`. Target = slowest
+  listener's path latency (or a fixed ceiling); each listener sets
+  `DelayNode.delayTime = targetLatencyMs - myPathLatencyMs`
+- **State machine** — `_liveSyncState: 'idle' | 'adjusting'`, same
+  single-gate philosophy as `_driftState`. Small drift → ramp `delayTime` via
+  `linearRampToValueAtTime` (inaudible). DJ-fired `live_resync` (same family
+  as `hard_sync`) → snap immediately
+- **Reused wholesale**: `syncedNow()`/clock offset, `buildSyncChannel()`
+  pattern, debug-dashboard approach (new `pathLatencyMs`/`delayMs` columns),
+  validate-in-simulator-first workflow (`sync-sim.html` → `live-sync-sim.html`)
+- **New, separate surface area**: `live-sync-engine.js`, zero changes to the
+  existing file-based corrector or its invariants
+
+-----
+
 ## 📐 Architecture Notes
 
 - All three apps (BYOB, The Circle, future) share one Supabase project
@@ -277,6 +353,7 @@ Monthly dues. Has existing website + basic backend (not yet on Supabase).
 
 |Date       |Session |Key outcomes                                                                                                                                                  |
 |-----------|--------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
+|Jun 13 2026|Thread 6|Live test showed drift floating 150ms+ with audible warping after `b683c24` (3% bg-catchup trim) shipped. Debug CSVs traced it to that commit; reverted in `a0a0a0b` (current HEAD before revert tagged `pre-bgcatchup-revert`). `sync/sync-engine.js` is now back to exactly `sync-validated-5u` (`947fed4`) math — **candidate baseline, pending a live re-test for drift <50ms before tagging as the new stable baseline**|
 |Jun 5 2026 |Thread 5|Fixed DJ dot bearing — getBearing missing in playmin.html caused ReferenceError, DJ presence never broadcast; added getBearing, fixed GPS fallback logic       |
 |Jun 5 2026 |Thread 4|Completed clock-sync layer (listener + DJ), fixed last missed Date.now() in library-track broadcast, added audio engine tightening queue to roadmap           |
 |May 26 2026|Thread 3|Fixed dot disappear (syncZoneAudio lat/lng), fixed bearing NaN, consolidated geo loop, built sync dashboard, scoped full product roadmap                      |
