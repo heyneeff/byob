@@ -60,7 +60,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .stem-row{display:flex;align-items:center;gap:5px;padding:4px;border-radius:4px;cursor:grab;transition:background .1s;border-bottom:1px solid rgba(255,255,255,.03);}
 .stem-row:hover{background:#1a1a1a;}
 .stem-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
-.stem-title{flex:1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
+.stem-title{flex:1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--cream);}
 .stem-btns{display:flex;gap:2px;flex-shrink:0;}
 .stem-btn{width:22px;height:22px;border-radius:4px;border:none;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;cursor:pointer;background:#1c1c1c;color:var(--muted);transition:all .1s;}
 .stem-btn:hover{background:var(--orange);color:#000;}
@@ -191,7 +191,7 @@ canvas.platter{cursor:grab;border-radius:50%;flex-shrink:0;}.platter-label{font-
 .da-badge{background:rgba(245,126,32,.15);color:var(--da);}.db-badge{background:rgba(0,204,153,.15);color:var(--db);}
 .dk-track{flex:1;min-width:0;}
 .dk-name{font-size:13px;font-weight:900;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;font-family:'Barlow Condensed',sans-serif;}
-.dk-artist{font-size:8px;color:var(--muted2);margin-top:1px;font-family:'Barlow Condensed',sans-serif;}
+.dk-artist{font-size:10px;color:var(--muted2);margin-top:1px;font-family:'Barlow Condensed',sans-serif;}
 .dk-bpm-v{font-size:17px;font-weight:900;font-family:'DM Mono',monospace;line-height:1;}
 .dk-bpm-l{font-size:6px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;}
 .dk-wave{height:38px;border-radius:6px;overflow:hidden;background:#060402;flex-shrink:0;position:relative;}
@@ -374,22 +374,22 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;h
 /* LIBRARY */
 .lib-bar{display:flex;align-items:center;gap:5px;padding:4px 8px;border-bottom:1px solid var(--rim);flex-shrink:0;}
 .crates{display:flex;gap:2px;flex:1;}
-.crate{padding:3px 8px;border-radius:6px;border:none;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;cursor:pointer;color:var(--muted);background:transparent;}
+.crate{padding:3px 8px;border-radius:6px;border:none;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;cursor:pointer;color:var(--muted);background:transparent;}
 .crate.active{background:var(--card2);color:var(--white);}
-.lib-search{background:var(--card2);border:none;border-radius:6px;padding:3px 8px;color:var(--white);font-family:'Barlow Condensed',sans-serif;font-size:10px;outline:none;width:100px;}
+.lib-search{background:var(--card2);border:none;border-radius:6px;padding:3px 8px;color:var(--white);font-family:'Barlow Condensed',sans-serif;font-size:12px;outline:none;width:100px;}
 .lib-search::placeholder{color:var(--muted);}
-.lib-upload{padding:3px 9px;border:none;border-radius:6px;background:var(--orange);color:#000;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;}
+.lib-upload{padding:3px 9px;border:none;border-radius:6px;background:var(--orange);color:#000;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;}
 .lib-cols{display:grid;grid-template-columns:1fr 48px 40px 38px 70px;padding:3px 8px;border-bottom:1px solid var(--rim);flex-shrink:0;}
-.lc{font-size:6px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;}
+.lc{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;}
 .lib-rows{flex:1;overflow-y:auto;}.lib-rows::-webkit-scrollbar{width:2px;}.lib-rows::-webkit-scrollbar-thumb{background:var(--rim);}
 .trow{display:grid;grid-template-columns:1fr 48px 40px 38px 70px;align-items:center;padding:4px 8px;cursor:grab;border-bottom:1px solid var(--rim);transition:background .1s;}
 .trow:hover{background:var(--card2);}.trow.loaded-a{background:#130e04;}.trow.loaded-b{background:#040e0a;}
 .tr-name{display:flex;align-items:center;gap:5px;min-width:0;}.tr-col{width:2px;height:24px;border-radius:1px;flex-shrink:0;}.tr-txt{min-width:0;}
-.tr-title{font-size:11px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;font-family:'Barlow Condensed',sans-serif;}
-.tr-artist{font-size:7px;color:var(--muted2);margin-top:1px;font-family:'Barlow Condensed',sans-serif;}
-.tr-bpm{font-size:10px;font-family:'DM Mono',monospace;color:var(--orange);}
-.tr-key{font-size:9px;font-family:'DM Mono',monospace;color:var(--teal);}
-.tr-dur{font-size:9px;font-family:'DM Mono',monospace;color:var(--muted2);}
+.tr-title{font-size:12px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.1;font-family:'Barlow Condensed',sans-serif;}
+.tr-artist{font-size:10px;color:var(--muted2);margin-top:1px;font-family:'Barlow Condensed',sans-serif;}
+.tr-bpm{font-size:11px;font-family:'DM Mono',monospace;color:var(--orange);}
+.tr-key{font-size:11px;font-family:'DM Mono',monospace;color:var(--teal);}
+.tr-dur{font-size:11px;font-family:'DM Mono',monospace;color:var(--muted2);}
 .tr-acts{display:flex;gap:4px;justify-content:flex-end;}
 .tr-btn{padding:5px 9px;border:none;border-radius:4px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;background:var(--card2);color:var(--muted2);}
 .tr-btn:hover{background:var(--orange);color:#000;}.tr-btn.b{background:rgba(0,204,153,.08);color:var(--teal);}.tr-btn.b:hover{background:var(--teal);color:#000;}
@@ -3856,7 +3856,7 @@ function buildStemsPanel(filter='') {
   const source = stems.length ? stems : pool; // fall back to all if no stems uploaded yet
   const q = filter.toLowerCase();
   const tracks = source.filter(t => !q || t.name.toLowerCase().includes(q) || (t.artist||'').toLowerCase().includes(q));
-  if (!tracks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px;text-align:center;">No stems yet — upload above</div>'; return; }
+  if (!tracks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px;text-align:center;">No stems yet — upload above</div>'; return; }
   el.innerHTML = tracks.map(t => `
     <div class="stem-row" draggable="true" ondragstart="startDrag(event,'${t.id}')" title="${t.name} — ${t.artist||''}">
       <div class="stem-dot" style="background:${t.col||'#555'}"></div>
