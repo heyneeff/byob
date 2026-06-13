@@ -2221,7 +2221,18 @@ function fastDriftCorrect() {
   window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
-  if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
+  if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS && document.visibilityState === 'hidden') {
+    // Confirmed via Jun 13 2026 live session: on a backgrounded tab playing
+    // over Bluetooth, iOS Safari silently no-ops audio.currentTime = x —
+    // seekPreservingBT "completes" but currentTime never moves, so drift
+    // stays pinned above the snap threshold forever (one device sat at
+    // ~-270ms for 4.5 hours, snapCount climbing every tick, playbackRate
+    // frozen at 1.000 because cancelDriftCorrection kept resetting it).
+    // Rate changes DO take effect while hidden, so use a larger (+/-3%)
+    // catch-up trim instead of attempting a seek that won't land.
+    window._bgCatchupCount = (window._bgCatchupCount || 0) + 1;
+    applyBackgroundCatchup(lagMs);
+  } else if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
     window._snapCount = (window._snapCount || 0) + 1;
     // Diagnostic — confirm the seek actually lands. On some BT routes
     // audio.currentTime = x silently no-ops while playing, so the snap
@@ -4939,6 +4950,7 @@ function requestCorrection(lagMs) { window.SyncEngine.requestCorrection(lagMs); 
 function cancelDriftCorrection() { window.SyncEngine.cancelDriftCorrection(); }
 function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime); }
 function applyMicroCorrection(lagMs) { window.SyncEngine.applyMicroCorrection(lagMs); }
+function applyBackgroundCatchup(lagMs) { window.SyncEngine.applyBackgroundCatchup(lagMs); }
 
 async function _runLockingPass(){
   if (_syncState !== 'locking' && _syncState !== 'verifying') return;
@@ -5374,6 +5386,7 @@ function broadcastHUD() {
       snapCount: window._snapCount || 0,
       seekIntendedMs: window._lastSeekIntendedMs ?? null,
       seekMeasuredMs: window._lastSeekMeasuredMs ?? null,
+      bgCatchupCount: window._bgCatchupCount || 0,
       browser:     _detectBrowser(),
       build: 'listener',
     }

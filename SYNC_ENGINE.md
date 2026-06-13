@@ -61,9 +61,11 @@ expected = (elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/100
   network call). Computes `expected` vs. `audio.currentTime` (via
   `computeLagMs()`), and if they've drifted apart by `DRIFT_SNAP_THRESHOLD_MS`
   (300ms) or more, snaps directly: `cancelDriftCorrection()` then
-  `seekPreservingBT(expected)` (mute, jump, ~180ms ramp back up). Below
-  300ms, it applies a tiny continuous `playbackRate` trim via
-  `applyMicroCorrection()` (Phase 5r, capped at ±0.6%) — see Step 4a.
+  `seekPreservingBT(expected)` (mute, jump, ~180ms ramp back up) — unless the
+  tab is backgrounded (`document.visibilityState === 'hidden'`), in which case
+  it calls `applyBackgroundCatchup()` instead (Step 4b — the seek would
+  silently no-op). Below 300ms, it applies a tiny continuous `playbackRate`
+  trim via `applyMicroCorrection()` (Phase 5r, capped at ±0.6%) — see Step 4a.
 - **`syncZoneAudio()`** — runs every 60 seconds, does an actual database fetch.
   Its job isn't fine-tuning — it's a safety net that catches things memory
   can miss: "did the zone end?", "did the track change and I missed the
@@ -128,6 +130,42 @@ caused the "finger on a record" complaint: that was a large (±3%), frequently
 ~5x gentler) and settles to a *constant* offset — nothing to hear oscillate.
 It's a no-op whenever `_driftState !== 'idle'` (the verifier's warp/duck is
 active), so the two mechanisms never fight over `playbackRate`.
+
+### Step 4b: when the snap itself can't land — `applyBackgroundCatchup()` (Phase 5v)
+
+A Jun 13 2026 live debug session caught a device sitting at a constant
+**~-270ms drift for 4.5 hours straight**: `driftMs` pinned just past
+`DRIFT_SNAP_THRESHOLD_MS`, `playbackRate` frozen at exactly `1.000`, and
+`snapCount` climbing on *every* `fastDriftCorrect` tick without the drift
+ever closing. `visibilityState` was `hidden` for the entire session.
+
+Root cause: iOS Safari silently no-ops `audio.currentTime = x` on a
+backgrounded tab playing audio over Bluetooth. `seekPreservingBT()`
+"completes" — `cancelDriftCorrection()` resets `playbackRate` to `baseRate`
+and the seek call returns — but `currentTime` never actually moves. Next
+tick, the lag is unchanged, the snap branch fires again, and
+`cancelDriftCorrection()` stomps the previous tick's rate back to `1.0`
+before anything can close the gap.
+
+Fix: in `fastDriftCorrect()`, when `|lagMs| >= DRIFT_SNAP_THRESHOLD_MS`
+**and** `document.visibilityState === 'hidden'`, skip the seek entirely and
+call `applyBackgroundCatchup(lagMs)` instead — a larger proportional rate
+trim (10x the gain and 5x the cap of `applyMicroCorrection`, saturating at
+±3% once `|lag| >= 300ms`):
+
+```
+pct  = clamp(lagMs * BG_CATCHUP_GAIN_PER_MS, ±BG_CATCHUP_MAX_PCT)   // BG_CATCHUP_GAIN_PER_MS = 0.0001, BG_CATCHUP_MAX_PCT = 0.03
+rate = baseRate * (1 + pct)
+```
+
+Rate changes (unlike seeks) take effect while backgrounded. At ±3%, a 300ms
+gap closes in ~10s of wall time; the same proportional loop runs every tick,
+so as the gap shrinks below the snap threshold it naturally hands off to
+`applyMicroCorrection()`. When the tab becomes visible again, the normal
+seek-based snap resumes immediately. Tracked via `_bgCatchupCount` /
+`bgCatchupCount` in `broadcastHUD()` and `debug.html` — validated against
+`sync-sim.html`'s "BG-aware" panel (hidden listeners whose `transport.currentTime`
+writes are made to no-op, mirroring the iOS behavior).
 
 ### The tiered `requestCorrection()` / `_driftState` machine still exists — for the BT-latency auto-sync verifier only
 
