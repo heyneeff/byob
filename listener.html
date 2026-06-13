@@ -139,6 +139,8 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .now-playing-bar.active{display:block;}
 .npb-zone{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--teal);line-height:1;}
 .npb-track{font-size:13px;font-weight:600;color:var(--white);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.npb-lock{display:none;font-size:11px;font-weight:600;color:var(--orange);margin-top:2px;letter-spacing:.04em;}
+.npb-lock.show{display:block;}
 .npb-progress{height:2px;background:#222;border-radius:1px;margin-top:5px;}
 .npb-fill{height:100%;width:0%;background:var(--orange);border-radius:1px;transition:width .4s;}
 
@@ -749,6 +751,7 @@ audio{display:none;}
   <div class="now-playing-bar" id="now-playing-bar">
     <div class="npb-zone" id="npb-zone">—</div>
     <div class="npb-track" id="npb-track">—</div>
+    <div class="npb-lock" id="npb-lock">🔄 locking in…</div>
     <div class="npb-progress"><div class="npb-fill" id="npb-fill"></div></div>
   </div>
 
@@ -2086,6 +2089,7 @@ function stopEverything() {
   clearInterval(_syncInterval); clearInterval(_driftInterval); clearInterval(_healthInterval);
   _webAudioPlaying = false;
   _isMuted = false;
+  document.getElementById('npb-lock')?.classList.remove('show');
   activeZone = null;
   isPlaying = false;
   setMuteBtn(false);
@@ -2185,6 +2189,24 @@ const SNAP_THRESHOLD_MS = 500;
 // time — no warping, no ducking, from this loop.
 const DRIFT_SNAP_THRESHOLD_MS = 300;
 
+// "Locking in" indicator — surfaces the warm-up/recovery period (post track
+// load, post hard_sync, etc.) where drift is still settling, so it reads as
+// expected rather than broken. Hysteresis avoids flicker right at the edge.
+// Wide band on purpose — normal steady-state drift (0-50ms) is "stable" per
+// SYNC_ENGINE.md and must never get stuck showing this pill. Only fires for
+// genuine warm-up/recovery (post track-load, post hard_sync) and clears well
+// inside the stable range so it can't linger forever.
+const LOCK_IN_SHOW_MS = 100;
+const LOCK_IN_HIDE_MS = 40;
+function updateLockIndicator(lagMs) {
+  const el = document.getElementById('npb-lock');
+  if (!el) return;
+  if (lagMs == null) { el.classList.remove('show'); return; }
+  const abs = Math.abs(lagMs);
+  if (abs >= LOCK_IN_SHOW_MS) el.classList.add('show');
+  else if (abs < LOCK_IN_HIDE_MS) el.classList.remove('show');
+}
+
 function fastDriftCorrect() {
   _lastDriftCheckAt = performance.now();
   if (!activeZone?.playback_started_at) return;
@@ -2219,6 +2241,7 @@ function fastDriftCorrect() {
   window._lastPausedCurrentTime = null;
   const lagMs = computeLagMs();
   window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
+  updateLockIndicator(lagMs);
   if (lagMs == null) return;
   window._lastDriftMs = Math.round(lagMs);
   if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
