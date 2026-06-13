@@ -432,18 +432,26 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 </div>
 
 <!-- EVENT PANEL -->
-<div id="event-panel" style="position:fixed;bottom:0;left:0;right:0;z-index:400;background:var(--surface2);border-top:3px solid var(--red);padding:16px 18px 30px;transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:0 -4px 30px rgba(0,0,0,.7);">
+<div id="event-panel" style="position:fixed;bottom:0;left:0;right:0;z-index:400;background:var(--surface2);border-top:3px solid var(--red);padding:16px 18px 30px;transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:0 -4px 30px rgba(0,0,0,.7);max-height:88vh;overflow-y:auto;">
   <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--red);margin-bottom:8px;">Schedule Event</div>
   <input class="zdp-name" id="evt-name" type="text" placeholder="Event name"/>
   <input class="zdp-name" id="evt-artists" type="text" placeholder="Artists (comma separated)" style="margin-top:6px;"/>
   <textarea class="zdp-name" id="evt-desc" placeholder="Description (optional)" style="margin-top:6px;height:56px;resize:none;"></textarea>
+  <div style="margin-top:6px;">
+    <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Zone</div>
+    <select class="zdp-name" id="evt-zone" style="margin:0;font-size:11px;"></select>
+  </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
     <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Event starts</div><input class="zdp-name" id="evt-start" type="datetime-local" style="margin:0;font-size:11px;"/></div>
     <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Reveal location at</div><input class="zdp-name" id="evt-reveal" type="datetime-local" style="margin:0;font-size:11px;"/></div>
   </div>
+  <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:var(--muted);cursor:pointer;">
+    <input type="checkbox" id="evt-reveal-always" onchange="onEvtRevealAlwaysChange()" style="margin:0;"/>
+    Always show location (no countdown — skips the reveal time above)
+  </label>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
     <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">City (shown on front page)</div><input class="zdp-name" id="evt-city" type="text" placeholder="e.g. Denver, CO" style="margin:0;font-size:11px;"/></div>
-    <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Ticket price (blank = free)</div><input class="zdp-name" id="evt-price" type="number" min="0" step="1" placeholder="0" style="margin:0;font-size:11px;"/></div>
+    <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Ticket price ($, blank = free)</div><input class="zdp-name" id="evt-price" type="number" min="0" step="1" placeholder="0" style="margin:0;font-size:11px;"/></div>
   </div>
   <div style="margin-top:6px;">
     <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Cover image (shown on front page)</div>
@@ -451,7 +459,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div id="evt-image-preview" onclick="document.getElementById('evt-image').click()" style="height:64px;border-radius:6px;border:1px dashed var(--rim);background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;cursor:pointer;background-size:cover;background-position:center;filter:grayscale(1) contrast(1.1);">+ Add image</div>
     <div style="font-size:9px;color:var(--muted);margin-top:4px;">Landscape, ~1200×675px. Shown in black &amp; white on the front page.</div>
   </div>
-  <div style="font-size:10px;color:var(--muted);margin:8px 0;">Location uses current zone center. Free events reveal at the reveal time; paid events reveal after purchase.</div>
+  <div style="font-size:10px;color:var(--muted);margin:8px 0;">Free events reveal at the reveal time (or always, if checked above); paid events reveal after purchase.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <button class="zdp-confirm" style="background:var(--red);" onclick="confirmEvent()">✓ Schedule</button>
     <button class="zdp-cancel" onclick="closeEventPanel()">✕ Cancel</button>
@@ -3375,12 +3383,36 @@ function stopCircularSweep(){
 }
 
 // ── EVENTS ────────────────────────────────────────────────
-function openEventPanel(){
+async function openEventPanel(){
   const now=new Date();now.setMinutes(now.getMinutes()+60);
   document.getElementById('evt-start').value=toLocalInput(now);
-  const reveal=new Date(now);reveal.setMinutes(reveal.getMinutes()-30);
+  const reveal=new Date(now);reveal.setMinutes(reveal.getMinutes()-60);
   document.getElementById('evt-reveal').value=toLocalInput(reveal);
+  document.getElementById('evt-reveal-always').checked=false;
+  onEvtRevealAlwaysChange();
+  await populateEvtZones();
   document.getElementById('event-panel').style.transform='translateY(0)';
+}
+function onEvtRevealAlwaysChange(){
+  const always=document.getElementById('evt-reveal-always').checked;
+  document.getElementById('evt-reveal').disabled=always;
+  document.getElementById('evt-reveal').style.opacity=always?'.4':'1';
+}
+async function populateEvtZones(){
+  const sel=document.getElementById('evt-zone');
+  const {data}=await db.from('zones').select('id,name,lat,lng,radius_m').eq('host_id',currentUser.id).eq('active',true).order('created_at',{ascending:false});
+  sel.innerHTML='';
+  if(!data?.length){
+    sel.innerHTML='<option value="">No zones yet — set up a zone first</option>';
+    return;
+  }
+  data.forEach(z=>{
+    const opt=document.createElement('option');
+    opt.value=z.id;opt.textContent=z.name;
+    opt.dataset.lat=z.lat;opt.dataset.lng=z.lng;opt.dataset.radius=z.radius_m;
+    sel.appendChild(opt);
+  });
+  if(activeZone&&data.some(z=>z.id===activeZone.id)) sel.value=activeZone.id;
 }
 function closeEventPanel(){
   document.getElementById('event-panel').style.transform='translateY(100%)';
@@ -3407,16 +3439,23 @@ async function confirmEvent(){
   const artists=document.getElementById('evt-artists').value.split(',').map(a=>a.trim()).filter(Boolean);
   const desc=document.getElementById('evt-desc').value.trim();
   const start=document.getElementById('evt-start').value;
+  const revealAlways=document.getElementById('evt-reveal-always').checked;
   const reveal=document.getElementById('evt-reveal').value;
   if(!name){showToast('Event needs a name');return;}
   if(!start){showToast('Set an event start time');return;}
-  if(!reveal){showToast('Set a reveal time');return;}
-  const lat=activeZone?.lat||draftCenter?.lat||userLat;
-  const lng=activeZone?.lng||draftCenter?.lng||userLng;
-  if(!lat){showToast('Set a zone location first');return;}
+  if(!revealAlways&&!reveal){showToast('Set a reveal time, or check "Always show location"');return;}
+  const zoneSel=document.getElementById('evt-zone');
+  const zoneOpt=zoneSel.selectedOptions[0];
+  const zoneId=zoneSel.value||null;
+  const lat=zoneOpt?.dataset.lat?parseFloat(zoneOpt.dataset.lat):(activeZone?.lat||draftCenter?.lat||userLat);
+  const lng=zoneOpt?.dataset.lng?parseFloat(zoneOpt.dataset.lng):(activeZone?.lng||draftCenter?.lng||userLng);
+  const radius_m=zoneOpt?.dataset.radius?parseFloat(zoneOpt.dataset.radius):(activeZone?.radius_m||draftRadius||200);
+  if(!lat){showToast('Pick a zone or set a zone location first');return;}
   const city=document.getElementById('evt-city').value.trim()||null;
   const priceRaw=document.getElementById('evt-price').value.trim();
   const ticket_price=priceRaw&&parseFloat(priceRaw)>0?parseFloat(priceRaw):null;
+  // "Always show location" → reveal time in the past so revealState() treats it as already revealed
+  const location_reveal_at=revealAlways?new Date(0).toISOString():new Date(reveal).toISOString();
   try{
     let image_url=null;
     if(_evtImageFile){
@@ -3425,7 +3464,7 @@ async function confirmEvent(){
       if(upErr)throw upErr;
       image_url=db.storage.from('boombox').getPublicUrl(path).data.publicUrl;
     }
-    const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at:new Date(reveal).toISOString(),lat,lng,radius_m:activeZone?.radius_m||draftRadius||200,zone_id:activeZone?.id||null,created_by:currentUser.id,city,ticket_price,image_url});
+    const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at,lat,lng,radius_m,zone_id:zoneId,created_by:currentUser.id,city,ticket_price,image_url});
     if(error)throw error;
     closeEventPanel();showToast('"'+name+'" scheduled 📅');loadEvents();
   }catch(e){showToast('Error: '+e.message);}
