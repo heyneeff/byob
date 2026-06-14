@@ -208,6 +208,12 @@ function onSpatialConfig(payload) {
         warpRate: getBpmWarpRate(),
       }));
     }
+  } else if (!audio.paused) {
+    // No track for this slot AND no Center fallback (DJ stopped the
+    // scene/clip stack — zone_tracks came back empty). Without this, the
+    // listener just keeps looping whatever was last loaded.
+    audio.pause();
+    showToast('⏸ DJ stopped playback');
   }
 }
 

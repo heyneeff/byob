@@ -2983,7 +2983,10 @@ function slClearClip(sceneId,slot,ev){
     delete zoneTracks[slot];
     if(_activeSceneId===sceneId) _activeSceneId=null;
     refreshStemMonitor();
-    broadcastAllZones();
+    // allowEmpty — clearing the last live clip leaves zoneTracks empty, and
+    // broadcastAllZones() bails out silently in that case (see _doLaunchClip
+    // stop path), leaving listeners stuck on the stale track.
+    broadcastAllZones(true);
   }
   renderSceneLauncher();
 }
@@ -3044,7 +3047,10 @@ function _doLaunchClip(sceneId,slot,wasLive){
     clearZoneSlot({stopPropagation(){}},slot);
     if(_activeSceneId===sceneId) _activeSceneId=null;
     refreshStemMonitor();
-    broadcastAllZones();
+    // allowEmpty — stopping the last live clip leaves zoneTracks empty, and
+    // broadcastAllZones() bails out silently in that case, leaving listeners
+    // stuck looping the stale track ("stop broadcasts on loop" bug).
+    broadcastAllZones(true);
     renderSceneLauncher();
     return;
   }
@@ -3863,10 +3869,13 @@ async function broadcastAllZones(allowEmpty){
     active: true
   }).eq('id', activeZone.id);
 
-  // Center track = fallback for listeners without a slot
-  if(zoneTracks['C']) await db.from('zones').update({
-    current_track_url: zoneTracks['C'].url,
-    track_name: zoneTracks['C'].name
+  // Center track = fallback for listeners without a slot. Clear it when
+  // the scene/clip stack is stopped (empty zoneTracks) — otherwise a late
+  // joiner or a listener's 60s syncZoneAudio() DB-refresh keeps reading the
+  // stale current_track_url and loops it forever even though the DJ stopped.
+  await db.from('zones').update({
+    current_track_url: zoneTracks['C']?.url || null,
+    track_name: zoneTracks['C']?.name || null
   }).eq('id', activeZone.id);
 
   // Broadcast spatial config to all listeners via realtime
