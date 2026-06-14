@@ -3070,6 +3070,12 @@ function _doLaunchClip(sceneId,slot,wasLive){
   }
   if(!_stemMonitorOn){ _stemMonitorOn=true; _setStemMonitorBtn(true); }
   refreshStemMonitor();
+  // refreshStemMonitor() registered this slot's monitor element above while
+  // isPlaying was still false (so it skipped el.play()); now that isPlaying
+  // is true, the "add new monitor" branch won't revisit an already-registered
+  // slot. syncMonitorPlayState() catches it up — without this, launching a
+  // clip from a stopped deck silently never starts that clip's audio.
+  syncMonitorPlayState();
   renderSceneLauncher();
   showToast('▶ '+t.name+' → '+slot);
 }
@@ -3315,6 +3321,12 @@ function _doFireScene(sceneId){
   // auto-enable the stem monitor so the rest of the scene's slots play too.
   if(!_stemMonitorOn){ _stemMonitorOn=true; _setStemMonitorBtn(true); }
   refreshStemMonitor();
+  // Same as _doLaunchClip: refreshStemMonitor() registered each non-Center
+  // slot's monitor while isPlaying was still false (skipping el.play()), and
+  // won't revisit those slots now that isPlaying=true. Without this, firing
+  // a scene from a stopped deck plays only the Center track — the rest of
+  // the stack stays silent ("not all clips fire at once" bug).
+  syncMonitorPlayState();
   showToast('▶ '+s.name);
 }
 
