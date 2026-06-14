@@ -663,6 +663,12 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <div id="warp-status" style="font-size:8px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;min-height:10px;"></div>
     </div>
 
+    <!-- DJ STEM MONITOR -->
+    <div class="sr-section-label" style="border-top:none;padding-top:0;">DJ MONITOR <span style="font-size:7px;color:var(--muted2);font-weight:400;letter-spacing:.05em;text-transform:none;">— hear all assigned stems locally</span></div>
+    <div style="padding:0 8px 8px;">
+      <button id="btn-stem-monitor" onclick="toggleStemMonitor(this)" style="width:100%;padding:6px 0;background:transparent;border:1px solid var(--teal);border-radius:5px;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;color:var(--teal);cursor:pointer;letter-spacing:.1em;">🎧 MONITOR ALL STEMS: OFF</button>
+    </div>
+
     <div class="sr-section-label">SPATIAL</div>
 
     <!-- SINGLE -->
@@ -1696,6 +1702,7 @@ function togglePlay(){
   btn.classList.toggle('playing',isPlaying);
   document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=isPlaying?'running':'paused');
   if(isPlaying){audio.play().catch(()=>{});}else{audio.pause();}
+  syncMonitorPlayState();
 }
 // ── PLAYLIST QUEUE ────────────────────────────────────────
 let playlist = [];
@@ -3301,7 +3308,73 @@ function assignTrackToZone(zone,url,name){
   if(clipName)clipName.textContent=trackName;
   if(clip)clip.style.opacity='1';
   showToast('Zone '+zone+' → '+trackName);
+  refreshStemMonitor();
 }
+// ── DJ STEM MONITOR ────────────────────────────────────────
+// Lets the DJ hear every assigned spatial slot locally while listeners
+// each still hear only their own assigned slot via zone_tracks/cluster_assign.
+// Local-only playback — never touches playback_started_at, zoneTracks,
+// or any broadcast/sync state.
+let _stemMonitorOn = false;
+const _monitorAudios = {}; // slot -> <audio>
+
+function toggleStemMonitor(btn){
+  _stemMonitorOn = !_stemMonitorOn;
+  btn.textContent = '🎧 MONITOR ALL STEMS: ' + (_stemMonitorOn ? 'ON' : 'OFF');
+  btn.style.background = _stemMonitorOn ? 'var(--teal)' : 'transparent';
+  btn.style.color = _stemMonitorOn ? '#000' : 'var(--teal)';
+  if(_stemMonitorOn) refreshStemMonitor(); else stopStemMonitor();
+}
+
+function refreshStemMonitor(){
+  if(!_stemMonitorOn) return;
+  const slots = zoneTracks || {};
+  // Drop monitors for slots that are gone or now match the main deck track
+  Object.keys(_monitorAudios).forEach(slot=>{
+    const t = slots[slot];
+    if(!t?.url || t.url===audio.src){
+      _monitorAudios[slot].pause();
+      delete _monitorAudios[slot];
+    }
+  });
+  // Add monitors for newly assigned slots
+  Object.entries(slots).forEach(([slot,t])=>{
+    if(!t?.url || t.url===audio.src || _monitorAudios[slot]) return;
+    const el = new Audio(t.url);
+    el.loop = audio.loop;
+    el.volume = 0.7;
+    el.currentTime = audio.currentTime || 0;
+    if(isPlaying) el.play().catch(()=>{});
+    _monitorAudios[slot] = el;
+  });
+}
+
+function stopStemMonitor(){
+  Object.values(_monitorAudios).forEach(el=>el.pause());
+  Object.keys(_monitorAudios).forEach(k=>delete _monitorAudios[k]);
+}
+
+function syncMonitorPlayState(){
+  if(!_stemMonitorOn) return;
+  Object.values(_monitorAudios).forEach(el=>{
+    if(isPlaying){
+      if(Math.abs(el.currentTime - audio.currentTime) > 0.15) el.currentTime = audio.currentTime;
+      el.play().catch(()=>{});
+    } else {
+      el.pause();
+    }
+  });
+}
+
+// Loose periodic resync so monitor stems don't audibly drift from the deck —
+// this is for the DJ's ear only, not the sample-accurate listener sync engine.
+setInterval(()=>{
+  if(!_stemMonitorOn || !isPlaying) return;
+  Object.values(_monitorAudios).forEach(el=>{
+    if(Math.abs(el.currentTime - audio.currentTime) > 0.15) el.currentTime = audio.currentTime;
+  });
+}, 5000);
+
 function clearZoneSlot(event,zone){
   event.stopPropagation();delete zoneTracks[zone];
   const slot=document.getElementById('slot-'+zone);
@@ -3317,6 +3390,7 @@ function clearZoneSlot(event,zone){
   if(controls)controls.style.display='none';
   if(clipName)clipName.textContent=clipDefaults[zone];
   if(clip)clip.classList.remove('selected');
+  refreshStemMonitor();
 }
 function playZone(event,zone){event.stopPropagation();const t=zoneTracks[zone];if(!t)return;audio.src=t.url;audio.play().catch(()=>{});document.getElementById('track-name').textContent=t.name;showToast('Playing Zone '+zone+': '+t.name);}
 function muteZone(event,zone){event.stopPropagation();showToast('Zone '+zone+' muted');}
