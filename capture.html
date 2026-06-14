@@ -214,7 +214,7 @@ header {
   pointer-events: none;
 }
 .ed-handle {
-  position: absolute; top: 0; bottom: 0; width: 20px;
+  position: absolute; top: 0; height: 50%; width: 20px;
   cursor: ew-resize; z-index: 2; touch-action: none;
   display: flex; align-items: center; justify-content: center;
 }
@@ -233,7 +233,7 @@ header {
   pointer-events: none; display: none;
 }
 .ed-handle-stretch::after { background: var(--amber); }
-.ed-handle-stretch { display: none; }
+.ed-handle-stretch { top: 50%; height: 50%; display: none; }
 
 .ed-times {
   display: flex; justify-content: space-between;
@@ -266,7 +266,6 @@ header {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: 8px 14px 10px; border-top: 1px solid var(--b1);
 }
-.ed-warp-bpm { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #fff; min-width: 28px; text-align: center; }
 .ed-warp-input { width: 50px; background: var(--b1); border: 1px solid var(--b2); color: #fff; font-family: 'Share Tech Mono', monospace; font-size: 11px; padding: 4px 5px; text-align: center; }
 .ed-bar-btn { padding: 4px 8px; font-size: 10px; line-height: 1; }
 .ed-bar-btn.on { background: var(--purple); border-color: var(--purple); color: #000; }
@@ -362,7 +361,8 @@ header {
   </div>
   <div class="ed-warp-row">
     <span class="ed-transpose-lbl">BPM</span>
-    <span class="ed-warp-bpm" id="ed-src-bpm">—</span>
+    <input type="number" id="ed-src-bpm" class="ed-warp-input" min="40" max="220" step="1" placeholder="—" oninput="edSetSourceBpm(this.value)">
+    <button class="tbtn ed-bar-btn" id="ed-tap-btn" onclick="edTapTempo()" title="Tap along to the beat to set BPM">TAP</button>
     <span class="ed-transpose-lbl">WARP→</span>
     <input type="number" id="ed-warp-bpm" class="ed-warp-input" min="40" max="220" step="1" placeholder="—" oninput="edSetWarpBpm(this.value)">
     <span class="ed-transpose-lbl">LOOP BARS</span>
@@ -1412,7 +1412,7 @@ function openEditor(clip) {
 // time-stretch or quantize playback live, which would risk the sync engine).
 function edRefreshWarpUI() {
   const bpm = edClip?.bpm || 0;
-  document.getElementById('ed-src-bpm').textContent = bpm ? bpm : '—';
+  document.getElementById('ed-src-bpm').value = bpm ? String(bpm) : '';
   const warpInp = document.getElementById('ed-warp-bpm');
   warpInp.placeholder = bpm ? String(bpm) : '—';
   // Default WARP→ to the project BPM (if set and the clip has a known BPM
@@ -1430,6 +1430,36 @@ function edRefreshWarpUI() {
 function edSetWarpBpm(value) {
   edWarpBpm = Math.max(0, parseFloat(value) || 0);
   updateEdHandles();
+  edSyncLoopRegion();
+}
+
+// Manual override for auto-detected source BPM — drives the warp ratio
+// and the stretch handle. Doesn't touch the clip's saved name tag.
+function edSetSourceBpm(value) {
+  if (!edClip) return;
+  edClip.bpm = Math.max(0, parseFloat(value) || 0);
+  updateEdHandles();
+  edSyncLoopRegion();
+}
+
+// Tap-to-set source BPM: average the interval between the last few taps.
+// A >2s gap between taps starts a fresh measurement.
+let edTapTimes = [];
+function edTapTempo() {
+  if (!edClip) return;
+  const now = performance.now();
+  if (edTapTimes.length && now - edTapTimes[edTapTimes.length - 1] > 2000) edTapTimes = [];
+  edTapTimes.push(now);
+  if (edTapTimes.length < 2) { toast('TAP AGAIN…'); return; }
+  if (edTapTimes.length > 8) edTapTimes = edTapTimes.slice(-8);
+  const intervals = [];
+  for (let i = 1; i < edTapTimes.length; i++) intervals.push(edTapTimes[i] - edTapTimes[i - 1]);
+  const avgMs = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+  const bpm = Math.round(60000 / avgMs);
+  edClip.bpm = Math.max(40, Math.min(220, bpm));
+  document.getElementById('ed-src-bpm').value = String(edClip.bpm);
+  updateEdHandles();
+  edSyncLoopRegion();
 }
 
 // Snap the selection to exactly N bars (4/4) of the clip's detected BPM,
@@ -1505,23 +1535,27 @@ function updateEdHandles() {
   document.getElementById('ed-end-label').textContent   = fmtMs(edEnd);
   document.getElementById('ed-sel-dur').textContent     = fmtMs(edEnd - edStart) + ' sel';
 
-  // ── Stretch handle/region — shows where the selection's right edge will
-  // land once warped to edWarpBpm (sourceBpm * selDur / outDur = edWarpBpm).
+  // ── Stretch handle/region — sits below the right trim handle (bottom half
+  // of the wave view), at the point the selection's right edge will land once
+  // warped to edWarpBpm (outDur = selDur * edWarpBpm/sourceBpm). With no warp
+  // target set yet it sits at rPx, same as the trim handle, ready to drag.
   const sourceBpm = edClip?.bpm || 0;
   const stretchHandle = document.getElementById('ed-handle-stretch');
   const stretchReg    = document.getElementById('ed-stretch-region');
-  // Only shown once a WARP→ target is set (manually or via PROJECT BPM) —
-  // otherwise it would sit on top of the right trim handle at rPx.
-  if (sourceBpm && edWarpBpm && edWarpBpm !== sourceBpm && !edStretchDragging) {
-    const selDur  = edEnd - edStart;
-    const outDur  = selDur * (edWarpBpm / sourceBpm);
-    const outPct  = (edStart + outDur) / edClip.duration;
-    const outPx   = Math.max(0, Math.min(w, outPct * w));
+  if (sourceBpm && !edStretchDragging) {
+    const selDur = edEnd - edStart;
+    const outDur = (edWarpBpm && edWarpBpm !== sourceBpm) ? selDur * (edWarpBpm / sourceBpm) : selDur;
+    const outPct = (edStart + outDur) / edClip.duration;
+    const outPx  = Math.max(0, Math.min(w, outPct * w));
     stretchHandle.style.left = `${outPx - 10}px`;
     stretchHandle.style.display = 'flex';
-    stretchReg.style.left  = `${Math.min(lPx, outPx)}px`;
-    stretchReg.style.width = `${Math.abs(outPx - lPx)}px`;
-    stretchReg.style.display = 'block';
+    if (edWarpBpm && edWarpBpm !== sourceBpm) {
+      stretchReg.style.left  = `${Math.min(lPx, outPx)}px`;
+      stretchReg.style.width = `${Math.abs(outPx - lPx)}px`;
+      stretchReg.style.display = 'block';
+    } else {
+      stretchReg.style.display = 'none';
+    }
   } else if (!edStretchDragging) {
     stretchHandle.style.display = 'none';
     stretchReg.style.display = 'none';
