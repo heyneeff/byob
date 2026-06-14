@@ -3817,7 +3817,21 @@ function clearZoneSlot(event,zone){
   if(clip)clip.classList.remove('selected');
   refreshStemMonitor();
 }
-function playZone(event,zone){event.stopPropagation();const t=zoneTracks[zone];if(!t)return;audio.src=t.url;audio.play().catch(()=>{});document.getElementById('track-name').textContent=t.name;showToast('Playing Zone '+zone+': '+t.name);}
+// Local-only preview — uses its own <audio> element, never the shared
+// broadcast `audio` (which has `ended` wired to playNext() and feeds
+// current_track_url/hard_sync). Previewing a slot must never trigger an
+// unintended track-change broadcast to the zone.
+let _previewAudio = null;
+function playZone(event,zone){
+  event.stopPropagation();
+  const t=zoneTracks[zone]; if(!t) return;
+  if(!_previewAudio) _previewAudio=new Audio();
+  _previewAudio.pause();
+  _previewAudio.src=t.url;
+  _previewAudio.currentTime=0;
+  _previewAudio.play().catch(()=>{});
+  showToast('▶ Preview Zone '+zone+': '+t.name);
+}
 function muteZone(event,zone){event.stopPropagation();showToast('Zone '+zone+' muted');}
 // ── Zone reference point bookkeeping ──────────────────────
 // One live playback_started_at per zone. Spatial reassignments must never
@@ -4781,10 +4795,15 @@ function toggleDeck(d){
     au.pause();
     if(btn){btn.textContent='▶ PLAY';btn.classList.remove('on');}
   }
-  // Deck A drives main transport btn-play
+  // Deck A drives main transport btn-play AND the shared isPlaying flag —
+  // stem monitor / viz bars key off isPlaying, so this must stay in step
+  // with Deck A's actual play state regardless of which control changed it.
   if(d==='a'){
+    isPlaying=dk.playing;
     const bp=document.getElementById('btn-play');
     if(bp){bp.textContent=dk.playing?'⏸':'▶';bp.classList.toggle('playing',dk.playing);}
+    document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState=dk.playing?'running':'paused');
+    syncMonitorPlayState();
   }
 }
 
@@ -4840,6 +4859,13 @@ function hotCue(d,n){
     if(!dk.playing){au.play().catch(()=>{});dk.playing=true;
       const btn=document.getElementById('d'+d+'-play');
       if(btn){btn.textContent='⏸ PAUSE';btn.classList.add('on');}
+      if(d==='a'){
+        isPlaying=true;
+        const bp=document.getElementById('btn-play');
+        if(bp){bp.textContent='⏸';bp.classList.add('playing');}
+        document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
+        syncMonitorPlayState();
+      }
     }
   }
 }
