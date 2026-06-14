@@ -3352,15 +3352,21 @@ function refreshStemMonitor(){
     }
   });
   // Add monitors for newly assigned slots
+  let started = 0;
   Object.entries(slots).forEach(([slot,t])=>{
     if(!t?.url || t.url===audio.src || _monitorAudios[slot]) return;
-    const el = new Audio(t.url);
-    el.loop = audio.loop;
-    el.volume = 0.7;
-    el.currentTime = audio.currentTime || 0;
-    if(isPlaying) el.play().catch(()=>{});
-    _monitorAudios[slot] = el;
+    try {
+      const el = new Audio(t.url);
+      el.loop = audio.loop;
+      el.volume = 0.7;
+      // Can't set currentTime until metadata is loaded (throws on iOS Safari
+      // if set on a fresh element) — seek once duration is known instead.
+      el.addEventListener('loadedmetadata', () => { try { el.currentTime = audio.currentTime || 0; } catch(e) {} });
+      if(isPlaying) el.play().then(()=>started++).catch(err=>console.warn('Monitor play failed for slot '+slot+':', err.message));
+      _monitorAudios[slot] = el;
+    } catch(err) { console.warn('Monitor setup failed for slot '+slot+':', err.message); }
   });
+  if(isPlaying) showToast('🎧 Monitoring ' + (Object.keys(_monitorAudios).length) + ' extra stem' + (Object.keys(_monitorAudios).length===1?'':'s'));
 }
 
 function stopStemMonitor(){
@@ -3372,7 +3378,7 @@ function syncMonitorPlayState(){
   if(!_stemMonitorOn) return;
   Object.values(_monitorAudios).forEach(el=>{
     if(isPlaying){
-      if(Math.abs(el.currentTime - audio.currentTime) > 0.15) el.currentTime = audio.currentTime;
+      if(el.readyState>0 && Math.abs(el.currentTime - audio.currentTime) > 0.15) el.currentTime = audio.currentTime;
       el.play().catch(()=>{});
     } else {
       el.pause();
@@ -3385,7 +3391,7 @@ function syncMonitorPlayState(){
 setInterval(()=>{
   if(!_stemMonitorOn || !isPlaying) return;
   Object.values(_monitorAudios).forEach(el=>{
-    if(Math.abs(el.currentTime - audio.currentTime) > 0.15) el.currentTime = audio.currentTime;
+    if(el.readyState>0 && Math.abs(el.currentTime - audio.currentTime) > 0.15) el.currentTime = audio.currentTime;
   });
 }, 5000);
 
