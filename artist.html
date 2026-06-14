@@ -444,7 +444,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <textarea class="zdp-name" id="evt-desc" placeholder="Description (optional)" style="margin-top:6px;height:56px;resize:none;"></textarea>
   <div style="margin-top:6px;">
     <div style="font-size:10px;color:#a8957c;margin-bottom:4px;">Zone</div>
-    <select class="zdp-name" id="evt-zone" style="margin:0;font-size:11px;"></select>
+    <div style="display:flex;gap:6px;">
+      <select class="zdp-name" id="evt-zone" style="margin:0;font-size:11px;flex:1;"></select>
+      <button type="button" onclick="onAddEventZone()" style="flex-shrink:0;background:transparent;border:1px solid var(--rim);border-radius:8px;color:var(--orange);font-family:'Roboto',sans-serif;font-size:11px;font-weight:700;padding:0 12px;cursor:pointer;white-space:nowrap;">+ New Zone</button>
+    </div>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
     <div><div style="font-size:10px;color:#a8957c;margin-bottom:4px;">Event starts</div><input class="zdp-name" id="evt-start" type="datetime-local" style="margin:0;font-size:11px;"/></div>
@@ -469,6 +472,8 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <button class="zdp-confirm" style="background:var(--red);" onclick="confirmEvent()">✓ Schedule</button>
     <button class="zdp-cancel" style="color:#a8957c;" onclick="closeEventPanel()">✕ Cancel</button>
   </div>
+  <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--red);margin:18px 0 8px;border-top:1px solid #222;padding-top:14px;">Your Events</div>
+  <div id="event-list"></div>
 </div>
 
 <!-- MESSAGE MODAL -->
@@ -1027,7 +1032,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <div style="display:none;">
     <button id="btn-go-live" onclick="toggleLive()">Go Live</button>
     <button id="btn-kill" onclick="killStream()"></button>
-    <div id="event-list"></div>
     <input type="range" id="main-radius" min="10" max="2000" value="200" step="10" oninput="onMainRadius(this.value)"/>
     <span id="main-radius-val">200m</span>
   </div>
@@ -1105,6 +1109,7 @@ async function measureClockOffset(){
 function serverNow(){return Math.round(Date.now()+_clockOffset);}
 let userLat=null,userLng=null;
 let draftCenter=null,draftRadius=200,drawMode=false;
+let _zoneDrawForEvent=false;
 let isPlaying=false,liveStream=null,audioCtx=null,analyserNode=null,meterRAF=null,_micModeArmed=false;
 let msgTarget='all',djIsSignUp=false;
 const audio=document.getElementById('audio-player');
@@ -1512,6 +1517,7 @@ function onMainRadius(val){
 async function confirmZone(){
   if(!draftCenter){showToast('Tap map to place center');return;}
   if(!currentUser){showToast('Sign in first');document.getElementById('dj-auth').style.display='flex';return;}
+  if(_zoneDrawForEvent)return confirmEventZone();
   const name=document.getElementById('zdp-name').value.trim()||'Unnamed Zone';
   const tipUrl=document.getElementById('zdp-tip-url').value.trim()||null;
   const tipAmount=parseInt(document.getElementById('zdp-tip-amount').value)||null;
@@ -1542,6 +1548,52 @@ function cancelZoneDraw(){
   if(draftCircle){draftCircle.remove();draftCircle=null;}
   if(draftMarker){draftMarker.remove();draftMarker=null;}
   draftCenter=null;
+  if(_zoneDrawForEvent){
+    _zoneDrawForEvent=false;
+    document.getElementById('event-panel').style.transform='translateY(0)';
+  }
+}
+
+// ── ZONE CREATE (from event scheduler) ──────────────────────
+// Draws a new zone without touching the live-stream state (activeZone,
+// listener tracking, DJ presence) — purely creates a zones row to link
+// to the event being scheduled.
+function onAddEventZone(){
+  if(!currentUser){showToast('Sign in first');document.getElementById('dj-auth').style.display='flex';return;}
+  _zoneDrawForEvent=true;
+  document.getElementById('event-panel').style.transform='translateY(100%)';
+  if(!userLat){
+    showToast('Waiting for GPS — try again in a moment');
+    navigator.geolocation.getCurrentPosition(pos=>{
+      userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+      if(!userMarker)placeUserMarker(userLat,userLng);
+      else userMarker.setLatLng([userLat,userLng]);
+      leafletMap.setView([userLat,userLng],16);
+      showToast('Got GPS — tap "+ New Zone" again');
+      document.getElementById('event-panel').style.transform='translateY(0)';
+      _zoneDrawForEvent=false;
+    },()=>{
+      showToast('GPS unavailable — check location permissions');
+      document.getElementById('event-panel').style.transform='translateY(0)';
+      _zoneDrawForEvent=false;
+    },{enableHighAccuracy:true,timeout:10000});
+    return;
+  }
+  drawMode=true;document.getElementById('map').classList.add('map-draw-mode');
+  document.getElementById('zone-draw-panel').classList.add('open');
+  placeDraft(L.latLng(userLat,userLng));
+  leafletMap.on('click',onMapClick);
+}
+async function confirmEventZone(){
+  const name=document.getElementById('zdp-name').value.trim()||'Unnamed Zone';
+  try{
+    const{data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0}).select().single();
+    if(error)throw error;
+    cancelZoneDraw();
+    await populateEvtZones();
+    document.getElementById('evt-zone').value=data.id;
+    showToast('Zone "'+name+'" created 📍');
+  }catch(err){showToast('Error: '+err.message,true);}
 }
 async function loadZones(){
   const {data}=await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(5);
@@ -1550,7 +1602,9 @@ async function loadZones(){
     if(zoneCircles[z.id])return;
     if(leafletMap) zoneCircles[z.id]=L.circle([z.lat,z.lng],{radius:z.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.06,weight:1.5}).addTo(leafletMap)
       .bindTooltip(z.name,{permanent:true,direction:'center',className:'zone-name-label',interactive:false});
-    if(!activeZone&&z.host_id===currentUser?.id) restoreZone(z);
+    // Skip zones created via the event scheduler that were never gone live
+    // (no track ever loaded) — don't hijack the session as the "active" zone.
+    if(!activeZone&&z.host_id===currentUser?.id&&(z.current_track_url||z.playback_started_at)) restoreZone(z);
   });
 }
 
@@ -3440,6 +3494,7 @@ async function openEventPanel(){
   document.getElementById('evt-reveal-always').checked=false;
   onEvtRevealAlwaysChange();
   await populateEvtZones();
+  loadEvents().catch(()=>{});
   document.getElementById('event-panel').style.transform='translateY(0)';
 }
 function onEvtRevealAlwaysChange(){

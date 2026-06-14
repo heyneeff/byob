@@ -2633,6 +2633,10 @@ function onZoneBtn() {
   if (userLat && knownZones.length) {
     const alreadyInside = knownZones.find(z => z.lat && distM(userLat, userLng, z.lat, z.lng) <= (z.radius_m || 200));
     if (alreadyInside) {
+      if (isZoneLocked(alreadyInside)) {
+        boomSay("This zone is here, but it's locked until " + new Date(alreadyInside._revealAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}) + " 🔒");
+        return;
+      }
       insideZoneIds.add(alreadyInside.id);
       onEnterZone(alreadyInside);
       return;
@@ -3413,6 +3417,14 @@ setInterval(() => {
 }, 35000);
 let knownZones     = [];   // cached from last loadZones
 let insideZoneIds  = new Set();
+let _revealLockNotified = new Set();
+
+// A zone tied to an event whose location_reveal_at is still in the future
+// stays locked even if the listener is physically inside the geofence —
+// location_reveal_at in the past (or no linked event) = unlocked.
+function isZoneLocked(z) {
+  return !!(z._revealAt && new Date(z._revealAt).getTime() > Date.now());
+}
 
 // Called every GPS tick — checks all known zones
 let _preSyncZoneId = null;
@@ -3452,6 +3464,13 @@ async function checkGeofences() {
     const wasInside  = insideZoneIds.has(z.id);
 
     if (inside && !wasInside) {
+      if (isZoneLocked(z)) {
+        if (!_revealLockNotified.has(z.id)) {
+          _revealLockNotified.add(z.id);
+          showToast('🔒 This zone unlocks at ' + new Date(z._revealAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}));
+        }
+        return;
+      }
       insideZoneIds.add(z.id);
       _preSyncZoneId = null; // clear pre-sync flag
       onEnterZone(z);
@@ -3611,6 +3630,10 @@ async function loadZones(autoJoin=false) {
   const { data } = await db.from('zones').select('*').eq('active',true).order('created_at',{ascending:false}).limit(10);
   const list = document.getElementById('zone-list');
   if (!data?.length) { list.innerHTML='<div style="font-size:11px;color:var(--muted)">No active zones nearby.</div>'; return; }
+
+  // Pull each zone's linked event reveal time — gates geofence entry below
+  const { data: evts } = await db.from('events').select('zone_id,location_reveal_at').in('zone_id', data.map(z => z.id));
+  data.forEach(z => { z._revealAt = evts?.find(e => e.zone_id === z.id)?.location_reveal_at || null; });
 
   // Cache for geofence checking
   knownZones = data;
