@@ -1711,7 +1711,7 @@ function queueTrack(url, title) {
 function queueAll(shuffle=false) {
   const q = _libFilter.toLowerCase();
   let tracks = _realTracks.filter(t => {
-    const matchesCrate = _libCrate==='all' || t.type===_libCrate || (!t.type && _libCrate==='songs');
+    const matchesCrate = typeMatchesCrate(t.type, _libCrate);
     const matchesSearch = !q || t.name.toLowerCase().includes(q);
     return matchesCrate && matchesSearch && t.url;
   });
@@ -3076,7 +3076,7 @@ function slPickClip(sceneId, slot, crate){
   const slotBg = slotColor(slot).replace('var(--orange)','#f57e20').replace('var(--teal)','#00cc99').replace('var(--red)','#ef3c23');
 
   function pickerHTML(c){
-    const pool = c==='all' ? allTracks : allTracks.filter(t=>t.type===c);
+    const pool = allTracks.filter(t=>typeMatchesCrate(t.type, c));
     if(!pool.length) return `<div style="color:var(--muted);font-size:12px;padding:16px 0;text-align:center;">No ${c}s uploaded yet</div>`;
     return pool.map(t=>{
       const safeUrl=(t.url||t.id||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
@@ -3930,10 +3930,16 @@ async function deleteTrack(id) {
   } catch(err) { showToast('Delete failed: ' + err.message); }
 }
 
+// Crate names are plural ('stems'/'songs'/'all'), track types are singular ('stem'/'song')
+function typeMatchesCrate(type, crate) {
+  if (crate === 'all') return true;
+  return (type === 'stem' ? 'stems' : 'songs') === crate;
+}
+
 function libHTML(tracks, filter='') {
   const q = filter.toLowerCase();
   const list = tracks.filter(t => {
-    const matchesCrate = _libCrate==='all' || t.type===_libCrate || (!t.type && _libCrate==='songs');
+    const matchesCrate = typeMatchesCrate(t.type, _libCrate);
     const matchesSearch = !q || t.name.toLowerCase().includes(q) || (t.artist||'').toLowerCase().includes(q);
     return matchesCrate && matchesSearch;
   });
@@ -4010,7 +4016,7 @@ function buildSpaceLib(filter='') {
   const pool = _realTracks.length ? _realTracks : TRACKS;
   const q = filter.toLowerCase();
   const tracks = pool.filter(t => {
-    const matchesCrate = _spCrate==='all' || t.type===_spCrate;
+    const matchesCrate = typeMatchesCrate(t.type, _spCrate);
     const matchesSearch = !q || t.name.toLowerCase().includes(q) || (t.artist||'').toLowerCase().includes(q);
     return matchesCrate && matchesSearch;
   });
