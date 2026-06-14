@@ -28,8 +28,9 @@ Deploy: push to `main` — GitHub Pages serves automatically via the `CNAME` rec
 | `sync-sim.html` | Standalone sync-engine simulator — no audio, no Supabase. Runs old vs new corrector designs side by side with identical seeds. Validate corrector changes here before porting to `listener.html` |
 | `SYNC_ENGINE.md` | Deep-dive doc on how sync works — the reasoning behind the corrector design. **Update it when changing sync behavior** |
 | `index.html` | Public landing page — upcoming events list (free vs paid, location reveal), city filter, links to `listener.html` / `artist.html` |
+| `capture.html` | Standalone audio-capture tool — tab/mic recording, waveform trim editor with drag-select, automatic key/BPM detection, silence-trim, fade on cut; uploads to `boombox/stems/{user_id}/...` and inserts into `tracks` (same convention as artist.html's stem uploads, BPM auto-parsed by `parseBpmFromName`). Linked from artist.html's boombox menu |
 | `Roadmap` | Product vision, open bugs, queued features, session log |
-| `legacy/` | **Do not edit.** Archived prior versions: `listener-classic.html` (pre-Jun-12-2026 production `listener.html`, older inline drift corrector), `dj.html` and `play.html` (earlier DJ engines, absorbed into `artist.html`), `byob-capture.html` and `organismvisualizer.html` (standalone prototypes, never wired to the Supabase tables above) |
+| `legacy/` | **Do not edit.** Archived prior versions: `listener-classic.html` (pre-Jun-12-2026 production `listener.html`, older inline drift corrector), `dj.html` and `play.html` (earlier DJ engines, absorbed into `artist.html`), `organismvisualizer.html` (standalone prototype, never wired to the Supabase tables above) |
 | `migration_*.sql` | One-off schema migrations — run manually in the Supabase SQL editor, not applied automatically |
 
 ### Jun 12 2026 rename

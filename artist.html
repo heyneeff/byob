@@ -97,28 +97,32 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .sl-grid{display:inline-flex;flex-direction:column;min-height:100%;}
 .sl-header-row,.sl-clip-row,.sl-fire-row{display:flex;flex-direction:row;}
 .sl-header-row{position:sticky;top:0;z-index:5;background:#111;border-bottom:1px solid var(--rim);}
-.sl-corner{width:22px;flex-shrink:0;border-right:1px solid var(--rim);}
-.sl-add-col{width:22px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
-.sl-scene-hd{width:72px;flex-shrink:0;display:flex;align-items:center;padding:2px 3px;border-right:1px solid rgba(255,255,255,.05);gap:2px;overflow:hidden;}
-.sl-scene-nm{flex:1;font-family:'Barlow Condensed',sans-serif;font-size:8px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
+.sl-corner{width:26px;flex-shrink:0;border-right:1px solid var(--rim);}
+.sl-add-col{width:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.sl-scene-hd{width:84px;flex-shrink:0;display:flex;align-items:center;padding:2px 4px;border-right:1px solid rgba(255,255,255,.05);gap:2px;overflow:hidden;}
+.sl-scene-nm{flex:1;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
 .sl-scene-nm:hover{color:var(--cream);}
-.sl-scene-del{width:11px;height:11px;background:transparent;border:none;color:rgba(255,255,255,.18);font-size:9px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;}
+.sl-scene-del{width:13px;height:13px;background:transparent;border:none;color:rgba(255,255,255,.18);font-size:11px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;}
 .sl-scene-del:hover{color:var(--red);}
-.sl-slot-lbl{width:22px;flex-shrink:0;height:26px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;color:#000;border-right:1px solid var(--rim);border-bottom:1px solid rgba(255,255,255,.04);}
-.sl-clip{width:72px;height:26px;flex-shrink:0;display:flex;align-items:center;gap:2px;padding:0 2px;border-right:1px solid rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .1s;overflow:hidden;}
+.sl-slot-lbl{width:26px;flex-shrink:0;height:30px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;color:#000;border-right:1px solid var(--rim);border-bottom:1px solid rgba(255,255,255,.04);}
+.sl-clip{width:84px;height:30px;flex-shrink:0;display:flex;align-items:center;gap:3px;padding:0 3px;border-right:1px solid rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .1s;overflow:hidden;}
 .sl-clip:hover{background:#1a1a1a;}
 .sl-clip.has-track{background:#141414;}
 .sl-clip.has-track:hover{background:#1e1e1e;}
 .sl-clip.is-live{background:#1a1200;}
 .sl-clip-bar{width:3px;height:18px;border-radius:2px;flex-shrink:0;}
-.sl-clip-nm{flex:1;font-size:8px;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'Barlow Condensed',sans-serif;}
-.sl-clip-x{width:11px;height:11px;background:transparent;border:none;color:rgba(255,255,255,.0);font-size:8px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;transition:color .1s;}
+.sl-clip-launch{width:20px;height:22px;flex-shrink:0;border:none;border-radius:3px;font-size:10px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#000;padding:0;transition:filter .1s;}
+.sl-clip-launch:hover{filter:brightness(1.3);}
+.sl-clip.is-live .sl-clip-launch{animation:pending-pulse .6s ease-in-out infinite alternate;}
+.sl-clip-launch.is-pending{background:#fff !important;color:#1a0030;animation:pending-pulse .3s ease-in-out infinite alternate;}
+.sl-clip-nm{flex:1;font-size:10px;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'Barlow Condensed',sans-serif;}
+.sl-clip-x{width:13px;height:13px;background:transparent;border:none;color:rgba(255,255,255,.0);font-size:10px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;transition:color .1s;}
 .sl-clip.has-track:hover .sl-clip-x{color:rgba(255,255,255,.3);}
 .sl-clip-x:hover{color:var(--red) !important;}
-.sl-clip-dot{flex:1;text-align:center;font-size:10px;color:rgba(255,255,255,.1);}
+.sl-clip-dot{flex:1;text-align:center;font-size:12px;color:rgba(255,255,255,.1);}
 .sl-fire-row{border-top:1px solid var(--rim);position:sticky;bottom:0;z-index:5;background:#111;}
-.sl-fire-corner{width:22px;flex-shrink:0;border-right:1px solid var(--rim);}
-.sl-fire-btn{width:72px;flex-shrink:0;height:22px;background:transparent;border:none;border-right:1px solid rgba(255,255,255,.04);color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.1em;cursor:pointer;transition:all .1s;}
+.sl-fire-corner{width:26px;flex-shrink:0;border-right:1px solid var(--rim);}
+.sl-fire-btn{width:84px;flex-shrink:0;height:26px;background:transparent;border:none;border-right:1px solid rgba(255,255,255,.04);color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:.1em;cursor:pointer;transition:all .1s;}
 .sl-fire-btn:hover{background:#1a1200;color:var(--orange);}
 .sl-fire-btn.is-live{color:var(--orange);background:#1a1200;}
 .sl-fire-btn.is-pending{color:#fff;background:#1a0030;animation:pending-pulse .3s ease-in-out infinite alternate;}
@@ -497,6 +501,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
 <!-- BOOM MENU -->
 <div id="boom-menu">
+  <div class="boom-menu-item" onclick="window.open('capture.html','_blank')">🎙 Capture Audio</div>
   <div class="boom-menu-item danger" onclick="djLogout()">⏏ Log Out</div>
 </div>
 
@@ -805,10 +810,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
   <!-- BOTTOM: Scene launcher (sp-lib kept as ID for legacy JS, actual lib HTML goes to sp-lib-inner) -->
   <div class="sp-library" style="flex-direction:column;overflow:hidden;">
-    <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-bottom:1px solid var(--rim);flex-shrink:0;background:#141414;">
-      <span style="font-size:8px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;flex:1;">SCENES &nbsp;<span id="slot-count-lbl" style="color:var(--teal);">C+4</span></span>
-      <button onclick="openSlotPicker()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">SLOTS</button>
-      <button onclick="slAddScene()" style="font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;">+ SCENE</button>
+    <div style="display:flex;align-items:center;gap:4px;padding:4px 8px;border-bottom:1px solid var(--rim);flex-shrink:0;background:#141414;flex-wrap:wrap;">
+      <span style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;flex-shrink:0;">SCENES &nbsp;<span id="slot-count-lbl" style="color:var(--teal);">C+4</span></span>
+      <button id="btn-monitor-loop" onclick="toggleMonitorLoop(this)" style="font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--teal);border-radius:3px;background:var(--teal);color:#000;cursor:pointer;letter-spacing:.08em;">🔁 LOOP: ON</button>
+      <button onclick="slStopAll()" style="font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--red);border-radius:3px;background:transparent;color:var(--red);cursor:pointer;letter-spacing:.08em;">■ STOP ALL</button>
+      <span style="flex:1;"></span>
+      <button onclick="openSlotPicker()" style="font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--teal);border-radius:3px;background:transparent;color:var(--teal);cursor:pointer;">SLOTS</button>
+      <button onclick="slAddScene()" style="font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;">+ SCENE</button>
     </div>
     <div class="sl-wrap" style="min-width:0;">
       <div class="sl-scroll" id="scene-launcher-scroll">
@@ -2910,15 +2918,133 @@ function slRenameScene(id){
 }
 function slSetClip(sceneId,slot,url,name){
   const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
-  s.tracks[slot]={url,name}; _slSave(); renderSceneLauncher();
+  s.tracks[slot]={url,name}; _slSave();
+  // If this slot was already live from this scene, swap the playing clip
+  // too — otherwise the launcher shows ■ on a clip that isn't actually
+  // the one assigned to zoneTracks anymore.
+  if(_liveClipBySlot[slot]===sceneId){
+    assignTrackToZone(slot,url,name);
+    _updateWarpStatus();
+    broadcastAllZones();
+    refreshStemMonitor();
+  }
+  renderSceneLauncher();
 }
 function slClearClip(sceneId,slot,ev){
   if(ev) ev.stopPropagation();
   const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
-  delete s.tracks[slot]; _slSave(); renderSceneLauncher();
+  delete s.tracks[slot]; _slSave();
+  if(_liveClipBySlot[slot]===sceneId){
+    delete _liveClipBySlot[slot];
+    delete zoneTracks[slot];
+    if(_activeSceneId===sceneId) _activeSceneId=null;
+    refreshStemMonitor();
+    broadcastAllZones();
+  }
+  renderSceneLauncher();
+}
+
+// Launch (or stop) a single clip in a single slot, independent of the
+// scene FIRE row — Ableton-style per-clip-slot launching. Lets the DJ mix
+// clips from different scenes into the same live set, one slot at a time.
+// Beat-quantized like slFireScene: both ultimately just call
+// assignTrackToZone + broadcastAllZones (the documented entry points), only
+// delayed via setTimeout to the next beat — never touches sync engine state
+// directly.
+let _pendingClip = null; // {sceneId, slot}
+let _pendingClipTimer = null;
+
+function slLaunchClip(sceneId,slot,ev){
+  if(ev) ev.stopPropagation();
+  const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
+  const t=s.tracks[slot]; if(!t?.url) return;
+
+  // Unlock monitor audio pool now, synchronously in this click — see
+  // _unlockMonitorPool for why this must happen on the gesture itself.
+  _unlockMonitorPool();
+
+  // Cancel any pending quantized clip launch
+  if(_pendingClipTimer){ clearTimeout(_pendingClipTimer); _pendingClipTimer=null; _pendingClip=null; }
+
+  const wasLive = _liveClipBySlot[slot]===sceneId;
+
+  if(_masterBPM){
+    const beatMs = 60000 / _masterBPM;
+    const now = serverNow();
+    const phase = now % beatMs;
+    const waitMs = phase < 20 ? 0 : beatMs - phase; // snap immediately if within 20ms of beat
+
+    if(waitMs > 30){
+      _pendingClip = {sceneId, slot};
+      renderSceneLauncher(); // shows queued indicator
+      _pendingClipTimer = setTimeout(()=>{
+        _pendingClip = null;
+        _pendingClipTimer = null;
+        _doLaunchClip(sceneId,slot,wasLive);
+      }, waitMs);
+      showToast('⏱ On beat in '+Math.round(waitMs)+'ms');
+      return;
+    }
+  }
+  _doLaunchClip(sceneId,slot,wasLive);
+}
+
+function _doLaunchClip(sceneId,slot,wasLive){
+  const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
+  const t=s.tracks[slot]; if(!t?.url) return;
+
+  if(wasLive){
+    // Already live in this slot — stop it.
+    delete _liveClipBySlot[slot];
+    delete zoneTracks[slot];
+    clearZoneSlot({stopPropagation(){}},slot);
+    if(_activeSceneId===sceneId) _activeSceneId=null;
+    refreshStemMonitor();
+    broadcastAllZones();
+    renderSceneLauncher();
+    return;
+  }
+
+  assignTrackToZone(slot,t.url,t.name);
+  _liveClipBySlot[slot]=sceneId;
+  // No longer a clean whole-scene fire if this slot now disagrees with
+  // whichever scene was previously "LIVE".
+  if(_activeSceneId!==sceneId) _activeSceneId=null;
+  _updateWarpStatus();
+  broadcastAllZones();
+  if(!isPlaying){
+    isPlaying=true;
+    const playBtn=document.getElementById('btn-play');
+    if(playBtn){ playBtn.textContent='⏸'; playBtn.classList.add('playing'); }
+    document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
+  }
+  if(!_stemMonitorOn){ _stemMonitorOn=true; _setStemMonitorBtn(true); }
+  refreshStemMonitor();
+  renderSceneLauncher();
+  showToast('▶ '+t.name+' → '+slot);
+}
+// Lets an already-placed clip be dragged to a different slot/scene cell —
+// moves the clip definition only (s.tracks). Does not touch zoneTracks or
+// broadcast anything itself; if the moved clip was live, slClearClip on the
+// source stops it the same way the × button does, and slSetClip on the dest
+// re-launches it there if that cell was already live (existing behavior).
+function slDragClipStart(ev,sceneId,slot){
+  ev.dataTransfer.setData('clip-src', JSON.stringify({sceneId,slot}));
+  ev.dataTransfer.effectAllowed='move';
 }
 function slDropOnClip(ev,sceneId,slot){
   ev.preventDefault();
+  const srcRaw=ev.dataTransfer.getData('clip-src');
+  if(srcRaw){
+    let src; try{ src=JSON.parse(srcRaw); }catch(e){ return; }
+    if(src.sceneId===sceneId && src.slot===slot) return; // dropped on itself
+    const srcScene=_scenes.find(sc=>sc.id===src.sceneId);
+    const t=srcScene?.tracks[src.slot];
+    if(!t?.url) return;
+    slSetClip(sceneId,slot,t.url,t.name);
+    slClearClip(src.sceneId,src.slot);
+    return;
+  }
   const url=ev.dataTransfer.getData('track-url')||_draggingTrack?.url;
   const name=ev.dataTransfer.getData('track-name')||_draggingTrack?.name;
   if(!url) return;
@@ -3019,9 +3145,29 @@ function buildTrackBpms() {
 
 let _pendingSceneId = null;
 let _pendingSceneTimer = null;
+// slot -> sceneId of the clip currently live in that slot. Lets individual
+// clips be launched/stopped independently of the whole-scene FIRE row —
+// a scene only shows "LIVE" once every one of its assigned slots agrees.
+let _liveClipBySlot = {};
+
+// A scene counts as "live" for the FIRE/STOP button if ANY of its assigned
+// slots are currently the live clip for that slot — not just a whole-scene
+// FIRE. So launching even one clip (e.g. slot 1 of 8) flips that scene's
+// button to "■ LIVE", and clicking it stops every live clip from this scene.
+function _sceneHasLiveClip(sceneId){
+  const s=_scenes.find(s=>s.id===sceneId); if(!s) return false;
+  return Object.keys(s.tracks||{}).some(slot=>_liveClipBySlot[slot]===sceneId);
+}
 
 function slFireScene(sceneId){
   const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
+
+  // The "■ LIVE" button is a toggle — clicking a live scene stops it
+  // instead of re-firing/re-quantizing it.
+  if(_sceneHasLiveClip(sceneId)){
+    slStopScene(sceneId);
+    return;
+  }
 
   // Unlock monitor audio pool now, synchronously in this click — a quantized
   // fire below runs via setTimeout, which is too late for iOS to allow a
@@ -3055,10 +3201,31 @@ function slFireScene(sceneId){
   _doFireScene(sceneId);
 }
 
+// Stops the DJ's local deck + every monitor stem and clears all
+// launched/live indicators in the scene launcher. Local only — does not
+// push anything to listeners (zone_tracks/broadcast untouched), so the
+// crowd keeps hearing whatever was last broadcast until the next FIRE.
+function slStopAll(){
+  if(_pendingSceneTimer){ clearTimeout(_pendingSceneTimer); _pendingSceneTimer=null; _pendingSceneId=null; }
+
+  audio.pause();
+  isPlaying=false;
+  const playBtn=document.getElementById('btn-play');
+  if(playBtn){ playBtn.textContent='▶'; playBtn.classList.remove('playing'); }
+  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='paused');
+
+  stopStemMonitor();
+
+  _liveClipBySlot={};
+  _activeSceneId=null;
+  renderSceneLauncher();
+  showToast('■ Stopped all');
+}
+
 function _doFireScene(sceneId){
   const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
-  getSlotKeys().forEach(k=>{delete zoneTracks[k];});
-  Object.entries(s.tracks||{}).forEach(([slot,t])=>{ if(t?.url) assignTrackToZone(slot,t.url,t.name); });
+  getSlotKeys().forEach(k=>{delete zoneTracks[k]; delete _liveClipBySlot[k];});
+  Object.entries(s.tracks||{}).forEach(([slot,t])=>{ if(t?.url){ assignTrackToZone(slot,t.url,t.name); _liveClipBySlot[slot]=sceneId; } });
   _activeSceneId=sceneId;
   renderSceneLauncher();
   _updateWarpStatus();
@@ -3087,6 +3254,40 @@ function _doFireScene(sceneId){
   refreshStemMonitor();
   showToast('▶ '+s.name);
 }
+
+// Stop a live scene — clears zoneTracks/_liveClipBySlot for the slots this
+// scene fired, broadcasts the (possibly now-empty) result so listeners stop
+// too, and pauses the local deck/monitor if it was playing this scene's
+// Center/monitor track. Immediate — not beat-quantized, this is a panic-ish
+// stop, not a mix move.
+function slStopScene(sceneId){
+  const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
+  if(_pendingSceneTimer){ clearTimeout(_pendingSceneTimer); _pendingSceneTimer=null; _pendingSceneId=null; }
+
+  let stoppedDeck=false;
+  Object.keys(s.tracks||{}).forEach(slot=>{
+    if(_liveClipBySlot[slot]===sceneId){
+      if(zoneTracks[slot]?.url===audio.src) stoppedDeck=true;
+      delete zoneTracks[slot];
+      delete _liveClipBySlot[slot];
+    }
+  });
+  _activeSceneId=null;
+  refreshStemMonitor();
+  broadcastAllZones(true);
+
+  if(stoppedDeck){
+    audio.pause();
+    isPlaying=false;
+    const playBtn=document.getElementById('btn-play');
+    if(playBtn){ playBtn.textContent='▶'; playBtn.classList.remove('playing'); }
+    document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='paused');
+  }
+
+  renderSceneLauncher();
+  showToast('■ Stopped '+s.name);
+}
+
 let _slPickerCrate = 'all';
 function slPickClip(sceneId, slot, crate){
   _slPickerCrate = crate || _slPickerCrate || 'all';
@@ -3147,16 +3348,17 @@ function renderSceneLauncher(){
       ${_scenes.length>1?`<button class="sl-scene-del" onclick="slRemoveScene(${s.id})">×</button>`:''}
     </div>`).join('');
 
-  const addBtn=`<div class="sl-add-col"><button onclick="slAddScene()" style="width:22px;height:22px;background:transparent;border:none;color:var(--muted);font-size:15px;cursor:pointer;line-height:1;" onmouseover="this.style.color='var(--teal)'" onmouseout="this.style.color='var(--muted)'">+</button></div>`;
+  const addBtn=`<div class="sl-add-col"><button onclick="slAddScene()" style="width:26px;height:26px;background:transparent;border:none;color:var(--muted);font-size:17px;cursor:pointer;line-height:1;" onmouseover="this.style.color='var(--teal)'" onmouseout="this.style.color='var(--muted)'">+</button></div>`;
 
   const clipRows=slots.map(slot=>{
     const bg=resolveColor(slotColor(slot));
     const cells=_scenes.map(s=>{
       const t=s.tracks[slot];
-      const live=_activeSceneId===s.id;
+      const live=_liveClipBySlot[slot]===s.id;
+      const pending=_pendingClip && _pendingClip.sceneId===s.id && _pendingClip.slot===slot;
       return t
-        ?`<div class="sl-clip has-track${live?' is-live':''}" ondragover="event.preventDefault()" ondrop="slDropOnClip(event,${s.id},'${slot}')" title="${t.name}">
-            <div class="sl-clip-bar" style="background:${bg};"></div>
+        ?`<div class="sl-clip has-track${live?' is-live':''}" draggable="true" ondragstart="slDragClipStart(event,${s.id},'${slot}')" ondragover="event.preventDefault()" ondrop="slDropOnClip(event,${s.id},'${slot}')" title="${t.name}">
+            <button class="sl-clip-launch${pending?' is-pending':''}" style="background:${bg};" onclick="slLaunchClip(${s.id},'${slot}',event)" title="${pending?'Queued for next beat':live?'Stop':'Launch'} ${t.name}">${pending?'●':live?'■':'▶'}</button>
             <div class="sl-clip-nm">${t.name}</div>
             <button class="sl-clip-x" onclick="slClearClip(${s.id},'${slot}',event)">×</button>
           </div>`
@@ -3167,12 +3369,12 @@ function renderSceneLauncher(){
     return `<div class="sl-clip-row">
       <div class="sl-slot-lbl" style="background:${bg};">${slot}</div>
       ${cells}
-      <div style="width:22px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.04);"></div>
+      <div style="width:26px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.04);"></div>
     </div>`;
   }).join('');
 
   const fireCells=_scenes.map(s=>{
-    const live=_activeSceneId===s.id;
+    const live=_sceneHasLiveClip(s.id);
     const pending=_pendingSceneId===s.id;
     return `<button class="sl-fire-btn${live?' is-live':pending?' is-pending':''}" onclick="slFireScene(${s.id})">${live?'■ LIVE':pending?'● BEAT':'▶ FIRE'}</button>`;
   }).join('');
@@ -3187,7 +3389,7 @@ function renderSceneLauncher(){
     <div class="sl-fire-row">
       <div class="sl-fire-corner"></div>
       ${fireCells}
-      <div style="width:22px;flex-shrink:0;"></div>
+      <div style="width:26px;flex-shrink:0;"></div>
     </div>
   </div>`;
 }
@@ -3330,6 +3532,10 @@ function assignTrackToZone(zone,url,name){
 // Local-only playback — never touches playback_started_at, zoneTracks,
 // or any broadcast/sync state.
 let _stemMonitorOn = false;
+// Default ON — independent clips of differing lengths need to loop on their
+// own duration so they don't fall silent/drift apart while waiting for the
+// (much longer) main deck track to end. Toggleable via 🔁 LOOP STEMS.
+let _monitorLoopOn = true;
 const _monitorAudios = {}; // slot -> <audio>
 
 // Pool of pre-"unlocked" <audio> elements. iOS Safari only allows a fresh
@@ -3359,11 +3565,31 @@ function _setStemMonitorBtn(on){
   btn.style.color = on ? '#000' : 'var(--teal)';
 }
 
+function toggleMonitorLoop(btn){
+  _monitorLoopOn = !_monitorLoopOn;
+  const b=document.getElementById('btn-monitor-loop');
+  if(b){
+    b.textContent = '🔁 LOOP: ' + (_monitorLoopOn ? 'ON' : 'OFF');
+    b.style.background = _monitorLoopOn ? 'var(--teal)' : 'transparent';
+    b.style.color = _monitorLoopOn ? '#000' : 'var(--teal)';
+  }
+  Object.values(_monitorAudios).forEach(el=>{ el.loop = _monitorLoopOn; });
+}
+
 function toggleStemMonitor(btn){
   _unlockMonitorPool();
   _stemMonitorOn = !_stemMonitorOn;
   _setStemMonitorBtn(_stemMonitorOn);
   if(_stemMonitorOn) refreshStemMonitor(); else stopStemMonitor();
+}
+
+function _seekMonitorToDeck(el){
+  // Each clip loops on its own duration, so map the deck's position into
+  // that duration instead of letting currentTime clamp to the clip's end
+  // (which silently freezes short clips when the deck track is longer).
+  const dur = el.duration;
+  const t = audio.currentTime || 0;
+  try { el.currentTime = (dur && dur>0) ? (t % dur) : t; } catch(e) {}
 }
 
 function refreshStemMonitor(){
@@ -3377,6 +3603,19 @@ function refreshStemMonitor(){
       delete _monitorAudios[slot];
     }
   });
+  // Swap monitors whose assigned clip changed (e.g. a new scene fired) —
+  // otherwise the old clip from the previous scene just keeps playing
+  // while the newly-assigned clip for that slot never starts.
+  Object.entries(slots).forEach(([slot,t])=>{
+    const el = _monitorAudios[slot];
+    if(el && t?.url && t.url!==audio.src && el.src!==t.url){
+      el.pause();
+      el.src = t.url;
+      el.loop = _monitorLoopOn;
+      el.addEventListener('loadedmetadata', () => _seekMonitorToDeck(el), {once:true});
+      if(isPlaying) el.play().catch(err=>console.warn('Monitor play failed for slot '+slot+':', err.message));
+    }
+  });
   // Add monitors for newly assigned slots, reusing pre-unlocked pool elements
   Object.entries(slots).forEach(([slot,t])=>{
     if(!t?.url || t.url===audio.src || _monitorAudios[slot]) return;
@@ -3384,11 +3623,11 @@ function refreshStemMonitor(){
     const el = _monitorPool.find(e=>!used.has(e));
     if(!el){ console.warn('Monitor pool exhausted — increase MONITOR_POOL_SIZE'); return; }
     el.src = t.url;
-    el.loop = audio.loop;
+    el.loop = _monitorLoopOn;
     el.volume = 0.7;
     // Can't set currentTime until metadata is loaded (throws on iOS Safari
     // if set on a fresh src) — seek once duration is known instead.
-    el.addEventListener('loadedmetadata', () => { try { el.currentTime = audio.currentTime || 0; } catch(e) {} }, {once:true});
+    el.addEventListener('loadedmetadata', () => _seekMonitorToDeck(el), {once:true});
     if(isPlaying) el.play().catch(err=>console.warn('Monitor play failed for slot '+slot+':', err.message));
     _monitorAudios[slot] = el;
   });
@@ -3404,7 +3643,11 @@ function syncMonitorPlayState(){
   if(!_stemMonitorOn) return;
   Object.values(_monitorAudios).forEach(el=>{
     if(isPlaying){
-      if(el.readyState>0 && Math.abs(el.currentTime - audio.currentTime) > 0.15) el.currentTime = audio.currentTime;
+      if(el.readyState>0){
+        const dur=el.duration;
+        const target=(dur && dur>0) ? (audio.currentTime % dur) : audio.currentTime;
+        if(Math.abs(el.currentTime - target) > 0.15) el.currentTime = target;
+      }
       el.play().catch(()=>{});
     } else {
       el.pause();
@@ -3414,10 +3657,17 @@ function syncMonitorPlayState(){
 
 // Loose periodic resync so monitor stems don't audibly drift from the deck —
 // this is for the DJ's ear only, not the sample-accurate listener sync engine.
+// Each clip is mapped onto the deck's position modulo its own duration, so
+// a short loop stays in phase with the (longer) main deck track instead of
+// clamping to its end and going silent.
 setInterval(()=>{
   if(!_stemMonitorOn || !isPlaying) return;
   Object.values(_monitorAudios).forEach(el=>{
-    if(el.readyState>0 && Math.abs(el.currentTime - audio.currentTime) > 0.15) el.currentTime = audio.currentTime;
+    if(el.readyState>0){
+      const dur=el.duration;
+      const target=(dur && dur>0) ? (audio.currentTime % dur) : audio.currentTime;
+      if(Math.abs(el.currentTime - target) > 0.15) el.currentTime = target;
+    }
   });
 }, 5000);
 
@@ -3454,9 +3704,9 @@ function currentStartedAt(){
   return activeZone?.playback_started_at || window._currentZone?.playback_started_at || null;
 }
 
-async function broadcastAllZones(){
+async function broadcastAllZones(allowEmpty){
   if(!activeZone){showToast('Create a zone first');return;}
-  if(!Object.keys(zoneTracks).length){showToast('Assign tracks to zones first');return;}
+  if(!allowEmpty && !Object.keys(zoneTracks).length){showToast('Assign tracks to zones first');return;}
 
   const startedAt = new Date(serverNow()).toISOString();
   noteStartedAt(startedAt); // scenes/spatial broadcasts ARE a legitimate restart
