@@ -152,6 +152,8 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .leaflet-control-zoom a{background:#111!important;color:#fff!important;border-color:#222!important;border-radius:3px!important;}
 .leaflet-tile-pane{opacity:.82;}
 .rally-tooltip{background:#001a14;border:1px solid var(--teal);border-radius:6px;color:var(--teal);font-size:11px;padding:3px 7px;box-shadow:0 0 8px rgba(0,204,153,.4);font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;white-space:nowrap;}
+.zone-name-label{background:rgba(0,0,0,.7);border:1px solid #f57e20;border-radius:5px;padding:2px 7px;color:#f57e20;font-size:10px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;white-space:nowrap;}
+.zone-name-label::before{display:none;}
 /* zone name overlay on map */
 .map-zone-overlay{
   position:absolute;top:10px;left:50%;transform:translateX(-50%);
@@ -2662,7 +2664,10 @@ function initMap() {
   leafletMap = L.map('map', { zoomControl:true, attributionControl:false, preferCanvas:true })
     .setView([39.7392, -104.9903], 13);
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+    subdomains:'abcd', maxZoom:19
+  }).addTo(leafletMap);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
     subdomains:'abcd', maxZoom:19
   }).addTo(leafletMap);
 
@@ -2739,7 +2744,8 @@ function addZoneToMap(z) {
   const c = L.circle([z.lat, z.lng], {
     radius: z.radius_m||200, color:'#f57e20',
     fillColor:'#f57e20', fillOpacity:.07, weight:1.5, dashArray:'6 5'
-  }).addTo(leafletMap);
+  }).addTo(leafletMap)
+    .bindTooltip(z.name||'Zone',{permanent:true,direction:'center',className:'zone-name-label',interactive:false});
   zoneCircles[z.id] = c;
   L.marker([z.lat,z.lng],{icon:L.divIcon({html:'<div style="width:8px;height:8px;border-radius:50%;background:#f57e20;box-shadow:0 0 8px #f57e20;"></div>',iconSize:[8,8],iconAnchor:[4,4],className:''})}).addTo(leafletMap);
 }
