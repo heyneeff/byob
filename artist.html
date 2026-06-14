@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script src="orchestra.js?v=2"></script>
 
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;0,900;1,700&family=DM+Mono:wght@300;400;500&family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
@@ -281,8 +282,14 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;h
 .lips-icon{height:36px;width:auto;}
 /* SETUP */
 .setup-panel{flex:1;display:flex;flex-direction:column;overflow:hidden;padding:0;gap:0;}
-.setup-map-area{flex:1;min-height:0;position:relative;}
-.setup-audio-strip{flex-shrink:0;padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px;background:var(--bg);border-top:1px solid var(--rim);}
+.setup-map-area{flex:0 0 34vh;min-height:140px;max-height:260px;position:relative;}
+.setup-audio-strip{flex:1;min-height:0;overflow-y:auto;padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px;background:var(--bg);border-top:1px solid var(--rim);}
+.join-link-section{padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:var(--bg);border-top:1px solid var(--rim);}
+.join-link-row{display:flex;align-items:center;gap:10px;}
+#join-qr{flex-shrink:0;border-radius:6px;background:#fff;}
+.join-link-info{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;}
+.join-link-url{font-size:10px;font-family:'DM Mono',monospace;color:var(--muted);word-break:break-all;}
+.btn-copy-link{padding:8px;background:var(--teal);color:#000;border:none;border-radius:8px;font-family:'Roboto Condensed',sans-serif;font-size:12px;font-weight:700;cursor:pointer;}
 .section-label{font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);font-family:'Roboto Condensed',sans-serif;}
 .setup-left-btns{position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:500;display:flex;flex-direction:column;gap:5px;}
 .setup-action-btn{background:rgba(0,0,0,.82);border:1px solid var(--rim);border-radius:9px;padding:8px 5px;color:var(--cream);display:flex;flex-direction:column;align-items:center;gap:3px;font-size:8px;font-family:'Barlow Condensed',sans-serif;font-weight:700;cursor:pointer;width:42px;letter-spacing:.1em;text-transform:uppercase;backdrop-filter:blur(4px);}
@@ -1022,6 +1029,18 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <button class="btn-create-zone" id="btn-create-zone" onclick="onCreateZone()">Create Zone</button>
   </div>
 
+  <!-- JOIN LINK / QR — scan to jump straight into this zone in listener.html -->
+  <div class="join-link-section" id="join-link-section" style="display:none;">
+    <div class="section-label">Join Link / QR</div>
+    <div class="join-link-row">
+      <canvas id="join-qr" width="100" height="100"></canvas>
+      <div class="join-link-info">
+        <div class="join-link-url" id="join-link-url"></div>
+        <button class="btn-copy-link" onclick="copyJoinLink()">📋 Copy Link</button>
+      </div>
+    </div>
+  </div>
+
   <!-- AUDIO SOURCE STRIP -->
   <div class="setup-audio-strip">
     <div class="section-label">Audio Source</div>
@@ -1105,6 +1124,21 @@ const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const DENVER=[39.7392,-104.9903];
 let leafletMap=null,userMarker=null,draftCircle=null,draftMarker=null,zoneCircles={};
 let activeZone=null,currentUser=null;
+
+// ── Join link / QR — lets people scan into this zone's listener.html directly ──
+function renderJoinLink(){
+  const sec=document.getElementById('join-link-section');
+  if(!activeZone){sec.style.display='none';return;}
+  const url=`${location.origin}${location.pathname.replace('artist.html','listener.html')}?zone=${activeZone.id}`;
+  document.getElementById('join-link-url').textContent=url;
+  sec.style.display='flex';
+  QRCode.toCanvas(document.getElementById('join-qr'),url,{width:100,margin:1},()=>{});
+}
+function copyJoinLink(){
+  const url=document.getElementById('join-link-url').textContent;
+  if(!url)return;
+  navigator.clipboard?.writeText(url).then(()=>showToast('🔗 Link copied')).catch(()=>showToast('Copy failed',true));
+}
 let _clockOffset=0;
 let _zonesGlobalSubbed=false;
 function initZonesGlobalSub(){
@@ -1553,6 +1587,7 @@ async function confirmZone(){
     const {data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0,tip_url:tipUrl}).select().single();
     if(error)throw error;
     activeZone=data;
+    renderJoinLink();
     window._djSyncChannel=db.channel('sync_'+data.id).subscribe();
     window._currentZone={playback_started_at:data.playback_started_at};
     cancelZoneDraw();
@@ -1637,6 +1672,7 @@ async function loadZones(){
 
 function restoreZone(z){
   activeZone=z;
+  renderJoinLink();
   // Reconnect sync channel
   window._djSyncChannel=db.channel('sync_'+z.id).subscribe();
   window._currentZone={playback_started_at:z.playback_started_at};
@@ -2594,6 +2630,7 @@ async function killStream(){
     if(zoneCircles[activeZone.id]){zoneCircles[activeZone.id].remove();delete zoneCircles[activeZone.id];}
     if(presenceChannel){presenceChannel.unsubscribe();presenceChannel=null;}
     activeZone=null;
+    renderJoinLink();
   }
   document.getElementById('btn-create-zone').textContent='Create Zone';
   document.getElementById('btn-create-zone').classList.remove('has-zone');
@@ -3257,6 +3294,11 @@ function _doFireScene(sceneId){
     audio.loop = false;
     audio.play().catch(()=>{});
   } else if(monitorTrack?.url){
+    // Re-firing a scene whose Center clip is already loaded as audio.src:
+    // if the previous play-through reached `ended`, playNext() left
+    // currentTime at the clip's end (paused) — play() from there is silent.
+    // Restart from 0 so the re-fire is actually audible.
+    if(audio.ended || audio.paused) audio.currentTime = 0;
     audio.play().catch(()=>{});
   }
   isPlaying = true;

@@ -157,6 +157,8 @@ header {
 .clip-wv { height: 40px; background: var(--bg); position: relative; overflow: hidden; }
 .clip-wv canvas { width: 100%; height: 100%; display: block; }
 .clip-pb { position: absolute; top:0; left:0; bottom:0; width:0%; background: rgba(0,255,127,.15); pointer-events: none; }
+.clip-select { position:absolute; top:3px; left:3px; z-index:2; width:13px; height:13px; accent-color: var(--green); cursor:pointer; }
+.clip.selected { border-color: var(--green); }
 .clip-body { padding: 5px 7px; }
 .clip-name { font-size: 8px; letter-spacing: 1px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; cursor: text; border-bottom: 1px dotted var(--b2); }
 .clip-name:hover { border-bottom-color: var(--green); color: #fff; }
@@ -178,6 +180,18 @@ header {
 .big-key-display { width:70px; height:70px; border:2px solid var(--green); border-radius:8px; display:flex; align-items:center; justify-content:center; font-family:'Share Tech Mono',monospace; font-size:28px; color:var(--green); margin:0 auto 18px; animation:kp 1s infinite alternate; }
 @keyframes kp { to { border-color:#002a14; color:#002a14; } }
 .modal-cancel { padding:6px 16px; border:1px solid var(--b2); background:none; color:var(--dim); font-family:'IBM Plex Mono',monospace; font-size:9px; cursor:pointer; border-radius:1px; }
+.modal-cancel.go { border-color:var(--green); color:var(--green); }
+
+/* ── COMBINE MODAL ──────────────────────────────────── */
+.combine-list { display:flex; flex-direction:column; gap:6px; max-height:300px; overflow-y:auto; margin-bottom:14px; text-align:left; }
+.combine-item { display:flex; align-items:center; gap:6px; padding:6px; border:1px solid var(--b2); border-radius:2px; }
+.combine-item-name { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:8px; letter-spacing:1px; color:var(--text); }
+.combine-sil { display:flex; flex-direction:column; align-items:center; gap:2px; font-size:6px; letter-spacing:1px; color:var(--dim); }
+.combine-sil input { width:38px; background:var(--b1); border:1px solid var(--b2); color:var(--purple); font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px; text-align:center; border-radius:1px; }
+.combine-reorder { display:flex; flex-direction:column; gap:2px; }
+.combine-reorder button { padding:1px 4px; font-size:8px; border:1px solid var(--b2); background:none; color:var(--dim); cursor:pointer; border-radius:1px; }
+.combine-reorder button:disabled { opacity:.3; cursor:default; }
+.combine-reorder button:not(:disabled):hover { border-color:var(--green); color:var(--green); }
 
 /* ── EDITOR PANEL ──────────────────────────────────── */
 #editor-panel {
@@ -423,6 +437,7 @@ header {
         <span class="proj-bpm-lbl">PROJECT BPM</span>
         <input type="number" id="proj-bpm" min="40" max="220" step="1" placeholder="—" oninput="setProjectBpm(this.value)">
       </div>
+      <button class="sm-btn" id="combine-btn">🔗 COMBINE</button>
       <button class="sm-btn" id="load-files-btn">+ FILES</button>
       <button class="sm-btn" id="clear-btn">✕ CLEAR</button>
       <input type="file" id="load-files-inp" multiple accept="audio/*" style="display:none">
@@ -442,6 +457,19 @@ header {
     <div class="modal-sub">Press any key. It will trigger capture<br>in both live and screen-rec modes.</div>
     <div class="big-key-display" id="key-display">?</div>
     <button class="modal-cancel" id="key-cancel-btn">CANCEL</button>
+  </div>
+</div>
+
+<!-- COMBINE MODAL -->
+<div class="modal-bg" id="combine-modal">
+  <div class="modal-box" style="max-width:460px;">
+    <div class="modal-title">COMBINE CLIPS</div>
+    <div class="modal-sub">Reorder, set lead/tail silence in bars (at each clip's BPM),<br>then render into one new clip.</div>
+    <div class="combine-list" id="combine-list"></div>
+    <div style="display:flex;gap:8px;justify-content:center;">
+      <button class="modal-cancel" id="combine-cancel-btn">CANCEL</button>
+      <button class="modal-cancel go" id="combine-render-btn">RENDER</button>
+    </div>
   </div>
 </div>
 
@@ -1216,7 +1244,7 @@ function renderClip(clip) {
   const el   = document.createElement('div');
   el.className = 'clip flash'; el.id = `clip-${clip.id}`;
   el.innerHTML = `
-    <div class="clip-wv"><canvas id="cwv-${clip.id}"></canvas><div class="clip-pb" id="cpb-${clip.id}"></div></div>
+    <div class="clip-wv"><input type="checkbox" class="clip-select" id="csel-${clip.id}" title="Select for combine"><canvas id="cwv-${clip.id}"></canvas><div class="clip-pb" id="cpb-${clip.id}"></div></div>
     <div class="clip-body">
       <div class="clip-name" id="cn-${clip.id}" title="Double-click to rename">${clip.name}</div>
       <div class="clip-meta" id="cm-${clip.id}">${clip.duration.toFixed(1)}s</div>
@@ -1252,6 +1280,11 @@ function renderClip(clip) {
     _activePreview = { stop: stopThis };
   });
 
+  el.querySelector(`#csel-${clip.id}`).addEventListener('change', e => {
+    toggleCombineSelect(clip, e.target.checked);
+    el.classList.toggle('selected', e.target.checked);
+  });
+
   el.querySelector('.chop').addEventListener('click', () => openEditor(clip));
 
   el.querySelector('.byob').addEventListener('click', () => uploadToByob(clip));
@@ -1266,6 +1299,8 @@ function renderClip(clip) {
   el.querySelector('.del').addEventListener('click', () => {
     if (ps) ps.stop();
     clips = clips.filter(c => c.id !== clip.id); el.remove();
+    _combineList = _combineList.filter(c => c.id !== clip.id);
+    updateCombineBtn();
     if (!clips.length) {
       const m = document.createElement('div');
       m.className = 'no-clips'; m.id = 'no-clips'; m.textContent = '— NO CLIPS YET —';
@@ -1293,6 +1328,117 @@ function drawClipWaveform(clip, id) {
     ctx.moveTo(i, amp + mn * amp * .9); ctx.lineTo(i, amp + mx * amp * .9);
   }
   ctx.stroke();
+}
+
+// ── Combine clips ─────────────────────────────────────────────
+// Multi-select clips (checkbox in each card), reorder, set per-clip
+// lead/tail silence in bars (silence length = bars * 4 beats at the
+// clip's BPM — gives each clip an "offset" before/after it starts/ends),
+// then render the whole sequence into one new clip via OfflineAudioContext.
+let _combineList = []; // ordered array of clip refs
+
+function toggleCombineSelect(clip, checked) {
+  if (checked) { if (!_combineList.includes(clip)) _combineList.push(clip); }
+  else { _combineList = _combineList.filter(c => c !== clip); }
+  updateCombineBtn();
+}
+
+function updateCombineBtn() {
+  const btn = document.getElementById('combine-btn');
+  if (btn) btn.textContent = _combineList.length ? `🔗 COMBINE (${_combineList.length})` : '🔗 COMBINE';
+}
+
+function openCombineModal() {
+  if (_combineList.length < 2) { toast('SELECT 2+ CLIPS TO COMBINE'); return; }
+  renderCombineList();
+  document.getElementById('combine-modal').classList.add('show');
+}
+
+function closeCombineModal() {
+  document.getElementById('combine-modal').classList.remove('show');
+}
+
+function renderCombineList() {
+  const list = document.getElementById('combine-list');
+  list.innerHTML = _combineList.map((clip, i) => {
+    const bpm  = clip._combineBpm  ?? (clip.bpm || projectBpm || 120);
+    const lead = clip._combineLead ?? 0;
+    const tail = clip._combineTail ?? 0;
+    return `
+    <div class="combine-item">
+      <div class="combine-reorder">
+        <button onclick="combineMove(${i},-1)" ${i === 0 ? 'disabled' : ''}>▲</button>
+        <button onclick="combineMove(${i},1)" ${i === _combineList.length - 1 ? 'disabled' : ''}>▼</button>
+      </div>
+      <div class="combine-item-name">${clip.name}</div>
+      <div class="combine-sil">LEAD BARS<input type="number" min="0" max="32" step="0.25" value="${lead}" onchange="combineSetSilence(${i},'lead',this.value)"></div>
+      <div class="combine-sil">TAIL BARS<input type="number" min="0" max="32" step="0.25" value="${tail}" onchange="combineSetSilence(${i},'tail',this.value)"></div>
+      <div class="combine-sil">BPM<input type="number" min="40" max="220" step="1" value="${bpm}" onchange="combineSetBpm(${i},this.value)"></div>
+    </div>`;
+  }).join('');
+}
+
+function combineMove(i, dir) {
+  const j = i + dir;
+  if (j < 0 || j >= _combineList.length) return;
+  [_combineList[i], _combineList[j]] = [_combineList[j], _combineList[i]];
+  renderCombineList();
+}
+
+function combineSetSilence(i, which, value) {
+  const v = Math.max(0, parseFloat(value) || 0);
+  if (which === 'lead') _combineList[i]._combineLead = v;
+  else _combineList[i]._combineTail = v;
+}
+
+function combineSetBpm(i, value) {
+  _combineList[i]._combineBpm = Math.max(40, Math.min(220, parseFloat(value) || 120));
+}
+
+async function renderCombine() {
+  if (_combineList.length < 2) return;
+  const sr = _combineList[0].buffer.sampleRate;
+  const nc = Math.max(...(_combineList.map(c => c.buffer.numberOfChannels)));
+
+  // Lay out start times: running clock advances by lead-silence, then the
+  // clip itself, then tail-silence — each silence sized in bars at that
+  // clip's BPM (barSec = 4 beats = 4 * 60/bpm).
+  let t = 0;
+  const placements = _combineList.map(clip => {
+    const bpm = clip._combineBpm ?? (clip.bpm || projectBpm || 120);
+    const barSec = (60 / bpm) * 4;
+    t += (clip._combineLead ?? 0) * barSec;
+    const start = t;
+    t += clip.buffer.duration + (clip._combineTail ?? 0) * barSec;
+    return { clip, start };
+  });
+
+  const totalSamples = Math.max(1, Math.ceil(t * sr));
+  const octx = new OfflineAudioContext(nc, totalSamples, sr);
+  placements.forEach(({ clip, start }) => {
+    const src = octx.createBufferSource();
+    src.buffer = clip.buffer;
+    src.connect(octx.destination);
+    src.start(start);
+  });
+
+  closeCombineModal();
+  toast('RENDERING COMBINED CLIP…');
+  const rendered = await octx.startRendering();
+  const wav = bufToWav(rendered);
+  const newClip = await addClip(wav, `COMBINED ${ts()}`, 'audio/wav');
+  if (edAutoStems && newClip) {
+    if (sbUser) await uploadToByob(newClip);
+    else toast('SIGN IN TO AUTO-UPLOAD TO STEMS');
+  }
+
+  _combineList.forEach(c => {
+    const cb = document.getElementById(`csel-${c.id}`);
+    if (cb) cb.checked = false;
+    document.getElementById(`clip-${c.id}`)?.classList.remove('selected');
+  });
+  _combineList = [];
+  updateCombineBtn();
 }
 
 // ── WAV encoder ───────────────────────────────────────────────
@@ -1808,8 +1954,13 @@ async function edCut() {
 document.getElementById('clear-btn').addEventListener('click', () => {
   if (!clips.length || !confirm('Clear all clips?')) return;
   clips = [];
+  _combineList = [];
+  updateCombineBtn();
   document.getElementById('clips-grid').innerHTML = '<div class="no-clips" id="no-clips">— NO CLIPS YET —</div>';
 });
+document.getElementById('combine-btn').addEventListener('click', openCombineModal);
+document.getElementById('combine-cancel-btn').addEventListener('click', closeCombineModal);
+document.getElementById('combine-render-btn').addEventListener('click', renderCombine);
 if (projectBpm) document.getElementById('proj-bpm').value = projectBpm;
 document.getElementById('ed-auto-stems').checked = edAutoStems;
 document.getElementById('load-files-btn').addEventListener('click', () => document.getElementById('load-files-inp').click());
