@@ -329,7 +329,7 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;h
 .zdp-row{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
 .zdp-label{font-size:12px;color:var(--muted);min-width:60px;font-weight:700;}.zdp-val{font-size:12px;color:var(--orange);min-width:48px;text-align:right;font-weight:700;}
 .zdp-name{width:100%;background:var(--bg);border:1px solid #2a2a2a;border-radius:8px;padding:12px 14px;color:var(--cream);font-family:'Roboto',sans-serif;font-size:14px;outline:none;margin-bottom:12px;-webkit-user-select:text;user-select:text;}
-.zdp-name:focus{border-color:var(--orange);}.zdp-name::placeholder{color:var(--muted);}
+.zdp-name:focus{border-color:var(--orange);}.zdp-name::placeholder{color:#7a6650;}
 .zdp-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .zdp-confirm{background:var(--orange);color:#000;border:none;border-radius:8px;padding:14px;font-family:'Roboto',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:3px 3px 0 rgba(0,0,0,.4);}
 .zdp-cancel{background:transparent;color:var(--muted);border:1px solid #333;border-radius:8px;padding:14px;font-family:'Roboto',sans-serif;font-size:14px;cursor:pointer;}
@@ -443,31 +443,31 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <input class="zdp-name" id="evt-artists" type="text" placeholder="Artists (comma separated)" style="margin-top:6px;"/>
   <textarea class="zdp-name" id="evt-desc" placeholder="Description (optional)" style="margin-top:6px;height:56px;resize:none;"></textarea>
   <div style="margin-top:6px;">
-    <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Zone</div>
+    <div style="font-size:10px;color:#a8957c;margin-bottom:4px;">Zone</div>
     <select class="zdp-name" id="evt-zone" style="margin:0;font-size:11px;"></select>
   </div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
-    <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Event starts</div><input class="zdp-name" id="evt-start" type="datetime-local" style="margin:0;font-size:11px;"/></div>
-    <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Reveal location at</div><input class="zdp-name" id="evt-reveal" type="datetime-local" style="margin:0;font-size:11px;"/></div>
+    <div><div style="font-size:10px;color:#a8957c;margin-bottom:4px;">Event starts</div><input class="zdp-name" id="evt-start" type="datetime-local" style="margin:0;font-size:11px;"/></div>
+    <div><div style="font-size:10px;color:#a8957c;margin-bottom:4px;">Reveal location at</div><input class="zdp-name" id="evt-reveal" type="datetime-local" style="margin:0;font-size:11px;"/></div>
   </div>
-  <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:var(--muted);cursor:pointer;">
+  <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:10px;color:#a8957c;cursor:pointer;">
     <input type="checkbox" id="evt-reveal-always" onchange="onEvtRevealAlwaysChange()" style="margin:0;"/>
     Always show location (no countdown — skips the reveal time above)
   </label>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
-    <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">City (shown on front page)</div><input class="zdp-name" id="evt-city" type="text" placeholder="e.g. Denver, CO" style="margin:0;font-size:11px;"/></div>
-    <div><div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Ticket price ($, blank = free)</div><input class="zdp-name" id="evt-price" type="number" min="0" step="1" placeholder="0" style="margin:0;font-size:11px;"/></div>
+    <div><div style="font-size:10px;color:#a8957c;margin-bottom:4px;">City (shown on front page)</div><input class="zdp-name" id="evt-city" type="text" placeholder="e.g. Denver, CO" style="margin:0;font-size:11px;"/></div>
+    <div><div style="font-size:10px;color:#a8957c;margin-bottom:4px;">Ticket price ($, blank = free)</div><input class="zdp-name" id="evt-price" type="number" min="0" step="1" placeholder="0" style="margin:0;font-size:11px;"/></div>
   </div>
   <div style="margin-top:6px;">
-    <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Cover image (shown on front page)</div>
+    <div style="font-size:10px;color:#a8957c;margin-bottom:4px;">Cover image (shown on front page)</div>
     <input type="file" id="evt-image" accept="image/*" style="display:none;"/>
-    <div id="evt-image-preview" onclick="document.getElementById('evt-image').click()" style="height:64px;border-radius:6px;border:1px dashed var(--rim);background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:11px;cursor:pointer;background-size:cover;background-position:center;filter:grayscale(1) contrast(1.1);">+ Add image</div>
-    <div style="font-size:9px;color:var(--muted);margin-top:4px;">Landscape, ~1200×675px. Shown in black &amp; white on the front page.</div>
+    <div id="evt-image-preview" onclick="document.getElementById('evt-image').click()" style="height:64px;border-radius:6px;border:1px dashed var(--rim);background:#1a1a1a;display:flex;align-items:center;justify-content:center;color:#a8957c;font-size:11px;cursor:pointer;background-size:cover;background-position:center;filter:grayscale(1) contrast(1.1);">+ Add image</div>
+    <div style="font-size:9px;color:#a8957c;margin-top:4px;">Landscape, ~1200×675px. Shown in black &amp; white on the front page.</div>
   </div>
-  <div style="font-size:10px;color:var(--muted);margin:8px 0;">Free events reveal at the reveal time (or always, if checked above); paid events reveal after purchase.</div>
+  <div style="font-size:10px;color:#a8957c;margin:8px 0;">Free events reveal at the reveal time (or always, if checked above); paid events reveal after purchase.</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
     <button class="zdp-confirm" style="background:var(--red);" onclick="confirmEvent()">✓ Schedule</button>
-    <button class="zdp-cancel" onclick="closeEventPanel()">✕ Cancel</button>
+    <button class="zdp-cancel" style="color:#a8957c;" onclick="closeEventPanel()">✕ Cancel</button>
   </div>
 </div>
 
