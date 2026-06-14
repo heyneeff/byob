@@ -54,6 +54,9 @@
     .hero-cta{display:inline-block;background:var(--orange);color:#000;font-family:'Anton',sans-serif;font-size:18px;font-weight:400;letter-spacing:.1em;text-transform:uppercase;padding:14px 32px;border-radius:12px;text-decoration:none;border:none;cursor:pointer;position:relative;transition:transform .12s,opacity .12s;}
     .hero-cta:active{transform:scale(.97);}
     .hero-cta.notify{background:rgba(255,255,255,.1);color:var(--white);border:1.5px solid rgba(255,255,255,.2);}
+    .hero-cta.going{background:rgba(255,255,255,.1);color:var(--white);border:1.5px solid rgba(255,255,255,.2);margin-left:8px;}
+    .hero-cta.going.active{background:var(--teal);border-color:var(--teal);color:#000;}
+    .hero-chip.going-count{background:rgba(245,126,32,.1);border-color:var(--orange);color:var(--orange);}
     .hero-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:240px;text-align:center;}
     .hero-empty-title{font-family:'Anton',sans-serif;font-size:28px;font-weight:400;text-transform:uppercase;color:rgba(255,255,255,.13);}
     .hero-empty-sub{font-size:13px;color:var(--muted);}
@@ -122,6 +125,13 @@
     .evt-card.dark .evt-badge.upcoming{background:rgba(255,255,255,.06);color:var(--muted);}
     .evt-card.dark .evt-badge.city{background:rgba(255,255,255,.06);color:var(--muted);}
     .evt-badge.friends{background:rgba(0,204,153,.12);color:var(--teal);border:1px solid rgba(0,204,153,.25);}
+    .evt-badge.going-count{background:rgba(245,126,32,.12);color:var(--orange);border:1px solid rgba(245,126,32,.25);}
+    .evt-cta.going-btn{background:transparent;border:1.5px solid #ccc;color:#666;padding:11px 18px;}
+    .evt-cta.going-btn:hover{border-color:#999;color:#333;}
+    .evt-cta.going-btn.active{background:var(--teal);border-color:var(--teal);color:#000;}
+    .evt-card.dark .evt-cta.going-btn{border-color:#333;color:var(--muted);}
+    .evt-card.dark .evt-cta.going-btn:hover{border-color:#666;color:var(--white);}
+    .evt-card.dark .evt-cta.going-btn.active{background:var(--teal);border-color:var(--teal);color:#000;}
     .evt-card.dark .evt-loc-locked{color:var(--muted);}
     .evt-card.dark .evt-cta.notify-btn{border-color:#333;color:var(--muted);}
     .evt-card.dark .evt-cta.notify-btn:hover{border-color:#666;color:var(--white);}
@@ -137,6 +147,11 @@
     .notify-input:focus{border-color:var(--teal);}
     .notify-submit{width:100%;padding:15px;background:var(--teal);color:#000;border:none;border-radius:10px;font-family:'Barlow Condensed',sans-serif;font-size:18px;font-weight:900;letter-spacing:.1em;cursor:pointer;margin-bottom:8px;}
     .notify-cancel{width:100%;padding:12px;background:transparent;color:var(--muted);border:none;font-family:'Barlow Condensed',sans-serif;font-size:15px;cursor:pointer;}
+
+    /* ── AUTH MODAL ── */
+    .auth-err{font-size:12px;color:var(--red);margin:-4px 0 10px;display:none;}
+    .auth-toggle{text-align:center;font-size:13px;color:var(--muted);margin-top:4px;}
+    .auth-toggle span{color:var(--teal);cursor:pointer;font-weight:700;}
 
     /* ── ADD TO HOME SCREEN ── */
     .a2hs{position:fixed;bottom:0;left:0;right:0;z-index:400;background:var(--card2);border-top:2px solid var(--orange);padding:16px 20px 36px;transform:translateY(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
@@ -229,6 +244,21 @@
   </div>
 </div>
 
+<!-- AUTH MODAL ── shared BYOB login, needed to mark "I'm going" -->
+<div class="notify-modal" id="auth-modal" onclick="if(event.target===this)closeAuth()">
+  <div class="notify-sheet">
+    <button class="notify-close" onclick="closeAuth()">✕</button>
+    <div class="notify-title" id="auth-title">Sign In</div>
+    <div class="notify-sub">Sign in to mark events you're going to — your friends will see it too.</div>
+    <input class="notify-input" id="auth-email" type="email" placeholder="Email" autocomplete="email"/>
+    <input class="notify-input" id="auth-password" type="password" placeholder="Password" autocomplete="current-password"/>
+    <div class="auth-err" id="auth-err"></div>
+    <button class="notify-submit" id="auth-submit" onclick="submitAuth()">Sign In</button>
+    <button class="notify-cancel" onclick="closeAuth()">Maybe later</button>
+    <div class="auth-toggle" id="auth-toggle" onclick="toggleAuthMode()">No account? <span>Sign up</span></div>
+  </div>
+</div>
+
 <!-- ADD TO HOME SCREEN BANNER -->
 <div class="a2hs" id="a2hs">
   <button class="a2hs-x" onclick="dismissA2HS()">✕</button>
@@ -256,6 +286,10 @@ let _notifyEventId = null;
 let _toastTimer = null;
 let _currentUser = null;
 let _friendInterests = {}; // { eventId: [userId, ...] }
+let _goingCounts = {}; // { eventId: count }
+let _myGoing = new Set(); // event ids the current user marked "going"
+let _authIsSignUp = false;
+let _pendingGoingEventId = null;
 
 // ── TOAST ─────────────────────────────────────────────────
 function showToast(msg) {
@@ -370,6 +404,10 @@ function renderHero(events) {
     cta = `<button class="hero-cta notify" onclick="openNotify('${e.id}','${e.name.replace(/'/g,"\\'").replace(/"/g,"&quot;")}')">Get Notified 🔔</button>`;
   }
 
+  const isGoing = _myGoing.has(e.id);
+  const goingCount = _goingCounts[e.id] || 0;
+  const goingBtn = `<button class="hero-cta going${isGoing ? ' active' : ''}" onclick="toggleGoing('${e.id}')">${isGoing ? '✓ Going' : "+ I'm Going"}</button>`;
+
   el.innerHTML = `<div class="hero-card">
     ${e.image_url ? `<div class="hero-bg-img" style="background-image:url('${e.image_url}')"></div>` : '<div class="hero-bg-art"></div>'}
     <div class="hero-eyebrow">${tonight ? '🔴 Tonight' : 'Coming Up'}</div>
@@ -379,8 +417,9 @@ function renderHero(events) {
       <span class="hero-chip">📅 ${fmtDate(e.event_start)}</span>
       ${locChip}
       <span class="hero-chip ${isFree ? 'free' : 'paid'}">${isFree ? 'FREE' : 'From $' + parseFloat(e.ticket_price).toFixed(0)}</span>
+      ${goingCount ? `<span class="hero-chip going-count">🎉 ${goingCount} going</span>` : ''}
     </div>
-    ${cta}
+    ${cta}${goingBtn}
   </div>`;
 }
 
@@ -409,17 +448,23 @@ function renderGrid(events) {
     const safeName = e.name.replace(/'/g,"\\'").replace(/"/g,"&quot;");
 
     const zoneParam = e.zone_id ? `?zone=${e.zone_id}` : '';
+    const isGoing = _myGoing.has(e.id);
+    const goingCount = _goingCounts[e.id] || 0;
+    const goingBtn = `<button class="evt-cta going-btn${isGoing ? ' active' : ''}" onclick="toggleGoing('${e.id}')">${isGoing ? '✓ Going' : "+ I'm Going"}</button>`;
     let locHtml = '', ctaHtml = '';
     if (state === 'revealed') {
       locHtml = `<div class="evt-info-item"><div class="evt-info-label">Location</div><div class="evt-info-val">📍 ${e.city || 'Revealed — open app'}</div></div>`;
       ctaHtml = `<a class="evt-cta primary" href="listener.html${zoneParam}">Get In →</a>
+                 ${goingBtn}
                  <button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">🔔</button>`;
     } else if (state === 'paid') {
       locHtml = `<div class="evt-loc-locked">🔒 Buy ticket to unlock location</div>`;
-      ctaHtml = `<button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">Get Notified 🔔</button>`;
+      ctaHtml = `${goingBtn}
+                 <button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">Get Notified 🔔</button>`;
     } else {
       locHtml = `<div class="evt-info-item"><div class="evt-info-label">Location drops in</div><div class="evt-info-val">⏳ ${countdown(e.location_reveal_at)}</div></div>`;
-      ctaHtml = `<button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">Get Notified 🔔</button>`;
+      ctaHtml = `${goingBtn}
+                 <button class="evt-cta notify-btn" onclick="openNotify('${e.id}','${safeName}')">Get Notified 🔔</button>`;
     }
 
     return `<div class="evt-card${dark ? ' dark' : ''}">
@@ -430,6 +475,7 @@ function renderGrid(events) {
           <span class="evt-badge ${tonight ? 'tonight' : 'upcoming'}">${tonight ? 'Tonight' : fmtDate(e.event_start, true)}</span>
           <span class="evt-badge ${isFree ? 'free' : 'price'}">${isFree ? 'FREE' : '$' + parseFloat(e.ticket_price).toFixed(0)}</span>
           ${e.city ? `<span class="evt-badge city">${e.city}</span>` : ''}
+          ${goingCount ? `<span class="evt-badge going-count">🎉 ${goingCount} going</span>` : ''}
           ${(()=>{ const n=(_friendInterests[e.id]||[]).length; return n?`<span class="evt-badge friends">⭐ ${n} friend${n>1?'s':''} going</span>`:''; })()}
         </div>
         <div class="evt-name">${e.name}</div>
@@ -491,6 +537,7 @@ async function loadEvents() {
     injectCityChips(_allEvents);
     renderHero(_allEvents);
     renderGrid(_allEvents);
+    loadGoingCounts();
   } catch(err) {
     document.getElementById('event-grid').innerHTML = `<div class="empty-state">
       <div class="empty-icon">⚡</div>
@@ -535,7 +582,10 @@ async function submitNotify() {
 async function initAuth() {
   const { data: { session } } = await db.auth.getSession();
   _currentUser = session?.user || null;
-  if (_currentUser) await loadFriendInterests();
+  if (_currentUser) {
+    await loadFriendInterests();
+    await loadMyGoing();
+  }
 }
 
 async function loadFriendInterests() {
@@ -549,6 +599,85 @@ async function loadFriendInterests() {
     _friendInterests[r.event_id].push(r.user_id);
   });
   if (_allEvents.length) { renderHero(_allEvents); renderGrid(_allEvents); }
+}
+
+// ── GOING ─────────────────────────────────────────────────
+async function loadGoingCounts() {
+  if (!_allEvents.length) return;
+  const { data } = await db.from('event_interest_counts').select('event_id,going_count')
+    .in('event_id', _allEvents.map(e => e.id));
+  _goingCounts = {};
+  (data || []).forEach(r => { _goingCounts[r.event_id] = r.going_count; });
+  renderHero(_allEvents); renderGrid(_allEvents);
+}
+
+async function loadMyGoing() {
+  const { data } = await db.from('event_interest').select('event_id').eq('user_id', _currentUser.id);
+  _myGoing = new Set((data || []).map(r => r.event_id));
+  if (_allEvents.length) { renderHero(_allEvents); renderGrid(_allEvents); }
+}
+
+async function toggleGoing(eventId) {
+  if (!_currentUser) { _pendingGoingEventId = eventId; openAuth(); return; }
+  const going = _myGoing.has(eventId);
+  if (going) {
+    await db.from('event_interest').delete().eq('event_id', eventId).eq('user_id', _currentUser.id);
+    _myGoing.delete(eventId);
+    _goingCounts[eventId] = Math.max(0, (_goingCounts[eventId] || 1) - 1);
+  } else {
+    await db.from('event_interest').upsert(
+      { event_id: eventId, user_id: _currentUser.id },
+      { onConflict: 'event_id,user_id' }
+    );
+    _myGoing.add(eventId);
+    _goingCounts[eventId] = (_goingCounts[eventId] || 0) + 1;
+    showToast("🎉 You're going!");
+  }
+  renderHero(_allEvents); renderGrid(_allEvents);
+}
+
+// ── AUTH MODAL ────────────────────────────────────────────
+function openAuth() {
+  document.getElementById('auth-err').style.display = 'none';
+  document.getElementById('auth-modal').classList.add('open');
+}
+
+function closeAuth() {
+  document.getElementById('auth-modal').classList.remove('open');
+  _pendingGoingEventId = null;
+}
+
+function toggleAuthMode() {
+  _authIsSignUp = !_authIsSignUp;
+  document.getElementById('auth-title').textContent = _authIsSignUp ? 'Sign Up' : 'Sign In';
+  document.getElementById('auth-submit').textContent = _authIsSignUp ? 'Sign Up' : 'Sign In';
+  document.getElementById('auth-toggle').innerHTML = _authIsSignUp
+    ? 'Already have an account? <span>Sign in</span>'
+    : 'No account? <span>Sign up</span>';
+}
+
+async function submitAuth() {
+  const email = document.getElementById('auth-email').value.trim();
+  const password = document.getElementById('auth-password').value;
+  const errEl = document.getElementById('auth-err');
+  errEl.style.display = 'none';
+  if (!email || !password) { errEl.textContent = 'Email and password required'; errEl.style.display = 'block'; return; }
+  const btn = document.getElementById('auth-submit');
+  btn.textContent = _authIsSignUp ? 'Signing up…' : 'Signing in…';
+  const { data, error } = _authIsSignUp
+    ? await db.auth.signUp({ email, password })
+    : await db.auth.signInWithPassword({ email, password });
+  btn.textContent = _authIsSignUp ? 'Sign Up' : 'Sign In';
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+  _currentUser = data.user || data.session?.user;
+  document.getElementById('auth-modal').classList.remove('open');
+  await loadFriendInterests();
+  await loadMyGoing();
+  if (_pendingGoingEventId) {
+    const id = _pendingGoingEventId;
+    _pendingGoingEventId = null;
+    await toggleGoing(id);
+  }
 }
 
 // ── ADD TO HOME SCREEN ────────────────────────────────────
