@@ -1587,7 +1587,9 @@ function onAddEventZone(){
 async function confirmEventZone(){
   const name=document.getElementById('zdp-name').value.trim()||'Unnamed Zone';
   try{
-    const{data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:true,listeners:0}).select().single();
+    // active:false — this zone isn't "live" yet; the DJ activates it later by going live there.
+    // Keeps scheduler-created zones from cluttering everyone's map as visible circles.
+    const{data,error}=await db.from('zones').insert({name,host_id:currentUser.id,lat:draftCenter.lat,lng:draftCenter.lng,radius_m:draftRadius,active:false,listeners:0}).select().single();
     if(error)throw error;
     cancelZoneDraw();
     await populateEvtZones();
@@ -3563,10 +3565,11 @@ async function confirmEvent(){
     const location_reveal_at=revealAlways?new Date(0).toISOString():new Date(reveal).toISOString();
     let image_url=null;
     if(_evtImageFile){
+      showToast('Uploading image…');
       const safeName=_evtImageFile.name.replace(/[^a-zA-Z0-9._-]/g,'_');
       const path='events/'+currentUser.id+'/'+Date.now()+'_'+safeName;
       const{error:upErr}=await db.storage.from('boombox').upload(path,_evtImageFile);
-      if(upErr)throw upErr;
+      if(upErr){console.error('event image upload failed',upErr);throw upErr;}
       image_url=db.storage.from('boombox').getPublicUrl(path).data.publicUrl;
     }
     const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at,lat,lng,radius_m,zone_id:zoneId,created_by:currentUser.id,city,ticket_price,image_url});
