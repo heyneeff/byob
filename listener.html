@@ -598,6 +598,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .zone-card{background:var(--surface2);border:1px solid var(--border);border-left:3px solid var(--teal);border-radius:4px;padding:11px 12px;margin-bottom:8px;cursor:pointer;transition:border-left-color .15s,background .15s;display:flex;align-items:flex-start;justify-content:space-between;}
 .zone-card:hover{border-left-color:var(--orange);background:#161616;}
 .zone-card.active-zone{border-left-color:var(--orange);background:#0d0d00;}
+.zone-card.locked-zone{cursor:default;border-left-color:var(--border);opacity:.6;}
 .zc-name{font-size:13px;font-weight:700;color:var(--white);}
 .zc-meta{font-size:10px;color:var(--muted);margin-top:3px;line-height:1.6;}
 .zc-coords{font-size:9px;color:var(--teal);margin-top:2px;letter-spacing:.04em;}
@@ -2582,9 +2583,16 @@ function launchApp() {
   // recent active-zones list.
   const deepLinkZoneId = new URLSearchParams(window.location.search).get('zone');
   if (deepLinkZoneId) {
-    db.from('zones').select('*').eq('id', deepLinkZoneId).single().then(({ data: z }) => {
+    db.from('zones').select('*').eq('id', deepLinkZoneId).single().then(async ({ data: z }) => {
       if (!z) return;
+      const { data: evt } = await db.from('events').select('location_reveal_at').eq('zone_id', z.id).maybeSingle();
+      z._revealAt = evt?.location_reveal_at || null;
       zones_cache[z.id] = z;
+      if (isZoneLocked(z)) {
+        const unlockTime = new Date(z._revealAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+        showToast('🔒 This zone\'s location reveals at ' + unlockTime);
+        return;
+      }
       addZoneToMap(z);
       previewZone(z);
     });
@@ -3640,10 +3648,22 @@ async function loadZones(autoJoin=false) {
   list.innerHTML = '';
   data.forEach(z => {
     zones_cache[z.id] = z;
+    const el = document.createElement('div');
+    if (isZoneLocked(z)) {
+      // Location stays hidden — no map circle, no coords/distance — until
+      // location_reveal_at passes (mirrors the geofence-entry gate above).
+      el.className = 'zone-card locked-zone';
+      const unlockTime = new Date(z._revealAt).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'});
+      el.innerHTML = `<div>
+        <div class="zc-name">${z.name}</div>
+        <div class="zc-meta">🔒 Location reveals at ${unlockTime}</div>
+      </div>`;
+      list.appendChild(el);
+      return;
+    }
     addZoneToMap(z);
     const dist = (userLat&&z.lat) ? distM(userLat,userLng,z.lat,z.lng) : null;
     const ds = dist ? (dist<1000?Math.round(dist)+'m':(dist/1000).toFixed(1)+'km')+' away' : '';
-    const el = document.createElement('div');
     el.className = 'zone-card' + (activeZone?.id===z.id?' active-zone':'');
     el.innerHTML = `<div>
       <div class="zc-name">${z.name}</div>
@@ -3654,7 +3674,7 @@ async function loadZones(autoJoin=false) {
     el.addEventListener('click', () => previewZone(z));
     list.appendChild(el);
   });
-  if (autoJoin && data.length) joinZone(data[0]);
+  if (autoJoin && data.length && !isZoneLocked(data[0])) joinZone(data[0]);
 }
 
 // Tapping a zone just previews it on map + starts navigation
