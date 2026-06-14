@@ -3071,6 +3071,14 @@ function _doFireScene(sceneId){
   } else if(monitorTrack?.url){
     audio.play().catch(()=>{});
   }
+  isPlaying = true;
+  const playBtn=document.getElementById('btn-play');
+  if(playBtn){ playBtn.textContent='⏸'; playBtn.classList.add('playing'); }
+  document.querySelectorAll('.viz-bar').forEach(b=>b.style.animationPlayState='running');
+  // Firing a scene means hearing every clip in it, not just Center —
+  // auto-enable the stem monitor so the rest of the scene's slots play too.
+  if(!_stemMonitorOn){ _stemMonitorOn=true; _setStemMonitorBtn(true); }
+  refreshStemMonitor();
   showToast('▶ '+s.name);
 }
 let _slPickerCrate = 'all';
@@ -3318,11 +3326,17 @@ function assignTrackToZone(zone,url,name){
 let _stemMonitorOn = false;
 const _monitorAudios = {}; // slot -> <audio>
 
+function _setStemMonitorBtn(on){
+  const btn=document.getElementById('btn-stem-monitor');
+  if(!btn) return;
+  btn.textContent = '🎧 MONITOR ALL STEMS: ' + (on ? 'ON' : 'OFF');
+  btn.style.background = on ? 'var(--teal)' : 'transparent';
+  btn.style.color = on ? '#000' : 'var(--teal)';
+}
+
 function toggleStemMonitor(btn){
   _stemMonitorOn = !_stemMonitorOn;
-  btn.textContent = '🎧 MONITOR ALL STEMS: ' + (_stemMonitorOn ? 'ON' : 'OFF');
-  btn.style.background = _stemMonitorOn ? 'var(--teal)' : 'transparent';
-  btn.style.color = _stemMonitorOn ? '#000' : 'var(--teal)';
+  _setStemMonitorBtn(_stemMonitorOn);
   if(_stemMonitorOn) refreshStemMonitor(); else stopStemMonitor();
 }
 
