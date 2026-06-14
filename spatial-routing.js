@@ -90,6 +90,15 @@ function applyBpmWarp(slot, url) {
   audio.playbackRate = Math.max(0.25, Math.min(4.0, rate));
 }
 
+// ── Per-slot volume (DJ mix) ──────────────────────────────────────────────
+// Pure audio.volume gain — never touches currentTime/playbackRate/
+// playback_started_at, so it can't affect drift correction or the seek
+// formula. Re-applied whenever this listener's slot assignment changes.
+function applySlotVolume(slot) {
+  const vols = window._slotVolumes || {};
+  audio.volume = vols[slot] ?? 1;
+}
+
 // ── Circular sweep response ─────────────────────────────────────────────
 // Each listener delays based on when the sweep beam hits their bearing.
 function applySweepOffset(sweep) {
@@ -125,10 +134,12 @@ function onSpatialConfig(payload) {
   window._spatialConfig = payload;
   window._masterBPM = payload.master_bpm || null;
   window._trackBpms = payload.track_bpms || {};
+  if (payload.slot_volumes) window._slotVolumes = payload.slot_volumes;
   if (payload.suggested_donation) { window._suggestedDonation = payload.suggested_donation; showPlayerTipBtn(); }
   if (payload.tip_url) { window._zoneTipUrl = payload.tip_url; showPlayerTipBtn(); }
 
   const mySlot = getSlot(payload);
+  applySlotVolume(mySlot);
   const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
   if (trackUrl && trackUrl !== audio.src) {
     loadTrack(trackUrl, 'Zone ' + mySlot, payload.playback_started_at);
@@ -194,11 +205,22 @@ function onClusterAssign(payload) {
   const waitMs = payload.play_at ? Math.max(0, payload.play_at - syncedNow()) : 0;
   setTimeout(() => {
     loadTrack(trackUrl, label, payload.playback_started_at);
+    applySlotVolume(mySlot || 'C');
     boomSay('⬡ ' + (mySlot || 'C'), 2000, false, 'regular');
   }, waitMs);
 }
 
+// ── Broadcast handler: standalone per-slot volume update ──────────────────
+// Sent independently of spatial_config so a volume tweak never re-broadcasts
+// zone_tracks/playback_started_at (which would trigger a coordinated re-seek
+// on every listener via onSpatialConfig's reference-point check above).
+function onSlotVolume(payload) {
+  window._slotVolumes = payload.slot_volumes || {};
+  const mySlot = getSlot(window._spatialConfig || {});
+  applySlotVolume(mySlot);
+}
+
 window.SpatialRouting = {
-  getSlot, getBpmWarpRate, applyBpmWarp, applySweepOffset,
-  onSpatialConfig, onSweepStart, onSweepStop, onScatter, onClusterAssign,
+  getSlot, getBpmWarpRate, applyBpmWarp, applySweepOffset, applySlotVolume,
+  onSpatialConfig, onSweepStart, onSweepStop, onScatter, onClusterAssign, onSlotVolume,
 };

@@ -189,6 +189,11 @@ header {
   padding: 8px 14px; border-bottom: 1px solid var(--b1);
 }
 .ed-title { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 4px; color: var(--purple); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+#ed-clip-name {
+  background: none; border: none; border-bottom: 1px dotted var(--b2);
+  padding: 0 0 2px; outline: none; width: 60%;
+}
+#ed-clip-name:focus { border-bottom-color: var(--purple); }
 .ed-close { background: none; border: 1px solid var(--b2); color: var(--dim); font-size: 9px; letter-spacing: 1px; padding: 4px 10px; cursor: pointer; font-family: 'IBM Plex Mono', monospace; }
 .ed-close:hover { border-color: var(--red); color: var(--red); }
 
@@ -236,6 +241,15 @@ header {
 .ed-cut-btn:hover { background: var(--purple); color: #000; }
 .loop-btn { padding: 7px 12px; border: 1px solid var(--b2); background: none; color: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 2px; cursor: pointer; }
 .loop-btn.on { background: var(--amber); border-color: var(--amber); color: #000; }
+
+.ed-transpose-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 14px 10px; border-top: 1px solid var(--b1);
+}
+.ed-transpose-lbl { font-size: 8px; letter-spacing: 2px; color: var(--dim); white-space: nowrap; padding-top: 10px; }
+.ed-transpose-btn { padding: 4px 9px; font-size: 11px; line-height: 1; }
+.ed-transpose-row input[type=range] { flex: 1; accent-color: var(--purple); margin-top: 10px; }
+.ed-transpose-val { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #fff; min-width: 38px; text-align: right; padding-top: 10px; }
 
 /* ── SUPABASE AUTH HEADER ───────────────────────────── */
 .auth-pill {
@@ -295,7 +309,8 @@ header {
 <!-- EDITOR PANEL -->
 <div id="editor-panel">
   <div class="ed-bar">
-    <div class="ed-title" id="ed-clip-name">—</div>
+    <input class="ed-title" id="ed-clip-name" value="—" oninput="edRenameInput(this.value)">
+
     <button class="ed-close" onclick="closeEditor()">✕ CLOSE</button>
   </div>
   <div class="ed-wv-wrap" id="ed-wv-wrap">
@@ -315,6 +330,13 @@ header {
     <button class="tbtn" id="ed-play-btn" onclick="edPlayToggle()">▶ PREVIEW</button>
     <button class="loop-btn" id="ed-loop-btn" onclick="edToggleLoop()">⟳ LOOP</button>
     <button class="ed-cut-btn" onclick="edCut()">✂ CUT</button>
+  </div>
+  <div class="ed-transpose-row">
+    <span class="ed-transpose-lbl">TRANSPOSE</span>
+    <button class="tbtn ed-transpose-btn" onclick="edNudgeTranspose(-1)">−</button>
+    <input type="range" id="ed-transpose" min="-12" max="12" step="1" value="0" oninput="edSetTranspose(this.value)">
+    <span class="ed-transpose-val" id="ed-transpose-label">0 st</span>
+    <button class="tbtn ed-transpose-btn" onclick="edNudgeTranspose(1)">+</button>
   </div>
 </div>
 
@@ -395,6 +417,12 @@ let clips       = [];
 let shortcutKey = 'r';       // default
 let settingKey  = false;
 let mode        = 'live';    // 'live' | 'mic'
+
+// Only one preview (clip-grid play or editor preview) plays at a time.
+let _activePreview = null; // { stop: fn } | null
+function stopActivePreview() {
+  if (_activePreview) { _activePreview.stop(); _activePreview = null; }
+}
 
 // Live capture
 let liveStream     = null;   // audio-only MediaStream (for the recorder)
@@ -991,7 +1019,8 @@ function renderClip(clip) {
   let ps = null;
   el.querySelector(`#cplay-${clip.id}`).addEventListener('click', () => {
     const btn = el.querySelector(`#cplay-${clip.id}`);
-    if (ps) { ps.stop(); ps = null; btn.textContent = '▶'; btn.classList.remove('playing'); return; }
+    if (ps) { stopActivePreview(); return; }
+    stopActivePreview();
     const ac = getCtx(), src = ac.createBufferSource();
     src.buffer = clip.buffer; src.connect(ac.destination);
     const t0 = ac.currentTime; src.start(); ps = src;
@@ -1000,7 +1029,9 @@ function renderClip(clip) {
     let raf;
     const anim = () => { const p = Math.min((ac.currentTime - t0) / clip.duration, 1); bar.style.width = `${p * 100}%`; if (p < 1) raf = requestAnimationFrame(anim); };
     raf = requestAnimationFrame(anim);
-    src.onended = () => { ps = null; btn.textContent = '▶'; btn.classList.remove('playing'); bar.style.width = '0%'; cancelAnimationFrame(raf); };
+    const stopThis = () => { try { src.stop(); } catch {} ps = null; btn.textContent = '▶'; btn.classList.remove('playing'); bar.style.width = '0%'; cancelAnimationFrame(raf); };
+    src.onended = () => { stopThis(); if (_activePreview?.stop === stopThis) _activePreview = null; };
+    _activePreview = { stop: stopThis };
   });
 
   el.querySelector('.chop').addEventListener('click', () => openEditor(clip));
@@ -1153,15 +1184,28 @@ let edEnd      = 0;      // seconds
 let edPs       = null;   // playing AudioBufferSourceNode
 let edLoop     = false;
 let edRafId    = null;
+let edTranspose = 0;     // semitones, -12..12
 let edDragging = null;   // 'l' | 'r' | null
 
 function openEditor(clip) {
+  stopActivePreview();
   edClip  = clip;
   edStart = 0;
   edEnd   = clip.duration;
-  document.getElementById('ed-clip-name').textContent = clip.name;
+  edTranspose = 0;
+  document.getElementById('ed-clip-name').value = clip.name;
+  document.getElementById('ed-transpose').value = 0;
+  document.getElementById('ed-transpose-label').textContent = '0 st';
   document.getElementById('editor-panel').classList.add('open');
   requestAnimationFrame(() => { drawEditorWaveform(); updateEdHandles(); });
+}
+
+// Live-rename from the editor — keeps the clip card's name + grid label in sync.
+function edRenameInput(value) {
+  if (!edClip) return;
+  edClip.name = value.toUpperCase();
+  const nameEl = document.getElementById(`cn-${edClip.id}`);
+  if (nameEl) nameEl.textContent = edClip.name;
 }
 
 function closeEditor() {
@@ -1292,21 +1336,25 @@ function edPlayToggle() {
 function edPlay() {
   if (!edClip) return;
   edStop();
+  stopActivePreview();
   const ac  = getCtx();
   const src = ac.createBufferSource();
   src.buffer = edClip.buffer;
   src.loop   = edLoop;
   if (edLoop) { src.loopStart = edStart; src.loopEnd = edEnd; }
+  src.detune.value = edTranspose * 100;
   src.connect(ac.destination);
   src.start(0, edStart, edLoop ? undefined : (edEnd - edStart));
   edPs = src;
   const btn = document.getElementById('ed-play-btn');
   btn.textContent = '■ STOP'; btn.classList.add('on');
-  const t0 = ac.currentTime - edStart;
+  // detune shifts playback rate too — source-time advances faster/slower than real time
+  const ratio = Math.pow(2, edTranspose / 12);
+  const tStart = ac.currentTime;
   cancelAnimationFrame(edRafId);
   const tick = () => {
     if (!edPs) return;
-    const pos = (ac.currentTime - t0 + edStart);
+    const pos = edStart + (ac.currentTime - tStart) * ratio;
     const cur = edLoop ? edStart + ((pos - edStart) % (edEnd - edStart)) : Math.min(pos, edEnd);
     document.getElementById('ed-pos').textContent = fmtMs(cur);
     const pct = cur / (edClip?.duration || 1);
@@ -1315,6 +1363,7 @@ function edPlay() {
   };
   edRafId = requestAnimationFrame(tick);
   src.onended = () => { if (!edLoop) edStop(); };
+  _activePreview = { stop: edStop };
 }
 
 function edStop() {
@@ -1323,6 +1372,18 @@ function edStop() {
   cancelAnimationFrame(edRafId);
   const btn = document.getElementById('ed-play-btn');
   if (btn) { btn.textContent = '▶ PREVIEW'; btn.classList.remove('on'); }
+  if (_activePreview?.stop === edStop) _activePreview = null;
+}
+
+function edSetTranspose(value) {
+  edTranspose = Math.max(-12, Math.min(12, Math.round(value)));
+  document.getElementById('ed-transpose').value = edTranspose;
+  document.getElementById('ed-transpose-label').textContent = `${edTranspose > 0 ? '+' : ''}${edTranspose} st`;
+  if (edPs) { edPlay(); }
+}
+
+function edNudgeTranspose(delta) {
+  edSetTranspose(edTranspose + delta);
 }
 
 function edToggleLoop() {
@@ -1337,23 +1398,28 @@ async function edCut() {
   const duration = edEnd - edStart;
   if (duration < 0.05) { toast('SELECTION TOO SHORT'); return; }
   const buf  = edClip.buffer;
-  const off  = new OfflineAudioContext(buf.numberOfChannels, Math.ceil(duration * buf.sampleRate), buf.sampleRate);
+  // detune shifts playback rate too — rendered output runs duration/ratio seconds
+  const ratio = Math.pow(2, edTranspose / 12);
+  const outDuration = duration / ratio;
+  const off  = new OfflineAudioContext(buf.numberOfChannels, Math.ceil(outDuration * buf.sampleRate), buf.sampleRate);
   const src  = off.createBufferSource();
   const gain = off.createGain();
   src.buffer = buf;
+  src.detune.value = edTranspose * 100;
   src.connect(gain);
   gain.connect(off.destination);
   // Short fade in/out to avoid clicks/pops at the cut edges
-  const fade = Math.min(0.015, duration / 4);
+  const fade = Math.min(0.015, outDuration / 4);
   gain.gain.setValueAtTime(0, 0);
   gain.gain.linearRampToValueAtTime(1, fade);
-  gain.gain.setValueAtTime(1, Math.max(fade, duration - fade));
-  gain.gain.linearRampToValueAtTime(0, duration);
+  gain.gain.setValueAtTime(1, Math.max(fade, outDuration - fade));
+  gain.gain.linearRampToValueAtTime(0, outDuration);
   src.start(0, edStart, duration);
   const rendered = await off.startRendering();
   const wav = bufToWav(rendered);
-  await addClip(wav, `CUT ${ts()}`, 'audio/wav');
-  toast(`✂ CUT · ${duration.toFixed(2)}s`);
+  const suffix = edTranspose ? ` ${edTranspose > 0 ? '+' : ''}${edTranspose}ST` : '';
+  await addClip(wav, `CUT ${ts()}${suffix}`, 'audio/wav');
+  toast(`✂ CUT · ${outDuration.toFixed(2)}s`);
 }
 
 document.getElementById('clear-btn').addEventListener('click', () => {

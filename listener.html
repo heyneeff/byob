@@ -3908,6 +3908,7 @@ function buildSyncChannel(zoneId) {
   .on('broadcast', { event: 'sweep_stop' }, () => window.SpatialRouting?.onSweepStop())
   .on('broadcast', { event: 'scatter' }, ({ payload }) => window.SpatialRouting?.onScatter(payload))
   .on('broadcast', { event: 'cluster_assign' }, ({ payload }) => window.SpatialRouting?.onClusterAssign(payload))
+  .on('broadcast', { event: 'slot_volume' }, ({ payload }) => window.SpatialRouting?.onSlotVolume(payload))
   .on('broadcast', { event: 'rally' }, ({ payload }) => {
     if (!payload?.lat || !payload?.lng) return;
     window._rallyPoint = { lat: payload.lat, lng: payload.lng, label: payload.label || '' };

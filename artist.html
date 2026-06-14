@@ -127,6 +127,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .sl-fire-btn.is-live{color:var(--orange);background:#1a1200;}
 .sl-fire-btn.is-pending{color:#fff;background:#1a0030;animation:pending-pulse .3s ease-in-out infinite alternate;}
 @keyframes pending-pulse{from{opacity:.5}to{opacity:1}}
+.sl-vol-cell{width:26px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-bottom:1px solid rgba(255,255,255,.04);overflow:hidden;}
+.sl-vol-cell input[type=range]{width:34px;height:14px;margin:0;transform:rotate(-90deg);accent-color:var(--teal);cursor:pointer;}
 
 /* Mode strip */
 .mode-strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:5px 6px;}
@@ -623,6 +625,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button id="btn-dot-labels" onclick="toggleDotLabels()" title="Toggle listener names" style="width:32px;height:32px;background:rgba(0,0,0,.82);border:1px solid var(--rim);border-radius:7px;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);">👁</button>
       <button onclick="remixSlots()" title="Remix listener slots" style="width:32px;height:32px;background:rgba(0,0,0,.82);border:1px solid #a78bfa;border-radius:7px;color:#a78bfa;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);">🎲</button>
     </div>
+    <div class="btn-find-me" onclick="centerSpatialMapOnUser()" title="Find me">◎</div>
   </div>
   <div id="sp-radar" style="position:absolute;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;"></div>
 
@@ -1404,6 +1407,15 @@ function centerOnUser(){
     if(!userMarker)placeUserMarker(userLat,userLng);
     else userMarker.setLatLng([userLat,userLng]);
     leafletMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});
+  },()=>showToast('Location not available'),{enableHighAccuracy:true,timeout:8000});
+}
+// The spatial radar (#sp-spatial-map) is a separate Leaflet instance
+// (window._spMap) from the setup-screen map (leafletMap) — needs its own centering.
+function centerSpatialMapOnUser(){
+  if(userLat&&window._spMap){window._spMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});return;}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    userLat=pos.coords.latitude;userLng=pos.coords.longitude;
+    if(window._spMap)window._spMap.flyTo([userLat,userLng],17,{animate:true,duration:.5});
   },()=>showToast('Location not available'),{enableHighAccuracy:true,timeout:8000});
 }
 let _revGeoDebounce=null;
@@ -2892,6 +2904,36 @@ const _SL_KEY='byob_scenes';
 let _scenes=[];
 let _activeSceneId=null;
 
+// ── Per-slot volume (mix) ──────────────────────────────────────────────────
+// Local-mix + listener-mix gain only — set on _monitorAudios[slot].volume and
+// broadcast as a standalone `slot_volume` event so listener.html can apply it
+// to its assigned slot's audio.volume. Never touches playback_started_at,
+// currentTime, or playbackRate — purely a gain control, no sync-engine
+// interaction (see CLAUDE.md "Sync engine" invariants).
+const _VOL_KEY='byob_slot_volumes';
+let _slotVolumes={};
+let _volBroadcastTimer=null;
+
+function _volLoad(){
+  try{ _slotVolumes=JSON.parse(localStorage.getItem(_VOL_KEY)||'{}'); }catch(e){ _slotVolumes={}; }
+}
+function _volSave(){ localStorage.setItem(_VOL_KEY,JSON.stringify(_slotVolumes)); }
+
+function onSlotVolumeInput(slot,value){
+  const v=Math.max(0,Math.min(1,parseFloat(value)));
+  _slotVolumes[slot]=v;
+  _volSave();
+  // DJ local monitor mix — applies immediately, no broadcast round-trip needed
+  if(_monitorAudios[slot]) _monitorAudios[slot].volume=v;
+  // Debounced broadcast to listeners so a slider drag doesn't flood the channel
+  clearTimeout(_volBroadcastTimer);
+  _volBroadcastTimer=setTimeout(()=>{
+    if(window._djSyncChannel){
+      window._djSyncChannel.send({type:'broadcast',event:'slot_volume',payload:{slot_volumes:_slotVolumes}});
+    }
+  },120);
+}
+
 function _slLoad(){
   try{ _scenes=JSON.parse(localStorage.getItem(_SL_KEY)||'[]'); }catch(e){ _scenes=[]; }
   if(!_scenes.length){
@@ -3366,10 +3408,13 @@ function renderSceneLauncher(){
             <div class="sl-clip-dot">·</div>
           </div>`;
     }).join('');
+    const vol = _slotVolumes[slot] ?? 1;
     return `<div class="sl-clip-row">
       <div class="sl-slot-lbl" style="background:${bg};">${slot}</div>
       ${cells}
-      <div style="width:26px;flex-shrink:0;border-bottom:1px solid rgba(255,255,255,.04);"></div>
+      <div class="sl-vol-cell" title="${slot} volume — affects listeners on this slot + your monitor">
+        <input type="range" min="0" max="1" step="0.05" value="${vol}" oninput="onSlotVolumeInput('${slot}',this.value)">
+      </div>
     </div>`;
   }).join('');
 
@@ -3544,7 +3589,9 @@ const _monitorAudios = {}; // slot -> <audio>
 // which breaks that chain. Unlocking a pool synchronously on click means
 // later play() calls from setTimeout still work on these same elements.
 const _monitorPool = [];
-const MONITOR_POOL_SIZE = 8;
+// Must cover the max non-Center slot count (C+16 preset) — otherwise stacking
+// loops across many slots silently stops monitoring once the pool runs out.
+const MONITOR_POOL_SIZE = 16;
 
 function _unlockMonitorPool(){
   while(_monitorPool.length < MONITOR_POOL_SIZE) _monitorPool.push(new Audio());
@@ -3624,7 +3671,7 @@ function refreshStemMonitor(){
     if(!el){ console.warn('Monitor pool exhausted — increase MONITOR_POOL_SIZE'); return; }
     el.src = t.url;
     el.loop = _monitorLoopOn;
-    el.volume = 0.7;
+    el.volume = _slotVolumes[slot] ?? 0.7;
     // Can't set currentTime until metadata is loaded (throws on iOS Safari
     // if set on a fresh src) — seek once duration is known instead.
     el.addEventListener('loadedmetadata', () => _seekMonitorToDeck(el), {once:true});
@@ -3739,6 +3786,7 @@ async function broadcastAllZones(allowEmpty){
         zone_radius_m: activeZone.radius_m,
         master_bpm: _masterBPM || null,
         track_bpms: buildTrackBpms(),
+        slot_volumes: _slotVolumes,
         tip_url: activeZone?.tip_url || null,
         suggested_donation: window._suggestedDonation || null
       }
@@ -4543,7 +4591,7 @@ document.getElementById('stem-file-input').addEventListener('change', async (e) 
 });
 
 // Initial load — deferred so currentUser is set
-setTimeout(()=>{ buildLibs(); initSpatialResize(); _slLoad(); renderSceneLauncher(); loadPlaylist(); }, 800);
+setTimeout(()=>{ buildLibs(); initSpatialResize(); _slLoad(); _volLoad(); renderSceneLauncher(); loadPlaylist(); }, 800);
 
 // Mixer EQ knobs
 // ── WEB AUDIO DECK GRAPH ─────────────────────────────────
@@ -4989,7 +5037,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(res.ok){
       const txt = await res.text();
       const extract = (varName) => {
-        const m = txt.match(new RegExp('const '+varName+'\s*=\s*"(data:image[^"]+)"'));
+        const m = txt.match(new RegExp('const '+varName+'\\s*=\\s*"(data:image[^"]+)"'));
         return m ? m[1] : null;
       };
       const logo = extract('LOGO_B64');
