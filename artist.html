@@ -3563,7 +3563,8 @@ async function confirmEvent(){
     const location_reveal_at=revealAlways?new Date(0).toISOString():new Date(reveal).toISOString();
     let image_url=null;
     if(_evtImageFile){
-      const path='events/'+currentUser.id+'/'+Date.now()+'_'+_evtImageFile.name;
+      const safeName=_evtImageFile.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+      const path='events/'+currentUser.id+'/'+Date.now()+'_'+safeName;
       const{error:upErr}=await db.storage.from('boombox').upload(path,_evtImageFile);
       if(upErr)throw upErr;
       image_url=db.storage.from('boombox').getPublicUrl(path).data.publicUrl;
