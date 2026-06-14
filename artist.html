@@ -437,7 +437,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 </div>
 
 <!-- EVENT PANEL -->
-<div id="event-panel" style="position:fixed;bottom:0;left:0;right:0;z-index:1100;background:var(--surface2);border-top:3px solid var(--red);padding:16px 18px 30px;transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:0 -4px 30px rgba(0,0,0,.7);max-height:88vh;overflow-y:auto;">
+<div id="event-panel" style="position:fixed;bottom:0;left:0;right:0;z-index:1100;background:var(--surface2);border-top:3px solid var(--red);padding:16px 18px 30px;transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);box-shadow:0 -4px 30px rgba(0,0,0,.7);max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch;">
   <div style="font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--red);margin-bottom:8px;">Schedule Event</div>
   <input class="zdp-name" id="evt-name" type="text" placeholder="Event name"/>
   <input class="zdp-name" id="evt-artists" type="text" placeholder="Artists (comma separated)" style="margin-top:6px;"/>
@@ -3484,28 +3484,28 @@ document.getElementById('evt-image').addEventListener('change', e => {
 });
 function toLocalInput(d){return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
 async function confirmEvent(){
-  const name=document.getElementById('evt-name').value.trim();
-  const artists=document.getElementById('evt-artists').value.split(',').map(a=>a.trim()).filter(Boolean);
-  const desc=document.getElementById('evt-desc').value.trim();
-  const start=document.getElementById('evt-start').value;
-  const revealAlways=document.getElementById('evt-reveal-always').checked;
-  const reveal=document.getElementById('evt-reveal').value;
-  if(!name){showToast('Event needs a name');return;}
-  if(!start){showToast('Set an event start time');return;}
-  if(!revealAlways&&!reveal){showToast('Set a reveal time, or check "Always show location"');return;}
-  const zoneSel=document.getElementById('evt-zone');
-  const zoneOpt=zoneSel.selectedOptions[0];
-  const zoneId=zoneSel.value||null;
-  const lat=zoneOpt?.dataset.lat?parseFloat(zoneOpt.dataset.lat):(activeZone?.lat||draftCenter?.lat||userLat);
-  const lng=zoneOpt?.dataset.lng?parseFloat(zoneOpt.dataset.lng):(activeZone?.lng||draftCenter?.lng||userLng);
-  const radius_m=zoneOpt?.dataset.radius?parseFloat(zoneOpt.dataset.radius):(activeZone?.radius_m||draftRadius||200);
-  if(!lat){showToast('Pick a zone or set a zone location first');return;}
-  const city=document.getElementById('evt-city').value.trim()||null;
-  const priceRaw=document.getElementById('evt-price').value.trim();
-  const ticket_price=priceRaw&&parseFloat(priceRaw)>0?parseFloat(priceRaw):null;
-  // "Always show location" → reveal time in the past so revealState() treats it as already revealed
-  const location_reveal_at=revealAlways?new Date(0).toISOString():new Date(reveal).toISOString();
   try{
+    const name=document.getElementById('evt-name').value.trim();
+    const artists=document.getElementById('evt-artists').value.split(',').map(a=>a.trim()).filter(Boolean);
+    const desc=document.getElementById('evt-desc').value.trim();
+    const start=document.getElementById('evt-start').value;
+    const revealAlways=document.getElementById('evt-reveal-always').checked;
+    const reveal=document.getElementById('evt-reveal').value;
+    if(!name){showToast('Event needs a name');return;}
+    if(!start){showToast('Set an event start time');return;}
+    if(!revealAlways&&!reveal){showToast('Set a reveal time, or check "Always show location"');return;}
+    const zoneSel=document.getElementById('evt-zone');
+    const zoneOpt=zoneSel.options[zoneSel.selectedIndex];
+    const zoneId=zoneSel.value||null;
+    const lat=zoneOpt&&zoneOpt.dataset.lat?parseFloat(zoneOpt.dataset.lat):(activeZone?.lat||draftCenter?.lat||userLat);
+    const lng=zoneOpt&&zoneOpt.dataset.lng?parseFloat(zoneOpt.dataset.lng):(activeZone?.lng||draftCenter?.lng||userLng);
+    const radius_m=zoneOpt&&zoneOpt.dataset.radius?parseFloat(zoneOpt.dataset.radius):(activeZone?.radius_m||draftRadius||200);
+    if(!lat){showToast('Pick a zone or set a zone location first');return;}
+    const city=document.getElementById('evt-city').value.trim()||null;
+    const priceRaw=document.getElementById('evt-price').value.trim();
+    const ticket_price=priceRaw&&parseFloat(priceRaw)>0?parseFloat(priceRaw):null;
+    // "Always show location" → reveal time in the past so revealState() treats it as already revealed
+    const location_reveal_at=revealAlways?new Date(0).toISOString():new Date(reveal).toISOString();
     let image_url=null;
     if(_evtImageFile){
       const path='events/'+currentUser.id+'/'+Date.now()+'_'+_evtImageFile.name;
@@ -3516,7 +3516,7 @@ async function confirmEvent(){
     const{error}=await db.from('events').insert({name,artists,description:desc||null,event_start:new Date(start).toISOString(),location_reveal_at,lat,lng,radius_m,zone_id:zoneId,created_by:currentUser.id,city,ticket_price,image_url});
     if(error)throw error;
     closeEventPanel();showToast('"'+name+'" scheduled 📅');loadEvents();
-  }catch(e){showToast('Error: '+e.message);}
+  }catch(e){showToast('Error: '+e.message,true);}
 }
 async function loadEvents(){
   const{data}=await db.from('events').select('*').eq('created_by',currentUser.id).order('event_start',{ascending:true}).limit(10);
