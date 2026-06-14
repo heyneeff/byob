@@ -57,6 +57,16 @@
   positions and clocks are just numbers, run thousands of times faster than
   real time.
 </p>
+<p class="lead">
+  <b>Realistic currentTime stalls</b> (toggle below, on by default) replays the
+  two patterns found in the 2026-06-14 debug CSV: (1) every ~25-35s, a
+  listener's <code>audio.currentTime</code> freezes for ~150ms while
+  <code>readyState</code>/<code>stallCount</code> stay clean — the watchdog
+  never sees it (Phase 5s) — and (2) every coordinated snap
+  (<code>seekPreservingBT()</code>'s mute/seek/180ms-ramp) itself eats ~130ms
+  of real playback time immediately afterward, so each "fix" creates fresh
+  drift. This is the mechanism behind "the sync button makes it worse."
+</p>
 
 <div class="controls">
   <label>Seed <input id="cf-seed" type="number" value="42"></label>
@@ -68,6 +78,7 @@
   <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-hardsync" type="checkbox" checked style="width:auto;"> Hard-sync events</label>
   <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-cluster" type="checkbox" checked style="width:auto;"> Cluster reassigns</label>
   <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-scene" type="checkbox" checked style="width:auto;"> Scene fires</label>
+  <label style="flex-direction:row;align-items:center;gap:6px;"><input id="cf-ev-stalls" type="checkbox" checked style="width:auto;"> Realistic currentTime stalls (Phase 5s)</label>
   <button id="btn-run">▶ Run simulation</button>
   <button id="btn-reseed" class="secondary">🎲 New random seed</button>
   <span id="status" class="events"></span>
@@ -154,6 +165,15 @@ const DURATION    = 200;     // simulated track length, seconds
 const TICK_MS     = 250;     // simulated ms advanced per step
 const FAST_CHECK_MS = 5000;  // fastDriftCorrect cadence
 
+// ── Realistic currentTime stalls (from the 2026-06-14 debug CSV) ─────────
+// (1) Periodic ~150ms freeze every ~25-35s — readyState/stallCount stay
+//     clean, the watchdog never sees it (Phase 5s, unresolved).
+// (2) seekPreservingBT()'s mute/seek/180ms-ramp itself eats ~130ms of real
+//     playback time right after a coordinated snap — "the sync button makes
+//     it worse".
+const PERIODIC_STALL_MS  = 150;
+const POST_SEEK_STALL_MS = 130;
+
 function wrapLag(lagMs) {
   const half = DURATION * 1000 / 2;
   while (lagMs >  half) lagMs -= DURATION * 1000;
@@ -167,12 +187,21 @@ function expectedPos(listener, simNow, startedAt) {
 function computeLag(listener, simNow, startedAt) {
   return wrapLag((expectedPos(listener, simNow, startedAt) - listener.currentTime) * 1000);
 }
-function advance(listener, dtMs) {
-  listener.currentTime = (listener.currentTime + (dtMs/1000) * listener.playbackRate * (1 + listener.hwDriftPct) + DURATION) % DURATION;
+function advance(listener, dtMs, simNow, ctx) {
+  let debt = listener.stallDebtMs || 0;
+  if (ctx?.stallsEnabled && simNow >= listener.nextStallAt) {
+    debt += PERIODIC_STALL_MS;
+    listener.stallCount = (listener.stallCount || 0) + 1;
+    listener.nextStallAt += listener.stallIntervalMs;
+  }
+  const effectiveDt = Math.max(0, dtMs - debt);
+  listener.stallDebtMs = Math.max(0, debt - dtMs);
+  listener.currentTime = (listener.currentTime + (effectiveDt/1000) * listener.playbackRate * (1 + listener.hwDriftPct) + DURATION) % DURATION;
 }
-function snapTo(listener, simNow, startedAt) {
+function snapTo(listener, simNow, startedAt, ctx) {
   listener.currentTime = expectedPos(listener, simNow, startedAt);
   listener.hardSeekCount++;
+  if (ctx?.stallsEnabled) listener.stallDebtMs = (listener.stallDebtMs || 0) + POST_SEEK_STALL_MS;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -192,6 +221,9 @@ function makeListener(rng, id, baseRate) {
     state: 'idle', pendingRecheck: false,    // for the new controller
     isDucking: false, correctionActive: false, // for the legacy controller
     dipCount: 0, warpCount: 0, hardSeekCount: 0, directBypassCount: 0,
+    stallDebtMs: 0, stallCount: 0,
+    nextStallAt: rng() * 30000,              // first stall within 0-30s, randomized phase
+    stallIntervalMs: 25000 + rng() * 10000,  // then every 25-35s
     history: []
   };
 }
@@ -203,12 +235,12 @@ function makeListener(rng, id, baseRate) {
 //   both flags entirely. That bypass is the root of "roving".
 // ════════════════════════════════════════════════════════════
 function legacyTick(L, simNow, dtMs, ctx) {
-  advance(L, dtMs);
+  advance(L, dtMs, simNow, ctx);
 
   if (L.duckPhase) {
     if (simNow >= L.duckPhase.nextAt) {
       if (L.duckPhase.stage === 'down') {
-        snapTo(L, simNow, ctx.startedAt);
+        snapTo(L, simNow, ctx.startedAt, ctx);
         L.duckPhase = { stage:'up', nextAt: simNow + 1080 };
       } else { L.isDucking = false; L.duckPhase = null; }
     }
@@ -230,14 +262,14 @@ function legacyTick(L, simNow, dtMs, ctx) {
   // with no idea whether a duck or rate-warp was already in flight.
   if (ctx.events.visibilityWake) {
     const lag = computeLag(L, simNow, ctx.startedAt);
-    if (Math.abs(lag) > 200) { snapTo(L, simNow, ctx.startedAt); L.directBypassCount++; }
+    if (Math.abs(lag) > 200) { snapTo(L, simNow, ctx.startedAt, ctx); L.directBypassCount++; }
   }
   if (ctx.events.scatterChange) {
     L.scatterOffsetMs = ctx.scatterFor(L);
-    snapTo(L, simNow, ctx.startedAt);
+    snapTo(L, simNow, ctx.startedAt, ctx);
     L.directBypassCount++;
   }
-  if (ctx.events.hardSync) { snapTo(L, simNow, ctx.startedAt); }
+  if (ctx.events.hardSync) { snapTo(L, simNow, ctx.startedAt, ctx); }
 
   // PRE-FIX cluster_assign: the DJ stamped playback_started_at = NOW into the
   // broadcast (never the DB). A reassigned phone reloads its stem and seeks
@@ -252,7 +284,7 @@ function legacyTick(L, simNow, dtMs, ctx) {
   // adopted the new reference). Same-stem listeners never re-seeked — they
   // limp on the old reference until the 5s drift loop ducks them.
   if (ctx.events.sceneFire && ctx.pick(ctx.events.sceneFire, L, ctx.events.sceneFire.changedFrac)) {
-    snapTo(L, simNow, ctx.startedAt);
+    snapTo(L, simNow, ctx.startedAt, ctx);
   }
 
   L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
@@ -312,6 +344,7 @@ function forcedSnapEngine(L, ctx, simState) {
   });
   L.engine.seekPreservingBT(expected);
   L.hardSeekCount++;
+  if (ctx.stallsEnabled) L.stallDebtMs = (L.stallDebtMs || 0) + POST_SEEK_STALL_MS;
 }
 
 // ════════════════════════════════════════════════════════════
@@ -323,7 +356,7 @@ function forcedSnapEngine(L, ctx, simState) {
 const STRIP_THRESHOLD_MS = 300;
 
 function stripTickEngine(L, simNow, dtMs, ctx, simState) {
-  advance(L, dtMs);
+  advance(L, dtMs, simNow, ctx);
 
   const maybeSnap = () => {
     const lag = L.engine.computeLagMs();
@@ -356,7 +389,7 @@ function stripTickEngine(L, simNow, dtMs, ctx, simState) {
 // constant error so drift settles near 0 between snaps instead.
 // ════════════════════════════════════════════════════════════
 function microTickEngine(L, simNow, dtMs, ctx, simState) {
-  advance(L, dtMs);
+  advance(L, dtMs, simNow, ctx);
 
   if (simNow >= L.nextFastCheck) {
     L.nextFastCheck = simNow + FAST_CHECK_MS;
@@ -383,7 +416,7 @@ function microTickEngine(L, simNow, dtMs, ctx, simState) {
 }
 
 function newTickEngine(L, simNow, dtMs, ctx, simState) {
-  advance(L, dtMs);
+  advance(L, dtMs, simNow, ctx);
 
   const before = L.engine.getDriftState();
 
@@ -423,10 +456,10 @@ function newTickEngine(L, simNow, dtMs, ctx, simState) {
 // Simulation driver
 // ════════════════════════════════════════════════════════════
 function runSim(seed, listenerCount, totalMs, disruptRate, tickFn, eventToggles) {
-  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true }, eventToggles);
+  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true, stallsEnabled: true }, eventToggles);
   const rng = mulberry32(seed);
   const listeners = Array.from({length:listenerCount}, (_,i) => makeListener(rng, i, 1.0));
-  const ctx = { startedAt: 0, events:{}, scatterFor: () => 0 };
+  const ctx = { startedAt: 0, events:{}, scatterFor: () => 0, stallsEnabled: enable.stallsEnabled };
   // Deterministic per-event listener picker — identical for legacy & new runs.
   // Used by clusterAssign (which listeners get reassigned) and sceneFire
   // (which listeners' stems changed vs stayed the same).
@@ -492,11 +525,11 @@ function runSim(seed, listenerCount, totalMs, disruptRate, tickFn, eventToggles)
 // playbackStartedAt starts at -1 (truthy "just started") rather than 0 —
 // computeLagMs treats 0 as "no reference yet" (see sync-engine.test.js).
 function runSimEngine(seed, listenerCount, totalMs, disruptRate, eventToggles, tickFn = newTickEngine) {
-  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true }, eventToggles);
+  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true, stallsEnabled: true }, eventToggles);
   const rng = mulberry32(seed);
   const timers = createFakeTimers();
   const simState = { simNow: 0 };
-  const ctx = { startedAt: -1, events: {}, scatterFor: () => 0 };
+  const ctx = { startedAt: -1, events: {}, scatterFor: () => 0, stallsEnabled: enable.stallsEnabled };
   ctx.pick = (ev, L, frac) => {
     const x = Math.abs(Math.sin((L.id + 1) * 12.9898 + ev.r * 78.233) * 43758.5453);
     return (x - Math.floor(x)) < (frac !== undefined ? frac : ev.frac);
@@ -580,18 +613,18 @@ function drawChart(canvas, listeners, totalMs) {
 
 function fillStats(table, listeners, label) {
   const settleFrom = listeners[0]?.history.length ? listeners[0].history.length * 0.2 | 0 : 0; // ignore first 20% (initial lock-in)
-  let rows = `<tr><th>Listener</th><th>Max |drift| (settled)</th><th>Volume dips</th><th>Rate-warps</th><th>Hard seeks</th>${label==='legacy' ? '<th>Bypass seeks</th>' : ''}</tr>`;
-  let sumMax=0, sumDips=0, sumWarps=0, sumSeeks=0, sumBypass=0;
+  let rows = `<tr><th>Listener</th><th>Max |drift| (settled)</th><th>Volume dips</th><th>Rate-warps</th><th>Hard seeks</th><th>Stalls</th>${label==='legacy' ? '<th>Bypass seeks</th>' : ''}</tr>`;
+  let sumMax=0, sumDips=0, sumWarps=0, sumSeeks=0, sumBypass=0, sumStalls=0;
   listeners.forEach(L => {
     const settled = L.history.slice(settleFrom);
     const maxDrift = settled.reduce((m,p) => Math.max(m, Math.abs(p.drift)), 0);
-    sumMax += maxDrift; sumDips += L.dipCount; sumWarps += L.warpCount; sumSeeks += L.hardSeekCount; sumBypass += (L.directBypassCount||0);
+    sumMax += maxDrift; sumDips += L.dipCount; sumWarps += L.warpCount; sumSeeks += L.hardSeekCount; sumBypass += (L.directBypassCount||0); sumStalls += (L.stallCount||0);
     rows += `<tr><td><span class="swatch" style="background:${L.color}"></span>#${L.id}</td>`
-          + `<td>${maxDrift.toFixed(0)}ms</td><td>${L.dipCount}</td><td>${L.warpCount}</td><td>${L.hardSeekCount}</td>`
+          + `<td>${maxDrift.toFixed(0)}ms</td><td>${L.dipCount}</td><td>${L.warpCount}</td><td>${L.hardSeekCount}</td><td>${L.stallCount||0}</td>`
           + (label==='legacy' ? `<td>${L.directBypassCount||0}</td>` : '') + `</tr>`;
   });
   table.innerHTML = rows;
-  return { avgMax: sumMax/listeners.length, totalDips: sumDips, totalWarps: sumWarps, totalSeeks: sumSeeks, totalBypass: sumBypass };
+  return { avgMax: sumMax/listeners.length, totalDips: sumDips, totalWarps: sumWarps, totalSeeks: sumSeeks, totalBypass: sumBypass, totalStalls: sumStalls };
 }
 
 function buildLegend(listeners) {
@@ -622,6 +655,7 @@ btnRun.addEventListener('click', () => {
       hardSync:       document.getElementById('cf-ev-hardsync').checked,
       clusterAssign:  document.getElementById('cf-ev-cluster').checked,
       sceneFire:      document.getElementById('cf-ev-scene').checked,
+      stallsEnabled:  document.getElementById('cf-ev-stalls').checked,
     };
 
     const legacy   = runSim(seed, count, totalMs, disrupt, legacyTick, eventToggles);
