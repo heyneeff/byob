@@ -146,6 +146,9 @@ header {
 .clips-acts { display: flex; gap: 6px; }
 .sm-btn { padding: 4px 10px; border: 1px solid var(--b2); background: none; color: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 8px; letter-spacing: 1px; cursor: pointer; border-radius: 1px; touch-action: manipulation; }
 .sm-btn:hover { border-color: var(--green); color: var(--green); }
+.proj-bpm { display: flex; align-items: center; gap: 4px; }
+.proj-bpm-lbl { font-size: 7px; letter-spacing: 1px; color: var(--dim); }
+.proj-bpm input { width: 40px; background: var(--b1); border: 1px solid var(--b2); color: var(--purple); font-family: 'Share Tech Mono', monospace; font-size: 11px; padding: 4px 5px; text-align: center; border-radius: 1px; }
 
 .clips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px,1fr)); gap: 5px; }
 .clip { border: 1px solid var(--b2); background: var(--surf); border-radius: 2px; overflow: hidden; }
@@ -223,6 +226,14 @@ header {
   position: absolute; top: 0; bottom: 0; width: 2px;
   background: rgba(255,255,255,.7); pointer-events: none; left: 0;
 }
+.ed-stretch-region {
+  position: absolute; top: 0; bottom: 0;
+  border-right: 2px dashed var(--amber);
+  background: rgba(255,176,32,.08);
+  pointer-events: none; display: none;
+}
+.ed-handle-stretch::after { background: var(--amber); }
+.ed-handle-stretch { display: none; }
 
 .ed-times {
   display: flex; justify-content: space-between;
@@ -250,6 +261,15 @@ header {
 .ed-transpose-btn { padding: 4px 9px; font-size: 11px; line-height: 1; }
 .ed-transpose-row input[type=range] { flex: 1; accent-color: var(--purple); margin-top: 10px; }
 .ed-transpose-val { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #fff; min-width: 38px; text-align: right; padding-top: 10px; }
+
+.ed-warp-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 8px 14px 10px; border-top: 1px solid var(--b1);
+}
+.ed-warp-bpm { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: #fff; min-width: 28px; text-align: center; }
+.ed-warp-input { width: 50px; background: var(--b1); border: 1px solid var(--b2); color: #fff; font-family: 'Share Tech Mono', monospace; font-size: 11px; padding: 4px 5px; text-align: center; }
+.ed-bar-btn { padding: 4px 8px; font-size: 10px; line-height: 1; }
+.ed-bar-btn.on { background: var(--purple); border-color: var(--purple); color: #000; }
 
 /* ── SUPABASE AUTH HEADER ───────────────────────────── */
 .auth-pill {
@@ -316,8 +336,10 @@ header {
   <div class="ed-wv-wrap" id="ed-wv-wrap">
     <canvas id="ed-canvas"></canvas>
     <div class="ed-region"  id="ed-region"></div>
+    <div class="ed-stretch-region" id="ed-stretch-region"></div>
     <div class="ed-handle"  id="ed-handle-l" style="left:0"></div>
     <div class="ed-handle"  id="ed-handle-r" style="right:0"></div>
+    <div class="ed-handle ed-handle-stretch" id="ed-handle-stretch" title="Drag to stretch — sets WARP→ BPM"></div>
     <div id="ed-playhead"></div>
   </div>
   <div class="ed-times">
@@ -337,6 +359,18 @@ header {
     <input type="range" id="ed-transpose" min="-12" max="12" step="1" value="0" oninput="edSetTranspose(this.value)">
     <span class="ed-transpose-val" id="ed-transpose-label">0 st</span>
     <button class="tbtn ed-transpose-btn" onclick="edNudgeTranspose(1)">+</button>
+  </div>
+  <div class="ed-warp-row">
+    <span class="ed-transpose-lbl">BPM</span>
+    <span class="ed-warp-bpm" id="ed-src-bpm">—</span>
+    <span class="ed-transpose-lbl">WARP→</span>
+    <input type="number" id="ed-warp-bpm" class="ed-warp-input" min="40" max="220" step="1" placeholder="—" oninput="edSetWarpBpm(this.value)">
+    <span class="ed-transpose-lbl">LOOP BARS</span>
+    <button class="tbtn ed-bar-btn" id="ed-bars-1" onclick="edSnapBars(1)">1</button>
+    <button class="tbtn ed-bar-btn" id="ed-bars-2" onclick="edSnapBars(2)">2</button>
+    <button class="tbtn ed-bar-btn" id="ed-bars-4" onclick="edSnapBars(4)">4</button>
+    <button class="tbtn ed-bar-btn" id="ed-bars-8" onclick="edSnapBars(8)">8</button>
+    <button class="tbtn ed-bar-btn" id="ed-bars-16" onclick="edSnapBars(16)">16</button>
   </div>
 </div>
 
@@ -380,6 +414,10 @@ header {
   <div class="clips-hdr">
     <div class="clips-title">CAPTURED CLIPS</div>
     <div class="clips-acts">
+      <div class="proj-bpm" title="Project BPM — default WARP→ target when opening a clip in the editor">
+        <span class="proj-bpm-lbl">PROJECT BPM</span>
+        <input type="number" id="proj-bpm" min="40" max="220" step="1" placeholder="—" oninput="setProjectBpm(this.value)">
+      </div>
       <button class="sm-btn" id="load-files-btn">+ FILES</button>
       <button class="sm-btn" id="clear-btn">✕ CLEAR</button>
       <input type="file" id="load-files-inp" multiple accept="audio/*" style="display:none">
@@ -414,9 +452,19 @@ header {
 // ── State ─────────────────────────────────────────────────────
 let audioCtx    = null;
 let clips       = [];
-let shortcutKey = 'r';       // default
+let shortcutKey = '+';       // default
 let settingKey  = false;
 let mode        = 'live';    // 'live' | 'mic'
+
+// ── Project BPM — persisted target tempo all clips warp toward ──────────
+let projectBpm = parseFloat(localStorage.getItem('byob_capture_project_bpm')) || 0;
+
+function setProjectBpm(value) {
+  projectBpm = Math.max(0, parseFloat(value) || 0);
+  if (projectBpm) localStorage.setItem('byob_capture_project_bpm', String(projectBpm));
+  else localStorage.removeItem('byob_capture_project_bpm');
+  if (edClip) edRefreshWarpUI();
+}
 
 // Only one preview (clip-grid play or editor preview) plays at a time.
 let _activePreview = null; // { stop: fn } | null
@@ -522,6 +570,10 @@ document.addEventListener('keydown', e => {
     toast(`SHORTCUT → ${kLabel(shortcutKey)}`);
     return;
   }
+
+  // Don't fire while typing into a text field (clip rename, BPM inputs, etc).
+  const tag = document.activeElement?.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
 
   if (e.key === shortcutKey) {
     if (e.key === ' ') e.preventDefault();
@@ -838,6 +890,128 @@ function fft(real, imag) {
   }
 }
 
+// ── Phase vocoder: pitch-preserving time-stretch ──────────────────────────
+// stretchRatio = outputLength / inputLength. Reuses the FFT above (frameSize
+// must stay a power of 2). This is what lets WARP change tempo without the
+// old "vinyl" pitch shift, and TRANSPOSE shift pitch without changing tempo.
+function hannWindow(size) {
+  const w = new Float64Array(size);
+  for (let i = 0; i < size; i++) w[i] = 0.5 - 0.5 * Math.cos(2 * Math.PI * i / (size - 1));
+  return w;
+}
+
+function pvStretch(samples, stretchRatio) {
+  if (stretchRatio === 1 || !samples.length) return Float32Array.from(samples);
+  const frameSize = 2048;
+  const half  = frameSize / 2;
+  const hopA  = frameSize / 4;
+  const hopS  = Math.max(1, Math.round(hopA * stretchRatio));
+  const win   = hannWindow(frameSize);
+  // Pad the input so the final partial frame is still processed — without
+  // this the output runs a few % short, which throws off loop-bar-accurate
+  // clips (edSnapBars).
+  const padded = new Float32Array(samples.length + frameSize);
+  padded.set(samples);
+  const targetLen = Math.round(samples.length * stretchRatio);
+  const outLen   = Math.ceil(padded.length * stretchRatio) + frameSize;
+  const out      = new Float64Array(outLen);
+  const winSum   = new Float64Array(outLen);
+  const prevPhase = new Float64Array(half + 1);
+  const outPhase  = new Float64Array(half + 1);
+  const omega     = new Float64Array(half + 1);
+  for (let k = 0; k <= half; k++) omega[k] = 2 * Math.PI * k / frameSize;
+
+  const real = new Float64Array(frameSize);
+  const imag = new Float64Array(frameSize);
+  let inPos = 0, outPos = 0, first = true;
+
+  while (inPos + frameSize <= padded.length) {
+    for (let i = 0; i < frameSize; i++) { real[i] = padded[inPos + i] * win[i]; imag[i] = 0; }
+    fft(real, imag);
+    for (let k = 0; k <= half; k++) {
+      const re = real[k], im = imag[k];
+      const mag   = Math.sqrt(re * re + im * im);
+      const phase = Math.atan2(im, re);
+      let synthPhase;
+      if (first) {
+        synthPhase = phase;
+      } else {
+        let delta = phase - prevPhase[k] - omega[k] * hopA;
+        delta -= 2 * Math.PI * Math.round(delta / (2 * Math.PI)); // wrap to (-pi, pi]
+        const trueFreq = omega[k] + delta / hopA;
+        synthPhase = outPhase[k] + trueFreq * hopS;
+      }
+      prevPhase[k] = phase;
+      outPhase[k]  = synthPhase;
+      const re2 = mag * Math.cos(synthPhase), im2 = mag * Math.sin(synthPhase);
+      real[k] = re2; imag[k] = im2;
+      if (k > 0 && k < half) { real[frameSize - k] = re2; imag[frameSize - k] = -im2; }
+    }
+    imag[0] = 0; imag[half] = 0;
+    // Inverse FFT via the conjugate trick: ifft(X) = conj(fft(conj(X))) / N
+    for (let i = 0; i < frameSize; i++) imag[i] = -imag[i];
+    fft(real, imag);
+    for (let i = 0; i < frameSize; i++) {
+      out[outPos + i]    += (real[i] / frameSize) * win[i];
+      winSum[outPos + i] += win[i] * win[i];
+    }
+    first = false;
+    inPos  += hopA;
+    outPos += hopS;
+  }
+  const result = new Float32Array(targetLen);
+  for (let i = 0; i < targetLen; i++) result[i] = winSum[i] > 1e-6 ? out[i] / winSum[i] : 0;
+  return result;
+}
+
+// Linear-interpolation resample — changes both duration and pitch (factor >1
+// = faster/shorter/higher-pitched), used as the first stage of pitch shift.
+function resampleLinear(samples, factor) {
+  if (factor === 1 || !samples.length) return Float32Array.from(samples);
+  const outLen = Math.max(1, Math.floor(samples.length / factor));
+  const out = new Float32Array(outLen);
+  for (let i = 0; i < outLen; i++) {
+    const srcPos = i * factor;
+    const i0 = Math.floor(srcPos), i1 = Math.min(i0 + 1, samples.length - 1);
+    const frac = srcPos - i0;
+    out[i] = samples[i0] * (1 - frac) + samples[i1] * frac;
+  }
+  return out;
+}
+
+// Pitch shift, duration-preserving: resample to change pitch+duration, then
+// phase-vocoder stretch back to the original duration (pitch stays shifted).
+function pitchShiftSamples(samples, ratio) {
+  if (ratio === 1 || !samples.length) return Float32Array.from(samples);
+  const stretched = pvStretch(resampleLinear(samples, ratio), ratio);
+  if (stretched.length === samples.length) return stretched;
+  const out = new Float32Array(samples.length);
+  out.set(stretched.subarray(0, Math.min(stretched.length, samples.length)));
+  return out;
+}
+
+// Combined warp (tempo, pitch-preserving) + transpose (pitch, duration-
+// preserving) for a [start,end) region of `buffer`. Replaces the old
+// playbackRate+detune "vinyl" coupling — tempo and pitch are now independent.
+// stretchRatio = outputDuration / inputDuration for the tempo change.
+async function dspProcess(buffer, start, end, stretchRatio, semitones) {
+  const sr = buffer.sampleRate;
+  const startSamp = Math.floor(start * sr), endSamp = Math.min(buffer.length, Math.ceil(end * sr));
+  const pitchRatio = Math.pow(2, semitones / 12);
+  const channels = [];
+  let outLen = 0;
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    let data = buffer.getChannelData(c).subarray(startSamp, endSamp);
+    if (stretchRatio !== 1) data = pvStretch(data, stretchRatio);
+    if (pitchRatio !== 1) data = pitchShiftSamples(data, pitchRatio);
+    channels.push(data);
+    outLen = Math.max(outLen, data.length);
+  }
+  const out = getCtx().createBuffer(buffer.numberOfChannels, Math.max(1, outLen), sr);
+  for (let c = 0; c < channels.length; c++) out.getChannelData(c).set(channels[c]);
+  return out;
+}
+
 const KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
 const KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -890,26 +1064,51 @@ function detectBPM(mono, sampleRate) {
   const frameSize = Math.round(sampleRate * 0.01); // 10ms frames
   const numFrames  = Math.floor(mono.length / frameSize);
   if (numFrames < 4) return 0;
+
+  // Onset-strength envelope: half-wave-rectified frame-to-frame energy
+  // increase tracks percussive hits (kick/snare) much more cleanly than
+  // raw RMS, which is dominated by sustained bass/pads/vocals.
+  const energy = new Float64Array(numFrames);
+  for (let i = 0; i < numFrames; i++) energy[i] = rms(mono, i * frameSize, frameSize);
   const env = new Float64Array(numFrames);
-  for (let i = 0; i < numFrames; i++) env[i] = rms(mono, i * frameSize, frameSize);
+  for (let i = 1; i < numFrames; i++) env[i] = Math.max(0, energy[i] - energy[i - 1]);
   const mean = env.reduce((a, b) => a + b, 0) / numFrames;
   for (let i = 0; i < numFrames; i++) env[i] -= mean;
 
   const frameRate = sampleRate / frameSize;
-  const minLag = Math.floor(frameRate * 60 / 180);
-  const maxLag = Math.ceil(frameRate * 60 / 60);
+  // Search 50-200 BPM directly — wide enough for slow hip-hop/downtempo
+  // through fast house/DnB. No forced octave-folding into a narrower band.
+  const minLag = Math.floor(frameRate * 60 / 200);
+  const maxLag = Math.ceil(frameRate * 60 / 50);
 
+  const scores = new Float64Array(maxLag + 1);
   let bestLag = minLag, bestScore = -Infinity;
   for (let lag = minLag; lag <= maxLag && lag < numFrames; lag++) {
     let sum = 0;
     for (let i = 0; i + lag < numFrames; i++) sum += env[i] * env[i + lag];
+    scores[lag] = sum;
     if (sum > bestScore) { bestScore = sum; bestLag = lag; }
   }
-  if (bestLag <= 0) return 0;
-  let bpm = 60 * frameRate / bestLag;
-  while (bpm < 90)  bpm *= 2;
-  while (bpm > 180) bpm /= 2;
-  return Math.round(bpm);
+  if (bestLag <= 0 || bestScore <= 0) return 0;
+
+  const scoreAt = lag => (lag >= minLag && lag <= maxLag) ? scores[lag] : -Infinity;
+  const bpmOf   = lag => 60 * frameRate / lag;
+
+  // Octave/triplet-ambiguity tie-break: a half-time or triplet feel often
+  // produces a stronger raw autocorrelation peak than the actual beat. If a
+  // harmonically-related lag (half, double, or a 2:3/3:2 ratio — common for
+  // triplet/dotted feels) is nearly as strong (>=85% of the best score) and
+  // its tempo is closer to the "typical" ~90-140 range, prefer it.
+  let chosenLag  = bestLag;
+  let chosenDist = Math.abs(bpmOf(bestLag) - 120);
+  for (const ratio of [0.5, 2, 2 / 3, 1.5]) {
+    const cand = Math.round(bestLag * ratio);
+    if (scoreAt(cand) >= bestScore * 0.85) {
+      const dist = Math.abs(bpmOf(cand) - 120);
+      if (dist < chosenDist) { chosenLag = cand; chosenDist = dist; }
+    }
+  }
+  return Math.round(bpmOf(chosenLag));
 }
 
 // Trim leading/trailing silence (RMS below ~-50dB). Returns a trimmed
@@ -983,12 +1182,16 @@ function analyzeClip(clip) {
       const mono = toMono(clip.buffer);
       const key  = detectKey(mono, clip.buffer.sampleRate);
       const bpm  = detectBPM(mono, clip.buffer.sampleRate);
+      clip.key  = key.key;
+      clip.mode = key.mode;
+      clip.bpm  = bpm;
       tag = ` · ${key.key} ${key.mode.toUpperCase()} · ${bpm} BPM`;
     } catch {}
     clip.name += tag;
     const nameEl = document.getElementById(`cn-${clip.id}`);
     if (nameEl) nameEl.textContent = clip.name;
     if (metaEl) metaEl.textContent = `${clip.duration.toFixed(1)}s`;
+    if (edClip === clip) edRefreshWarpUI();
   }, 50);
 }
 
@@ -1186,6 +1389,8 @@ let edLoop     = false;
 let edRafId    = null;
 let edTranspose = 0;     // semitones, -12..12
 let edDragging = null;   // 'l' | 'r' | null
+let edStretchDragging = false;
+let edWarpBpm  = 0;      // target BPM for warp-on-cut, 0 = no warp
 
 function openEditor(clip) {
   stopActivePreview();
@@ -1193,11 +1398,52 @@ function openEditor(clip) {
   edStart = 0;
   edEnd   = clip.duration;
   edTranspose = 0;
+  edWarpBpm = 0;
   document.getElementById('ed-clip-name').value = clip.name;
   document.getElementById('ed-transpose').value = 0;
   document.getElementById('ed-transpose-label').textContent = '0 st';
   document.getElementById('editor-panel').classList.add('open');
+  edRefreshWarpUI();
   requestAnimationFrame(() => { drawEditorWaveform(); updateEdHandles(); });
+}
+
+// ── BPM warp + loop-bar snapping (prep work for spatial — clips leave here
+// already at a known BPM/loop length, so artist.html never needs to
+// time-stretch or quantize playback live, which would risk the sync engine).
+function edRefreshWarpUI() {
+  const bpm = edClip?.bpm || 0;
+  document.getElementById('ed-src-bpm').textContent = bpm ? bpm : '—';
+  const warpInp = document.getElementById('ed-warp-bpm');
+  warpInp.placeholder = bpm ? String(bpm) : '—';
+  // Default WARP→ to the project BPM (if set and the clip has a known BPM
+  // to warp from) — the user can still override per clip.
+  if (projectBpm && bpm && projectBpm !== bpm) {
+    warpInp.value = String(projectBpm);
+    edWarpBpm = projectBpm;
+  } else {
+    warpInp.value = '';
+    edWarpBpm = 0;
+  }
+  updateEdHandles();
+}
+
+function edSetWarpBpm(value) {
+  edWarpBpm = Math.max(0, parseFloat(value) || 0);
+  updateEdHandles();
+}
+
+// Snap the selection to exactly N bars (4/4) of the clip's detected BPM,
+// starting at edStart — gives a clean loop point before any warp/cut.
+function edSnapBars(bars) {
+  const bpm = edClip?.bpm || 0;
+  if (!bpm) { toast('NO BPM DETECTED'); return; }
+  const dur = bars * 4 * 60 / bpm;
+  edEnd = Math.min(edClip.duration, edStart + dur);
+  for (const n of [1, 2, 4, 8, 16]) {
+    document.getElementById(`ed-bars-${n}`).classList.toggle('on', n === bars);
+  }
+  updateEdHandles();
+  edSyncLoopRegion();
 }
 
 // Live-rename from the editor — keeps the clip card's name + grid label in sync.
@@ -1258,6 +1504,34 @@ function updateEdHandles() {
   document.getElementById('ed-start-label').textContent = fmtMs(edStart);
   document.getElementById('ed-end-label').textContent   = fmtMs(edEnd);
   document.getElementById('ed-sel-dur').textContent     = fmtMs(edEnd - edStart) + ' sel';
+
+  // ── Stretch handle/region — shows where the selection's right edge will
+  // land once warped to edWarpBpm (sourceBpm * selDur / outDur = edWarpBpm).
+  const sourceBpm = edClip?.bpm || 0;
+  const stretchHandle = document.getElementById('ed-handle-stretch');
+  const stretchReg    = document.getElementById('ed-stretch-region');
+  // Only shown once a WARP→ target is set (manually or via PROJECT BPM) —
+  // otherwise it would sit on top of the right trim handle at rPx.
+  if (sourceBpm && edWarpBpm && edWarpBpm !== sourceBpm && !edStretchDragging) {
+    const selDur  = edEnd - edStart;
+    const outDur  = selDur * (edWarpBpm / sourceBpm);
+    const outPct  = (edStart + outDur) / edClip.duration;
+    const outPx   = Math.max(0, Math.min(w, outPct * w));
+    stretchHandle.style.left = `${outPx - 10}px`;
+    stretchHandle.style.display = 'flex';
+    stretchReg.style.left  = `${Math.min(lPx, outPx)}px`;
+    stretchReg.style.width = `${Math.abs(outPx - lPx)}px`;
+    stretchReg.style.display = 'block';
+  } else if (!edStretchDragging) {
+    stretchHandle.style.display = 'none';
+    stretchReg.style.display = 'none';
+  }
+}
+
+// Restart a looping preview so it picks up a moved/resized selection or a
+// new stretch — only called on drag-end, not on every pointermove.
+function edSyncLoopRegion() {
+  if (edLoop && edPs) { edStop(); edPlay(); }
 }
 
 // ── Drag handles ──────────────────────────────────────────────
@@ -1284,8 +1558,45 @@ function edPointerMove(e) {
 
 document.addEventListener('mousemove',  edPointerMove);
 document.addEventListener('touchmove',  edPointerMove, { passive: false });
-document.addEventListener('mouseup',    () => { edDragging = null; });
-document.addEventListener('touchend',   () => { edDragging = null; });
+document.addEventListener('mouseup',    () => { if (edDragging) { edDragging = null; edSyncLoopRegion(); } });
+document.addEventListener('touchend',   () => { if (edDragging) { edDragging = null; edSyncLoopRegion(); } });
+
+// ── Stretch handle — drag the right edge of the selection out to recompute
+// edWarpBpm from the desired output duration (sourceBpm * desiredDur/selDur).
+// Audio isn't re-rendered live; PREVIEW/CUT pick up the new edWarpBpm.
+const edHandleStretch = document.getElementById('ed-handle-stretch');
+edHandleStretch.addEventListener('mousedown',  e => { edStretchDragging = true; e.preventDefault(); });
+edHandleStretch.addEventListener('touchstart', e => { edStretchDragging = true; e.preventDefault(); }, { passive: false });
+
+function edStretchPointerMove(e) {
+  if (!edStretchDragging || !edClip) return;
+  const sourceBpm = edClip.bpm || 0;
+  if (!sourceBpm) { edStretchDragging = false; toast('NO BPM DETECTED'); return; }
+  const t = edPxToTime(e.touches ? e.touches[0].clientX : e.clientX);
+  const selDur = edEnd - edStart;
+  const desiredDur = Math.max(0.05, t - edStart);
+  const bpm = Math.round(sourceBpm * (desiredDur / selDur));
+  edWarpBpm = Math.max(40, Math.min(220, bpm));
+  document.getElementById('ed-warp-bpm').value = String(edWarpBpm);
+
+  // Position the handle/region directly under the pointer while dragging —
+  // updateEdHandles() would recompute from edWarpBpm and fight the cursor.
+  const wrap = document.getElementById('ed-wv-wrap');
+  const w    = wrap.offsetWidth;
+  const lPx  = (edStart / edClip.duration) * w;
+  const outPx = (t / edClip.duration) * w;
+  const stretchHandle = document.getElementById('ed-handle-stretch');
+  const stretchReg    = document.getElementById('ed-stretch-region');
+  stretchHandle.style.left = `${outPx - 10}px`;
+  stretchReg.style.left  = `${Math.min(lPx, outPx)}px`;
+  stretchReg.style.width = `${Math.abs(outPx - lPx)}px`;
+  stretchReg.style.display = 'block';
+}
+
+document.addEventListener('mousemove', edStretchPointerMove);
+document.addEventListener('touchmove', edStretchPointerMove, { passive: false });
+document.addEventListener('mouseup',  () => { if (edStretchDragging) { edStretchDragging = false; updateEdHandles(); edSyncLoopRegion(); } });
+document.addEventListener('touchend', () => { if (edStretchDragging) { edStretchDragging = false; updateEdHandles(); edSyncLoopRegion(); } });
 
 // Drag directly on the waveform to select a region; a simple click
 // (no movement) snaps the nearest handle to that point instead.
@@ -1325,6 +1636,7 @@ edWvWrap.addEventListener('pointerup', e => {
     else edEnd = Math.max(t, edStart + 0.05);
     updateEdHandles();
   }
+  edSyncLoopRegion();
 });
 
 // ── Playback ──────────────────────────────────────────────────
@@ -1333,29 +1645,46 @@ function edPlayToggle() {
   edPlay();
 }
 
-function edPlay() {
+let edPlayGen = 0;
+
+async function edPlay() {
   if (!edClip) return;
   edStop();
   stopActivePreview();
+  const myGen = ++edPlayGen;
   const ac  = getCtx();
-  const src = ac.createBufferSource();
-  src.buffer = edClip.buffer;
-  src.loop   = edLoop;
-  if (edLoop) { src.loopStart = edStart; src.loopEnd = edEnd; }
-  src.detune.value = edTranspose * 100;
-  src.connect(ac.destination);
-  src.start(0, edStart, edLoop ? undefined : (edEnd - edStart));
-  edPs = src;
   const btn = document.getElementById('ed-play-btn');
+
+  const sourceBpm   = edClip.bpm || 0;
+  const warpRatio   = (sourceBpm && edWarpBpm) ? sourceBpm / edWarpBpm : 1;
+  const stretchRatio = warpRatio !== 1 ? 1 / warpRatio : 1;
+
+  let playBuffer = edClip.buffer, playStart = edStart, playEnd = edEnd, posRatio = 1;
+
+  if (stretchRatio !== 1 || edTranspose !== 0) {
+    btn.textContent = '⏳ PROCESSING'; btn.classList.add('on');
+    await new Promise(r => setTimeout(r, 0)); // let the button repaint before the DSP crunch
+    playBuffer = await dspProcess(edClip.buffer, edStart, edEnd, stretchRatio, edTranspose);
+    if (myGen !== edPlayGen) return; // superseded by a stop/replay while processing
+    playStart = 0; playEnd = playBuffer.duration;
+    posRatio = (edEnd - edStart) / playEnd;
+  }
+
+  const src = ac.createBufferSource();
+  src.buffer = playBuffer;
+  src.loop   = edLoop;
+  if (edLoop) { src.loopStart = playStart; src.loopEnd = playEnd; }
+  src.connect(ac.destination);
+  src.start(0, playStart, edLoop ? undefined : (playEnd - playStart));
+  edPs = src;
   btn.textContent = '■ STOP'; btn.classList.add('on');
-  // detune shifts playback rate too — source-time advances faster/slower than real time
-  const ratio = Math.pow(2, edTranspose / 12);
+  const selDur = edEnd - edStart;
   const tStart = ac.currentTime;
   cancelAnimationFrame(edRafId);
   const tick = () => {
     if (!edPs) return;
-    const pos = edStart + (ac.currentTime - tStart) * ratio;
-    const cur = edLoop ? edStart + ((pos - edStart) % (edEnd - edStart)) : Math.min(pos, edEnd);
+    const playedT = (ac.currentTime - tStart) * posRatio;
+    const cur = edStart + (edLoop ? playedT % selDur : Math.min(playedT, selDur));
     document.getElementById('ed-pos').textContent = fmtMs(cur);
     const pct = cur / (edClip?.duration || 1);
     document.getElementById('ed-playhead').style.left = `${pct * 100}%`;
@@ -1367,6 +1696,7 @@ function edPlay() {
 }
 
 function edStop() {
+  edPlayGen++; // invalidate any in-flight async edPlay (DSP processing)
   try { edPs?.stop(); } catch {}
   edPs = null;
   cancelAnimationFrame(edRafId);
@@ -1397,29 +1727,29 @@ async function edCut() {
   edStop();
   const duration = edEnd - edStart;
   if (duration < 0.05) { toast('SELECTION TOO SHORT'); return; }
-  const buf  = edClip.buffer;
-  // detune shifts playback rate too — rendered output runs duration/ratio seconds
-  const ratio = Math.pow(2, edTranspose / 12);
-  const outDuration = duration / ratio;
-  const off  = new OfflineAudioContext(buf.numberOfChannels, Math.ceil(outDuration * buf.sampleRate), buf.sampleRate);
-  const src  = off.createBufferSource();
-  const gain = off.createGain();
-  src.buffer = buf;
-  src.detune.value = edTranspose * 100;
-  src.connect(gain);
-  gain.connect(off.destination);
+  // Warp (tempo, pitch-preserving) + transpose (pitch, duration-preserving)
+  // are now independent phase-vocoder operations — see dspProcess().
+  const sourceBpm = edClip.bpm || 0;
+  const warpRatio = (sourceBpm && edWarpBpm) ? sourceBpm / edWarpBpm : 1;
+  const stretchRatio = warpRatio !== 1 ? 1 / warpRatio : 1;
+  toast('✂ PROCESSING…');
+  const rendered = await dspProcess(edClip.buffer, edStart, edEnd, stretchRatio, edTranspose);
   // Short fade in/out to avoid clicks/pops at the cut edges
-  const fade = Math.min(0.015, outDuration / 4);
-  gain.gain.setValueAtTime(0, 0);
-  gain.gain.linearRampToValueAtTime(1, fade);
-  gain.gain.setValueAtTime(1, Math.max(fade, outDuration - fade));
-  gain.gain.linearRampToValueAtTime(0, outDuration);
-  src.start(0, edStart, duration);
-  const rendered = await off.startRendering();
+  const fadeLen = Math.max(1, Math.min(Math.round(rendered.sampleRate * 0.015), Math.floor(rendered.length / 4)));
+  for (let c = 0; c < rendered.numberOfChannels; c++) {
+    const d = rendered.getChannelData(c);
+    for (let i = 0; i < fadeLen; i++) {
+      const g = i / fadeLen;
+      d[i] *= g;
+      d[d.length - 1 - i] *= g;
+    }
+  }
   const wav = bufToWav(rendered);
   const suffix = edTranspose ? ` ${edTranspose > 0 ? '+' : ''}${edTranspose}ST` : '';
-  await addClip(wav, `CUT ${ts()}${suffix}`, 'audio/wav');
-  toast(`✂ CUT · ${outDuration.toFixed(2)}s`);
+  const bpmTag = (warpRatio !== 1) ? ` ${edWarpBpm}BPM` : '';
+  const baseName = edClip.name || `CUT ${ts()}`;
+  await addClip(wav, `${baseName}${suffix}${bpmTag}`, 'audio/wav');
+  toast(`✂ CUT · ${(rendered.length / rendered.sampleRate).toFixed(2)}s`);
 }
 
 document.getElementById('clear-btn').addEventListener('click', () => {
@@ -1427,6 +1757,7 @@ document.getElementById('clear-btn').addEventListener('click', () => {
   clips = [];
   document.getElementById('clips-grid').innerHTML = '<div class="no-clips" id="no-clips">— NO CLIPS YET —</div>';
 });
+if (projectBpm) document.getElementById('proj-bpm').value = projectBpm;
 document.getElementById('load-files-btn').addEventListener('click', () => document.getElementById('load-files-inp').click());
 document.getElementById('load-files-inp').addEventListener('change', async e => {
   for (const f of Array.from(e.target.files)) {

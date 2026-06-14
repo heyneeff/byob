@@ -28,7 +28,7 @@ Deploy: push to `main` — GitHub Pages serves automatically via the `CNAME` rec
 | `sync-sim.html` | Standalone sync-engine simulator — no audio, no Supabase. Runs old vs new corrector designs side by side with identical seeds. Validate corrector changes here before porting to `listener.html` |
 | `SYNC_ENGINE.md` | Deep-dive doc on how sync works — the reasoning behind the corrector design. **Update it when changing sync behavior** |
 | `index.html` | Public landing page — upcoming events list (free vs paid, location reveal), city filter, links to `listener.html` / `artist.html` |
-| `capture.html` | Standalone audio-capture tool — tab/mic recording, waveform trim editor with drag-select, automatic key/BPM detection, silence-trim, fade on cut; uploads to `boombox/stems/{user_id}/...` and inserts into `tracks` (same convention as artist.html's stem uploads, BPM auto-parsed by `parseBpmFromName`). Linked from artist.html's boombox menu |
+| `capture.html` | Standalone audio-capture tool — tab/mic recording, waveform trim editor with drag-select, automatic key/BPM detection, silence-trim, fade on cut; uploads to `boombox/stems/{user_id}/...` and inserts into `tracks` (same convention as artist.html's stem uploads, BPM auto-parsed by `parseBpmFromName`). Linked from artist.html's boombox menu. Editor also has BPM-warp + loop-bar snapping (`edSnapBars`/`edWarpBpm`, applied via `src.playbackRate`/`detune` in `edCut`'s `OfflineAudioContext` render) — loops are built and tempo-matched here, *before* upload, so `artist.html`/the sync engine never need runtime quantization or time-stretching |
 | `Roadmap` | Product vision, open bugs, queued features, session log |
 | `legacy/` | **Do not edit.** Archived prior versions: `listener-classic.html` (pre-Jun-12-2026 production `listener.html`, older inline drift corrector), `dj.html` and `play.html` (earlier DJ engines, absorbed into `artist.html`), `organismvisualizer.html` (standalone prototype, never wired to the Supabase tables above) |
 | `migration_*.sql` | One-off schema migrations — run manually in the Supabase SQL editor, not applied automatically |
@@ -58,7 +58,7 @@ Storage bucket: **`boombox`** — track audio files uploaded as `boombox/{filena
 
 ### Realtime channel naming convention
 - `presence_{zone_id}` — listener GPS presence (bearing, dist, status, slot); DJ reads from here for crowd map
-- `sync_{zone_id}` — DJ → listener commands: `hard_sync`, `sweep_start`, `sweep_stop`, `scatter`, `spatial_config`, `cluster_assign`, `rally`
+- `sync_{zone_id}` — DJ → listener commands: `hard_sync`, `sweep_start`, `sweep_stop`, `scatter`, `spatial_config`, `cluster_assign`, `rally`, `slot_volume`, `slot_fx`
 - `zone_{zone_id}` — Postgres realtime on `zones` table UPDATE for the active zone
 - `webrtc_{zone_id}` — WebRTC signaling for live mic streaming (offer/answer/ice)
 - `chat_{zone_id}` — zone chat (currently unused in UI but channel wired in JS)
@@ -101,7 +101,7 @@ Note: `_syncState` (`'idle' | 'locking' | 'locked' | 'verifying'`) is a **differ
 ### Sync channel — `buildSyncChannel(zoneId)`
 The sync channel is extracted into `buildSyncChannel(zoneId)` so it can be rebuilt on reconnect. It auto-retries on CHANNEL_ERROR/CLOSED after 3s. **Always call `buildSyncChannel` — never inline the channel chain again.**
 
-Handles: `hard_sync`, `spatial_config`, `sweep_start`, `sweep_stop`, `scatter`, `cluster_assign`, `rally`.
+Handles: `hard_sync`, `spatial_config`, `sweep_start`, `sweep_stop`, `scatter`, `cluster_assign`, `rally`, `slot_volume`, `slot_fx`.
 
 ### Reconnection (no refresh needed)
 - `window.online` event: re-measures clock, calls `buildSyncChannel`, rebuilds guest channel, runs `fastDriftCorrect`
@@ -139,6 +139,9 @@ All modes broadcast `cluster_assign` via `sync_{zone_id}` with `{listenerId → 
 
 ### Master BPM + scene launcher (DJ, `artist.html`)
 `_masterBPM` — DJ-set master tempo. `tapTempo()` — tap-to-set. `onMasterBpm()` — manual entry. Scenes fire beat-quantized via `slFireScene` → waits `beatMs - (serverNow() % beatMs)` then calls `_doFireScene`. `broadcastAllZones()` payload includes `master_bpm` and `track_bpms`. Listeners apply `applyBpmWarp(slot, url)` from `audio.playbackRate`. Drift correction uses `_getBpmWarpRate()` as base rate so BPM warp and drift correction don't fight.
+
+### Per-slot volume + FX (DJ, `artist.html`)
+`_slotVolumes` (knob panel anchored to the right of the scene launcher, `onSlotVolumeInput`) — per-slot gain, applied to the DJ's local monitor immediately and debounce-broadcast as `slot_volume`. `_slotFx` (🌊 toggle next to each volume knob, `toggleSlotPulse`) — per-slot tremolo, broadcast as `slot_fx`. Both also ride along in `spatial_config` (`slot_volumes`/`slot_fx` fields). Listener-side: `applySlotVolume(slot)` sets `audio.volume = _slotVolumes[slot]`; `startFxLoop()` (spatial-routing.js) runs a `requestAnimationFrame` loop that, when the listener's slot has `slot_fx.type === 'pulse'`, modulates `audio.volume` on top of the base volume using a `syncedNow()`-phase-locked cosine at `master_bpm` — so every listener's pulse lands on the same beat. Pure `audio.volume` math; never touches `currentTime`/`playbackRate`/`playback_started_at`, so it can't interact with the drift corrector.
 
 ### Rally point
 DJ fires `broadcastRally()` from RALLY POINT section in spatial panel → sends `{lat, lng, label}` on `sync_{zone_id}` as event `rally`. Listener receives: stores `window._rallyPoint`, shows `#fsb-rally` button, Boomy announces, drops teal circle marker on map. `zoomToRally()` flies map to coordinates.

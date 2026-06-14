@@ -32,6 +32,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .tstat-v{font-size:16px;font-weight:900;color:var(--orange);font-family:'DM Mono',monospace;}
 .tstat-l{font-size:6px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-top:1px;font-family:'Barlow Condensed',sans-serif;}
 .tb-trackname{flex:1;font-size:10px;color:var(--muted2);overflow:hidden;white-space:nowrap;text-overflow:ellipsis;padding:0 6px;font-family:'Barlow Condensed',sans-serif;}
+.tb-bpm-ctrl{display:flex;align-items:center;gap:4px;position:relative;flex-shrink:0;}
+.tb-bpm-ctrl input{width:40px;background:#1a1a1a;border:1px solid var(--rim);border-radius:4px;color:var(--orange);font-size:15px;font-weight:900;font-family:'DM Mono',monospace;padding:3px 2px;text-align:center;outline:none;}
+.tb-bpm-lbl{font-size:6px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-family:'Barlow Condensed',sans-serif;}
+.tb-bpm-tap,.tb-bpm-off{padding:4px 6px;background:transparent;border:1px solid var(--orange);border-radius:4px;font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;color:var(--orange);cursor:pointer;letter-spacing:.06em;}
+.tb-bpm-off{border-color:var(--rim);color:var(--muted);padding:4px 5px;}
+#warp-status{position:absolute;top:100%;left:0;font-size:7px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:.04em;white-space:nowrap;line-height:1;padding-top:2px;background:var(--card);z-index:5;pointer-events:none;}
 .btn-live{padding:6px 14px;border:none;border-radius:14px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;letter-spacing:.08em;background:var(--red);color:#fff;transition:all .2s;flex-shrink:0;}
 .btn-live.active{background:var(--teal);color:#000;animation:lp 1.8s ease-in-out infinite;}
 @keyframes lp{0%,100%{box-shadow:0 0 12px rgba(0,204,153,.35);}50%{box-shadow:0 0 32px rgba(0,204,153,.7);}}
@@ -93,19 +99,34 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 
 /* Scene Launcher */
 .sl-wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0;width:100%;}
+.sl-body{flex:1;display:flex;flex-direction:row;overflow:hidden;min-width:0;width:100%;}
 .sl-scroll{flex:1;overflow-x:auto;overflow-y:auto;width:100%;}
+.sl-vol-panel{width:50px;flex-shrink:0;overflow:hidden;border-left:1px solid var(--rim);background:#141414;}
+.sl-vol-head{height:30px;display:flex;align-items:center;justify-content:center;font-size:7px;letter-spacing:.12em;color:var(--muted);font-family:'Barlow Condensed',sans-serif;border-bottom:1px solid var(--rim);text-transform:uppercase;}
+.sl-knob-row{height:30px;display:flex;align-items:center;justify-content:center;gap:4px;border-bottom:1px solid rgba(255,255,255,.04);}
+.sl-knob{width:20px;height:20px;border-radius:50%;background:#1a1a1a;border:1px solid var(--rim);position:relative;cursor:grab;touch-action:none;flex-shrink:0;}
+.sl-knob:active{cursor:grabbing;border-color:var(--teal);}
+.sl-knob-pointer{position:absolute;left:50%;top:50%;width:2px;height:8px;background:var(--teal);transform-origin:50% 100%;transform:translate(-50%,-100%) rotate(var(--ang,-135deg));border-radius:1px;pointer-events:none;}
+.sl-fx-btn{width:16px;height:16px;flex-shrink:0;border-radius:3px;border:1px solid var(--rim);background:#1a1a1a;color:var(--muted2);font-size:8px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;}
+.sl-fx-btn.active{background:var(--teal);border-color:var(--teal);color:#000;}
+/* Effects panel (sp-rack) */
+.fx-tabs{display:flex;border-bottom:1px solid var(--rim);}
+.fx-tab{flex:1;padding:5px 0;background:transparent;border:none;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;border-bottom:2px solid transparent;}
+.fx-tab.active{color:var(--teal);border-bottom-color:var(--teal);}
+.fx-panel{padding:2px 8px 6px;}
 .sl-grid{display:inline-flex;flex-direction:column;min-height:100%;}
 .sl-header-row,.sl-clip-row,.sl-fire-row{display:flex;flex-direction:row;}
 .sl-header-row{position:sticky;top:0;z-index:5;background:#111;border-bottom:1px solid var(--rim);}
 .sl-corner{width:26px;flex-shrink:0;border-right:1px solid var(--rim);}
 .sl-add-col{width:26px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
-.sl-scene-hd{width:84px;flex-shrink:0;display:flex;align-items:center;padding:2px 4px;border-right:1px solid rgba(255,255,255,.05);gap:2px;overflow:hidden;}
+.sl-scene-hd{width:84px;height:30px;flex-shrink:0;display:flex;align-items:center;padding:2px 4px;border-right:1px solid rgba(255,255,255,.05);gap:2px;overflow:hidden;box-sizing:border-box;}
 .sl-scene-nm{flex:1;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;}
 .sl-scene-nm:hover{color:var(--cream);}
 .sl-scene-del{width:13px;height:13px;background:transparent;border:none;color:rgba(255,255,255,.18);font-size:11px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;}
 .sl-scene-del:hover{color:var(--red);}
 .sl-slot-lbl{width:26px;flex-shrink:0;height:30px;display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:900;color:#000;border-right:1px solid var(--rim);border-bottom:1px solid rgba(255,255,255,.04);}
 .sl-clip{width:84px;height:30px;flex-shrink:0;display:flex;align-items:center;gap:3px;padding:0 3px;border-right:1px solid rgba(255,255,255,.04);border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .1s;overflow:hidden;}
+.sl-clip:focus{outline:1px solid var(--teal);outline-offset:-1px;}
 .sl-clip:hover{background:#1a1a1a;}
 .sl-clip.has-track{background:#141414;}
 .sl-clip.has-track:hover{background:#1e1e1e;}
@@ -116,19 +137,17 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .sl-clip.is-live .sl-clip-launch{animation:pending-pulse .6s ease-in-out infinite alternate;}
 .sl-clip-launch.is-pending{background:#fff !important;color:#1a0030;animation:pending-pulse .3s ease-in-out infinite alternate;}
 .sl-clip-nm{flex:1;font-size:10px;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:'Barlow Condensed',sans-serif;}
-.sl-clip-x{width:13px;height:13px;background:transparent;border:none;color:rgba(255,255,255,.0);font-size:10px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;transition:color .1s;}
-.sl-clip.has-track:hover .sl-clip-x{color:rgba(255,255,255,.3);}
+.sl-clip-x{width:13px;height:13px;background:transparent;border:none;color:rgba(255,255,255,.25);font-size:10px;cursor:pointer;padding:0;flex-shrink:0;line-height:1;transition:color .1s;}
+.sl-clip.has-track:hover .sl-clip-x{color:rgba(255,255,255,.5);}
 .sl-clip-x:hover{color:var(--red) !important;}
 .sl-clip-dot{flex:1;text-align:center;font-size:12px;color:rgba(255,255,255,.1);}
-.sl-fire-row{border-top:1px solid var(--rim);position:sticky;bottom:0;z-index:5;background:#111;}
+.sl-fire-row{border-top:1px solid var(--rim);background:#111;flex-shrink:0;overflow:hidden;}
 .sl-fire-corner{width:26px;flex-shrink:0;border-right:1px solid var(--rim);}
 .sl-fire-btn{width:84px;flex-shrink:0;height:26px;background:transparent;border:none;border-right:1px solid rgba(255,255,255,.04);color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:900;letter-spacing:.1em;cursor:pointer;transition:all .1s;}
 .sl-fire-btn:hover{background:#1a1200;color:var(--orange);}
 .sl-fire-btn.is-live{color:var(--orange);background:#1a1200;}
 .sl-fire-btn.is-pending{color:#fff;background:#1a0030;animation:pending-pulse .3s ease-in-out infinite alternate;}
 @keyframes pending-pulse{from{opacity:.5}to{opacity:1}}
-.sl-vol-cell{width:26px;height:30px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border-bottom:1px solid rgba(255,255,255,.04);overflow:hidden;}
-.sl-vol-cell input[type=range]{width:34px;height:14px;margin:0;transform:rotate(-90deg);accent-color:var(--teal);cursor:pointer;}
 
 /* Mode strip */
 .mode-strip{display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;padding:5px 6px;}
@@ -358,16 +377,6 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;h
 #boom-menu.open{display:block;}
 .boom-menu-item{display:flex;align-items:center;gap:10px;padding:13px 16px;font-size:13px;font-weight:700;color:var(--cream);cursor:pointer;border-bottom:1px solid var(--border);}
 .boom-menu-item:last-child{border-bottom:none;}.boom-menu-item:hover{background:rgba(255,255,255,.05);}.boom-menu-item.danger{color:var(--red);}
-/* SPATIAL GRID OVERLAY */
-#spatial-grid-panel{position:fixed;inset:0;z-index:450;background:rgba(0,0,0,.96);display:none;flex-direction:column;align-items:center;justify-content:flex-start;padding:20px 0 30px;overflow-y:auto;}
-.grid-header{width:100%;max-width:340px;display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;padding:0 8px;}
-.grid-title{font-family:'Roboto Condensed',sans-serif;font-size:20px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--orange);}
-.btn-close-grid{background:transparent;border:1px solid #333;border-radius:6px;color:var(--muted);padding:6px 12px;cursor:pointer;font-size:13px;}
-#grid-canvas{border-radius:50%;border:2px solid var(--teal);background:#050505;margin-bottom:20px;}
-.sweep-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%;max-width:320px;margin-bottom:10px;}
-.btn-sweep{padding:13px 8px;border:none;border-radius:8px;font-family:'Roboto Condensed',sans-serif;font-size:13px;font-weight:900;cursor:pointer;background:#111;color:var(--teal);border:1px solid var(--teal);}
-.btn-sweep.full{grid-column:1/-1;}.btn-sweep.chaos{color:var(--red);border-color:var(--red);}
-.grid-legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;max-width:320px;margin-top:8px;}
 /* LIBRARY MODAL */
 #library-modal{position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.88);display:none;align-items:flex-end;justify-content:center;}
 /* TOAST */
@@ -412,7 +421,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <!-- AUTH GATE -->
 <div id="dj-auth">
   <div class="auth-gate-inner">
-    <img id="auth-logo" style="height:40px;margin-bottom:4px;" alt="BYOB"/>
+    <img id="auth-logo" style="height:40px;max-height:40px;width:auto;max-width:160px;object-fit:contain;margin-bottom:4px;" alt="BYOB"/>
     <div class="auth-gate-sub">DJ Mode — Sign In</div>
     <input class="auth-inp" type="email" id="dj-email" placeholder="email" autocomplete="email"/>
     <input class="auth-inp" type="password" id="dj-password" placeholder="password" autocomplete="current-password"/>
@@ -507,27 +516,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <div class="boom-menu-item danger" onclick="djLogout()">⏏ Log Out</div>
 </div>
 
-<!-- SPATIAL GRID OVERLAY -->
-<div id="spatial-grid-panel">
-  <div class="grid-header">
-    <div class="grid-title">🗺 Spatial Grid</div>
-    <button class="btn-close-grid" onclick="closeGrid()">✕ Close</button>
-  </div>
-  <canvas id="grid-canvas" width="300" height="300"></canvas>
-  <div style="font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px;" id="grid-count">0 listeners</div>
-  <div style="font-size:11px;color:var(--muted);margin-bottom:10px;letter-spacing:.08em;text-transform:uppercase;">Sweep Pattern</div>
-  <div class="sweep-row">
-    <button class="btn-sweep" onclick="sweepGrid('lr')">→ Left → Right</button>
-    <button class="btn-sweep" onclick="sweepGrid('rl')">← Right ← Left</button>
-    <button class="btn-sweep" onclick="sweepGrid('ring')">◎ Ring Out</button>
-    <button class="btn-sweep" onclick="sweepGrid('inward')">● Ring In</button>
-    <button class="btn-sweep" onclick="sweepGrid('diag')">⟋ Diagonal</button>
-    <button class="btn-sweep" onclick="sweepGrid('snake')">∿ Snake</button>
-    <button class="btn-sweep full chaos" onclick="sweepGrid('chaos')">⚡ Chaos</button>
-  </div>
-  <div class="grid-legend" id="grid-legend"></div>
-</div>
-
 <!-- LIBRARY MODAL -->
 <div id="library-modal" style="position:fixed;inset:0;z-index:500;background:rgba(0,0,0,.88);display:none;align-items:flex-end;justify-content:center;">
   <div style="background:#111;border-top:3px solid var(--orange);border-radius:20px 20px 0 0;width:100%;max-width:520px;padding:20px 18px 40px;max-height:75vh;overflow-y:auto;">
@@ -565,8 +553,15 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 <div class="dj-inner">
 
 <div class="topbar">
-  <img id="logo-img" style="height:28px;mix-blend-mode:screen;" alt="BYOB"/>
+  <img id="logo-img" style="height:28px;max-height:28px;width:auto;max-width:110px;object-fit:contain;mix-blend-mode:screen;" alt="BYOB"/>
   <img id="boom-img" onclick="toggleDJMenu()" style="height:32px;cursor:pointer;mix-blend-mode:screen;margin-left:2px;position:relative;z-index:901;" alt="menu"/>
+  <div class="tb-bpm-ctrl" title="Master BPM — stems warp to this tempo">
+    <input type="number" id="master-bpm" min="40" max="240" placeholder="—" oninput="onMasterBpm(this.value)" onclick="event.stopPropagation()"/>
+    <div class="tb-bpm-lbl">BPM</div>
+    <button class="tb-bpm-tap" onclick="tapTempo(event)" title="Tap tempo">TAP</button>
+    <button class="tb-bpm-off" onclick="clearMasterBpm()" title="Turn off master BPM">✕</button>
+    <div id="warp-status"></div>
+  </div>
   <div class="topbar-stats">
     <div class="tstat"><div class="tstat-v" id="tb-bpm">—</div><div class="tstat-l">BPM</div></div>
     <div class="tstat"><div class="tstat-v" id="tb-live">0</div><div class="tstat-l">Live</div></div>
@@ -657,18 +652,34 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <div id="mode-body-scatter"></div><div id="mode-body-sweep"></div>
     </div>
 
-    <!-- MASTER BPM -->
-    <div class="sr-section-label" style="border-top:none;padding-top:6px;color:var(--orange);">MASTER BPM</div>
-    <div style="padding:6px 8px 8px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--rim);">
-      <div style="display:flex;align-items:center;gap:5px;">
-        <input type="number" id="master-bpm" min="40" max="240" placeholder="—"
-          style="width:64px;background:#1a1a1a;border:1px solid var(--rim);border-radius:5px;color:var(--orange);font-size:24px;font-weight:900;font-family:'DM Mono',monospace;padding:3px 5px;text-align:center;outline:none;"
-          oninput="onMasterBpm(this.value)" onclick="event.stopPropagation()"/>
-        <span style="font-size:8px;letter-spacing:.12em;font-family:'Barlow Condensed',sans-serif;color:var(--muted);flex-shrink:0;">BPM</span>
-        <button onclick="tapTempo(event)" style="flex:1;padding:6px 0;background:transparent;border:1px solid var(--orange);border-radius:5px;font-family:'Barlow Condensed',sans-serif;font-size:10px;font-weight:900;color:var(--orange);cursor:pointer;letter-spacing:.1em;">TAP</button>
-        <button onclick="clearMasterBpm()" style="padding:6px 8px;background:transparent;border:1px solid var(--rim);border-radius:5px;font-family:'Barlow Condensed',sans-serif;font-size:10px;color:var(--muted);cursor:pointer;">OFF</button>
+    <!-- EFFECTS -->
+    <div class="sr-section-label" style="border-top:none;padding-top:6px;color:var(--teal);">EFFECTS</div>
+    <div class="fx-tabs">
+      <button class="fx-tab active" id="fx-tab-sweep" onclick="switchFxTab('sweep')">SWEEP</button>
+      <button class="fx-tab" id="fx-tab-fx" onclick="switchFxTab('fx')">FX</button>
+    </div>
+    <div class="fx-panel" id="fx-panel-sweep">
+      <div class="sr-row" id="sr-sweep" style="flex-wrap:wrap;align-items:flex-start;padding:4px 0;border-bottom:none;">
+        <button class="sr-fire" onclick="fireMode('sweep')" style="align-self:center;">SWEEP</button>
+        <div class="sr-params" style="flex-wrap:wrap;row-gap:4px;">
+          <div style="display:flex;align-items:center;gap:3px;">
+            <input type="number" id="sr-bpm" class="sr-num" value="120" min="40" max="220" title="BPM" onclick="event.stopPropagation()"/>
+            <span class="sr-label">BPM</span>
+          </div>
+          <div class="sr-bars" onclick="event.stopPropagation()" title="bars per full rotation">
+            <button class="sr-bar active" id="sr-bars-1" onclick="setSweepBars(1,this)">1</button>
+            <button class="sr-bar"        id="sr-bars-2" onclick="setSweepBars(2,this)">2</button>
+            <button class="sr-bar"        id="sr-bars-4" onclick="setSweepBars(4,this)">4</button>
+            <button class="sr-bar"        id="sr-bars-8" onclick="setSweepBars(8,this)">8</button>
+            <span class="sr-label" style="margin-left:3px;">bars</span>
+          </div>
+          <button class="sr-dir" id="sr-sweep-dir" onclick="event.stopPropagation();toggleSweepDir(this)">↻</button>
+          <button class="sr-stop" onclick="event.stopPropagation();stopCircularSweep()">■</button>
+        </div>
       </div>
-      <div id="warp-status" style="font-size:8px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:.06em;min-height:10px;"></div>
+    </div>
+    <div class="fx-panel" id="fx-panel-fx" style="display:none;font-size:10px;color:var(--muted2);line-height:1.5;">
+      EQ / reverb coming soon — needs careful Web Audio routing (resume-on-reconnect safeguards) to avoid the iOS Safari silent-output landmine.
     </div>
 
     <!-- DJ STEM MONITOR -->
@@ -707,26 +718,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
           onclick="event.stopPropagation()"/>
         <span class="sr-val" id="sr-ring-v">3</span>
         <button class="sr-stop" onclick="event.stopPropagation();if(_ringActive)toggleRing()">■</button>
-      </div>
-    </div>
-
-    <!-- SWEEP -->
-    <div class="sr-row" id="sr-sweep" style="flex-wrap:wrap;align-items:flex-start;padding:4px 0;">
-      <button class="sr-fire" onclick="fireMode('sweep')" style="align-self:center;">SWEEP</button>
-      <div class="sr-params" style="flex-wrap:wrap;row-gap:4px;">
-        <div style="display:flex;align-items:center;gap:3px;">
-          <input type="number" id="sr-bpm" class="sr-num" value="120" min="40" max="220" title="BPM" onclick="event.stopPropagation()"/>
-          <span class="sr-label">BPM</span>
-        </div>
-        <div class="sr-bars" onclick="event.stopPropagation()" title="bars per full rotation">
-          <button class="sr-bar active" id="sr-bars-1" onclick="setSweepBars(1,this)">1</button>
-          <button class="sr-bar"        id="sr-bars-2" onclick="setSweepBars(2,this)">2</button>
-          <button class="sr-bar"        id="sr-bars-4" onclick="setSweepBars(4,this)">4</button>
-          <button class="sr-bar"        id="sr-bars-8" onclick="setSweepBars(8,this)">8</button>
-          <span class="sr-label" style="margin-left:3px;">bars</span>
-        </div>
-        <button class="sr-dir" id="sr-sweep-dir" onclick="event.stopPropagation();toggleSweepDir(this)">↻</button>
-        <button class="sr-stop" onclick="event.stopPropagation();stopCircularSweep()">■</button>
       </div>
     </div>
 
@@ -822,9 +813,13 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button onclick="slAddScene()" style="font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:900;padding:2px 8px;border:1px solid var(--muted);border-radius:3px;background:transparent;color:var(--muted);cursor:pointer;">+ SCENE</button>
     </div>
     <div class="sl-wrap" style="min-width:0;">
-      <div class="sl-scroll" id="scene-launcher-scroll">
-        <div id="scene-launcher"></div>
+      <div class="sl-body">
+        <div class="sl-scroll" id="scene-launcher-scroll">
+          <div id="scene-launcher"></div>
+        </div>
+        <div class="sl-vol-panel" id="sl-vol-panel"></div>
       </div>
+      <div class="sl-fire-row" id="sl-fire-row"></div>
     </div>
   </div>
 </div>
@@ -1075,6 +1070,10 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
     <button class="rnbtn" data-panel="setup" onclick="switchPanel('setup',this)">⚙️</button>
     <div class="rnlabel">Setup</div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:1px;width:100%;">
+    <button class="rnbtn" onclick="window.open('capture.html','_blank')" title="Open Capture tool in a new tab">🎙</button>
+    <div class="rnlabel">Capture</div>
   </div>
   <div class="vu-strip">
     <div class="rnlabel">IN</div>
@@ -2705,64 +2704,6 @@ function buildVisualizer(){
   }
   draw();
 }
-function getVoiceSlot(bearing,voices){const sectorSize=360/voices;return Math.floor(((bearing%360)+sectorSize/2)%360/sectorSize)%voices;}
-function bearingToXY(bearing,distRatio,cx,cy,r){const angle=bearing*Math.PI/180;return{x:cx+Math.sin(angle)*distRatio*r,y:cy-Math.cos(angle)*distRatio*r};}
-function drawGrid(){
-  const canvas=document.getElementById('grid-canvas');if(!canvas)return;
-  const ctx=canvas.getContext('2d');const W=canvas.width,H=canvas.height;const cx=W/2,cy=H/2,r=W/2-14;
-  if(r<=0)return;
-  ctx.clearRect(0,0,W,H);
-  ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fillStyle='#050505';ctx.fill();
-  [0.25,0.5,0.75,1].forEach(ratio=>{ctx.beginPath();ctx.arc(cx,cy,r*ratio,0,Math.PI*2);ctx.strokeStyle='rgba(0,204,153,0.1)';ctx.lineWidth=1;ctx.stroke();});
-  ctx.strokeStyle='rgba(0,204,153,0.12)';ctx.lineWidth=1;
-  [[cx,cy-r,cx,cy+r],[cx-r,cy,cx+r,cy]].forEach(([x1,y1,x2,y2])=>{ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();});
-  ctx.font='700 10px Roboto';ctx.fillStyle='rgba(0,204,153,0.35)';ctx.textAlign='center';
-  [['N',cx,cy-r+13],['S',cx,cy+r-5],['E',cx+r-8,cy+4],['W',cx-r+8,cy+4]].forEach(([t,x,y])=>{ctx.fillText(t,x,y);});
-  const voices=parseInt(document.getElementById('scatter-voices')?.value||4);
-  const sectorSize=(Math.PI*2)/voices;
-  for(let i=0;i<voices;i++){
-    const startAngle=-Math.PI/2+i*sectorSize;
-    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,r,startAngle,startAngle+sectorSize);ctx.closePath();
-    ctx.fillStyle=VOICE_COLORS[i]+'08';ctx.fill();
-    ctx.strokeStyle=VOICE_COLORS[i]+'22';ctx.lineWidth=1;ctx.stroke();
-  }
-  [[-5,-5],[5,-5],[-5,5],[5,5]].forEach(([dx,dy])=>{ctx.beginPath();ctx.arc(cx+dx,cy+dy,5,0,Math.PI*2);ctx.fillStyle='#f57e20';ctx.fill();ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.stroke();});
-  const listeners=Object.values(liveListeners);
-  const zoneRadius=activeZone?.radius_m||200;
-  listeners.forEach(l=>{
-    const slot=getVoiceSlot(l.bearing||0,voices);
-    const color=VOICE_COLORS[slot%VOICE_COLORS.length];
-    const distMeters=(l.dist||0)*1609.34;
-    const distRatio=Math.min(distMeters/zoneRadius,0.95);
-    const{x,y}=bearingToXY(l.bearing||0,distRatio,cx,cy,r);
-    if(l.status==='approaching'){ctx.beginPath();ctx.arc(x,y,11,0,Math.PI*2);ctx.fillStyle=color+'22';ctx.fill();}
-    ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.fillStyle=color;ctx.fill();ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.stroke();
-  });
-  const countEl=document.getElementById('grid-count');
-  if(countEl)countEl.textContent=listeners.length+' listener'+(listeners.length!==1?'s':'');
-}
-function sweepGrid(pattern){
-  const maxMs=parseInt(document.getElementById('scatter-ms')?.value||2000);
-  const voices=parseInt(document.getElementById('scatter-voices')?.value||4);
-  if(!window._djSyncChannel){showToast('No active zone');return;}
-  const listeners=Object.values(liveListeners);
-  let sorted=[...listeners];
-  switch(pattern){
-    case 'lr':sorted.sort((a,b)=>Math.sin((a.bearing||0)*Math.PI/180)-Math.sin((b.bearing||0)*Math.PI/180));break;
-    case 'rl':sorted.sort((a,b)=>Math.sin((b.bearing||0)*Math.PI/180)-Math.sin((a.bearing||0)*Math.PI/180));break;
-    case 'ring':sorted.sort((a,b)=>(a.dist||0)-(b.dist||0));break;
-    case 'inward':sorted.sort((a,b)=>(b.dist||0)-(a.dist||0));break;
-    case 'diag':sorted.sort((a,b)=>{const score=l=>Math.sin((l.bearing||0)*Math.PI/180)-Math.cos((l.bearing||0)*Math.PI/180);return score(a)-score(b);});break;
-    case 'snake':sorted.sort((a,b)=>{const aE=Math.sin((a.bearing||0)*Math.PI/180)>0,bE=Math.sin((b.bearing||0)*Math.PI/180)>0;if(aE!==bE)return aE?1:-1;const aC=Math.cos((a.bearing||0)*Math.PI/180),bC=Math.cos((b.bearing||0)*Math.PI/180);return aE?bC-aC:aC-bC;});break;
-    case 'chaos':sorted.sort(()=>Math.random()-.5);break;
-  }
-  window._djSyncChannel.send({type:'broadcast',event:'scatter',payload:{maxMs,voices,pattern,orderedIds:sorted.map(l=>l.id)}});
-  document.querySelectorAll('.btn-sweep').forEach(b=>b.classList.remove('active'));
-  event?.target?.classList.add('active');
-  setTimeout(()=>document.querySelectorAll('.btn-sweep').forEach(b=>b.classList.remove('active')),800);
-  showToast('⟋ '+pattern+' sweep · '+sorted.length+' speakers');
-  drawGrid();
-}
 
 // ── TRACK LIBRARY ─────────────────────────────────────────
 async function openLibrary(){
@@ -2932,6 +2873,30 @@ function onSlotVolumeInput(slot,value){
       window._djSyncChannel.send({type:'broadcast',event:'slot_volume',payload:{slot_volumes:_slotVolumes}});
     }
   },120);
+}
+
+// ── Per-slot volume-pulse FX ────────────────────────────────────────────────
+// Tremolo: rhythmically modulates audio.volume (multiplied with _slotVolumes)
+// in step with master BPM. Pure audio.volume math, phase-locked via syncedNow()
+// on the listener side — never touches currentTime/playbackRate/
+// playback_started_at, so it can't interact with the drift corrector
+// (see CLAUDE.md "Sync engine" invariants).
+const _FX_KEY='byob_slot_fx';
+let _slotFx={};
+
+function _fxLoad(){
+  try{ _slotFx=JSON.parse(localStorage.getItem(_FX_KEY)||'{}'); }catch(e){ _slotFx={}; }
+}
+function _fxSave(){ localStorage.setItem(_FX_KEY,JSON.stringify(_slotFx)); }
+
+function toggleSlotPulse(slot){
+  if(_slotFx[slot]?.type==='pulse'){ delete _slotFx[slot]; }
+  else { _slotFx[slot]={type:'pulse',depth:0.6,beats:1}; }
+  _fxSave();
+  if(window._djSyncChannel){
+    window._djSyncChannel.send({type:'broadcast',event:'slot_fx',payload:{slot_fx:_slotFx}});
+  }
+  renderSceneLauncher();
 }
 
 function _slLoad(){
@@ -3104,6 +3069,14 @@ function parseBpmFromName(name) {
     const n = parseInt(m[1]);
     if (n >= 40 && n <= 240) return n;
   }
+  return null;
+}
+
+// matches the "<NOTE> MAJ"/"<NOTE> MIN" tag capture.html appends to clip
+// names (e.g. "A MIN", "C# MAJ") — same convention as parseBpmFromName.
+function parseKeyFromName(name) {
+  const m = name.match(/\b([A-G]#?)\s*(MAJ|MIN)\b/i);
+  if (m) return `${m[1].toUpperCase()} ${m[2].toUpperCase()}`;
   return null;
 }
 
@@ -3399,7 +3372,7 @@ function renderSceneLauncher(){
       const live=_liveClipBySlot[slot]===s.id;
       const pending=_pendingClip && _pendingClip.sceneId===s.id && _pendingClip.slot===slot;
       return t
-        ?`<div class="sl-clip has-track${live?' is-live':''}" draggable="true" ondragstart="slDragClipStart(event,${s.id},'${slot}')" ondragover="event.preventDefault()" ondrop="slDropOnClip(event,${s.id},'${slot}')" title="${t.name}">
+        ?`<div class="sl-clip has-track${live?' is-live':''}" tabindex="0" draggable="true" ondragstart="slDragClipStart(event,${s.id},'${slot}')" ondragover="event.preventDefault()" ondrop="slDropOnClip(event,${s.id},'${slot}')" onkeydown="slClipKeydown(event,${s.id},'${slot}')" title="${t.name}">
             <button class="sl-clip-launch${pending?' is-pending':''}" style="background:${bg};" onclick="slLaunchClip(${s.id},'${slot}',event)" title="${pending?'Queued for next beat':live?'Stop':'Launch'} ${t.name}">${pending?'●':live?'■':'▶'}</button>
             <div class="sl-clip-nm">${t.name}</div>
             <button class="sl-clip-x" onclick="slClearClip(${s.id},'${slot}',event)">×</button>
@@ -3408,13 +3381,9 @@ function renderSceneLauncher(){
             <div class="sl-clip-dot">·</div>
           </div>`;
     }).join('');
-    const vol = _slotVolumes[slot] ?? 1;
     return `<div class="sl-clip-row">
       <div class="sl-slot-lbl" style="background:${bg};">${slot}</div>
       ${cells}
-      <div class="sl-vol-cell" title="${slot} volume — affects listeners on this slot + your monitor">
-        <input type="range" min="0" max="1" step="0.05" value="${vol}" oninput="onSlotVolumeInput('${slot}',this.value)">
-      </div>
     </div>`;
   }).join('');
 
@@ -3431,12 +3400,83 @@ function renderSceneLauncher(){
       ${addBtn}
     </div>
     ${clipRows}
-    <div class="sl-fire-row">
-      <div class="sl-fire-corner"></div>
-      ${fireCells}
-      <div style="width:26px;flex-shrink:0;"></div>
-    </div>
   </div>`;
+
+  const fireEl=document.getElementById('sl-fire-row');
+  if(fireEl){
+    fireEl.innerHTML=`<div class="sl-fire-corner"></div>${fireCells}<div style="width:26px;flex-shrink:0;"></div>`;
+  }
+
+  const volEl=document.getElementById('sl-vol-panel');
+  if(volEl){
+    const knobRows=slots.map(slot=>{
+      const vol=_slotVolumes[slot] ?? 1;
+      const ang=vol*270-135;
+      const pulseOn=_slotFx[slot]?.type==='pulse';
+      return `<div class="sl-knob-row" title="${slot} volume — affects listeners on this slot + your monitor">
+        <div class="sl-knob" style="--ang:${ang}deg" data-slot="${slot}" data-vol="${vol}" onpointerdown="slKnobStart(event,'${slot}')">
+          <div class="sl-knob-pointer"></div>
+        </div>
+        <button class="sl-fx-btn${pulseOn?' active':''}" onclick="toggleSlotPulse('${slot}')" title="${slot} volume-pulse FX (tremolo, synced to master BPM)">🌊</button>
+      </div>`;
+    }).join('');
+    volEl.innerHTML=`<div class="sl-vol-head">VOL</div>${knobRows}`;
+  }
+
+  _slBindScrollSync();
+}
+
+// ── Volume knob drag (vertical drag = volume, like a DJ mixer pot) ────────
+function slKnobStart(ev, slot){
+  ev.preventDefault();
+  const knob=ev.currentTarget;
+  const startY=ev.clientY;
+  const startVol=_slotVolumes[slot] ?? 1;
+  function move(e){
+    const dv=(startY-e.clientY)/100; // 100px drag = full range
+    const vol=Math.max(0,Math.min(1,startVol+dv));
+    knob.style.setProperty('--ang',(vol*270-135)+'deg');
+    knob.dataset.vol=vol;
+    onSlotVolumeInput(slot,vol);
+  }
+  function up(){
+    document.removeEventListener('pointermove',move);
+    document.removeEventListener('pointerup',up);
+  }
+  document.addEventListener('pointermove',move);
+  document.addEventListener('pointerup',up);
+}
+
+// ── Keep the right-anchored volume panel and bottom fire row aligned with
+// the scrolling scene grid (vertical / horizontal scroll-sync respectively).
+let _slScrollSyncBound=false;
+function _slBindScrollSync(){
+  if(_slScrollSyncBound) return;
+  const scrollEl=document.getElementById('scene-launcher-scroll');
+  const volEl=document.getElementById('sl-vol-panel');
+  const fireEl=document.getElementById('sl-fire-row');
+  if(!scrollEl||!volEl||!fireEl) return;
+  scrollEl.addEventListener('scroll',()=>{
+    volEl.scrollTop=scrollEl.scrollTop;
+    fireEl.scrollLeft=scrollEl.scrollLeft;
+  });
+  _slScrollSyncBound=true;
+}
+
+// ── Delete key on a focused clip cell removes its track assignment ───────
+function slClipKeydown(ev, sceneId, slot){
+  if(ev.key==='Delete'||ev.key==='Backspace'){
+    ev.preventDefault();
+    slClearClip(sceneId, slot, ev);
+  }
+}
+
+// ── Effects panel tab switching (MIX = per-slot volume/pulse, FX = placeholder) ──
+function switchFxTab(tab){
+  document.getElementById('fx-tab-sweep').classList.toggle('active',tab==='sweep');
+  document.getElementById('fx-tab-fx').classList.toggle('active',tab==='fx');
+  document.getElementById('fx-panel-sweep').style.display=tab==='sweep'?'':'none';
+  document.getElementById('fx-panel-fx').style.display=tab==='fx'?'':'none';
 }
 
 function _updateSlotLbl(){ const el=document.getElementById('slot-count-lbl'); if(el) el.textContent='C+'+ _slotCount; }
@@ -3787,6 +3827,7 @@ async function broadcastAllZones(allowEmpty){
         master_bpm: _masterBPM || null,
         track_bpms: buildTrackBpms(),
         slot_volumes: _slotVolumes,
+        slot_fx: _slotFx,
         tip_url: activeZone?.tip_url || null,
         suggested_donation: window._suggestedDonation || null
       }
@@ -4112,21 +4153,10 @@ function startDJPresenceBroadcast(zone) {
 // =========================================================
 
 // Required globals dj.html calls but doesn't define
-const VOICE_COLORS=['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6','#34d399','#60a5fa','#fbbf24'];
 function fmt(s){if(!s||isNaN(s))return'0:00';const m=Math.floor(s/60),sec=Math.floor(s%60);return m+':'+(sec<10?'0':'')+sec;}
 let _sfxCtx=null;
 function getSfxCtx(){if(!_sfxCtx)_sfxCtx=new AudioContext();return _sfxCtx;}
 let _webAudioPlaying=false,_isMuted=false;
-
-// openGrid / closeGrid
-function openGrid(){
-  const p=document.getElementById('spatial-grid-panel');
-  if(p){p.style.display='flex';drawGrid();}
-}
-function closeGrid(){
-  const p=document.getElementById('spatial-grid-panel');
-  if(p)p.style.display='none';
-}
 
 // setLight — lighting buttons (crowd panel)
 function setLight(btn,col){
@@ -4316,7 +4346,8 @@ async function fetchRealTracks() {
       filePath: t.file_path,
       name: t.title || t.file_path?.split('/').pop() || 'Track',
       artist: currentUser.email?.split('@')[0] || 'You',
-      bpm: parseBpmFromName(t.title || t.file_path?.split('/').pop() || ''), key: '—', dur: '—',
+      bpm: parseBpmFromName(t.title || t.file_path?.split('/').pop() || '') ?? '—',
+      key: parseKeyFromName(t.title || t.file_path?.split('/').pop() || '') ?? '—', dur: '—',
       col: ['#f57e20','#00cc99','#ef3c23','#a78bfa','#f472b6'][i%5],
       url: t.public_url,
       type: t.file_path?.startsWith('stems/') ? 'stem' : 'song'
@@ -4440,10 +4471,9 @@ function buildSpaceLib(filter='') {
   });
   if (!tracks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:10px;padding:10px;text-align:center;">Nothing here yet</div>'; return; }
   el.innerHTML = tracks.map(t => `
-    <div class="stem-row" draggable="true" ondragstart="startDrag(event,'${t.id}')" title="${t.name}">
-      <div class="stem-dot" style="background:${t.col||'#555'}"></div>
+    <div class="stem-row" draggable="true" ondragstart="startDrag(event,'${t.id}')" title="${t.name} — drag to a slot">
       <div class="stem-title">${t.name}<span style="font-size:7px;color:${t.type==='stem'?'var(--teal)':'var(--muted)'};margin-left:3px;">${t.type==='stem'?'◈':''}</span></div>
-      <button class="stem-btn" onclick="showSlotPickerFor('${t.id}',event)" title="Assign to slot" style="width:auto;padding:0 5px;color:var(--orange);flex-shrink:0;">→</button>
+      <button class="stem-btn" onclick="renameTrackPrompt('${t.id}',event)" title="Rename" style="width:auto;padding:0 5px;color:var(--muted2);flex-shrink:0;">✎</button>
     </div>`).join('');
 }
 
@@ -4457,13 +4487,29 @@ function buildStemsPanel(filter='') {
   const tracks = source.filter(t => !q || t.name.toLowerCase().includes(q) || (t.artist||'').toLowerCase().includes(q));
   if (!tracks.length) { el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:10px;text-align:center;">No stems yet — upload above</div>'; return; }
   el.innerHTML = tracks.map(t => `
-    <div class="stem-row" draggable="true" ondragstart="startDrag(event,'${t.id}')" title="${t.name} — ${t.artist||''}">
-      <div class="stem-dot" style="background:${t.col||'#555'}"></div>
+    <div class="stem-row" draggable="true" ondragstart="startDrag(event,'${t.id}')" title="${t.name} — ${t.artist||''} — drag to a slot">
       <div class="stem-title">${t.name}</div>
       <div class="stem-btns">
-        <button class="stem-btn" onclick="showSlotPickerFor('${t.id}',event)" title="Assign to slot" style="width:auto;padding:0 5px;color:var(--orange);">→</button>
+        <button class="stem-btn" onclick="renameTrackPrompt('${t.id}',event)" title="Rename" style="width:auto;padding:0 5px;color:var(--muted2);">✎</button>
       </div>
     </div>`).join('');
+}
+
+// Rename a track from the spatial library — updates the in-memory list,
+// any slots/scenes currently displaying its name, and persists to Supabase
+// for tracks the user owns (demo tracks just rename locally).
+function renameTrackPrompt(id, event) {
+  if (event) event.stopPropagation();
+  const t = (_realTracks||[]).find(t=>t.id===id) || TRACKS.find(t=>t.id===id);
+  if (!t) return;
+  const next = prompt('Rename track', t.name);
+  if (next === null) return;
+  const trimmed = next.trim();
+  if (!trimmed || trimmed === t.name) return;
+  t.name = trimmed;
+  if (t.dbId) db.from('tracks').update({ title: trimmed }).eq('id', t.dbId);
+  Object.values(zoneTracks).forEach(zt => { if (zt.url === t.url) zt.name = trimmed; });
+  buildLibs();
 }
 
 function assignStemToSlot(e, id, slot) {
@@ -4591,7 +4637,7 @@ document.getElementById('stem-file-input').addEventListener('change', async (e) 
 });
 
 // Initial load — deferred so currentUser is set
-setTimeout(()=>{ buildLibs(); initSpatialResize(); _slLoad(); _volLoad(); renderSceneLauncher(); loadPlaylist(); }, 800);
+setTimeout(()=>{ buildLibs(); initSpatialResize(); _slLoad(); _volLoad(); _fxLoad(); renderSceneLauncher(); loadPlaylist(); }, 800);
 
 // Mixer EQ knobs
 // ── WEB AUDIO DECK GRAPH ─────────────────────────────────
@@ -5011,7 +5057,7 @@ function drawWave(id,deck,color){
 window.addEventListener('DOMContentLoaded',()=>{
   const logoEl=document.getElementById('logo-img');
   const boomEl=document.getElementById('boom-img');
-  if(logoEl&&!logoEl.src){logoEl.style.cssText='font-family:Barlow Condensed,sans-serif;font-size:22px;font-weight:900;color:#f57e20;letter-spacing:.1em;';}
+  if(logoEl&&!logoEl.src){logoEl.style.cssText+='font-family:Barlow Condensed,sans-serif;font-size:22px;font-weight:900;color:#f57e20;letter-spacing:.1em;';}
   if(boomEl&&!boomEl.src){boomEl.style.display='none';}
 });
 

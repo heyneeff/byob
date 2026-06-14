@@ -99,6 +99,34 @@ function applySlotVolume(slot) {
   audio.volume = vols[slot] ?? 1;
 }
 
+// ── Per-slot volume-pulse FX (tremolo) ────────────────────────────────────
+// Modulates audio.volume on top of the slot's base volume, phase-locked to
+// syncedNow() so every listener's pulse lands on the same beat. Like
+// applySlotVolume, this is pure audio.volume — never touches currentTime,
+// playbackRate, or playback_started_at, so it can't interact with the drift
+// corrector (see CLAUDE.md "Sync engine" invariants).
+let _fxLoopId = null;
+function startFxLoop() {
+  if (_fxLoopId) return;
+  function tick() {
+    const config = window._spatialConfig || {};
+    const mySlot = getSlot(config);
+    const baseVol = (window._slotVolumes || {})[mySlot] ?? 1;
+    const fx = (window._slotFx || {})[mySlot];
+    if (fx?.type === 'pulse' && window._masterBPM) {
+      const beatMs = (60000 / window._masterBPM) * (fx.beats || 1);
+      const phase = (syncedNow() % beatMs) / beatMs;
+      const depth = fx.depth ?? 0.6;
+      const mod = 1 - depth * 0.5 * (1 - Math.cos(2 * Math.PI * phase));
+      audio.volume = Math.max(0, Math.min(1, baseVol * mod));
+    } else {
+      audio.volume = baseVol;
+    }
+    _fxLoopId = requestAnimationFrame(tick);
+  }
+  tick();
+}
+
 // ── Circular sweep response ─────────────────────────────────────────────
 // Each listener delays based on when the sweep beam hits their bearing.
 function applySweepOffset(sweep) {
@@ -135,11 +163,13 @@ function onSpatialConfig(payload) {
   window._masterBPM = payload.master_bpm || null;
   window._trackBpms = payload.track_bpms || {};
   if (payload.slot_volumes) window._slotVolumes = payload.slot_volumes;
+  if (payload.slot_fx) window._slotFx = payload.slot_fx;
   if (payload.suggested_donation) { window._suggestedDonation = payload.suggested_donation; showPlayerTipBtn(); }
   if (payload.tip_url) { window._zoneTipUrl = payload.tip_url; showPlayerTipBtn(); }
 
   const mySlot = getSlot(payload);
   applySlotVolume(mySlot);
+  startFxLoop();
   const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
   if (trackUrl && trackUrl !== audio.src) {
     loadTrack(trackUrl, 'Zone ' + mySlot, payload.playback_started_at);
@@ -220,7 +250,15 @@ function onSlotVolume(payload) {
   applySlotVolume(mySlot);
 }
 
+// ── Broadcast handler: standalone per-slot FX update ──────────────────────
+// Sent independently of spatial_config, same reasoning as onSlotVolume —
+// toggling a pulse FX must never re-broadcast zone_tracks/playback_started_at.
+function onSlotFx(payload) {
+  window._slotFx = payload.slot_fx || {};
+  startFxLoop();
+}
+
 window.SpatialRouting = {
   getSlot, getBpmWarpRate, applyBpmWarp, applySweepOffset, applySlotVolume,
-  onSpatialConfig, onSweepStart, onSweepStop, onScatter, onClusterAssign, onSlotVolume,
+  onSpatialConfig, onSweepStart, onSweepStop, onScatter, onClusterAssign, onSlotVolume, onSlotFx,
 };
