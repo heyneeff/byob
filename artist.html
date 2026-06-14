@@ -273,7 +273,8 @@ input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;h
 .map-search-input::placeholder{color:var(--muted);}.map-search-input:focus{border-color:var(--orange);}
 .btn-map-search{background:var(--teal);color:#000;border:none;border-radius:8px;padding:9px 14px;font-family:'Roboto',sans-serif;font-size:12px;font-weight:700;cursor:pointer;}
 .search-results{position:absolute;top:48px;left:50px;right:10px;z-index:1002;background:rgba(10,10,10,.97);border:1px solid #222;border-radius:8px;overflow:hidden;display:none;}
-.search-result-item{padding:10px 14px;font-size:12px;cursor:pointer;border-bottom:1px solid #1a1a1a;color:var(--cream);}
+.search-result-item{padding:10px 14px;font-size:12px;cursor:pointer;border-bottom:1px solid #1a1a1a;color:var(--cream);display:flex;justify-content:space-between;align-items:center;gap:8px;}
+.search-result-dist{flex-shrink:0;font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;}
 .search-result-item:hover{background:rgba(0,204,153,.1);color:var(--teal);}
 .map-hint{font-size:10px;color:var(--muted);padding:3px 2px 0;}.map-hint strong{color:var(--offwhite);}
 .btn-find-me{position:absolute;bottom:10px;right:10px;z-index:1000;width:34px;height:34px;background:rgba(0,0,0,.88);border:1px solid var(--teal);border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;}
@@ -1382,13 +1383,27 @@ function centerOnUser(){
   },()=>showToast('Location not available'),{enableHighAccuracy:true,timeout:8000});
 }
 function updateMapHint(lat,lng){const _mc=document.getElementById('map-coords');if(_mc)_mc.textContent='Center: '+lat.toFixed(5)+', '+lng.toFixed(5);}
+function haversineKm(lat1,lng1,lat2,lng2){
+  const R=6371,toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1),dLng=toRad(lng2-lng1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+function fmtDist(km){
+  return km<1?Math.round(km*1000)+' m':km.toFixed(km<10?1:0)+' km';
+}
 async function searchMap(){
   const q=document.getElementById('map-search-input').value.trim();
   if(!q)return;
   const btn=document.querySelector('.btn-map-search');
   btn.textContent='...';
   try{
-    const res=await fetch('https://photon.komoot.io/api/?q='+encodeURIComponent(q)+'&limit=4');
+    // Bias results toward the DJ's current GPS location (or map center if GPS unavailable)
+    const biasLat=userLat??leafletMap?.getCenter()?.lat;
+    const biasLng=userLng??leafletMap?.getCenter()?.lng;
+    let url='https://photon.komoot.io/api/?q='+encodeURIComponent(q)+'&limit=6';
+    if(biasLat!=null&&biasLng!=null) url+='&lat='+biasLat+'&lon='+biasLng+'&zoom=14';
+    const res=await fetch(url);
     const json=await res.json();
     const container=document.getElementById('search-results');
     if(!json.features?.length){container.style.display='none';showToast('No results');btn.textContent='Go';return;}
@@ -1397,7 +1412,12 @@ async function searchMap(){
       const [lng,lat]=f.geometry.coordinates;
       const p=f.properties;
       const label=[p.name,p.city||p.town||p.village,p.country].filter(Boolean).join(', ');
-      const item=document.createElement('div');item.className='search-result-item';item.textContent=label;
+      const item=document.createElement('div');item.className='search-result-item';
+      let html=label;
+      if(biasLat!=null&&biasLng!=null){
+        html+=`<span class="search-result-dist">${fmtDist(haversineKm(biasLat,biasLng,lat,lng))}</span>`;
+      }
+      item.innerHTML=html;
       item.addEventListener('click',()=>{
         leafletMap.setView([lat,lng],15);updateMapHint(lat,lng);
         userLat=lat;userLng=lng;
@@ -1411,6 +1431,14 @@ async function searchMap(){
   }catch(e){showToast('Search failed — check connection');}
   btn.textContent='Go';
 }
+// Live search as the DJ types (debounced) — falls back to Enter/Go for one-shot search
+let _searchDebounce=null;
+document.getElementById('map-search-input').addEventListener('input',()=>{
+  clearTimeout(_searchDebounce);
+  const q=document.getElementById('map-search-input').value.trim();
+  if(q.length<3){document.getElementById('search-results').style.display='none';return;}
+  _searchDebounce=setTimeout(searchMap,350);
+});
 document.addEventListener('click',e=>{
   if(!e.target.closest('.map-search-wrap')){
     const _sr=document.getElementById('search-results'); if(_sr)_sr.style.display='none';
