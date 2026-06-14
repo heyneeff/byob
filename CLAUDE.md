@@ -50,7 +50,7 @@ Single Supabase project (`ohacvuwzvuifpyqckise.supabase.co`) for auth, database,
 ### Database tables
 - **`zones`** — `id, name, host_id, lat, lng, radius_m, active, listeners, tip_url, current_track_url, track_name, playback_started_at, play_at, play_from_s, zone_tracks, last_message, last_message_at`
 - **`tracks`** — `id, user_id, zone_id, title, file_path, public_url, created_at`
-- **`events`** — `id, name, artists, description, event_start, location_reveal_at, lat, lng, radius_m, zone_id, created_by`
+- **`events`** — `id, name, artists, description, event_start, location_reveal_at, lat, lng, radius_m, zone_id, created_by, city, ticket_price, image_url`. `location_reveal_at` in the past = "always reveal" (set by the artist.html "Always show location" checkbox, bypassing the countdown for free events)
 - **`profiles`** — user profile data (display_name, emoji, vibe_tag, phone, instagram)
 
 Storage bucket: **`boombox`** — track audio files uploaded as `boombox/{filename}`.
