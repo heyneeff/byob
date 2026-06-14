@@ -252,6 +252,8 @@ header {
 .ed-cut-btn:hover { background: var(--purple); color: #000; }
 .loop-btn { padding: 7px 12px; border: 1px solid var(--b2); background: none; color: var(--dim); font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: 2px; cursor: pointer; }
 .loop-btn.on { background: var(--amber); border-color: var(--amber); color: #000; }
+.auto-stems-lbl { display: flex; align-items: center; gap: 4px; font-size: 8px; letter-spacing: 1px; color: var(--dim); cursor: pointer; }
+.auto-stems-lbl input { accent-color: var(--purple); }
 
 .ed-transpose-row {
   display: flex; align-items: center; gap: 8px;
@@ -351,6 +353,9 @@ header {
     <button class="tbtn" id="ed-play-btn" onclick="edPlayToggle()">▶ PREVIEW</button>
     <button class="loop-btn" id="ed-loop-btn" onclick="edToggleLoop()">⟳ LOOP</button>
     <button class="ed-cut-btn" onclick="edCut()">✂ CUT</button>
+    <label class="auto-stems-lbl" title="Automatically upload CUT results to BYOB stems">
+      <input type="checkbox" id="ed-auto-stems" onchange="setAutoStems(this.checked)"> AUTO ✂→STEMS
+    </label>
   </div>
   <div class="ed-transpose-row">
     <span class="ed-transpose-lbl">TRANSPOSE</span>
@@ -464,6 +469,14 @@ function setProjectBpm(value) {
   if (projectBpm) localStorage.setItem('byob_capture_project_bpm', String(projectBpm));
   else localStorage.removeItem('byob_capture_project_bpm');
   if (edClip) edRefreshWarpUI();
+}
+
+// ── Auto-upload CUT results to BYOB stems — persisted toggle ────────────
+let edAutoStems = localStorage.getItem('byob_capture_auto_stems') === '1';
+
+function setAutoStems(value) {
+  edAutoStems = !!value;
+  localStorage.setItem('byob_capture_auto_stems', edAutoStems ? '1' : '0');
 }
 
 // Only one preview (clip-grid play or editor preview) plays at a time.
@@ -1169,14 +1182,15 @@ async function addClip(blob, name, forceMime) {
   document.getElementById('no-clips')?.remove();
   renderClip(clip);
   toast(`SAVED · ${buffer.duration.toFixed(1)}s`);
-  analyzeClip(clip);
+  await analyzeClip(clip);
+  return clip;
 }
 
 // Run key/BPM detection off the main thread tick so the clip card renders first.
 function analyzeClip(clip) {
   const metaEl = document.getElementById(`cm-${clip.id}`);
   if (metaEl) metaEl.textContent = `${clip.duration.toFixed(1)}s · 🎵 analyzing…`;
-  setTimeout(() => {
+  return new Promise(resolve => setTimeout(() => {
     let tag = '';
     try {
       const mono = toMono(clip.buffer);
@@ -1192,7 +1206,8 @@ function analyzeClip(clip) {
     if (nameEl) nameEl.textContent = clip.name;
     if (metaEl) metaEl.textContent = `${clip.duration.toFixed(1)}s`;
     if (edClip === clip) edRefreshWarpUI();
-  }, 50);
+    resolve();
+  }, 50));
 }
 
 function renderClip(clip) {
@@ -1782,8 +1797,12 @@ async function edCut() {
   const suffix = edTranspose ? ` ${edTranspose > 0 ? '+' : ''}${edTranspose}ST` : '';
   const bpmTag = (warpRatio !== 1) ? ` ${edWarpBpm}BPM` : '';
   const baseName = edClip.name || `CUT ${ts()}`;
-  await addClip(wav, `${baseName}${suffix}${bpmTag}`, 'audio/wav');
+  const newClip = await addClip(wav, `${baseName}${suffix}${bpmTag}`, 'audio/wav');
   toast(`✂ CUT · ${(rendered.length / rendered.sampleRate).toFixed(2)}s`);
+  if (edAutoStems && newClip) {
+    if (sbUser) await uploadToByob(newClip);
+    else toast('SIGN IN TO AUTO-UPLOAD TO STEMS');
+  }
 }
 
 document.getElementById('clear-btn').addEventListener('click', () => {
@@ -1792,6 +1811,7 @@ document.getElementById('clear-btn').addEventListener('click', () => {
   document.getElementById('clips-grid').innerHTML = '<div class="no-clips" id="no-clips">— NO CLIPS YET —</div>';
 });
 if (projectBpm) document.getElementById('proj-bpm').value = projectBpm;
+document.getElementById('ed-auto-stems').checked = edAutoStems;
 document.getElementById('load-files-btn').addEventListener('click', () => document.getElementById('load-files-inp').click());
 document.getElementById('load-files-inp').addEventListener('change', async e => {
   for (const f of Array.from(e.target.files)) {
