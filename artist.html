@@ -40,7 +40,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .panel{display:none;flex:1;flex-direction:column;overflow:hidden;}
 .panel.active{display:flex;}
 /* SPATIAL — 3-column resizable layout */
-.spatial-panel{flex:1;display:grid;grid-template-columns:var(--sp-left,180px) 5px 1fr 5px var(--sp-right,224px);grid-template-rows:1fr 5px var(--sp-bottom,190px);overflow:hidden;}
+.spatial-panel{flex:1;display:grid;grid-template-columns:var(--sp-left,180px) 5px 1fr 5px var(--sp-right,224px);grid-template-rows:1fr 5px var(--sp-bottom,340px);overflow:hidden;}
 
 /* Drag handles — explicit placement, never auto */
 .sp-hv-left {grid-column:2;grid-row:1;cursor:col-resize;background:var(--rim);transition:background .15s;z-index:5;}
@@ -116,7 +116,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(
 .sl-clip.has-track:hover .sl-clip-x{color:rgba(255,255,255,.3);}
 .sl-clip-x:hover{color:var(--red) !important;}
 .sl-clip-dot{flex:1;text-align:center;font-size:10px;color:rgba(255,255,255,.1);}
-.sl-fire-row{border-top:1px solid var(--rim);}
+.sl-fire-row{border-top:1px solid var(--rim);position:sticky;bottom:0;z-index:5;background:#111;}
 .sl-fire-corner{width:22px;flex-shrink:0;border-right:1px solid var(--rim);}
 .sl-fire-btn{width:72px;flex-shrink:0;height:22px;background:transparent;border:none;border-right:1px solid rgba(255,255,255,.04);color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:900;letter-spacing:.1em;cursor:pointer;transition:all .1s;}
 .sl-fire-btn:hover{background:#1a1200;color:var(--orange);}
@@ -1682,6 +1682,7 @@ function restoreZone(z){
 
 // ── PLAYER ────────────────────────────────────────────────
 function togglePlay(){
+  _unlockMonitorPool();
   // If autoplay was blocked on restore, first tap just resumes without toggling
   if(window._pendingRestore){
     window._pendingRestore=false;
@@ -3022,6 +3023,11 @@ let _pendingSceneTimer = null;
 function slFireScene(sceneId){
   const s=_scenes.find(s=>s.id===sceneId); if(!s) return;
 
+  // Unlock monitor audio pool now, synchronously in this click — a quantized
+  // fire below runs via setTimeout, which is too late for iOS to allow a
+  // fresh <audio> element's first play().
+  _unlockMonitorPool();
+
   // Cancel any pending quantized fire
   if(_pendingSceneTimer){ clearTimeout(_pendingSceneTimer); _pendingSceneTimer=null; _pendingSceneId=null; }
 
@@ -3326,6 +3332,25 @@ function assignTrackToZone(zone,url,name){
 let _stemMonitorOn = false;
 const _monitorAudios = {}; // slot -> <audio>
 
+// Pool of pre-"unlocked" <audio> elements. iOS Safari only allows a fresh
+// <audio> element's first play() to succeed inside a direct user-gesture
+// callstack — but scene fire can be quantized via setTimeout (Master BPM),
+// which breaks that chain. Unlocking a pool synchronously on click means
+// later play() calls from setTimeout still work on these same elements.
+const _monitorPool = [];
+const MONITOR_POOL_SIZE = 8;
+
+function _unlockMonitorPool(){
+  while(_monitorPool.length < MONITOR_POOL_SIZE) _monitorPool.push(new Audio());
+  _monitorPool.forEach(el=>{
+    if(!el._unlocked){
+      el.play().catch(()=>{});
+      el.pause();
+      el._unlocked = true;
+    }
+  });
+}
+
 function _setStemMonitorBtn(on){
   const btn=document.getElementById('btn-stem-monitor');
   if(!btn) return;
@@ -3335,6 +3360,7 @@ function _setStemMonitorBtn(on){
 }
 
 function toggleStemMonitor(btn){
+  _unlockMonitorPool();
   _stemMonitorOn = !_stemMonitorOn;
   _setStemMonitorBtn(_stemMonitorOn);
   if(_stemMonitorOn) refreshStemMonitor(); else stopStemMonitor();
@@ -3351,20 +3377,20 @@ function refreshStemMonitor(){
       delete _monitorAudios[slot];
     }
   });
-  // Add monitors for newly assigned slots
-  let started = 0;
+  // Add monitors for newly assigned slots, reusing pre-unlocked pool elements
   Object.entries(slots).forEach(([slot,t])=>{
     if(!t?.url || t.url===audio.src || _monitorAudios[slot]) return;
-    try {
-      const el = new Audio(t.url);
-      el.loop = audio.loop;
-      el.volume = 0.7;
-      // Can't set currentTime until metadata is loaded (throws on iOS Safari
-      // if set on a fresh element) — seek once duration is known instead.
-      el.addEventListener('loadedmetadata', () => { try { el.currentTime = audio.currentTime || 0; } catch(e) {} });
-      if(isPlaying) el.play().then(()=>started++).catch(err=>console.warn('Monitor play failed for slot '+slot+':', err.message));
-      _monitorAudios[slot] = el;
-    } catch(err) { console.warn('Monitor setup failed for slot '+slot+':', err.message); }
+    const used = new Set(Object.values(_monitorAudios));
+    const el = _monitorPool.find(e=>!used.has(e));
+    if(!el){ console.warn('Monitor pool exhausted — increase MONITOR_POOL_SIZE'); return; }
+    el.src = t.url;
+    el.loop = audio.loop;
+    el.volume = 0.7;
+    // Can't set currentTime until metadata is loaded (throws on iOS Safari
+    // if set on a fresh src) — seek once duration is known instead.
+    el.addEventListener('loadedmetadata', () => { try { el.currentTime = audio.currentTime || 0; } catch(e) {} }, {once:true});
+    if(isPlaying) el.play().catch(err=>console.warn('Monitor play failed for slot '+slot+':', err.message));
+    _monitorAudios[slot] = el;
   });
   if(isPlaying) showToast('🎧 Monitoring ' + (Object.keys(_monitorAudios).length) + ' extra stem' + (Object.keys(_monitorAudios).length===1?'':'s'));
 }
@@ -4186,7 +4212,7 @@ function initSpatialResize() {
     startPos = which === 'bottom' ? (e.clientY || e.touches?.[0]?.clientY) : (e.clientX || e.touches?.[0]?.clientX);
     if (which === 'left')   startVal = getVar('--sp-left')   || 180;
     if (which === 'right')  startVal = getVar('--sp-right')  || 220;
-    if (which === 'bottom') startVal = getVar('--sp-bottom') || 190;
+    if (which === 'bottom') startVal = getVar('--sp-bottom') || 340;
     document.getElementById('sp-handle-'+which)?.classList.add('dragging');
     e.preventDefault();
   }
