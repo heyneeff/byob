@@ -288,13 +288,25 @@ function onScatter(payload) {
 }
 
 function onClusterAssign(payload) {
-  const mySlot = payload.assignments?.[listenerId];
+  const assigned = payload.assignments?.[listenerId];
   // Remember this explicit assignment so later spatial_config broadcasts
   // (clip launches etc.) don't silently override it via bearing self-assign.
-  _clusterSlot = mySlot || 'C';
-  const trackUrl = mySlot
-    ? (payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'])
-    : payload.zone_tracks?.['C'];
+  //
+  // If THIS listener is missing from `assignments` (e.g. their phone was
+  // backgrounded >90s, got pruned from the DJ's liveListeners, and a
+  // re-cluster fired before they reappeared), do NOT pin _clusterSlot to
+  // 'C' — getSlot()'s `_clusterSlot && zone_tracks[_clusterSlot]` check
+  // would then permanently short-circuit to Center on every future
+  // spatial_config as soon as zone_tracks['C'] has a track (a shared
+  // drone/root layer), bypassing bearing/cluster recompute entirely until
+  // the next cluster_assign happens to include them again — "stuck on C"
+  // after a long set as listeners cycle through background/foreground.
+  // Clearing it instead falls through to bearing self-assignment, which
+  // distributes this listener across the loaded personality stems like
+  // everyone else.
+  _clusterSlot = assigned || null;
+  const mySlot = assigned || getSlot(payload);
+  const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
   if (!trackUrl || trackUrl === audio.src) return;
   const label = 'Cluster ' + (mySlot || 'C');
   const waitMs = payload.play_at ? Math.max(0, payload.play_at - syncedNow()) : 0;
