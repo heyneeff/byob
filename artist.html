@@ -2221,11 +2221,19 @@ function clusterSpeakers(){
   const sorted=[...entries].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
   const slotLoad={};slotKeys.forEach(s=>slotLoad[s]=0);
   const assignments={};
-  // Keep existing sticky assignments where the slot is still valid, so
-  // joins/leaves don't reshuffle listeners who already had a slot.
+  // Cap how many listeners a slot can keep via sticky assignment at the
+  // balanced target — otherwise re-clustering after a new stem is loaded
+  // (e.g. going from 2 loaded slots to 4) would honor every old sticky
+  // assignment unconditionally, leaving the 2 new slots at 0 listeners
+  // while the original 2 stay overloaded. Listeners bumped past the cap
+  // fall through to the least-loaded pass below, which fills the new slots.
+  const targetLoad=Math.ceil(entries.length/slotKeys.length);
+  // Keep existing sticky assignments where the slot is still valid and not
+  // already at the balanced target, so joins/leaves don't reshuffle
+  // listeners who already had a slot.
   sorted.forEach(({id})=>{
     const sticky=_stickyClusterSlots[id];
-    if(sticky&&slotKeys.includes(sticky)){assignments[id]=sticky;slotLoad[sticky]++;}
+    if(sticky&&slotKeys.includes(sticky)&&slotLoad[sticky]<targetLoad){assignments[id]=sticky;slotLoad[sticky]++;}
   });
   sorted.forEach(({id})=>{
     if(assignments[id])return;
