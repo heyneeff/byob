@@ -2151,7 +2151,19 @@ function clusterSpeakers(){
   const entries=Object.entries(liveListeners).filter(([,l])=>!l.isDJ).map(([id,l])=>({id,bearing:l.bearing||0,dist:l.dist||0}));
   if(!entries.length){showToast('No listeners on map yet');return;}
   const k=Math.min(stems.length,entries.length);
-  const{clusterIdx,angles}=kMeansClusters(entries,k);
+  let clusterIdx,angles;
+  if(entries.length<=k){
+    // One listener per stem (e.g. testing with 2 phones side by side and
+    // 2 stems loaded). k-means would happily put both in the same cluster
+    // since they're physically close — but the whole point of clustering
+    // at <= the listener count is to spread DIFFERENT stems to DIFFERENT
+    // phones regardless of position, so give each listener its own
+    // cluster index directly.
+    clusterIdx={};angles=[];
+    entries.forEach(({id,bearing},i)=>{clusterIdx[id]=i;angles.push({ci:i,angle:((bearing||0)+360)%360});});
+  }else{
+    ({clusterIdx,angles}=kMeansClusters(entries,k));
+  }
   const slotKeys=getSlotKeys().filter(s=>s!=='C').slice(0,k);
 
   // Map each new cluster index -> slot label, preferring whatever slot the
