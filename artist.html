@@ -258,6 +258,7 @@ input[type=range].vol{-webkit-appearance:none;width:70px;height:3px;background:#
 input[type=range].vol::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;border-radius:50%;background:#fff;}
 .volume-row{display:flex;align-items:center;gap:8px;}
 .deck-library{flex:1;background:var(--card);border-top:1px solid var(--rim);display:flex;flex-direction:column;overflow:hidden;}
+.deck-library.drag-over{outline:2px dashed var(--teal);outline-offset:-2px;background:rgba(0,204,153,.06);}
 /* CROWD */
 .crowd-panel{flex:1;display:grid;grid-template-rows:auto 1fr auto;grid-template-columns:1fr 1fr;overflow:hidden;}
 .crowd-stat-row{grid-column:1/3;display:flex;padding:10px;border-bottom:1px solid var(--rim);}
@@ -1988,8 +1989,9 @@ document.getElementById('progress-bar').addEventListener('touchmove', seekFromEv
 
 document.getElementById('volume').addEventListener('input',e=>audio.volume=e.target.value/100);
 
-document.getElementById('file-input').addEventListener('change',async(e)=>{
-  const files=Array.from(e.target.files);
+// Shared upload pipeline — used by both the file-input picker and drag&drop.
+// A small delay between uploads avoids Supabase Storage rate-limiting on big batches.
+async function uploadFiles(files){
   if(!files.length)return;
   const statusEl=document.getElementById('upload-status');
   let done=0;
@@ -2007,6 +2009,7 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
       console.error('Upload error:',err);
       showToast('⚠ '+file.name+' failed: '+err.message);
     }
+    await new Promise(r=>setTimeout(r,400));
   }
   if(done){
     _realTracks=[]; buildLibs('',true);
@@ -2016,8 +2019,70 @@ document.getElementById('file-input').addEventListener('change',async(e)=>{
   } else {
     statusEl.textContent='⚠ Upload failed';statusEl.style.color='var(--red)';
   }
+}
+
+document.getElementById('file-input').addEventListener('change',async(e)=>{
+  const files=Array.from(e.target.files);
+  await uploadFiles(files);
   e.target.value='';
 });
+
+const AUDIO_EXT_RE=/\.(mp3|m4a|wav|aac|flac|ogg|aiff)$/i;
+
+// Recursively walk dropped files/folders (webkitGetAsEntry) and collect audio Files.
+async function getFilesFromDataTransfer(items){
+  const files=[];
+  async function walk(entry){
+    if(!entry)return;
+    if(entry.isFile){
+      await new Promise(resolve=>{
+        entry.file(file=>{
+          if(AUDIO_EXT_RE.test(file.name))files.push(file);
+          resolve();
+        });
+      });
+    }else if(entry.isDirectory){
+      const reader=entry.createReader();
+      const readBatch=()=>new Promise(resolve=>reader.readEntries(resolve));
+      let batch;
+      do{
+        batch=await readBatch();
+        for(const child of batch)await walk(child);
+      }while(batch.length);
+    }
+  }
+  for(const item of items){
+    const entry=item.webkitGetAsEntry&&item.webkitGetAsEntry();
+    if(entry)await walk(entry);
+    else{
+      const file=item.getAsFile&&item.getAsFile();
+      if(file&&AUDIO_EXT_RE.test(file.name))files.push(file);
+    }
+  }
+  return files;
+}
+
+const deckLib=document.getElementById('deck-lib');
+if(deckLib){
+  deckLib.addEventListener('dragover',(e)=>{
+    e.preventDefault();
+    deckLib.classList.add('drag-over');
+  });
+  deckLib.addEventListener('dragleave',(e)=>{
+    e.preventDefault();
+    deckLib.classList.remove('drag-over');
+  });
+  deckLib.addEventListener('drop',async(e)=>{
+    e.preventDefault();
+    deckLib.classList.remove('drag-over');
+    const files=await getFilesFromDataTransfer(Array.from(e.dataTransfer.items));
+    if(!files.length){
+      showToast('⚠ No audio files found in drop');
+      return;
+    }
+    await uploadFiles(files);
+  });
+}
 
 // ── WEBRTC BROADCAST ─────────────────────────────────────
 let _rtcConfigCache=null,_rtcConfigAt=0;
