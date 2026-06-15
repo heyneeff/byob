@@ -2094,54 +2094,16 @@ function stopWebRTCBroadcast(){
 }
 
 // ── CLUSTER MODE ──────────────────────────────────────────
-// Groups listeners by GPS proximity into k clusters; assigns each cluster a stem.
-// k = number of loaded spatial slots (1–4). Recomputes every 30s while active.
-function kMeansClusters(entries, k) {
-  if(!entries.length||k<1)return{clusterIdx:{},angles:[]};
-  k=Math.min(k,entries.length);
-  // Convert bearing+dist (miles) to approximate Cartesian meters from zone center
-  const pts=entries.map(({id,bearing,dist})=>{
-    const r=(dist||0)*1609.34,rad=((bearing||0)*Math.PI)/180;
-    return{id,x:r*Math.sin(rad),y:r*Math.cos(rad)};
-  });
-  const avgR=pts.reduce((s,p)=>s+Math.sqrt(p.x**2+p.y**2),0)/pts.length||50;
-  // Initialize centroids evenly around a circle at average listener radius
-  let centroids=Array.from({length:k},(_,i)=>{
-    const a=(i/k)*2*Math.PI;return{x:avgR*Math.sin(a),y:avgR*Math.cos(a)};
-  });
-  let assignments=new Array(pts.length).fill(0);
-  for(let iter=0;iter<15;iter++){
-    let changed=false;
-    pts.forEach((p,i)=>{
-      let best=0,bestD=Infinity;
-      centroids.forEach((c,ci)=>{const d=(p.x-c.x)**2+(p.y-c.y)**2;if(d<bestD){bestD=d;best=ci;}});
-      if(assignments[i]!==best){assignments[i]=best;changed=true;}
-    });
-    if(!changed)break;
-    centroids=centroids.map((prev,ci)=>{
-      const g=pts.filter((_,i)=>assignments[i]===ci);
-      return g.length?{x:g.reduce((s,p)=>s+p.x,0)/g.length,y:g.reduce((s,p)=>s+p.y,0)/g.length}:prev;
-    });
-  }
-  const clusterIdx={};pts.forEach((p,i)=>{clusterIdx[p.id]=assignments[i];});
-  // Cluster centroid bearings, for assigning slot labels to any clusters
-  // that have no sticky precedent (see clusterSpeakers)
-  const angles=centroids.map((c,ci)=>({ci,angle:(Math.atan2(c.x,c.y)*180/Math.PI+360)%360}));
-  return{clusterIdx,angles};
-}
-
+// Assigns each listener a distinct stem slot, cycling round-robin through
+// the loaded stems. Recomputes every 30s while active.
 function stampSlotAssignments(assignments){
   Object.entries(assignments).forEach(([id,slot])=>{ if(liveListeners[id]) liveListeners[id].slot=slot; });
   if(window._spMap) renderSpatialDots(window._spMap);
 }
 let _clusterInterval=null,_clusterActive=false;
-// Sticky listenerId -> slot from the last clusterSpeakers() run. k-means
-// cluster *indices* aren't stable across re-runs (re-init + bearing-sort can
-// flip labels even when listeners haven't moved, especially near the 0/360
-// wrap) — without this, the 30s re-cluster interval reshuffles which stem
-// each phone plays, which defeats the point of spreading stems across the
-// field. Each re-run keeps a cluster's previous slot label when a majority
-// of its members already had one.
+// Sticky listenerId -> slot from the last clusterSpeakers() run — only used
+// when assigning a NEW listener (one without a sticky entry), so joins/leaves
+// don't reshuffle everyone else's slot.
 let _stickyClusterSlots={};
 // Last assignments actually broadcast — re-clustering on the 30s interval
 // recomputes every time, but if nothing has changed (same listeners, same
@@ -2161,43 +2123,32 @@ function clusterSpeakers(){
   if(!activeZone||!window._djSyncChannel){showToast('No active zone');return;}
   const stems=Object.keys(zoneTracks).filter(k=>k!=='C');
   if(stems.length<2){showToast('Load at least 2 stems into slots 1–4 first');return;}
-  const entries=Object.entries(liveListeners).filter(([,l])=>!l.isDJ).map(([id,l])=>({id,bearing:l.bearing||0,dist:l.dist||0}));
+  const entries=Object.entries(liveListeners).filter(([,l])=>!l.isDJ).map(([id,l])=>({id}));
   if(!entries.length){showToast('No listeners on map yet');return;}
-  const k=Math.min(stems.length,entries.length);
-  let clusterIdx,angles;
-  if(entries.length<=k){
-    // One listener per stem (e.g. testing with 2 phones side by side and
-    // 2 stems loaded). k-means would happily put both in the same cluster
-    // since they're physically close — but the whole point of clustering
-    // at <= the listener count is to spread DIFFERENT stems to DIFFERENT
-    // phones regardless of position, so give each listener its own
-    // cluster index directly.
-    clusterIdx={};angles=[];
-    entries.forEach(({id,bearing},i)=>{clusterIdx[id]=i;angles.push({ci:i,angle:((bearing||0)+360)%360});});
-  }else{
-    ({clusterIdx,angles}=kMeansClusters(entries,k));
-  }
-  const slotKeys=getSlotKeys().filter(s=>s!=='C').slice(0,k);
+  const slotKeys=getSlotKeys().filter(s=>s!=='C').slice(0,stems.length);
 
-  // Map each new cluster index -> slot label, preferring whatever slot the
-  // majority of its members already had (sticky), then filling any
-  // unclaimed clusters/slots in geographic (bearing) order.
-  const clusterMembers={};
-  entries.forEach(({id})=>{(clusterMembers[clusterIdx[id]]=clusterMembers[clusterIdx[id]]||[]).push(id);});
-  const used=new Set();
-  const idx2slot={};
-  Object.entries(clusterMembers).forEach(([ci,ids])=>{
-    const votes={};
-    ids.forEach(id=>{const s=_stickyClusterSlots[id];if(s&&slotKeys.includes(s))votes[s]=(votes[s]||0)+1;});
-    const best=Object.entries(votes).sort((a,b)=>b[1]-a[1])[0];
-    if(best&&!used.has(best[0])){idx2slot[ci]=best[0];used.add(best[0]);}
-  });
-  const remaining=angles.filter(a=>idx2slot[a.ci]===undefined).sort((a,b)=>a.angle-b.angle);
-  const freeSlots=slotKeys.filter(s=>!used.has(s));
-  remaining.forEach(({ci},i)=>{idx2slot[ci]=freeSlots[i]||slotKeys[0]||'1';});
-
+  // Every listener gets a distinct slot, cycling round-robin through
+  // slotKeys — regardless of physical proximity. Testing typically has
+  // phones sitting right next to each other, and proximity-based clustering
+  // put them all in the same slot/color, defeating the point of spreading
+  // stems across the crowd. Sort by id (stable across re-clusters, unlike
+  // noisy GPS bearing) so the 30s re-cluster interval doesn't reshuffle
+  // everyone just because a phone's bearing jittered.
+  const sorted=[...entries].sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+  const slotLoad={};slotKeys.forEach(s=>slotLoad[s]=0);
   const assignments={};
-  entries.forEach(({id})=>{assignments[id]=idx2slot[clusterIdx[id]]||slotKeys[0]||'1';});
+  // Keep existing sticky assignments where the slot is still valid, so
+  // joins/leaves don't reshuffle listeners who already had a slot.
+  sorted.forEach(({id})=>{
+    const sticky=_stickyClusterSlots[id];
+    if(sticky&&slotKeys.includes(sticky)){assignments[id]=sticky;slotLoad[sticky]++;}
+  });
+  sorted.forEach(({id})=>{
+    if(assignments[id])return;
+    let best=slotKeys[0];
+    slotKeys.forEach(s=>{if(slotLoad[s]<slotLoad[best])best=s;});
+    assignments[id]=best;slotLoad[best]++;
+  });
   _stickyClusterSlots=assignments;
 
   _clusterActive=true;
@@ -2207,9 +2158,9 @@ function clusterSpeakers(){
   _lastBroadcastAssignments=assignments;
 
   const zoneTrkPayload=flatZoneTracks();
-  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400,cluster_count:k}});
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400,cluster_count:slotKeys.length}});
   stampSlotAssignments(assignments);
-  showToast('⬡ '+k+' clusters · '+entries.length+' speakers');
+  showToast('⬡ '+slotKeys.length+' stems · '+entries.length+' speakers');
 }
 
 function stopCluster(){
