@@ -2200,11 +2200,16 @@ function assignmentsEqual(a,b){
 
 function clusterSpeakers(){
   if(!activeZone||!window._djSyncChannel){showToast('No active zone');return;}
-  const stems=Object.keys(zoneTracks).filter(k=>k!=='C');
-  if(stems.length<2){showToast('Load at least 2 stems into slots 1–4 first');return;}
+  // Only assign listeners to slots that actually have a track loaded.
+  // getSlotKeys().slice(0,N) used to grab the first N numbered slots
+  // regardless of which ones were loaded — a gap (e.g. slot 2 empty, slot 3
+  // loaded) meant slot 3's stem/color was never assigned to anyone while
+  // listeners landed on empty slot 2 and silently fell back to Center, so
+  // fewer distinct stems/colors ended up in play than were actually loaded.
+  const slotKeys=getSlotKeys().filter(s=>s!=='C'&&zoneTracks[s]?.url);
+  if(slotKeys.length<2){showToast('Load at least 2 stems into slots 1–4 first');return;}
   const entries=Object.entries(liveListeners).filter(([,l])=>!l.isDJ).map(([id,l])=>({id}));
   if(!entries.length){showToast('No listeners on map yet');return;}
-  const slotKeys=getSlotKeys().filter(s=>s!=='C').slice(0,stems.length);
 
   // Every listener gets a distinct slot, cycling round-robin through
   // slotKeys — regardless of physical proximity. Testing typically has
