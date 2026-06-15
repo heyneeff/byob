@@ -1132,7 +1132,16 @@ function renderJoinLink(){
   const url=`${location.origin}${location.pathname.replace('artist.html','listener.html')}?zone=${activeZone.id}`;
   document.getElementById('join-link-url').textContent=url;
   sec.style.display='flex';
-  QRCode.toCanvas(document.getElementById('join-qr'),url,{width:100,margin:1},()=>{});
+  // QRCode comes from a CDN <script> — if it's blocked (ad blocker, offline,
+  // etc.) don't let window.onerror's uncaught-error handler take down the
+  // whole zone-creation flow over a missing QR code. Just skip the canvas.
+  const qrCanvas=document.getElementById('join-qr');
+  if(typeof QRCode!=='undefined'){
+    qrCanvas.style.display='';
+    QRCode.toCanvas(qrCanvas,url,{width:100,margin:1},()=>{});
+  } else {
+    qrCanvas.style.display='none';
+  }
 }
 function copyJoinLink(){
   const url=document.getElementById('join-link-url').textContent;
