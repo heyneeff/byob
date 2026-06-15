@@ -83,7 +83,18 @@ function getSlot(config) {
 // ── Master BPM warp ────────────────────────────────────────────────────────
 // Returns the playbackRate base the drift corrector should treat as "1.0" —
 // see CLAUDE.md "Master BPM + scene launcher".
+//
+// Phase 5v (2026-06-15): temporarily disabled. A live debug session showed
+// steady-state drift sitting ~140ms (vs sync-sim's ~12ms prediction) whenever
+// playbackRate != 1.0, suggesting BPM warp eats into the micro-correction's
+// +/-1.2% headroom. capture.html already pre-tempo-matches clips before
+// upload (its edWarpBpm/edSnapBars render step), so runtime warp here is
+// largely redundant. Flip BPM_WARP_ENABLED back to true once sync-sim models
+// a non-1.0 base rate and the corrector is retuned for it.
+const BPM_WARP_ENABLED = false;
+
 function getBpmWarpRate() {
+  if (!BPM_WARP_ENABLED) return 1.0;
   const masterBpm = window._masterBPM;
   if (!masterBpm) return 1.0;
   const config = window._spatialConfig;
@@ -95,6 +106,7 @@ function getBpmWarpRate() {
 }
 
 function applyBpmWarp(slot, url) {
+  if (!BPM_WARP_ENABLED) { audio.playbackRate = 1.0; return; }
   const masterBpm = window._masterBPM;
   if (!masterBpm) { audio.playbackRate = 1.0; return; }
   const trackBpms = window._trackBpms || {};
