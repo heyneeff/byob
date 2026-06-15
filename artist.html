@@ -2062,13 +2062,16 @@ async function getFilesFromDataTransfer(items){
       }while(batch.length);
     }
   }
-  for(const item of items){
-    const entry=item.webkitGetAsEntry&&item.webkitGetAsEntry();
+  // webkitGetAsEntry()/getAsFile() must be called synchronously during the
+  // drop event — the DataTransferItemList becomes inaccessible after any
+  // await, so grab everything up front before walking directories.
+  const entries=items.map(item=>({
+    entry: item.webkitGetAsEntry && item.webkitGetAsEntry(),
+    file: item.getAsFile && item.getAsFile()
+  }));
+  for(const {entry,file} of entries){
     if(entry)await walk(entry);
-    else{
-      const file=item.getAsFile&&item.getAsFile();
-      if(file&&AUDIO_EXT_RE.test(file.name))files.push(file);
-    }
+    else if(file&&AUDIO_EXT_RE.test(file.name))files.push(file);
   }
   return files;
 }
