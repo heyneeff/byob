@@ -191,7 +191,17 @@ function onSpatialConfig(payload) {
     loadTrack(trackUrl, 'Zone ' + mySlot, payload.playback_started_at);
     showToast('🔊 Slot ' + mySlot);
   } else if (trackUrl && trackUrl === audio.src) {
-    applyBpmWarp(mySlot, trackUrl);
+    // Don't call applyBpmWarp here — it writes audio.playbackRate directly,
+    // fighting the drift corrector's micro-correction/warp state (the
+    // corrector already reads the live BPM warp rate via getBaseRate() ==
+    // _getBpmWarpRate() on its own ~5s tick). Rapid clip launches rebroadcast
+    // spatial_config constantly; stomping playbackRate on every one of them
+    // was overriding the corrector's in-progress micro-correction, producing
+    // the rate sawing between 1.000/1.006 and drift never settling below
+    // ~50ms (the "overcorrect"/snapping feel). A BPM-rate change still gets
+    // picked up by the next correction tick, or immediately below if this
+    // broadcast also carries a new playback_started_at (cancelDriftCorrection
+    // resets playbackRate to the current getBaseRate()).
     // Scene fires reset playback_started_at for the whole zone. A listener
     // whose stem didn't change must still adopt the new reference point —
     // otherwise it limps on the old one until fastDriftCorrect ducks it
