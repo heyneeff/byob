@@ -3298,19 +3298,21 @@ function _doFireScene(sceneId){
   const monitorTrack = zoneTracks['C'] || Object.values(zoneTracks)[0];
   if(monitorTrack?.url && audio.src !== monitorTrack.url){
     audio.src = monitorTrack.url;
-    // NOT audio.loop = true — this is the shared #audio-player element with
-    // `ended` wired to playNext(). A looping element never fires `ended`, so
-    // scenes would get stuck replaying the same track forever instead of
-    // advancing/syncing (the "playmin just loops" bug). Let it end naturally —
-    // playNext() already handles "nothing queued" via _queueLoop or a stop.
-    audio.loop = false;
+    // Loop the Center clip, same as every other slot's monitor stem
+    // (el.loop=_monitorLoopOn) — a scene's clips are a looping stack, not a
+    // playlist. Without this, `ended` fires playNext(), which either
+    // advances to the DJ's queue (hijacking audio.src/broadcast away from
+    // the scene) or just pauses — "Center doesn't loop like the rest" bug.
+    // Listener-side audio.loop is independently always true and loops on
+    // its own duration via the seek formula's modulo, so this only affects
+    // the DJ's local monitor/ended behavior, not listener sync.
+    audio.loop = true;
     audio.play().catch(()=>{});
   } else if(monitorTrack?.url){
-    // Re-firing a scene whose Center clip is already loaded as audio.src:
-    // if the previous play-through reached `ended`, playNext() left
-    // currentTime at the clip's end (paused) — play() from there is silent.
-    // Restart from 0 so the re-fire is actually audible.
-    if(audio.ended || audio.paused) audio.currentTime = 0;
+    // Re-firing a scene whose Center clip is already loaded as audio.src —
+    // restart from 0 so the re-fire is actually audible.
+    audio.loop = true;
+    audio.currentTime = 0;
     audio.play().catch(()=>{});
   }
   isPlaying = true;
