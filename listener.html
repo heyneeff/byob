@@ -3806,22 +3806,29 @@ function buildZoneChannel(z) {
         boomSay(`📣 ${zn.last_message}`, 6000, true, 'devious');
       }
 
+      // Resolve this listener's slot from zone_tracks FIRST, independent of
+      // current_track_url — a scene with only non-Center slots assigned
+      // (no zoneTracks['C']) leaves current_track_url null, but listeners
+      // with a valid non-C slot must keep playing, not be treated as
+      // "stream ended" (see broadcastAllZones' null current_track_url).
+      let slotUrl = null, mySlot = null;
+      if (zn.zone_tracks && Object.keys(zn.zone_tracks).length) {
+        const src = { zone_tracks: zn.zone_tracks, zone_lat: zn.lat||z.lat, zone_lng: zn.lng||z.lng, zone_radius_m: zn.radius_m||z.radius_m, playback_started_at: zn.playback_started_at };
+        mySlot = getSpatialSlot(src);
+        slotUrl = zn.zone_tracks[mySlot] || zn.zone_tracks['C'];
+      }
+
       if (zn.current_track_url === 'webrtc-live') {
         activeZone = { ...activeZone, ...zn };
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
         _webAudioPlaying = false;
         if (!rtcPeer) { joinWebRTCStream(z.id); showToast('DJ is LIVE 🎛️'); }
+      } else if (slotUrl) {
+        activeZone = { ...activeZone, ...zn }; // keep fastDriftCorrect accurate
+        loadTrack(slotUrl, 'Zone '+mySlot, zn.playback_started_at, zn.play_at, zn.play_from_s); showToast('🔊 Slot '+mySlot);
       } else if (zn.current_track_url) {
         activeZone = { ...activeZone, ...zn }; // keep fastDriftCorrect accurate
-        if (zn.zone_tracks) {
-          const src = { zone_tracks: zn.zone_tracks, zone_lat: zn.lat||z.lat, zone_lng: zn.lng||z.lng, zone_radius_m: zn.radius_m||z.radius_m, playback_started_at: zn.playback_started_at };
-          const mySlot = getSpatialSlot(src);
-          const slotUrl = zn.zone_tracks[mySlot] || zn.zone_tracks['C'];
-          if (slotUrl) { loadTrack(slotUrl, 'Zone '+mySlot, zn.playback_started_at, zn.play_at, zn.play_from_s); showToast('🔊 Slot '+mySlot); }
-          else { loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s); }
-        } else {
-          loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
-        }
+        loadTrack(zn.current_track_url, zn.track_name, zn.playback_started_at, zn.play_at, zn.play_from_s);
       } else {
         activeZone = { ...activeZone, current_track_url: null };
         audio.pause(); audio.src=''; audio.load(); audio.srcObject=null;
