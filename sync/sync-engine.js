@@ -97,18 +97,27 @@ export function bpmWarpRate(masterBpm, trackBpm) {
 // snaps, instead of just bouncing inside the snap threshold.
 //
 // This is deliberately much gentler than the old +/-3% warp band (the
-// "finger on a record" wobble): +/-0.6% is below typical pitch-discrimination
-// thresholds, and — critically — it settles to a small *constant* offset
-// rather than continuously flipping direction, so there's nothing to hear
-// flutter against.
-export const MICRO_GAIN_PER_MS = 0.0002;  // fractional rate adjustment per ms of lag
-export const MICRO_MAX_PCT     = 0.006;   // cap +/-0.6%
+// "finger on a record" wobble): +/-1.2% is still well under that and below
+// typical pitch-discrimination thresholds, and — critically — it settles to
+// a small *constant* offset rather than continuously flipping direction, so
+// there's nothing to hear flutter against.
+//
+// Phase 5v (2026-06-15): widened from 0.0002/0.6% to 0.0004/1.2% — a
+// sync-sim.html batch sweep (30 seeds x 15min x 8 listeners) showed the 0.6%
+// cap was too gentle to hold drift down between snaps: with the also-widened
+// DRIFT_SNAP_THRESHOLD_MS=150 (listener.html), mean settled |drift| dropped
+// from 110ms to 91ms and time spent >=150ms from 6.7% to 6.0%, for the same
+// snap rate. At 0.0002/0.6% with the 150ms threshold, mean drift was still
+// 110ms; at 0.0004/1.2% with the old 300ms threshold, mean drift was 102ms —
+// both knobs needed moving together to get under ~90ms.
+export const MICRO_GAIN_PER_MS = 0.0004;  // fractional rate adjustment per ms of lag
+export const MICRO_MAX_PCT     = 0.012;   // cap +/-1.2%
 
 // rate = baseRate * (1 + clamp(lagMs * MICRO_GAIN_PER_MS, +/-MICRO_MAX_PCT))
 // Positive lag (audio behind expected) -> speed up; negative -> slow down.
 // At the worst-case +/-0.5% hardware drift modeled in sync-sim.html, this
-// converges to a steady-state |lag| of ~25ms (0.5% / MICRO_GAIN_PER_MS),
-// comfortably under the cap (pct=0.005 < 0.006) so it's not saturated at
+// converges to a steady-state |lag| of ~12.5ms (0.5% / MICRO_GAIN_PER_MS),
+// comfortably under the cap (pct=0.005 < 0.012) so it's not saturated at
 // equilibrium.
 export function microCorrectionRate(lagMs, baseRate = 1) {
   const pct = Math.max(-MICRO_MAX_PCT, Math.min(MICRO_MAX_PCT, lagMs * MICRO_GAIN_PER_MS));

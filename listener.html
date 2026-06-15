@@ -2088,7 +2088,18 @@ const SNAP_THRESHOLD_MS = 500;
 // almost every tick and felt like constant clipping. 300ms keeps snaps rare
 // (only for real drift), with audio at exactly base rate the rest of the
 // time — no warping, no ducking, from this loop.
-const DRIFT_SNAP_THRESHOLD_MS = 300;
+//
+// Phase 5v (2026-06-15): lowered 300->150ms. A sync-sim.html batch sweep (30
+// seeds x 15min x 8 listeners) showed 300ms left drift sitting >=150ms for
+// 27.5% of steady-state time (the "drifts to 160+ms" feeling). 150ms is the
+// floor — seekPreservingBT()'s mute/seek/ramp itself eats ~130ms of playback,
+// so thresholds at or below that (100-120ms tried) cause snap cascades (each
+// snap's own stall immediately re-triggers another snap): 264-306 hard
+// seeks/listener vs ~100 at 150ms, and WORSE mean drift than 300ms. 150ms
+// paired with the widened MICRO_MAX_PCT (sync/sync-engine.js, 0.6%->1.2%)
+// drops mean settled drift from 135ms to 91ms for ~30% more snaps (77->101
+// per listener per 15min, ~1 extra inaudible-ish snap every ~2min).
+const DRIFT_SNAP_THRESHOLD_MS = 150;
 
 // "Locking in" indicator — surfaces the warm-up/recovery period (post track
 // load, post hard_sync, etc.) where drift is still settling, so it reads as
