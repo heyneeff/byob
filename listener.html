@@ -1463,7 +1463,14 @@ function seekToSync(startedAt, playAt, playFromS) {
 // ════════════════════════════════════════════════════════════
 function fadeAudioIn(durationMs = 4000) {
   audio.muted = false;
-  if (durationMs <= 0) { audio.volume = 1; return; }
+  // Target the slot's mixed volume, not a hardcoded 1 — and gate the FX
+  // loop's per-frame audio.volume writes (spatial-routing.js startFxLoop)
+  // while this ramp is in progress, otherwise it stomps audio.volume back
+  // to baseVol within one animation frame and the fade never audibly happens.
+  const mySlot = window._spatialConfig ? getSpatialSlot(window._spatialConfig) : 'C';
+  const target = (window._slotVolumes || {})[mySlot] ?? 1;
+  window._volumeRampActive = true;
+  if (durationMs <= 0) { audio.volume = target; window._volumeRampActive = false; return; }
   audio.volume = 0;
   const STEPS = 20;
   const interval = Math.max(50, durationMs / STEPS);
@@ -1471,8 +1478,8 @@ function fadeAudioIn(durationMs = 4000) {
   const timer = setInterval(() => {
     step++;
     const t = step / STEPS;
-    audio.volume = t * t * (3 - 2 * t); // smoothstep — works in background tabs
-    if (step >= STEPS) { audio.volume = 1; clearInterval(timer); }
+    audio.volume = (t * t * (3 - 2 * t)) * target; // smoothstep — works in background tabs
+    if (step >= STEPS) { audio.volume = target; window._volumeRampActive = false; clearInterval(timer); }
   }, interval);
 }
 

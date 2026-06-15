@@ -34,14 +34,15 @@
 // same bearing slot.
 //
 // Deliberately NOT gated on playback_started_at matching the cluster_assign's:
-// broadcastAllZones() mints a fresh playback_started_at on EVERY clip/scene
-// launch (not just cluster/ring/movement reassignments), so gating on it made
-// _clusterSlot evaporate after the very next clip launch — every listener
-// would recompute bearing-quadrant slots and could converge onto the same
-// track ("different listeners get different tracks, then start playing the
-// same track"). The explicit assignment now persists until the NEXT
-// cluster_assign, regardless of how many ordinary clip launches happen
-// in between.
+// as of Jun 15 2026 broadcastAllZones() only mints a fresh playback_started_at
+// on a full scene fire (restart=true), but a single clip launch/swap/stop
+// still re-broadcasts spatial_config with the *preserved* reference — gating
+// on a match would make _clusterSlot evaporate on the next scene fire and
+// every listener would recompute bearing-quadrant slots, possibly converging
+// onto the same track ("different listeners get different tracks, then start
+// playing the same track"). The explicit assignment now persists until the
+// NEXT cluster_assign, regardless of how many ordinary clip launches/scene
+// fires happen in between.
 let _clusterSlot = null;
 
 // ── Bearing-quadrant self-assignment ──────────────────────────────────────
@@ -144,6 +145,16 @@ let _fxLoopId = null;
 function startFxLoop() {
   if (_fxLoopId) return;
   function tick() {
+    // Yield audio.volume to whatever is mid-ramp — fadeAudioIn (listener.html,
+    // sets window._volumeRampActive) and the drift corrector's seekWithDuck
+    // (sync/sync-engine.js, driftState 'ducking') both ramp audio.volume over
+    // ~1-4s. At 60fps this loop would stomp their ramp back to baseVol within
+    // one frame, defeating fades and turning the corrector's audible duck
+    // into a silent click. Resume once the ramp releases the gate.
+    if (window._volumeRampActive || window.SyncEngine?.getDriftState?.() === 'ducking') {
+      _fxLoopId = requestAnimationFrame(tick);
+      return;
+    }
     const config = window._spatialConfig || {};
     const mySlot = getSlot(config);
     const baseVol = (window._slotVolumes || {})[mySlot] ?? 1;
