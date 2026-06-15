@@ -2143,6 +2143,19 @@ let _clusterInterval=null,_clusterActive=false;
 // field. Each re-run keeps a cluster's previous slot label when a majority
 // of its members already had one.
 let _stickyClusterSlots={};
+// Last assignments actually broadcast — re-clustering on the 30s interval
+// recomputes every time, but if nothing has changed (same listeners, same
+// slots), re-broadcasting cluster_assign still forces every listener through
+// a >250ms force-snap (see spatial_config handler), which reads as a brief
+// "drift"/hiccup even though the assignment didn't change. Only broadcast
+// when assignments actually differ from last time.
+let _lastBroadcastAssignments=null;
+function assignmentsEqual(a,b){
+  if(!a||!b)return false;
+  const ak=Object.keys(a),bk=Object.keys(b);
+  if(ak.length!==bk.length)return false;
+  return ak.every(k=>a[k]===b[k]);
+}
 
 function clusterSpeakers(){
   if(!activeZone||!window._djSyncChannel){showToast('No active zone');return;}
@@ -2187,17 +2200,22 @@ function clusterSpeakers(){
   entries.forEach(({id})=>{assignments[id]=idx2slot[clusterIdx[id]]||slotKeys[0]||'1';});
   _stickyClusterSlots=assignments;
 
+  _clusterActive=true;
+  updateClusterBtn();
+
+  if(assignmentsEqual(assignments,_lastBroadcastAssignments))return;
+  _lastBroadcastAssignments=assignments;
+
   const zoneTrkPayload=flatZoneTracks();
   window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400,cluster_count:k}});
   stampSlotAssignments(assignments);
   showToast('⬡ '+k+' clusters · '+entries.length+' speakers');
-  _clusterActive=true;
-  updateClusterBtn();
 }
 
 function stopCluster(){
   if(_clusterInterval){clearInterval(_clusterInterval);_clusterInterval=null;}
   _clusterActive=false;
+  _lastBroadcastAssignments=null;
   updateClusterBtn();
   showToast('Cluster off');
 }
@@ -3688,7 +3706,7 @@ function toggleRack(id){
   const s=document.getElementById(id);if(!s)return;
   s.classList.toggle('open');
 }
-let _spatialMode='single';
+let _spatialMode='cluster';
 function setMode(mode){
   _spatialMode=mode;
   ['single','cluster','ring','sweep','scatter'].forEach(m=>{
@@ -3723,6 +3741,14 @@ function assignTrackToZone(zone,url,name){
   if(clip)clip.style.opacity='1';
   showToast('Zone '+zone+' → '+trackName);
   refreshStemMonitor();
+  // Cluster is the default spatial mode (DJ wants every speaker to get its
+  // own clip out of the box) — once 2+ stems are loaded, auto-fire it so
+  // the DJ doesn't have to remember to click CLUSTER. Only kicks in if the
+  // DJ hasn't already picked a different mode and cluster isn't running yet.
+  const stemCount=Object.keys(zoneTracks).filter(k=>k!=='C').length;
+  if(stemCount>=2&&!_clusterActive&&_spatialMode==='cluster'&&activeZone&&window._djSyncChannel){
+    fireMode('cluster');
+  }
 }
 // ── DJ STEM MONITOR ────────────────────────────────────────
 // Lets the DJ hear every assigned spatial slot locally while listeners
