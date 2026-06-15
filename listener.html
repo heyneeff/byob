@@ -1369,6 +1369,19 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   window._trackLoading = true;
   window._currentTrackUrl = url;
   window._currentTrackTitle = title;
+  // Watchdog: if 'loadedmetadata' never fires (seen 2026-06-15, dev_wq3pp2 —
+  // currentTime frozen for ~13s with driftState stuck 'idle' and engineLagMs
+  // unchanged, because fastDriftCorrect's `if (window._trackLoading) return`
+  // gate above never cleared), _trackLoading would block drift correction
+  // forever until a manual hard_sync. Retry via _hardReloadTrack() instead.
+  clearTimeout(window._trackLoadWatchdog);
+  window._trackLoadWatchdog = setTimeout(() => {
+    if (window._trackLoading && window._currentTrackUrl === url) {
+      console.warn('loadedmetadata never fired for', url, '— reloading track');
+      window._trackLoading = false;
+      _hardReloadTrack();
+    }
+  }, 4000);
   // Clean up any WebRTC
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -1391,7 +1404,8 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
   audio.addEventListener('loadedmetadata', function onMeta() {
     audio.removeEventListener('loadedmetadata', onMeta);
-    if (!audio.duration) return;
+    clearTimeout(window._trackLoadWatchdog);
+    if (!audio.duration) { _hardReloadTrack(); return; }
     seekToSync(startedAt, playAt, playFromS);
     window._trackLoading = false;
     // Apply master BPM warp if DJ has set one
