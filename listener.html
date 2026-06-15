@@ -3405,9 +3405,14 @@ function initGuestListChannel(zoneId) {
     const phone     = currentUser?.user_metadata?.phone || '';
     const instagram = currentUser?.user_metadata?.instagram || '';
     const signal    = window._mySignal || '';
+    // Report which stem we're actually playing, so the DJ's crowd map dot
+    // color (slotColor(l.slot)) reflects ground truth — not just a stray
+    // id-hash color unrelated to playback. getSlot() already resolves
+    // cluster_assign overrides, bearing self-assignment, and the 'C' default.
+    const slot = window.SpatialRouting ? window.SpatialRouting.getSlot(window._spatialConfig || {}) : 'C';
     window._guestChannel.send({
       type: 'broadcast', event: 'proximity',
-      payload: { id: listenerId, userId: currentUser?.id, dist, bearing, name, emoji, phone, instagram, signal, drift_ms: window._lastDriftMs || 0 }
+      payload: { id: listenerId, userId: currentUser?.id, dist, bearing, name, emoji, phone, instagram, signal, slot, drift_ms: window._lastDriftMs || 0 }
     });
   };
   setTimeout(sendPresence, 1500);

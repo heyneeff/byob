@@ -26,22 +26,29 @@
 
 // ── DJ-driven cluster assignment override ─────────────────────────────────
 // Set by onClusterAssign when the DJ explicitly assigns this listener a slot
-// (k-means cluster / ring / movement / remix). As long as a later
-// spatial_config broadcast carries the SAME playback_started_at (i.e. it's
-// just a volume/FX/track-load nudge for the same "set", not a fresh
-// broadcastAllZones restart), getSlot() honors that explicit assignment
-// instead of recomputing a bearing-quadrant slot — otherwise spatial_config's
-// self-assignment silently overrides cluster_assign (audit finding E) and two
-// listeners standing near each other both fall back to the same bearing slot.
+// (k-means cluster / ring / movement / remix). getSlot() honors that explicit
+// assignment instead of recomputing a bearing-quadrant slot, as long as the
+// assigned slot still has a track in the current zone_tracks — otherwise
+// spatial_config's self-assignment silently overrides cluster_assign (audit
+// finding E) and two listeners standing near each other both fall back to the
+// same bearing slot.
+//
+// Deliberately NOT gated on playback_started_at matching the cluster_assign's:
+// broadcastAllZones() mints a fresh playback_started_at on EVERY clip/scene
+// launch (not just cluster/ring/movement reassignments), so gating on it made
+// _clusterSlot evaporate after the very next clip launch — every listener
+// would recompute bearing-quadrant slots and could converge onto the same
+// track ("different listeners get different tracks, then start playing the
+// same track"). The explicit assignment now persists until the NEXT
+// cluster_assign, regardless of how many ordinary clip launches happen
+// in between.
 let _clusterSlot = null;
-let _clusterSlotStartedAt = null;
 
 // ── Bearing-quadrant self-assignment ──────────────────────────────────────
 // Deterministic — every listener runs the same algo on the same data,
 // result: self-organizing clusters with no server round-trip.
 function getSlot(config) {
-  if (_clusterSlot && config?.playback_started_at === _clusterSlotStartedAt
-      && config?.zone_tracks?.[_clusterSlot]) {
+  if (_clusterSlot && config?.zone_tracks?.[_clusterSlot]) {
     return _clusterSlot;
   }
   if (!userLat || !config?.zone_lat) return 'C';
@@ -259,10 +266,9 @@ function onScatter(payload) {
 
 function onClusterAssign(payload) {
   const mySlot = payload.assignments?.[listenerId];
-  // Remember this explicit assignment so a later spatial_config for the same
-  // playback_started_at doesn't silently override it via bearing self-assign.
+  // Remember this explicit assignment so later spatial_config broadcasts
+  // (clip launches etc.) don't silently override it via bearing self-assign.
   _clusterSlot = mySlot || 'C';
-  _clusterSlotStartedAt = payload.playback_started_at || null;
   const trackUrl = mySlot
     ? (payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'])
     : payload.zone_tracks?.['C'];
