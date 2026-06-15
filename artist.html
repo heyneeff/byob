@@ -3392,7 +3392,7 @@ function _doFireScene(sceneId){
   _activeSceneId=sceneId;
   renderSceneLauncher();
   _updateWarpStatus();
-  broadcastAllZones();
+  broadcastAllZones(false,true); // full scene swap — reset everyone to position 0
   // Monitor: play Center slot (or first assigned slot) locally through the DJ audio element
   const monitorTrack = zoneTracks['C'] || Object.values(zoneTracks)[0];
   if(monitorTrack?.url && audio.src !== monitorTrack.url){
@@ -3974,12 +3974,17 @@ function currentStartedAt(){
   return activeZone?.playback_started_at || window._currentZone?.playback_started_at || null;
 }
 
-async function broadcastAllZones(allowEmpty){
+async function broadcastAllZones(allowEmpty,restart){
   if(!activeZone){showToast('Create a zone first');return;}
   if(!allowEmpty && !Object.keys(zoneTracks).length){showToast('Assign tracks to zones first');return;}
 
-  const startedAt = new Date(serverNow()).toISOString();
-  noteStartedAt(startedAt); // scenes/spatial broadcasts ARE a legitimate restart
+  // Single-clip launches/stops/swaps must NOT disturb slots that are already
+  // playing — only a full scene fire (restart=true) intentionally resets
+  // every listener to position 0 for the new arrangement. See
+  // noteStartedAt/currentStartedAt: spatial reassignment changes WHICH stem,
+  // not WHEN the set started.
+  const startedAt = restart ? new Date(serverNow()).toISOString() : (currentStartedAt() || new Date(serverNow()).toISOString());
+  noteStartedAt(startedAt);
   const payload={};
   Object.entries(zoneTracks).forEach(([z,t])=>{payload[z]=t.url;});
 
