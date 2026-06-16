@@ -2028,6 +2028,7 @@ let _healthInterval = null;
 let _lastDriftCheckAt = 0;
 const DRIFT_CHECK_MS = 5000;
 window._stallCount = 0;
+window._resumeAttempts = 0;
 window._trackLoading = false;
 
 // Resume from a paused/stalled audio element and reseek to expectedPosition()
@@ -2096,16 +2097,19 @@ const SNAP_THRESHOLD_MS = 500;
 // (only for real drift), with audio at exactly base rate the rest of the
 // time — no warping, no ducking, from this loop.
 //
-// Phase 5v (2026-06-15): lowered 300->150ms. A sync-sim.html batch sweep (30
-// seeds x 15min x 8 listeners) showed 300ms left drift sitting >=150ms for
-// 27.5% of steady-state time (the "drifts to 160+ms" feeling). 150ms is the
-// floor — seekPreservingBT()'s mute/seek/ramp itself eats ~130ms of playback,
-// so thresholds at or below that (100-120ms tried) cause snap cascades (each
-// snap's own stall immediately re-triggers another snap): 264-306 hard
-// seeks/listener vs ~100 at 150ms, and WORSE mean drift than 300ms. 150ms
-// paired with the widened MICRO_MAX_PCT (sync/sync-engine.js, 0.6%->1.2%)
-// drops mean settled drift from 135ms to 91ms for ~30% more snaps (77->101
-// per listener per 15min, ~1 extra inaudible-ish snap every ~2min).
+// Phase 5v (2026-06-15): lowered 300->150ms. seekPreservingBT()'s
+// mute/seek/ramp eats ~130ms, so thresholds below that cause snap cascades
+// (100-120ms tried: 264-306 seeks/listener vs ~100 at 150ms, WORSE drift).
+// 150ms is the floor.
+//
+// Phase 5w (2026-06-16): removed micro-correction from this loop. Jun 16
+// overnight data (5h, 6 devices) showed MICRO_MAX_PCT=1.2% couldn't overcome
+// stall-induced drift on high-stall devices (2863 stalls/session), producing
+// a persistent -150ms bias. The real fix is the playing re-anchor below:
+// re-seek to expectedNow() whenever audio resumes from any stall, which
+// re-establishes position from first principles at the earliest natural moment.
+// Without micro-correction the engine is dead-simple: snap if drift >= 150ms,
+// do nothing otherwise — identical to the May 13 baseline spirit.
 const DRIFT_SNAP_THRESHOLD_MS = 150;
 
 // "Locking in" indicator — surfaces the warm-up/recovery period (post track
@@ -2128,6 +2132,7 @@ function updateLockIndicator(lagMs) {
 
 function fastDriftCorrect() {
   _lastDriftCheckAt = performance.now();
+  window._engineLagMs = null; // reset each tick — stale value from last playing check misleads debug.html
   if (!activeZone?.playback_started_at) return;
   if (!audio.duration) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
@@ -2138,17 +2143,22 @@ function fastDriftCorrect() {
   if (audio.paused) {
     if (_webAudioPlaying) {
       window._stallCount = (window._stallCount || 0) + 1;
-      // If currentTime hasn't moved across several consecutive paused ticks,
-      // _resumeAndReseek()'s play()+seek isn't unsticking this element —
-      // escalate to a full track reload (see _hardReloadTrack).
+      window._resumeAttempts = (window._resumeAttempts || 0) + 1;
+      // Two escalation paths to _hardReloadTrack():
+      // (A) _frozenTicks: currentTime unchanged across consecutive paused ticks —
+      //     seekPreservingBT inside _resumeAndReseek is a true no-op, audio pipeline frozen.
+      // (B) _resumeAttempts: audio.play() resolves and seeks land (currentTime moves),
+      //     but BT immediately re-pauses — frozenTicks never climbs but the device is
+      //     stuck in an endless pause/resume/pause loop.
       if (window._lastPausedCurrentTime === audio.currentTime) {
         window._frozenTicks = (window._frozenTicks || 0) + 1;
       } else {
         window._frozenTicks = 0;
       }
       window._lastPausedCurrentTime = audio.currentTime;
-      if (window._frozenTicks >= 3) {
+      if (window._frozenTicks >= 2 || window._resumeAttempts >= 3) {
         window._frozenTicks = 0;
+        window._resumeAttempts = 0;
         _hardReloadTrack();
       } else {
         _resumeAndReseek();
@@ -2158,6 +2168,7 @@ function fastDriftCorrect() {
   }
   window._frozenTicks = 0;
   window._lastPausedCurrentTime = null;
+  window._resumeAttempts = 0; // audio is playing — reset the failure counter
   const lagMs = computeLagMs();
   window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   updateLockIndicator(lagMs);
@@ -2182,17 +2193,23 @@ function fastDriftCorrect() {
       window._lastSeekIntendedMs = Math.round(intendedJumpMs);
       window._lastSeekMeasuredMs = Math.round(measuredJumpMs);
     }, 200);
-  } else {
-    // Phase 5r — below the snap threshold, trim playbackRate by a tiny
-    // (+/-0.6% max) amount to cancel each device's constant hardware
-    // clock-rate error. Without this, drift sawtooths from ~0 up to
-    // DRIFT_SNAP_THRESHOLD_MS and back every couple minutes (median
-    // drift -60 to -180ms); the trim holds it near 0 between snaps.
-    applyMicroCorrection(lagMs);
   }
 }
 audio.addEventListener('timeupdate', () => {
   if (performance.now() - _lastDriftCheckAt >= DRIFT_CHECK_MS) fastDriftCorrect();
+});
+
+// Phase 5w — re-anchor on stall recovery. When audio resumes from any pause
+// we didn't initiate (OS/BT stall), seek immediately to expectedNow() so the
+// stall period doesn't accumulate as drift. _webAudioPlaying guards against
+// firing during the initial track-load play sequence (loadTrack's onPlaying
+// handles that; _webAudioPlaying is false until audio.play() resolves there).
+audio.addEventListener('playing', () => {
+  if (!_webAudioPlaying) return;
+  if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject || window._trackLoading) return;
+  window._snapCount = (window._snapCount || 0) + 1;
+  cancelDriftCorrection();
+  seekPreservingBT(_expectedNow());
 });
 
 // Zone health check — DB fetch, runs every 60s to detect zone end / missed track changes
@@ -4954,7 +4971,6 @@ function computeLagMs() { return window.SyncEngine.computeLagMs(); }
 function requestCorrection(lagMs) { window.SyncEngine.requestCorrection(lagMs); }
 function cancelDriftCorrection() { window.SyncEngine.cancelDriftCorrection(); }
 function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime); }
-function applyMicroCorrection(lagMs) { window.SyncEngine.applyMicroCorrection(lagMs); }
 
 async function _runLockingPass(){
   if (_syncState !== 'locking' && _syncState !== 'verifying') return;
