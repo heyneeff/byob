@@ -1448,7 +1448,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   audio.load();
 }
 
-const SEEK_STAB_S = 0.27; // audio seek stabilization latency ~160ms — must match sync/sync-engine.js
+const SEEK_STAB_S = 0.19; // audio seek stabilization latency — must match sync/sync-engine.js
 function seekToSync(startedAt, playAt, playFromS) {
   if (!audio.duration) return;
   const seekTo = window.SyncEngine.computeSeekTime({

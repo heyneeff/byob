@@ -436,8 +436,8 @@ test('micro correction converges a constant hardware-drift lag toward 0 over tim
 
   // Steady state (last quarter of the run) should sit close to 0 — well
   // under the old 300ms snap threshold, and under the ~50ms target —
-  // converging from the initial ~270ms SEEK_STAB_S offset.
-  assert.ok(Math.abs(history[0]) > 200, `expected a real initial offset to converge from, got ${history[0]}`);
+  // converging from the initial ~190ms SEEK_STAB_S offset.
+  assert.ok(Math.abs(history[0]) > 100, `expected a real initial offset to converge from, got ${history[0]}`);
   const steady = history.slice(-30);
   const maxAbsSteady = Math.max(...steady.map(Math.abs));
   assert.ok(maxAbsSteady < 50, `expected steady-state |lag| < 50ms, got ${maxAbsSteady}`);

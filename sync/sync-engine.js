@@ -17,7 +17,7 @@
 
 // Audio seek stabilization latency constant — must match listener.html,
 // debug.html's expectedPos formula, and sync-sim.html.
-export const SEEK_STAB_S = 0.27;
+export const SEEK_STAB_S = 0.19;
 
 // ── Position math ─────────────────────────────────────────────
 // expected = ((elapsed + SEEK_STAB_S - deviceLatency - scatterOffset) * warpRate % duration + duration) % duration

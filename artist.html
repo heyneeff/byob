@@ -1040,8 +1040,17 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
     <div class="join-link-row">
       <canvas id="join-qr" width="100" height="100"></canvas>
       <div class="join-link-info">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:3px;">Full App</div>
         <div class="join-link-url" id="join-link-url"></div>
         <button class="btn-copy-link" onclick="copyJoinLink()">📋 Copy Link</button>
+      </div>
+    </div>
+    <div class="join-link-row" style="margin-top:8px;padding-top:8px;border-top:1px solid var(--rim);">
+      <canvas id="party-qr" width="100" height="100"></canvas>
+      <div class="join-link-info">
+        <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--teal);margin-bottom:3px;">Party Mode</div>
+        <div class="join-link-url" id="party-link-url"></div>
+        <button class="btn-copy-link" onclick="copyPartyLink()">📋 Copy Link</button>
       </div>
     </div>
   </div>
@@ -1130,28 +1139,38 @@ const DENVER=[39.7392,-104.9903];
 let leafletMap=null,userMarker=null,draftCircle=null,draftMarker=null,zoneCircles={};
 let activeZone=null,currentUser=null;
 
-// ── Join link / QR — lets people scan into this zone's listener.html directly ──
+// ── Join link / QR — lets people scan into this zone's listener.html or party.html ──
 function renderJoinLink(){
   const sec=document.getElementById('join-link-section');
   if(!activeZone){sec.style.display='none';return;}
-  const url=`${location.origin}${location.pathname.replace('artist.html','listener.html')}?zone=${activeZone.id}`;
+  const base=`${location.origin}${location.pathname.replace('artist.html','')}`;
+  const url=`${base}listener.html?zone=${activeZone.id}`;
+  const partyUrl=`${base}party.html?zone=${activeZone.id}`;
   document.getElementById('join-link-url').textContent=url;
+  document.getElementById('party-link-url').textContent=partyUrl;
   sec.style.display='flex';
-  // QRCode comes from a CDN <script> — if it's blocked (ad blocker, offline,
-  // etc.) don't let window.onerror's uncaught-error handler take down the
-  // whole zone-creation flow over a missing QR code. Just skip the canvas.
-  const qrCanvas=document.getElementById('join-qr');
+  // QRCode comes from a CDN <script> — skip canvas gracefully if blocked/offline
   if(typeof QRCode!=='undefined'){
+    const qrCanvas=document.getElementById('join-qr');
     qrCanvas.style.display='';
     QRCode.toCanvas(qrCanvas,url,{width:100,margin:1},()=>{});
+    const partyCanvas=document.getElementById('party-qr');
+    partyCanvas.style.display='';
+    QRCode.toCanvas(partyCanvas,partyUrl,{width:100,margin:1},()=>{});
   } else {
-    qrCanvas.style.display='none';
+    document.getElementById('join-qr').style.display='none';
+    document.getElementById('party-qr').style.display='none';
   }
 }
 function copyJoinLink(){
   const url=document.getElementById('join-link-url').textContent;
   if(!url)return;
   navigator.clipboard?.writeText(url).then(()=>showToast('🔗 Link copied')).catch(()=>showToast('Copy failed',true));
+}
+function copyPartyLink(){
+  const url=document.getElementById('party-link-url').textContent;
+  if(!url)return;
+  navigator.clipboard?.writeText(url).then(()=>showToast('🎉 Party link copied')).catch(()=>showToast('Copy failed',true));
 }
 let _clockOffset=0;
 let _zonesGlobalSubbed=false;
@@ -2692,14 +2711,14 @@ function renderLiveGuestList(){
 async function triggerResync() {
   if (!activeZone) return showToast('No active zone');
   if (!audio.src || !audio.duration) return showToast('No track loaded');
+  const startedAt = currentStartedAt();
+  if (!startedAt) return showToast('No reference time');
 
   const resyncAt = serverNow() + 2000;
-  const freshStartedAt = new Date(serverNow() - audio.currentTime * 1000).toISOString();
-
   const ch = window._djSyncChannel || db.channel('sync_' + activeZone.id);
   ch.send({
     type: 'broadcast', event: 'hard_sync',
-    payload: { resyncAt, playback_started_at: freshStartedAt, resetOffsets: false, clearScatter: true }
+    payload: { resyncAt, playback_started_at: startedAt, resetOffsets: false, clearScatter: true }
   });
   showToast('⟳ Sync in 2s…');
 }
