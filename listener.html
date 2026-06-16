@@ -2206,12 +2206,19 @@ audio.addEventListener('timeupdate', () => {
 // stall period doesn't accumulate as drift. _webAudioPlaying guards against
 // firing during the initial track-load play sequence (loadTrack's onPlaying
 // handles that; _webAudioPlaying is false until audio.play() resolves there).
+// _reAnchorInFlight blocks re-entry: iOS fires 'playing' again when a seek
+// completes (audio buffers briefly at the new position), which without this
+// guard causes a cascade — each seek triggers another playing → another seek.
+let _reAnchorInFlight = false;
 audio.addEventListener('playing', () => {
   if (!_webAudioPlaying) return;
+  if (_reAnchorInFlight) return;
   if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject || window._trackLoading) return;
+  _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
   seekPreservingBT(_expectedNow());
+  setTimeout(() => { _reAnchorInFlight = false; }, 500);
 });
 
 // Zone health check — DB fetch, runs every 60s to detect zone end / missed track changes
