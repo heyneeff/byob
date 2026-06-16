@@ -1399,6 +1399,9 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   isPlaying = true;
   // _webAudioPlaying is set true only when audio.play() actually resolves
 
+  // Silence before load — prevents hearing position 0 while the browser
+  // buffers and seekToSync waits for loadedmetadata (can take 1-5s on BT).
+  audio.volume = 0;
   audio.src = url;
   audio.loop = true;
 
@@ -1426,7 +1429,6 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       }
     }, { once: true });
     const _wasPlaying = _webAudioPlaying;
-    if (!_wasPlaying) audio.volume = 0;
     audio.play().then(() => {
       _webAudioPlaying = true;
       fadeAudioIn(_wasPlaying ? 800 : 5000);
@@ -2219,12 +2221,20 @@ async function syncZoneAudio() {
     const { data: z } = await db.from('zones').select('id,active,lat,lng,radius_m,zone_tracks,current_track_url,track_name,playback_started_at,play_at,play_from_s').eq('id', activeZone.id).single();
     if (!z) return;
     if (!z.active) { stopEverything(); showToast('The zone has ended 🎤'); return; }
-    // Absorb any missed track change
-    if (z.playback_started_at && z.playback_started_at !== activeZone.playback_started_at && z.current_track_url && z.current_track_url !== 'webrtc-live') {
+    // Absorb any missed track change. Check both timestamp AND audio.src —
+    // the zone channel handler updates activeZone before loadTrack completes,
+    // so a subsequent syncZoneAudio might see matching timestamps even though
+    // the audio element never actually loaded the new track.
+    const expectedUrl = (() => {
+      if (!z.zone_tracks || !Object.keys(z.zone_tracks).length) return z.current_track_url;
+      const src = { zone_tracks: z.zone_tracks, zone_lat: z.lat, zone_lng: z.lng, zone_radius_m: z.radius_m, playback_started_at: z.playback_started_at };
+      return z.zone_tracks[getSpatialSlot(src)] || z.zone_tracks['C'] || z.current_track_url;
+    })();
+    const startedAtChanged = z.playback_started_at && z.playback_started_at !== activeZone.playback_started_at;
+    const wrongSrc = expectedUrl && expectedUrl !== 'webrtc-live' && audio.src && audio.src !== expectedUrl;
+    if ((startedAtChanged || wrongSrc) && expectedUrl && expectedUrl !== 'webrtc-live') {
       activeZone = { ...activeZone, ...z };
-      if (z.current_track_url !== audio.src) {
-        loadTrack(z.current_track_url, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
-      }
+      loadTrack(expectedUrl, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
     } else {
       activeZone = { ...activeZone, ...z };
     }
