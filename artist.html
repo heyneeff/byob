@@ -2714,6 +2714,13 @@ async function triggerResync() {
   const startedAt = currentStartedAt();
   if (!startedAt) return showToast('No reference time');
 
+  // Re-seek DJ's own audio to the server reference so DJ and listeners all
+  // snap to the same position — without this the DJ stays behind if their
+  // audio has drifted while listeners snap to the correct reference.
+  const elapsed = (serverNow() - new Date(startedAt).getTime()) / 1000;
+  const seekTo = ((elapsed % audio.duration) + audio.duration) % audio.duration;
+  audio.currentTime = Math.max(0, Math.min(seekTo, audio.duration - 0.1));
+
   const resyncAt = serverNow() + 2000;
   const ch = window._djSyncChannel || db.channel('sync_' + activeZone.id);
   ch.send({
