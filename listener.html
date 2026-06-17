@@ -5311,8 +5311,9 @@ function buildHUDRows() {
   // DRIFT read wrong by a constant offset even when the corrector is fine
   const expectedPos = elapsed !== null && audio.duration
     ? (((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % audio.duration + audio.duration) % audio.duration) : null;
-  const drift = expectedPos !== null
-    ? (audio.currentTime - expectedPos) : null;
+  const drift = expectedPos !== null && audio.duration
+    ? window.SyncEngine.wrapLag((audio.currentTime - expectedPos) * 1000, audio.duration * 1000) / 1000
+    : null;
 
   const rows = [
     ['syncedNow()',       now],
@@ -5403,7 +5404,9 @@ function broadcastHUD() {
         warpRate: _getBpmWarpRate(),
       })
     : null;
-  const drift = expectedPos !== null ? (audio.currentTime - expectedPos) : null;
+  const drift = expectedPos !== null && audio.duration
+    ? window.SyncEngine.wrapLag((audio.currentTime - expectedPos) * 1000, audio.duration * 1000) / 1000
+    : null;
   _hudChannel.send({
     type: 'broadcast', event: 'hud_data',
     payload: {

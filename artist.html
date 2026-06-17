@@ -2725,7 +2725,12 @@ function renderLiveGuestList(){
 
 async function triggerResync() {
   if (!activeZone) return showToast('No active zone');
-  if (!audio.src || !audio.duration) return showToast('No track loaded');
+  if (!audio.src) return showToast('No track loaded');
+  if (!audio.duration) {
+    showToast('Loading track…');
+    audio.addEventListener('loadedmetadata', () => triggerResync(), { once: true });
+    return;
+  }
   const startedAt = currentStartedAt();
   if (!startedAt) return showToast('No reference time');
 
@@ -2736,13 +2741,13 @@ async function triggerResync() {
   const seekTo = ((elapsed % audio.duration) + audio.duration) % audio.duration;
   audio.currentTime = Math.max(0, Math.min(seekTo, audio.duration - 0.1));
 
-  const resyncAt = serverNow() + 2000;
+  const resyncAt = serverNow() + 1200;
   const ch = window._djSyncChannel || db.channel('sync_' + activeZone.id);
   ch.send({
     type: 'broadcast', event: 'hard_sync',
     payload: { resyncAt, playback_started_at: startedAt, resetOffsets: false, clearScatter: true }
   });
-  showToast('⟳ Sync in 2s…');
+  showToast('⟳ Sync in 1.2s…');
 }
 
 let _killArmed = false, _killArmedTimer = null;
