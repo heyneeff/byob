@@ -4908,8 +4908,10 @@ function _selfCalibrateTick(lagMs) {
 
   if (stdev > SELFCAL_STDEV_MAX || Math.abs(mean) < SELFCAL_MEAN_MIN) return;
 
+  // lagMs = expectedPos - currentTime: positive = audio behind = expectedPos too far ahead.
+  // Increasing deviceLatencyMs reduces expectedPos → closes the gap. So we ADD.
   const adjustment = mean * SELFCAL_STEP;
-  const newLatency  = Math.max(0, Math.min(600, _deviceLatencyMs - adjustment));
+  const newLatency  = Math.max(0, Math.min(600, _deviceLatencyMs + adjustment));
   console.log(`[SelfCal] mean=${mean.toFixed(1)}ms stdev=${stdev.toFixed(1)}ms → BT latency ${_deviceLatencyMs.toFixed(0)}→${newLatency.toFixed(0)}ms`);
   _deviceLatencyMs = newLatency;
   localStorage.setItem('byob_device_latency', newLatency.toFixed(1));
