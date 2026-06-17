@@ -1621,6 +1621,7 @@ async function confirmZone(){
     if(error)throw error;
     activeZone=data;
     renderJoinLink();
+    if(window._djSyncChannel){window._djSyncChannel.unsubscribe();window._djSyncChannel=null;}
     window._djSyncChannel=db.channel('sync_'+data.id).subscribe();
     window._currentZone={playback_started_at:data.playback_started_at};
     cancelZoneDraw();
@@ -1707,6 +1708,7 @@ function restoreZone(z){
   activeZone=z;
   renderJoinLink();
   // Reconnect sync channel
+  if(window._djSyncChannel){window._djSyncChannel.unsubscribe();window._djSyncChannel=null;}
   window._djSyncChannel=db.channel('sync_'+z.id).subscribe();
   window._currentZone={playback_started_at:z.playback_started_at};
   // Zone button
@@ -2210,6 +2212,14 @@ let _stickyClusterSlots={};
 // "drift"/hiccup even though the assignment didn't change. Only broadcast
 // when assignments actually differ from last time.
 let _lastBroadcastAssignments=null;
+let _lastBroadcastZoneTracks=null, _spatialResyncTimer=null;
+function _maybeSpatialResync(zoneTrkPayload){
+  const key=JSON.stringify(zoneTrkPayload);
+  if(key===_lastBroadcastZoneTracks)return;
+  _lastBroadcastZoneTracks=key;
+  clearTimeout(_spatialResyncTimer);
+  _spatialResyncTimer=setTimeout(()=>triggerResync(),4000);
+}
 function assignmentsEqual(a,b){
   if(!a||!b)return false;
   const ak=Object.keys(a),bk=Object.keys(b);
@@ -2270,6 +2280,7 @@ function clusterSpeakers(){
 
   const zoneTrkPayload=flatZoneTracks();
   window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400,cluster_count:slotKeys.length}});
+  _maybeSpatialResync(zoneTrkPayload);
   stampSlotAssignments(assignments);
   showToast('⬡ '+slotKeys.length+' stems · '+entries.length+' speakers');
 }
@@ -2326,7 +2337,9 @@ function applyRing(){
     assignments[l.id]=slotKeys[Math.min(Math.floor(ratio*numRings),numRings-1)];
   });
   if(window._djSyncChannel){
-    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+    const zoneTrkPayload=flatZoneTracks();
+    window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+    _maybeSpatialResync(zoneTrkPayload);
     stampSlotAssignments(assignments);
   }
   showToast('⊚ Ring · '+numRings+' rings · '+listeners.length+' speakers');
@@ -2406,7 +2419,9 @@ function tickMovement(){
       break;
   }
 
-  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:flatZoneTracks(),playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+  const zoneTrkPayload=flatZoneTracks();
+  window._djSyncChannel.send({type:'broadcast',event:'cluster_assign',payload:{assignments,zone_tracks:zoneTrkPayload,playback_started_at:currentStartedAt()||new Date(serverNow()).toISOString(),play_at:serverNow()+400}});
+  _maybeSpatialResync(zoneTrkPayload);
   stampSlotAssignments(assignments);
   const status=document.getElementById('mv-status');
   if(status)status.textContent=_mvPattern.toUpperCase()+' · '+listeners.length+' speakers · phase '+((_mvPhase)*10|0)+'/'+(n*10);
