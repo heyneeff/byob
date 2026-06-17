@@ -631,10 +631,7 @@ html,body{background:var(--bg);color:var(--white);font-family:'Roboto',sans-seri
 .boom-menu-item.danger{color:var(--red);}
 /* ── CALIBRATION NUDGE ── */
 .cal-row{display:flex;align-items:center;justify-content:center;gap:6px;margin-top:8px;}
-/* ── TAP BANNER ── */
-#tap-banner{display:none;position:fixed;bottom:0;left:0;right:0;z-index:900;background:var(--orange);color:#000;font-family:'Roboto Condensed',sans-serif;font-size:24px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;padding:28px 20px 36px;text-align:center;box-shadow:0 -4px 40px rgba(245,126,32,.7);cursor:pointer;animation:tapPulse 1.4s ease-in-out infinite;}
-@keyframes tapPulse{0%,100%{opacity:1}50%{opacity:.85}}
-#tap-banner.visible{display:block;}
+
 audio{display:none;}
 
 .sync-status{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:7px;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);min-height:14px;transition:color .4s;}
@@ -851,7 +848,6 @@ audio{display:none;}
 </div>
 
 <div id="boom-menu"><div class="boom-menu-item" id="ls-dj-link" style="display:none" onclick="openDJMode()">🎛️ Open DJ Mode</div><div class="boom-menu-item danger" onclick="lsLogout()">⏏ Log Out</div></div>
-<div id="tap-banner" onclick="onTapBanner()">🎧 TAP TO START THE MUSIC</div>
 <!-- GUEST FELLOWSHIP CARD -->
 <div id="guest-card">
   <div class="guest-card-emoji" id="gc-emoji">🎧</div>
@@ -1226,10 +1222,6 @@ requestAnimationFrame(rafLoop);
 // ════════════════════════════════════════════════════════════
 // TAP BANNER
 // ════════════════════════════════════════════════════════════
-function onTapBanner(){
-  // legacy entry point — alias to onBoomyTap for safety
-  onBoomyTap();
-}
 
 function onBoomyTap(){
   const wrap = document.getElementById('boom-popup-wrap');
@@ -1252,7 +1244,6 @@ function onBoomyTap(){
   if(!wrap || !wrap.classList.contains('tappable')) return;
 
 
-  hideTapBanner();
   wrap.classList.remove('tappable');
   wrap.classList.add('hyped');
   setTimeout(()=>{ wrap.classList.remove('hyped'); }, 1400);
@@ -1421,7 +1412,6 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       setTimeout(() => seekToSync(startedAt, playAt, playFromS), 400);
       setTimeout(() => seekToSync(startedAt, playAt, playFromS), 800);
       setTimeout(() => seekToSync(startedAt, playAt, playFromS), 1500);
-      hideTapBanner();
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title: title||'BYOB', artist: 'Live from the Zone 🎧', album: activeZone?.name||'BYOB' });
         navigator.mediaSession.setActionHandler('play',  () => { audio.play(); setMuteBtn(false); });
@@ -1439,7 +1429,6 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       // Make Boomy tappable so there's a clear visual call-to-action
       const wrap = document.getElementById('boom-popup-wrap');
       if (wrap) wrap.classList.add('tappable');
-      document.getElementById('tap-banner')?.classList.add('visible');
       boomSay('Tap me to start the music.', 12000, true, 'regular');
     });
 
@@ -1656,16 +1645,6 @@ const BOOMY_HYPE_DEVIOUS = [
   "Hooray!"
 ];
 
-function showTapBanner(){
-  const wrap = document.getElementById('boom-popup-wrap');
-  if(wrap && !wrap.classList.contains('tappable') && activeZone && !_webAudioPlaying){
-    boomSay("Tap me. I am ready.", 8000, true, 'regular');
-  }
-}
-
-function hideTapBanner(){
-  document.getElementById('tap-banner')?.classList.remove('visible');
-}
 
 function spawnBoomyBurst(){
 
@@ -1995,7 +1974,6 @@ function stopEverything() {
   if (window._syncChannel) { window._syncChannel.unsubscribe(); window._syncChannel = null; }
   clearTimeout(_zoneChannelRetryTimer); clearTimeout(_syncChannelRetryTimer);
   _pendingStream = null; _rtcUserHasTapped = false;
-  hideTapBanner();
   clearInterval(_syncInterval); clearInterval(_driftInterval); clearInterval(_healthInterval);
   _webAudioPlaying = false;
   _isMuted = false;
