@@ -2191,8 +2191,9 @@ function fastDriftCorrect() {
   window._lastDriftMs = Math.round(lagMs);
   if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
     window._snapCount = (window._snapCount || 0) + 1;
-    _selfCalSamples  = [];
-    _selfCalCooldown = performance.now() + 10000;
+    // Don't clear self-cal samples on natural drift snaps — they contain
+    // useful signal. Only cool down briefly so post-snap readings settle.
+    _selfCalCooldown = performance.now() + 5000;
     // Diagnostic — confirm the seek actually lands. On some BT routes
     // audio.currentTime = x silently no-ops while playing, so the snap
     // "completes" but drift never closes and snapCount climbs forever.
@@ -4911,7 +4912,7 @@ function _selfCalibrateTick(lagMs) {
   // lagMs = expectedPos - currentTime: positive = audio behind = expectedPos too far ahead.
   // Increasing deviceLatencyMs reduces expectedPos → closes the gap. So we ADD.
   const adjustment = mean * SELFCAL_STEP;
-  const newLatency  = Math.max(0, Math.min(600, _deviceLatencyMs + adjustment));
+  const newLatency  = Math.max(0, Math.min(900, _deviceLatencyMs + adjustment));
   console.log(`[SelfCal] mean=${mean.toFixed(1)}ms stdev=${stdev.toFixed(1)}ms → BT latency ${_deviceLatencyMs.toFixed(0)}→${newLatency.toFixed(0)}ms`);
   _deviceLatencyMs = newLatency;
   localStorage.setItem('byob_device_latency', newLatency.toFixed(1));
