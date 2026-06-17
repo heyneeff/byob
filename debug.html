@@ -216,7 +216,7 @@ let _records = [];
 const REC_COLS = ['timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
   'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
   'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
-  'engineLagMs','snapCount','seekIntendedMs','seekMeasuredMs','selfCalMean','selfCalStdev','note'];
+  'engineLagMs','snapCount','seekIntendedMs','seekMeasuredMs','note'];
 
 function toggleRecord() {
   _recording = !_recording;
@@ -319,9 +319,6 @@ function renderSyncCard(d, age) {
     ${r('seek intend', d.seekIntendedMs!=null ? d.seekIntendedMs+'ms' : '—')}
     ${r('seek landed', d.seekMeasuredMs!=null ? d.seekMeasuredMs+'ms' : '—',
         d.seekIntendedMs!=null && d.seekMeasuredMs!=null && Math.abs(d.seekIntendedMs) > 100 && Math.abs(d.seekMeasuredMs) < Math.abs(d.seekIntendedMs) * 0.3 ? 'bad' : '')}
-    ${r('selfCal mean', d.selfCalMean != null ? d.selfCalMean+'ms' : '—',
-        d.selfCalMean != null && Math.abs(d.selfCalMean) > SELFCAL_CONVERGE_WARN ? 'warn' : d.selfCalMean != null && Math.abs(d.selfCalMean) <= 10 ? '' : '')}
-    ${r('selfCal σ',   d.selfCalStdev != null ? d.selfCalStdev+'ms' : '—')}
   </div>`;
 }
 
@@ -344,8 +341,6 @@ function renderHealthCard(d, age) {
 function r(key, val, cls='') {
   return `<div class="row"><span class="k">${key}</span><span class="v ${cls}">${val}</span></div>`;
 }
-
-const SELFCAL_CONVERGE_WARN = 20; // ms — show warn on card while converging
 
 setInterval(() => {
   const now = Date.now();
