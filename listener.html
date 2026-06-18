@@ -4982,6 +4982,9 @@ function computeLagMs() { return window.SyncEngine.computeLagMs(); }
 function requestCorrection(lagMs) { window.SyncEngine.requestCorrection(lagMs); }
 function cancelDriftCorrection() { window.SyncEngine.cancelDriftCorrection(); }
 function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime); }
+// Ternary layer hooks — exposes correction entry points to ternary/layer.js
+window._terCorrect     = (pos) => { cancelDriftCorrection(); seekPreservingBT(pos); };
+window._terExpectedNow = ()    => _expectedNow();
 
 async function _runLockingPass(){
   if (_syncState !== 'locking' && _syncState !== 'verifying') return;

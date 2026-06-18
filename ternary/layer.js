@@ -74,7 +74,22 @@
 
     _tickCount++;
     _trit = driftToTrit(lagMs);
-    if (_trit === N) _snapCount++;
+
+    if (_trit === N) {
+      // Diverging — snap to expected position using BYOB's own correction path.
+      // cancelDriftCorrection clears any in-flight state first (BYOB invariant).
+      // Only fires if the hooks are available (listener.html is wired up).
+      if (typeof window._terCorrect === 'function' && typeof window._terExpectedNow === 'function') {
+        const target = window._terExpectedNow();
+        if (target != null) {
+          window._terCorrect(target);
+          _snapCount++;
+          console.log('[ternary] snap', Math.round(lagMs) + 'ms → ' + target.toFixed(3) + 's');
+        }
+      } else {
+        _snapCount++; // shadow count when hooks not yet available
+      }
+    }
 
     const row = { ts: Date.now(), lagMs: Math.round(lagMs), trit: TRIT_NAME[_trit] };
     _history.push(row);
