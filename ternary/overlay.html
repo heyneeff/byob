@@ -244,7 +244,7 @@ const REC_COLS = [
   'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
   'engineLagMs','snapCount','seekIntendedMs','seekMeasuredMs','note',
   // ternary additions (computed locally from driftMs, or from layer.js if present)
-  'terTrit','terTritLabel','terSnapMs','terSnapCount','terTickCount',
+  'terTrit','terTritLabel','terSnapMs','terSnapCount','terTickCount','terBurst','terBurstSnaps','terConsensus','terPeerCount',
 ];
 
 function toggleRecord() {
@@ -353,7 +353,8 @@ function renderSyncCard(d, age) {
       </span>
       <span class="dev-age">${age}s ago · ${d.zone||'no zone'}</span>
     </div>
-    ${trit ? `<div class="row"><span class="k">TERNARY TRIT</span><span class="v" style="color:${tritColor}"><span class="trit-badge trit-${trit}">${trit}</span> ${tritLabel}</span></div>` : ''}
+    ${trit ? `<div class="row"><span class="k">TERNARY TRIT</span><span class="v" style="color:${tritColor}"><span class="trit-badge trit-${trit}">${trit}</span> ${tritLabel}${d.terBurst?' <span style="color:#fff176;font-size:10px">⚡ BURST</span>':''}</span></div>` : ''}
+    ${d.terBurst ? `<div class="row"><span class="k">burst snaps</span><span class="v" style="color:#fff176">${d.terBurstSnaps ?? 0} this burst</span></div>` : ''}
     ${r('elapsed',      d.elapsed     ? d.elapsed+'s'     : '—')}
     ${r('currentTime',  d.currentTime ? d.currentTime+'s' : '—')}
     ${r('expectedPos',  d.expectedPos ? d.expectedPos+'s' : '—')}
