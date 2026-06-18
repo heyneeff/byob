@@ -5060,7 +5060,8 @@ function _watchForGuests(){
     if (!activeZone) { clearInterval(_guestWatchInterval); return; }
     if (Object.keys(liveGuests || {}).length > 0) {
       clearInterval(_guestWatchInterval);
-      _enterLockingState();
+      // Auto-sync verifier disabled — ternary layer handles calibration
+      // _enterLockingState();
     }
   }, 8000);
 }
