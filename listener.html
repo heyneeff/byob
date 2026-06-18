@@ -1185,6 +1185,7 @@ let leafletMap  = null, userMarker = null, zoneCircles = {};
 let activeZone  = null, userLat = null, userLng = null;
 let isPlaying   = false;
 const audio = document.getElementById('audio-player');
+window._audio = audio; // expose for ternary/layer.js burst mode
 
 // ── BOOT ─────────────────────────────────────────────────
 
@@ -2323,6 +2324,7 @@ async function getRTCConfig() {
   return _rtcConfigCache;
 }
 const listenerId = Math.random().toString(36).substr(2,9);
+window.listenerId = listenerId; // expose for ternary/layer.js peer ID
 let rtcPeer = null, rtcChannel = null;
 let _pendingStream = null;
 let _rtcUserHasTapped = false;
