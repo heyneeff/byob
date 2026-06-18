@@ -2172,7 +2172,7 @@ function fastDriftCorrect() {
   window._terLayer?.tick(lagMs); // ternary layer — reads drift, broadcasts trit
   window._lastDriftMs = Math.round(lagMs);
   const _absLag = Math.abs(lagMs);
-  if (_absLag >= DRIFT_SNAP_THRESHOLD_MS) {
+  if (_absLag >= DRIFT_SNAP_THRESHOLD_MS && !window._terLayer?.isBurstMode?.()) {
     window._snapCount = (window._snapCount || 0) + 1;
     // Diagnostic — confirm the seek actually lands. On some BT routes
     // audio.currentTime = x silently no-ops while playing, so the snap

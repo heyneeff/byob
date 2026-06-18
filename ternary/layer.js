@@ -341,7 +341,7 @@
     watchZoneForTrackChange();
 
     createBadge();
-    window._terLayer = { tick, enterBurst, exitBurst, history: () => _history, exportCSV };
+    window._terLayer = { tick, enterBurst, exitBurst, isBurstMode: () => _burstMode, history: () => _history, exportCSV };
     console.log('[ternary/layer] Phase 4 ready — burst mode on track start');
   }
 
