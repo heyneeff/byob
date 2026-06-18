@@ -58,11 +58,14 @@ function lagToTrit(absMs) {
 // ── Floor detection (stable drift = miscalibrated deviceLatencyMs) ────────────
 function detectFloor(history) {
   if (history.length < 8) return null;
-  const sorted = [...history].sort((a,b) => a-b);
-  const trimmed = sorted.slice(1, -1); // drop outliers
+  // Exclude post-seek near-zero values — they're correction artifacts, not the floor
+  const floored = history.filter(v => Math.abs(v) > 20);
+  if (floored.length < 4) return null;
+  const sorted = [...floored].sort((a,b) => a-b);
+  const trimmed = sorted.length > 4 ? sorted.slice(1, -1) : sorted;
   const mean = trimmed.reduce((a,v) => a+v, 0) / trimmed.length;
   const variance = trimmed.reduce((a,v) => a + (v-mean)**2, 0) / trimmed.length;
-  if (variance < 400 && Math.abs(mean) > 20 && Math.abs(mean) < 200) return mean;
+  if (variance < 400 && Math.abs(mean) > 20 && Math.abs(mean) < TH_SEEK) return mean;
   return null;
 }
 
