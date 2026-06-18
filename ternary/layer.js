@@ -67,7 +67,7 @@
   let _debugChannel  = null;  // set to window._debugChannel when available
   let _peerChannel   = null;
   let _badge         = null;
-  let _peerTrits     = {};
+  let _peerTrits     = {};   // { deviceId → { trit, lagMs, ts } }
   let _driftHistory  = [];
   let _calApplied    = false;
   let _calState      = 0;  // diagnostic: 0=never tried, 1=already done, 2=no fn, 3=no floor, 4=correction<5, 5=fired
@@ -185,12 +185,24 @@
   function applySnap(lagMs, reason) {
     if (typeof window._terCorrect     !== 'function') return;
     if (typeof window._terExpectedNow !== 'function') return;
-    const target = window._terExpectedNow();
-    if (target == null) return;
+    const expected = window._terExpectedNow();
+    if (expected == null) return;
+
+    // Hexagram 8 — Holding Together:
+    // Don't snap to server-clock zero. Snap to the group median.
+    // If peers are at median M and I'm at lagMs L,
+    // seek to expected + (L - M)/1000 so I land at lag M (matching the group).
+    const median = peerMedianLag();
+    const groupOffset = (median != null) ? (lagMs - median) / 1000 : lagMs / 1000;
+    const target = expected - groupOffset;
+
     window._terCorrect(target);
     _snapCount++;
     if (_burstMode) _burstSnaps++;
-    console.log('[ternary]', reason, Math.round(lagMs) + 'ms → ' + target.toFixed(3) + 's');
+    const label = median != null
+      ? `median=${Math.round(median)}ms offset=${Math.round(groupOffset*1000)}ms`
+      : 'solo→0';
+    console.log('[ternary]', reason, Math.round(lagMs) + 'ms →', label);
   }
 
   // ── TICK — called by fastDriftCorrect() AND burst interval ────────────────
@@ -236,7 +248,7 @@
 
     updateBadge();
     if (!isBurst) broadcastDebug(lagMs, snapThreshold, consensus);
-    broadcastPeerTrit();
+    broadcastPeerTrit(lagMs);
 
     _history.push({ ts: Date.now(), lagMs: Math.round(lagMs),
                     trit: TRIT_NAME[_trit], snapThreshold, burst: !!isBurst });
@@ -251,9 +263,21 @@
   }
 
   // ── PEER ──────────────────────────────────────────────────────────────────
-  function receivePeerTrit(deviceId, trit) {
+  function receivePeerTrit(deviceId, trit, lagMs) {
     if (trit == null || deviceId === myId()) return;
-    _peerTrits[deviceId] = { trit, ts: Date.now() };
+    _peerTrits[deviceId] = { trit, lagMs: lagMs ?? null, ts: Date.now() };
+  }
+
+  // Median of all peer lagMs values (excludes nulls, expires stale peers)
+  function peerMedianLag() {
+    const now = Date.now();
+    const lags = Object.values(_peerTrits)
+      .filter(p => now - p.ts < 20000 && p.lagMs != null)
+      .map(p => p.lagMs)
+      .sort((a, b) => a - b);
+    if (!lags.length) return null;
+    const mid = Math.floor(lags.length / 2);
+    return lags.length % 2 ? lags[mid] : (lags[mid - 1] + lags[mid]) / 2;
   }
 
   function myId() {
@@ -277,6 +301,7 @@
           terSnapMs:     snapThreshold,
           terConsensus:  TRIT_NAME[consensus],
           terPeerCount:  peers.length,
+          terPeerMedian: peerMedianLag() !== null ? Math.round(peerMedianLag()) : null,
           terSnapCount:  _snapCount,
           terTickCount:  _tickCount,
           terBurst:      _burstMode,
@@ -294,12 +319,12 @@
     } catch (e) {}
   }
 
-  function broadcastPeerTrit() {
+  function broadcastPeerTrit(lagMs) {
     if (!_peerChannel) return;
     try {
       _peerChannel.send({
         type: 'broadcast', event: 'trit',
-        payload: { deviceId: myId(), trit: _trit, ts: Date.now() },
+        payload: { deviceId: myId(), trit: _trit, lagMs: Math.round(lagMs), ts: Date.now() },
       });
     } catch (e) {}
   }
@@ -312,7 +337,7 @@
     _peerChannel = window.db.channel('byob_ternary')
       .on('broadcast', { event: 'trit' }, ({ payload }) => {
         if (payload?.deviceId && payload.deviceId !== myId()) {
-          receivePeerTrit(payload.deviceId, payload.trit);
+          receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs);
         }
       })
       .subscribe();
