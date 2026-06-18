@@ -328,10 +328,9 @@
   let _lastStartedAt = null;
 
   function watchZoneForTrackChange() {
-    // Poll activeZone.playback_started_at for changes
-    // When it changes, the DJ started a new track — enter burst
+    // Poll playback_started_at via exposed hook (window.activeZone is local in listener.html)
     setInterval(() => {
-      const startedAt = window.activeZone?.playback_started_at;
+      const startedAt = window._terGetZone?.()?.playback_started_at;
       if (startedAt && startedAt !== _lastStartedAt) {
         if (_lastStartedAt !== null) {
           // It changed — new track starting

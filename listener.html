@@ -4985,6 +4985,7 @@ function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime)
 // Ternary layer hooks — exposes correction entry points to ternary/layer.js
 window._terCorrect        = (pos) => { cancelDriftCorrection(); seekPreservingBT(pos); };
 window._terExpectedNow    = ()    => _expectedNow();
+window._terGetZone        = ()    => activeZone;   // exposes local var for burst mode polling
 window._terAdjustLatency  = (deltaMs) => {
   _deviceLatencyMs = Math.max(0, _deviceLatencyMs + deltaMs);
   console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
