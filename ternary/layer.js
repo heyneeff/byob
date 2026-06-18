@@ -147,9 +147,11 @@
   // ── FLOOR DETECTION ───────────────────────────────────────────────────────
   function detectFloor() {
     if (_driftHistory.length < 8) return null;
-    const recent = _driftHistory.slice(-8);
-    const mean   = recent.reduce((a, v) => a + v, 0) / recent.length;
-    const variance = recent.reduce((a, v) => a + (v - mean) ** 2, 0) / recent.length;
+    // Filter out track-wrap spikes (>500ms) before stability check
+    const clean = _driftHistory.filter(v => Math.abs(v) < 500);
+    if (clean.length < 4) return null;
+    const mean     = clean.reduce((a, v) => a + v, 0) / clean.length;
+    const variance = clean.reduce((a, v) => a + (v - mean) ** 2, 0) / clean.length;
     if (variance < 400 && Math.abs(mean) > 20 && Math.abs(mean) < 200) return mean;
     return null;
   }
