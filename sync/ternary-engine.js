@@ -66,6 +66,35 @@ function detectFloor(history) {
   return null;
 }
 
+// ── Trigram calibration — 8 states (I Ching lower trigrams) ──────────────────
+// _calSeq holds the last 3 calibration outcomes as N (floor persisted) or
+// P (floor gone). The trigram formed by [a, b, c] maps to a correction
+// strength — how aggressively to adjust deviceLatencyMs this round.
+//
+//  ☰ NNN  three consecutive floors   → 0.70  maximum urgency
+//  ☱ NNP  floor twice then gone      → 0.55  strong, something shifted
+//  ☲ NPN  floor / hold / floor       → 0.50  oscillating, standard
+//  ☳ NPP  one floor then held twice  → 0.35  gentle, nearly stable
+//  ☴ PNN  was stable, floor returned → 0.60  regression, push hard
+//  ☵ PNP  bouncing                   → 0.40  mixed signal, moderate
+//  ☶ PPN  almost there               → 0.25  cautious nudge
+//  ☷ PPP  locked                     → 0.00  done — protect the calibration
+//
+// Keys encoded as 'NNN', 'NNP', etc. for lookup
+const TRIGRAM_STRENGTH = {
+  'NNN': 0.70, // ☰ three consecutive floors — maximum urgency
+  'NNP': 0.55, // ☱ floor twice then gone — strong
+  'NPN': 0.50, // ☲ floor / hold / floor — oscillating, standard
+  'NPP': 0.35, // ☳ one floor then held — gentle, nearly stable
+  'PNN': 0.60, // ☴ was stable, floor returned — regression, push hard
+  'PNP': 0.40, // ☵ bouncing — mixed signal, moderate
+  'PPN': 0.25, // ☶ almost there — cautious nudge
+  'PPP': 0.00, // ☷ locked — protect the calibration
+};
+
+function trigramKey(seq) { return seq.map(t => t >= 0 ? 'P' : 'N').join(''); }
+function trigramStrength(seq) { return TRIGRAM_STRENGTH[trigramKey(seq)] ?? 0.50; }
+
 // ── Engine ────────────────────────────────────────────────────────────────────
 export function createTernaryEngine({ transport, timers, clock, getContext, getBaseRate, onCalibrate }) {
   let _trit      = Z;
@@ -74,8 +103,8 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   let _driftGen  = 0;
   let _state     = 'idle'; // 'idle' | 'warping' | 'seeking'
   let _history   = [];
-  let _calApplied = false;
-  let _peers     = {};     // { id → { trit, lagMs, ts } }
+  let _calSeq    = [N, N, N]; // trigram: last 3 cal outcomes (N=floor, P=stable)
+  let _peers     = {};        // { id → { trit, lagMs, ts } }
 
   // ── Micro-correction rate ────────────────────────────────────────────────────
   function microRate(lagMs) {
@@ -168,14 +197,20 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     _history.push(lagMs);
     if (_history.length > 8) _history.shift();
 
-    // Auto-calibrate when floor is stable
-    if (!_calApplied && _trit === N) {
+    // Trigram auto-calibration — 8-state sequence drives correction strength
+    if (_trit === N) {
       const floor = detectFloor(_history);
-      if (floor !== null) {
-        const correction = Math.round(floor * 0.6 * 10) / 10;
-        if (Math.abs(correction) >= 5 && typeof onCalibrate === 'function') {
+      const outcome = floor !== null ? N : P; // N=floor persists, P=floor gone
+      _calSeq = [_calSeq[1], _calSeq[2], outcome]; // shift sequence
+
+      const strength = trigramStrength(_calSeq);
+      if (floor !== null && strength > 0 && typeof onCalibrate === 'function') {
+        const correction = Math.round(floor * strength * 10) / 10;
+        if (Math.abs(correction) >= 5) {
           onCalibrate(correction);
-          _calApplied = true;
+          console.log('[ternary-engine] cal trigram', _calSeq.map(t=>t>0?'P':'N').join(''),
+            '→', (strength*100).toFixed(0)+'%',
+            'floor', Math.round(floor)+'ms correction', correction+'ms');
         }
       }
     }
@@ -214,9 +249,9 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     timers.requestAnimationFrame(ramp);
   }
 
-  // Called on track change — clears floor history for fresh detection but keeps
-  // the cal lock. Calibrating once per zone session is enough; re-firing on each
-  // track change causes tail-chasing (devLat grows each track, drift never closes).
+  // Called on track change — clears floor history so detection restarts.
+  // _calSeq is NOT reset: the trigram carries forward across tracks, so
+  // a device that was at PPP stays protected; one at NNN keeps correcting.
   function resetCalibration() { _history = []; }
 
   return {
