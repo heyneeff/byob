@@ -5286,6 +5286,8 @@ function showToast(msg){
 function toggleHUD() {
   document.getElementById('hud').classList.toggle('open');
 }
+// Secret HUD: add ?hud to the URL to open it without touching the hidden button
+if (new URLSearchParams(location.search).has('hud')) toggleHUD();
 
 function hudVal(val, warnFn) {
   const s = String(val ?? '—');
