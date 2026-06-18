@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
-<script src="ternary/layer.js?v=9"></script>
+<script src="ternary/layer.js?v=10"></script>
 
  
   
@@ -5863,9 +5863,11 @@ function onBigBoomyTap(){
 // _scatterOffsetMs, syncedNow, _getBpmWarpRate) — top-level `let`/`const`/
 // `function` declarations in a classic <script> live in the realm's shared
 // global environment, so a module script can reference them directly.
-import { createSyncEngine, expectedPosition, computeSeekTime, wrapLag, bpmWarpRate, computeClockOffset, SEEK_STAB_S as ENGINE_SEEK_STAB_S } from './sync/sync-engine.js';
+// Hexagram 50 (unchanging) — The Cauldron. Three legs. Sacred fire.
+// Ternary engine replaces binary. Revert: git checkout pre-ternary-engine
+import { createTernaryEngine, expectedPosition, computeSeekTime, wrapLag, bpmWarpRate, computeClockOffset, SEEK_STAB_S as ENGINE_SEEK_STAB_S } from './sync/ternary-engine.js';
 
-const engine = createSyncEngine({
+const engine = createTernaryEngine({
   transport: {
     get duration() { return audio.duration; },
     get currentTime() { return audio.currentTime; },
@@ -5876,11 +5878,6 @@ const engine = createSyncEngine({
     set volume(v) { audio.volume = v; },
     hasSrcObject: () => !!audio.srcObject,
   },
-  // Bound to window — calling e.g. window.clearTimeout as a bare function
-  // (`timers.clearTimeout(id)`) throws "Illegal invocation" / "Can only call
-  // Window.clearTimeout on instances of Window" because `this` becomes
-  // `timers`, not `window`. This silently broke cancelDriftCorrection() (its
-  // first line) on every snap attempt until Phase 5g's try/catch surfaced it.
   timers: {
     setTimeout: window.setTimeout.bind(window),
     clearTimeout: window.clearTimeout.bind(window),
@@ -5896,7 +5893,15 @@ const engine = createSyncEngine({
     scatterOffsetMs: _scatterOffsetMs,
   }),
   getBaseRate: () => _getBpmWarpRate(),
+  onCalibrate: (deltaMs) => {
+    _deviceLatencyMs = Math.max(0, _deviceLatencyMs + deltaMs);
+    console.log('[ternary-engine] auto-cal:', deltaMs > 0 ? '+' : '', deltaMs.toFixed(1) + 'ms → deviceLatencyMs =', _deviceLatencyMs.toFixed(1) + 'ms');
+  },
 });
+
+// Expose peer feed so ternary/layer.js can share lagMs with the engine
+window._terEngineReceivePeer = (id, trit, lagMs) => engine.receivePeer(id, trit, lagMs);
+window._terEngineReset       = ()                => engine.resetCalibration();
 
 window.SyncEngine = Object.assign(engine, {
   expectedPosition, computeSeekTime, wrapLag, bpmWarpRate, computeClockOffset,

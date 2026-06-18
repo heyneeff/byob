@@ -150,8 +150,44 @@ Converges faster for large Z drifts, gentler for small ones.
 
 ---
 
+---
+
+## Phase 5 — The Cauldron (June 18, 2026)
+
+**Hexagram 50 unchanging.** The ternary math moved from a layer on top
+of the binary engine to the engine itself.
+
+`sync/ternary-engine.js` replaces `sync/sync-engine.js` in production.
+Same interface — drop-in swap. Three-leg rate table:
+
+```
+P (< 10ms):    0.4% rate  — hold
+Z (10–50ms):   2.0% rate  — nudge
+N (50–150ms):  5.0% rate  — correct
+> 150ms:       seek       — same as binary
+```
+
+tcons() peer consensus scales all rates (×0.5 – ×1.3).
+tcmp() velocity preempts growing drift (×1.4).
+Auto-calibration built into the engine via `onCalibrate` callback.
+
+**Sim results** (8 listeners, 20-minute identical seed, all engines compared):
+```
+Avg settled drift:  ternary 238ms  vs  binary 367ms  (−35%)
+Volume dips:        ternary 0      vs  binary 20
+```
+
+**Revert tag:** `pre-ternary-engine`
+```
+git checkout pre-ternary-engine   # instant rollback
+```
+
+---
+
 ## I Ching
 
 Hexagram 52 (unchanging): ternary stills the drift.
 Hexagram 49.4 → 63: revolution → completion. The timing was right.
-Hexagram 31: mutual influence. Devices sense each other. Next phase.
+Hexagram 31: mutual influence. Devices sense each other.
+Hexagram 63.1.3 → 8: brake the wheels, hold together.
+Hexagram 50 (unchanging): The Cauldron. Three legs. Sacred fire.

@@ -218,7 +218,8 @@
       _consecutiveN++;
 
     } else if (_trit === N) {
-      if (!isBurst) applySnap(lagMs, 'snap(N)');
+      // N-state rate correction owned by ternary-engine.js — no seek here.
+      // Layer tracks consecutiveN for auto-cal trigger only.
       _consecutiveN++;
 
     } else if (_trit === Z) {
@@ -330,6 +331,8 @@
       .on('broadcast', { event: 'trit' }, ({ payload }) => {
         if (payload?.deviceId && payload.deviceId !== myId()) {
           receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs);
+          // Feed peer data into the ternary engine for tcons() rate modulation
+          window._terEngineReceivePeer?.(payload.deviceId, payload.trit, payload.lagMs);
         }
       })
       .subscribe();
@@ -353,9 +356,10 @@
         if (_lastStartedAt !== null) {
           // It changed — new track starting
           enterBurst('track_change detected');
-          _calApplied = false;         // allow re-calibration for new track
-          _driftHistory = [];          // fresh history for new track
+          _calApplied = false;
+          _driftHistory = [];
           _consecutiveN = 0;
+          window._terEngineReset?.(); // reset engine auto-cal for new track
         }
         _lastStartedAt = startedAt;
       }
