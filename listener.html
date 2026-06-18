@@ -4983,8 +4983,12 @@ function requestCorrection(lagMs) { window.SyncEngine.requestCorrection(lagMs); 
 function cancelDriftCorrection() { window.SyncEngine.cancelDriftCorrection(); }
 function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime); }
 // Ternary layer hooks — exposes correction entry points to ternary/layer.js
-window._terCorrect     = (pos) => { cancelDriftCorrection(); seekPreservingBT(pos); };
-window._terExpectedNow = ()    => _expectedNow();
+window._terCorrect        = (pos) => { cancelDriftCorrection(); seekPreservingBT(pos); };
+window._terExpectedNow    = ()    => _expectedNow();
+window._terAdjustLatency  = (deltaMs) => {
+  _deviceLatencyMs = Math.max(0, _deviceLatencyMs + deltaMs);
+  console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
+};
 
 async function _runLockingPass(){
   if (_syncState !== 'locking' && _syncState !== 'verifying') return;

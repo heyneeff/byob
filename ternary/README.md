@@ -1,88 +1,157 @@
 # ternary/
 
-Ternary sync layer for BYOB. Read-only research tools + integration layer.
+Ternary sync layer for BYOB. Three-state sync state machine that corrects
+audio drift earlier and more precisely than the binary engine alone.
+
+---
+
+## The core idea
+
+Binary sync has two states: correcting or not correcting. It snaps at ±150ms.
+Devices spend most of their time between 50–150ms drift — binary ignores all of it.
+
+Ternary adds a third state:
+
+```
+N (−1)  diverging    — drift ≥ 50ms  — snap immediately
+Z ( 0)  negotiating  — drift 10–50ms — micro-correct, watch velocity
+P (+1)  converged    — drift < 10ms  — hold
+```
+
+The boundary between Z and N (50ms) is where speaker misalignment becomes
+audible. Binary's 150ms threshold is 3× past that point.
+
+---
+
+## What the data showed (June 2026)
+
+**Session 1 (binary only):** 1135 real drift readings across 3 devices.
+```
+P converged   (<10ms):    0 rows   (0.0%)
+Z negotiating (10-50ms): 17 rows   (1.5%)
+N diverging   (>=50ms): 1118 rows  (98.5%)
+Binary snaps at 150ms:    39 rows  (3.4%)
+```
+Not a single moment of true sync. Binary touched 3.4% of the problem.
+
+**Session 2 (ternary Phase 1+2):** Snap counts dropped from 76/47/37 → 25/6/11.
+`dev_uu6udq` recovered from −9897ms (10 seconds out) to −76ms in one snap.
+Devices stabilised at a floor (−60 to −90ms) — a calibration offset, not drift.
+
+**The floor insight:** persistent negative drift = `deviceLatencyMs` calibrated
+too high. BT speaker output arrives sooner than the formula expects. The floor
+value IS the calibration error. Phase 3 detects and corrects it automatically.
 
 ---
 
 ## Files
 
-| File | What it is |
+| File | Role |
 |---|---|
-| `overlay.html` | Standalone monitor. Open in browser. Auto-finds active zone, loads audio, runs both engines independently. No config needed. |
-| `layer.js` | Two-line integration for listener.html. Reads drift from BYOB's own corrector, converts to trit, broadcasts on byob_debug. Non-destructive. |
-| `README.md` | This file. |
+| `layer.js` | Ternary correction engine — loads in listener.html, zero config |
+| `overlay.html` | Debug dashboard — debug.html fields + ternary trit row + aggregate bar |
+| `README.md` | This file |
 
 ---
 
-## How to use overlay.html right now (zero changes to BYOB)
+## Wire-up (listener.html — already done)
 
-1. Start a broadcast in `artist.html`
-2. Open `ternary/overlay.html` in any browser tab
-3. It finds the active zone automatically, loads the track silently, and runs both engines
-
-**Left panel — Binary engine:** controls the actual audio (same logic as `listener.html`)
-**Right panel — Ternary engine:** maintains its own independent shadow position, applies ternary corrections to that shadow only
-
-The two will diverge because:
-- Binary snaps at ≥150ms drift (BYOB Phase 5v)
-- Ternary snaps at ≥50ms drift (3× earlier intervention)
-- After a snap, the two positions differ until the next correction aligns them
-
----
-
-## How to wire layer.js into listener.html (two lines)
-
-**Step 1** — add to `<head>` in `listener.html`:
+**In `<head>`:**
 ```html
 <script src="ternary/layer.js"></script>
 ```
 
-**Step 2** — add ONE line inside `fastDriftCorrect()`, right after `computeLagMs()`:
+**In `fastDriftCorrect()`, after `computeLagMs()`:**
 ```javascript
 const lagMs = computeLagMs();
-window._terLayer?.tick(lagMs);   // ← this line
-// ... rest of fastDriftCorrect unchanged ...
+window._terLayer?.tick(lagMs);
 ```
 
-That's the entire integration. Nothing else changes.
-
-**What it does:**
-- Converts drift → trit (N=diverging, Z=negotiating, P=converged)
-- Broadcasts trit on `byob_debug` so `overlay.html` and `debug.html` can see it
-- Shows a small trit badge in the corner of the listener UI
-- Never touches `audio`, `playbackRate`, or `currentTime`
-- Exports CSV via `window._terLayer.exportCSV()`
-
-**What it doesn't do:**
-- Does not change how BYOB corrects audio
-- Does not add any channels or subscriptions beyond what BYOB already has
-- Does not interfere with the drift corrector, state machine, or seek formula
+**Near `seekPreservingBT` definition:**
+```javascript
+window._terCorrect       = (pos) => { cancelDriftCorrection(); seekPreservingBT(pos); };
+window._terExpectedNow   = ()    => _expectedNow();
+window._terAdjustLatency = (ms)  => { _deviceLatencyMs = Math.max(0, _deviceLatencyMs + ms); };
+```
 
 ---
 
-## What the trit means
+## How it works — Phase 3
+
+### Division of labour
+```
+< 10ms   P  — converged. Nothing to do.
+10–50ms  Z  — binary micro-corrects (playbackRate nudge).
+             Ternary watches velocity via tcmp(): if drift growing,
+             preemptive snap before crossing into N.
+50–150ms N  — TERNARY snaps. Binary ignores this zone.
+> 150ms     — binary snaps. Ternary counts but doesn't double-seek.
+```
+
+### tcons() — consensus threshold
+Devices share trits on `byob_ternary` channel (separate from debug channel,
+avoids timing conflicts). tcons() over all peer trits adjusts the threshold:
 
 ```
-N (cyan)    — DIVERGING    — drift ≥ 50ms, needs correction
-Z (dim)     — NEGOTIATING  — drift 10–50ms, micro-correcting
-P (coral)   — CONVERGED    — drift < 10ms, locked in
+All peers N → snap at 35ms  (room struggling, be aggressive)
+Peers mixed → snap at 50ms  (normal)
+All peers P → snap at 75ms  (room converged, protect it)
 ```
 
-Ternary's 50ms threshold vs binary's 150ms: ternary intervenes earlier, more often, with smaller corrections. Binary waits longer, snaps harder. Over a full session, ternary should show lower mean absolute drift.
+### tcmp() — drift velocity
+In Z state, `tcmp(|drift_now|, |drift_prev|)` gives drift direction.
+`P` = drift growing → preemptive snap at 70% of threshold.
+Cuts the sawtooth mid-rise instead of waiting for the peak.
+
+### Auto-calibration (floor detection)
+After 8 stable ticks with consistent drift floor, layer.js computes the
+calibration error and calls `window._terAdjustLatency(correctionMs)`.
+
+```
+floor = mean of last 8 drifts (if variance < 400ms²)
+correction = -floor × 0.6   (60% — conservative to avoid overshoot)
+applied once per session
+```
+
+Correction is broadcast as a `sync_event` on byob_debug so overlay records it.
 
 ---
 
-## What the data looks like
+## Overlay (ternary/overlay.html)
 
-Once `layer.js` is wired in, `overlay.html` reads real drift from `listener.html` instead of computing it independently. The overlay shows:
-- Per-device trit state in real time
-- Binary state (`idle`/`warping`/`ducking`) alongside ternary trit
-- Drift comparison: binary mean vs ternary mean over the session
-- Record + export for analysis
+Same as `debug.html` exactly, plus:
+- Ternary trit row at top of each sync card (N/Z/P badge + label)
+- Card border tinted by trit state
+- Ternary aggregate bar (N/Z/P device counts)
+- ±50ms dashed threshold lines on the drift chart
+- CSV export adds: `terTrit`, `terTritLabel`, `terSnapMs`, `terSnapCount`,
+  `terConsensus`, `terPeerCount`, `terCalApplied`
+
+Open at: `https://heyneeff.github.io/byob/ternary/overlay.html`
 
 ---
 
-## The I Ching
+## What comes next
 
-Hexagram 52 (Keeping Still): ternary stills the drift.
-Hexagram 49.4 → 63 (Revolution → After Completion): the timing is right.
+**Peer-relative positioning (hexagram 31 — Influence):**
+Instead of every device correcting toward the server clock independently,
+correct toward the median of converged peers. The device that's been P
+longest becomes the de facto reference. Others adjust toward it.
+Removes half a server round-trip from the equation.
+
+**tshift() escalation:**
+Track correction history as a ternary sequence. Three consecutive N→Z→N
+cycles = something systematic. Three N→N→N cycles = recalibrate.
+
+**Proportional Z-state rate control:**
+Replace binary's fixed ±1.2% nudge with a P-controller:
+`rate = 1 + direction × gain × |drift|`
+Converges faster for large Z drifts, gentler for small ones.
+
+---
+
+## I Ching
+
+Hexagram 52 (unchanging): ternary stills the drift.
+Hexagram 49.4 → 63: revolution → completion. The timing was right.
+Hexagram 31: mutual influence. Devices sense each other. Next phase.
