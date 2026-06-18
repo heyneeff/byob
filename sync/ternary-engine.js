@@ -39,7 +39,7 @@ const BASE_RATE = { [P]: 0.004, [Z]: 0.020, [N]: 0.050 };
 const CONSENSUS_MOD = { [N]: 1.30, [Z]: 1.00, [P]: 0.50 };
 
 // tcmp() velocity modifiers (drift growing vs shrinking)
-const VEL_MOD = { [P]: 0.50, [Z]: 1.00, [N]: 1.40 };
+const VEL_MOD = { [P]: 1.40, [Z]: 1.00, [N]: 0.60 }; // P=growing→push harder, N=shrinking→ease off
 
 function lagToTrit(absMs) {
   if (absMs < TH_P)    return P;
