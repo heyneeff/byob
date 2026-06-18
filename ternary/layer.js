@@ -64,7 +64,7 @@
   let _tickCount     = 0;
   let _consecutiveN  = 0;
   let _consecutiveP  = 0;      // for burst exit
-  let _debugChannel  = null;
+  let _debugChannel  = null;  // set to window._debugChannel when available
   let _peerChannel   = null;
   let _badge         = null;
   let _peerTrits     = {};
@@ -165,7 +165,8 @@
     _calApplied = true;
     console.log('[ternary] auto-cal: floor', Math.round(floor) + 'ms → adjust', correction + 'ms');
     try {
-      _debugChannel?.send({
+      const ch = _debugChannel || window._debugChannel;
+      ch?.send({
         type: 'broadcast', event: 'sync_event',
         payload: { deviceId: myId(), kind: 'ter_calibration',
                    floorMs: Math.round(floor), correctionMs: correction }
@@ -254,6 +255,7 @@
 
   // ── BROADCAST ─────────────────────────────────────────────────────────────
   function broadcastDebug(lagMs, snapThreshold, consensus) {
+    _debugChannel = _debugChannel || window._debugChannel || null;
     if (!_debugChannel) return;
     const peers = Object.values(_peerTrits).map(p => p.trit);
     try {
@@ -295,17 +297,7 @@
   // ── INIT ──────────────────────────────────────────────────────────────────
   function init() {
     if (!window.db) { setTimeout(init, 500); return; }
-    if (_debugChannel) return;
-
-    _debugChannel = window.db.channel('byob_debug')
-      .on('broadcast', { event: 'sync_event' }, ({ payload }) => {
-        // Track start events trigger burst mode
-        const kind = payload?.kind || '';
-        if (kind === 'hard_sync' || kind === 'track_change' || kind === 'resync') {
-          enterBurst('sync_event: ' + kind);
-        }
-      })
-      .subscribe();
+    if (_peerChannel) return;
 
     _peerChannel = window.db.channel('byob_ternary')
       .on('broadcast', { event: 'trit' }, ({ payload }) => {
@@ -315,8 +307,7 @@
       })
       .subscribe();
 
-    // Also watch zone channel for playback_started_at changes
-    // (fires when DJ starts a new track)
+    // Watch zone for track changes (burst trigger) — polling only, no byob_debug conflict
     watchZoneForTrackChange();
 
     createBadge();
