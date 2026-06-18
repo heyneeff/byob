@@ -359,7 +359,7 @@
           _calApplied = false;
           _driftHistory = [];
           _consecutiveN = 0;
-          window._terEngineReset?.(); // reset engine auto-cal for new track
+          window._terEngineReset?.(); // clear engine's floor history for new track (cal lock preserved)
         }
         _lastStartedAt = startedAt;
       }
