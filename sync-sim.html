@@ -336,23 +336,25 @@ function makeEngineListener(rng, id, baseRate, timers, simState, ctx) {
   return L;
 }
 
-function makeListenerTernary(seed, ctx, simState) {
-  const L = makeListener(seed, ctx, simState);
+function makeListenerTernary(rng, id, baseRate, timers, simState, ctx) {
+  const L = makeListener(rng, id, baseRate);
   const transport = {
-    get duration()    { return DURATION; },
-    get currentTime() { return L.currentTime; },
-    set currentTime(v){ L.currentTime = v; },
-    get playbackRate(){ return L.playbackRate; },
-    set playbackRate(v){ L.playbackRate = v; },
-    get volume()      { return 1; },
-    set volume(v)     {},
+    duration: DURATION,
+    get currentTime()  { return L.currentTime; },
+    set currentTime(v) { L.currentTime = v; },
+    get playbackRate()  { return L.playbackRate; },
+    set playbackRate(v) { L.playbackRate = v; },
+    get volume()  { return L._vol ?? 1; },
+    set volume(v) {
+      if ((L._vol ?? 1) >= 0.5 && v < 0.5) L.duckCount = (L.duckCount || 0) + 1;
+      L._vol = v;
+    },
     hasSrcObject: () => false,
   };
-  const clock     = { syncedNow: () => simState.simNow + L.clockOffset };
-  const getCtx    = () => ({ playbackStartedAt: ctx.startedAt, deviceLatencyMs: L.deviceLatencyMs, scatterOffsetMs: L.scatterOffsetMs });
-  const getBase   = () => L.baseRate;
-  const onCal     = (deltaMs) => { L.deviceLatencyMs = Math.max(0, L.deviceLatencyMs + deltaMs); };
-  L.engine = createTernaryEngine({ transport, timers, clock, getContext: getCtx, getBaseRate: getBase, onCalibrate: onCal });
+  const clock  = { syncedNow: () => simState.simNow + L.clockOffset };
+  const getCtx = () => ({ playbackStartedAt: ctx.startedAt, deviceLatencyMs: L.deviceLatencyMs, scatterOffsetMs: L.scatterOffsetMs });
+  const onCal  = (deltaMs) => { L.deviceLatencyMs = Math.max(0, L.deviceLatencyMs + deltaMs); };
+  L.engine = createTernaryEngine({ transport, timers, clock, getContext: getCtx, getBaseRate: () => L.baseRate, onCalibrate: onCal });
   return L;
 }
 
@@ -610,16 +612,32 @@ function runSimEngine(seed, listenerCount, totalMs, disruptRate, eventToggles, t
 
 // ── Ternary engine tick ───────────────────────────────────────────────────────
 function ternaryTickEngine(L, simNow, dtMs, ctx, simState) {
-  timers.advance(dtMs);
-  const lag = L.engine.computeLagMs();
-  if (lag == null) return;
-  L.engine.requestCorrection(lag);
+  advance(L, dtMs, simNow, ctx); // advance listener physics (same as newTickEngine)
+
+  if (simNow >= L.nextFastCheck) {
+    L.nextFastCheck = simNow + FAST_CHECK_MS;
+    const lag = L.engine.computeLagMs();
+    if (lag != null) L.engine.requestCorrection(lag);
+  }
+  if (ctx.events.visibilityWake || ctx.events.hardSync || ctx.events.scatterChange ||
+      ctx.events.clusterAssign || ctx.events.sceneFire) {
+    L.engine.cancelDriftCorrection();
+    const expected = expectedPosition({
+      elapsedS: (simNow + L.clockOffset - ctx.startedAt) / 1000,
+      duration: DURATION, deviceLatencyMs: L.deviceLatencyMs,
+      scatterOffsetMs: L.scatterOffsetMs, warpRate: L.baseRate,
+    });
+    L.engine.seekPreservingBT(expected);
+    L.hardSeekCount++;
+  }
+  L.history.push({ t: simNow, drift: computeLag(L, simNow, ctx.startedAt) });
 }
 
 // ── Ternary sim runner (mirrors runSimEngine but uses makeListenerTernary) ────
 function runSimTernary(seed, listenerCount, totalMs, disruptRate, eventToggles) {
   const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true, stallsEnabled: true }, eventToggles);
   const rng = mulberry32(seed);
+  const timers = createFakeTimers();
   const simState = { simNow: 0 };
   const ctx = { startedAt: -1, events: {}, scatterFor: () => 0, stallsEnabled: enable.stallsEnabled };
   ctx.pick = (ev, L, frac) => {
@@ -649,24 +667,17 @@ function runSimTernary(seed, listenerCount, totalMs, disruptRate, eventToggles) 
       schedule.push({ t, type:'scatterChange', voices, maxMs });
     }
   }
+  schedule.sort((a,b) => a.t - b.t);
+
   let si = 0, peerSyncAt = 0;
   for (let simNow = 0; simNow < totalMs; simNow += TICK_MS) {
     simState.simNow = simNow;
-    if (ctx.startedAt < 0 && simNow >= 1000) {
-      ctx.startedAt = simNow;
-      for (const L of listeners) L.currentTime = 0;
-    }
+    timers.advance(TICK_MS); // fire fake setTimeout/setInterval callbacks
+    ctx.events = {};
     while (si < schedule.length && schedule[si].t <= simNow) {
       const ev = schedule[si++];
-      if (ev.type === 'hardSync') {
-        for (const L of listeners) {
-          L.engine.cancelDriftCorrection();
-          const expected = expectedPosition({ elapsedS:(simNow+L.clockOffset-ctx.startedAt)/1000, duration:DURATION, deviceLatencyMs:L.deviceLatencyMs, scatterOffsetMs:L.scatterOffsetMs, warpRate:L.baseRate });
-          L.engine.seekPreservingBT(expected);
-          L.hardSeekCount++;
-        }
-        eventLog.push(`${(simNow/1000).toFixed(1)}s: hard_sync`);
-      }
+      ctx.events[ev.type] = ev;
+      if (ev.type === 'hardSync') { ctx.startedAt = simNow; eventLog.push(`⏱ ${(simNow/60000).toFixed(1)}m — hard-sync`); }
     }
     if (simNow >= peerSyncAt) { exchangePeerTrits(simNow); peerSyncAt = simNow + 5000; }
     for (const L of listeners) ternaryTickEngine(L, simNow, TICK_MS, ctx, simState);
