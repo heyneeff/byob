@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
+<script src="ternary/layer.js"></script>
 
  
   
@@ -2166,6 +2167,7 @@ function fastDriftCorrect() {
   window._engineLagMs = lagMs == null ? null : Math.round(lagMs);
   updateLockIndicator(lagMs);
   if (lagMs == null) return;
+  window._terLayer?.tick(lagMs); // ternary layer — reads drift, broadcasts trit
   window._lastDriftMs = Math.round(lagMs);
   if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
     window._snapCount = (window._snapCount || 0) + 1;
