@@ -113,13 +113,6 @@ export function bpmWarpRate(masterBpm, trackBpm) {
 export const MICRO_GAIN_PER_MS = 0.0004;  // fractional rate adjustment per ms of lag
 export const MICRO_MAX_PCT     = 0.012;   // cap +/-1.2%
 
-// Ternary proportional warp — replaces fixed ±3% in the 15–500ms zone.
-// GAIN = 0.0003/ms → 3% at 100ms (same as old fixed rate at that point).
-// Below 100ms: gentler than before (1.5% at 50ms). Above 100ms: faster.
-// Convergence time ≈ 1/GAIN ≈ 3.3s regardless of drift magnitude (below cap).
-export const TER_WARP_GAIN = 0.0003;  // 0.03% per ms of lag
-export const TER_WARP_MAX  = 0.04;    // cap at 4% — above 133ms lag
-
 // rate = baseRate * (1 + clamp(lagMs * MICRO_GAIN_PER_MS, +/-MICRO_MAX_PCT))
 // Positive lag (audio behind expected) -> speed up; negative -> slow down.
 // At the worst-case +/-0.5% hardware drift modeled in sync-sim.html, this
@@ -216,14 +209,15 @@ export function createSyncEngine({ transport, timers, clock, getContext, getBase
       return;
     }
 
-    // Ternary proportional warp: rate scales with drift magnitude.
-    // Below 100ms: gentler than fixed 3% (inaudible). Above 100ms: faster.
-    // Convergence time ≈ 3.3s at any lag below the 4% cap (~133ms).
+    // Small drift = rate correction — completely inaudible at +/-3%.
+    // Closing rate is +/-3% of baseRate (track-position-seconds per
+    // wall-second), so the time to close |lagMs| scales inversely with
+    // baseRate (defect #3 — at 2x BPM warp, the rate nudge closes the gap
+    // twice as fast and must snap back twice as soon).
     const baseRate = getBaseRate();
-    const warpPct  = Math.min(TER_WARP_MAX, TER_WARP_GAIN * Math.abs(lagMs));
-    transport.playbackRate = lagMs > 0 ? baseRate * (1 + warpPct) : baseRate * (1 - warpPct);
+    transport.playbackRate = lagMs > 0 ? baseRate * 1.03 : baseRate * 0.97;
     driftState = 'warping';
-    const correctionMs = Math.abs(lagMs) / (warpPct * baseRate);
+    const correctionMs = Math.abs(lagMs) / (0.03 * baseRate);
     driftWarpTimer = timers.setTimeout(() => {
       transport.playbackRate = getBaseRate();
       settleToIdle();

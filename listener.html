@@ -4991,8 +4991,7 @@ window._terExpectedNow    = ()    => _expectedNow();
 window._terGetZone        = ()    => activeZone;   // exposes local var for burst mode polling
 window._terAdjustLatency  = (deltaMs) => {
   _deviceLatencyMs = Math.max(0, _deviceLatencyMs + deltaMs);
-  localStorage.setItem('byob_device_latency', _deviceLatencyMs.toFixed(1));
-  console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms (persisted)');
+  console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
 };
 
 async function _runLockingPass(){
