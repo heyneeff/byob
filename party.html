@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>BYOB Party</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=DM+Mono&display=swap"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+:root{
+  --bg:#0a0a0a;
+  --teal:#00cba9;
+  --orange:#ff7300;
+  --muted:#4a4a4a;
+  --rim:#1c1c1c;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;background:var(--bg);color:#fff;font-family:'Barlow Condensed',system-ui,sans-serif;overflow:hidden;-webkit-tap-highlight-color:transparent;}
+
+/* Full-screen visualizer sits behind everything */
+#viz{position:fixed;inset:0;width:100%;height:100%;display:block;}
+
+/* Header */
+.hdr{
+  position:fixed;top:0;left:0;right:0;z-index:10;
+  display:flex;align-items:center;gap:10px;padding:10px 14px;
+  background:linear-gradient(rgba(10,10,10,.92),transparent);
+}
+.hdr-logo{font-size:18px;font-weight:900;letter-spacing:.1em;color:var(--teal);flex-shrink:0;}
+.hdr-meta{flex:1;min-width:0;}
+.hdr-track{font-size:15px;font-weight:700;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hdr-count{font-size:11px;font-weight:400;color:var(--muted);letter-spacing:.02em;margin-top:1px;}
+.btn-qr{
+  flex-shrink:0;background:transparent;border:1px solid var(--rim);
+  border-radius:20px;color:var(--muted);padding:5px 11px;cursor:pointer;
+  font-family:inherit;font-size:11px;font-weight:700;letter-spacing:.05em;
+  transition:border-color .15s,color .15s;
+}
+.btn-qr:hover,.btn-qr:active{border-color:var(--teal);color:var(--teal);}
+
+/* Footer CTA */
+.footer{
+  position:fixed;bottom:0;left:0;right:0;z-index:10;
+  padding:16px 20px max(env(safe-area-inset-bottom),20px);
+  background:linear-gradient(transparent,rgba(10,10,10,.95) 35%);
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+.btn-listen{
+  width:100%;max-width:340px;padding:15px;border:none;border-radius:12px;
+  font-family:'Barlow Condensed',system-ui,sans-serif;font-size:22px;font-weight:900;
+  letter-spacing:.08em;cursor:pointer;transition:opacity .15s,transform .1s;
+  background:var(--teal);color:#000;
+  box-shadow:0 0 28px rgba(0,203,169,.25);
+}
+.btn-listen:active{transform:scale(.97);}
+.btn-listen.active{
+  background:transparent;border:2px solid var(--teal);color:var(--teal);
+  box-shadow:none;cursor:default;
+}
+.btn-listen.error{background:transparent;border:2px solid #e55;color:#e55;cursor:pointer;}
+.sync-info{
+  font-size:11px;font-family:'DM Mono',monospace;color:var(--muted);
+  min-height:14px;letter-spacing:.02em;
+}
+
+/* No-zone message */
+.no-zone{
+  position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:12px;padding:32px;text-align:center;z-index:5;
+}
+.no-zone-title{font-size:28px;font-weight:900;letter-spacing:.06em;color:var(--teal);}
+.no-zone-sub{font-size:14px;color:var(--muted);line-height:1.5;}
+
+/* QR share overlay */
+.qr-overlay{
+  display:none;position:fixed;inset:0;z-index:100;
+  background:rgba(0,0,0,.88);backdrop-filter:blur(6px);
+  align-items:center;justify-content:center;flex-direction:column;gap:14px;
+}
+.qr-overlay.open{display:flex;}
+.qr-card{
+  background:#fff;border-radius:14px;padding:18px;
+  display:flex;flex-direction:column;align-items:center;gap:10px;
+}
+#qr-canvas{display:block;border-radius:6px;}
+.qr-label{font-size:13px;font-weight:700;letter-spacing:.04em;color:#111;}
+.qr-url{font-size:9px;font-family:'DM Mono',monospace;color:#666;word-break:break-all;max-width:220px;text-align:center;}
+.qr-copy{
+  background:var(--teal);color:#000;border:none;border-radius:8px;
+  font-family:'Barlow Condensed',system-ui,sans-serif;font-size:14px;font-weight:700;
+  letter-spacing:.05em;padding:8px 18px;cursor:pointer;width:100%;
+}
+.qr-dismiss{
+  color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.04em;
+  background:transparent;border:none;cursor:pointer;padding:8px 20px;
+}
+</style>
+</head>
+<body>
+
+<canvas id="viz"></canvas>
+
+<div class="hdr">
+  <div class="hdr-logo">BYOB</div>
+  <div class="hdr-meta">
+    <div class="hdr-track" id="hdr-track">—</div>
+    <div class="hdr-count" id="hdr-count">— listening</div>
+  </div>
+  <button class="btn-qr" id="btn-qr" onclick="showQR()">⬛ SHARE</button>
+</div>
+
+<div id="no-zone" class="no-zone" style="display:none;">
+  <div class="no-zone-title">BYOB</div>
+  <div class="no-zone-sub">Scan a BYOB QR code to join a zone,<br>or ask the DJ for the link.</div>
+</div>
+
+<div class="footer">
+  <button class="btn-listen" id="btn-listen" onclick="startListening()">▶ LISTEN</button>
+  <div class="sync-info" id="sync-info"></div>
+</div>
+
+<div class="qr-overlay" id="qr-overlay" onclick="hideQR()">
+  <div class="qr-card" onclick="event.stopPropagation()">
+    <canvas id="qr-canvas" width="200" height="200"></canvas>
+    <div class="qr-label">Scan to join</div>
+    <div class="qr-url" id="qr-url-text"></div>
+    <button class="qr-copy" onclick="copyPartyLink()">📋 Copy link</button>
+  </div>
+  <button class="qr-dismiss" onclick="hideQR()">✕ close</button>
+</div>
+
+<script type="module">
+import { BYOBPlayer } from './byob-player.js';
+
+const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+
+const { createClient } = supabase;
+const db     = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const player = new BYOBPlayer({ db });
+
+const zoneId    = new URLSearchParams(location.search).get('zone');
+const vizCanvas = document.getElementById('viz');
+const vizCtx    = vizCanvas.getContext('2d');
+const btnListen = document.getElementById('btn-listen');
+const hdrTrack  = document.getElementById('hdr-track');
+const hdrCount  = document.getElementById('hdr-count');
+const syncInfo  = document.getElementById('sync-info');
+
+let _analyser  = null;
+let _cleanup   = null;
+let _listening = false;
+
+// ── Visualizer ────────────────────────────────────────────────────
+function resizeViz() {
+  vizCanvas.width  = window.innerWidth;
+  vizCanvas.height = window.innerHeight;
+}
+resizeViz();
+window.addEventListener('resize', resizeViz);
+
+// Idle animation — slow drift of a dim radial pulse
+let _idleT = 0;
+function drawIdle() {
+  const W = vizCanvas.width, H = vizCanvas.height;
+  _idleT += 0.008;
+  const pulse = 0.5 + 0.5 * Math.sin(_idleT);
+  vizCtx.fillStyle = '#0a0a0a';
+  vizCtx.fillRect(0, 0, W, H);
+  const grd = vizCtx.createRadialGradient(W/2, H/2, 0, W/2, H/2, Math.min(W,H) * 0.4 * (0.6 + pulse * 0.4));
+  grd.addColorStop(0,   `rgba(0,203,169,${0.04 * pulse})`);
+  grd.addColorStop(0.5, `rgba(0,203,169,${0.02 * pulse})`);
+  grd.addColorStop(1,   'rgba(0,0,0,0)');
+  vizCtx.fillStyle = grd;
+  vizCtx.fillRect(0, 0, W, H);
+}
+
+function drawBars() {
+  const W = vizCanvas.width, H = vizCanvas.height;
+  const bufLen = _analyser.frequencyBinCount;
+  const data   = new Uint8Array(bufLen);
+  _analyser.getByteFrequencyData(data);
+
+  vizCtx.fillStyle = 'rgba(10,10,10,0.18)';
+  vizCtx.fillRect(0, 0, W, H);
+
+  const barW = (W / bufLen) * 2.2;
+  for (let i = 0; i < bufLen; i++) {
+    const v    = data[i] / 255;
+    if (v < 0.02) continue;
+    const barH = v * H * 0.72;
+    const x    = (i / bufLen) * W;
+    // Teal (#00cba9) at low amplitude → orange (#ff7300) at high
+    const r = Math.round(v * 255);
+    const g = Math.round(203 - v * 127);
+    const b = Math.round(169 * (1 - v));
+    vizCtx.fillStyle = `rgb(${r},${g},${b})`;
+    vizCtx.fillRect(x, H - barH, Math.max(barW - 0.5, 1), barH);
+  }
+}
+
+(function loop() {
+  requestAnimationFrame(loop);
+  _analyser ? drawBars() : drawIdle();
+})();
+
+// ── Listen button ─────────────────────────────────────────────────
+window.startListening = async function() {
+  if (_listening) return;
+  if (!zoneId) { document.getElementById('no-zone').style.display = 'flex'; return; }
+
+  _listening = true;
+  btnListen.textContent = 'CONNECTING…';
+  btnListen.classList.add('active');
+  syncInfo.textContent  = 'measuring clock…';
+
+  const audioEl = document.createElement('audio');
+  audioEl.crossOrigin = 'anonymous';
+  document.body.appendChild(audioEl);
+
+  // Web Audio — must be created on user gesture
+  const audioCtx = new AudioContext();
+  _analyser      = audioCtx.createAnalyser();
+  _analyser.fftSize = 256;
+  const src = audioCtx.createMediaElementSource(audioEl);
+  src.connect(_analyser);
+  _analyser.connect(audioCtx.destination);
+
+  try {
+    _cleanup = await player.join(zoneId, audioEl, {
+      onTrackChange:   ({ name }) => { hdrTrack.textContent = name || '—'; },
+      onListenerCount: (n)        => { hdrCount.textContent = `${n} listening`; },
+      onSync:          ({ lagMs, driftState }) => {
+        const ms = Math.round(lagMs);
+        syncInfo.textContent = `${driftState}  ${ms > 0 ? '+' : ''}${ms}ms`;
+      },
+    });
+    await audioEl.play();
+    btnListen.textContent = '● LISTENING';
+  } catch (err) {
+    _analyser  = null;
+    _listening = false;
+    btnListen.textContent = '▶ RETRY';
+    btnListen.classList.remove('active');
+    btnListen.classList.add('error');
+    syncInfo.textContent  = err.message;
+    setTimeout(() => { btnListen.classList.remove('error'); }, 3000);
+  }
+};
+
+// ── QR share ──────────────────────────────────────────────────────
+window.showQR = function() {
+  const url = window.location.href;
+  document.getElementById('qr-url-text').textContent = url;
+  const canvas = document.getElementById('qr-canvas');
+  if (typeof QRCode !== 'undefined') {
+    QRCode.toCanvas(canvas, url, { width: 200, margin: 1 }, () => {});
+  } else {
+    canvas.style.display = 'none';
+  }
+  document.getElementById('qr-overlay').classList.add('open');
+};
+
+window.hideQR = function() {
+  document.getElementById('qr-overlay').classList.remove('open');
+};
+
+window.copyPartyLink = function() {
+  const url = window.location.href;
+  navigator.clipboard?.writeText(url)
+    .then(() => { document.getElementById('qr-url-text').textContent = 'Copied!'; setTimeout(hideQR, 800); })
+    .catch(() => {});
+};
+
+// ── Initial zone info fetch ───────────────────────────────────────
+if (!zoneId) {
+  document.getElementById('no-zone').style.display = 'flex';
+  document.getElementById('btn-qr').style.display   = 'none';
+} else {
+  db.from('zones')
+    .select('track_name, current_track_url')
+    .eq('id', zoneId)
+    .single()
+    .then(({ data }) => {
+      if (data?.track_name) hdrTrack.textContent = data.track_name;
+    });
+}
+</script>
+</body>
+</html>

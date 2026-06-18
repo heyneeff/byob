@@ -181,28 +181,19 @@
     } catch (e) {}
   }
 
-  // ── SNAP ──────────────────────────────────────────────────────────────────
+  // ── SNAP — burst only, light goes underground (36) ────────────────────────
+  // Normal N/Z states no longer seek. Binary warp handles 15-150ms silently.
+  // Ternary governs calibration (auto-cal) not correction (snaps).
+  // Only burst mode snaps — at track start when audio is inaudible anyway.
   function applySnap(lagMs, reason) {
     if (typeof window._terCorrect     !== 'function') return;
     if (typeof window._terExpectedNow !== 'function') return;
-    const expected = window._terExpectedNow();
-    if (expected == null) return;
-
-    // Hexagram 8 — Holding Together:
-    // Don't snap to server-clock zero. Snap to the group median.
-    // If peers are at median M and I'm at lagMs L,
-    // seek to expected + (L - M)/1000 so I land at lag M (matching the group).
-    const median = peerMedianLag();
-    const groupOffset = (median != null) ? (lagMs - median) / 1000 : lagMs / 1000;
-    const target = expected - groupOffset;
-
+    const target = window._terExpectedNow();
+    if (target == null) return;
     window._terCorrect(target);
     _snapCount++;
-    if (_burstMode) _burstSnaps++;
-    const label = median != null
-      ? `median=${Math.round(median)}ms offset=${Math.round(groupOffset*1000)}ms`
-      : 'solo→0';
-    console.log('[ternary]', reason, Math.round(lagMs) + 'ms →', label);
+    _burstSnaps++;
+    console.log('[ternary]', reason, Math.round(lagMs) + 'ms → ' + target.toFixed(3) + 's');
   }
 
   // ── TICK — called by fastDriftCorrect() AND burst interval ────────────────
@@ -227,18 +218,21 @@
       _consecutiveN++;
 
     } else if (_trit === N) {
-      applySnap(lagMs, isBurst ? 'burst-snap(N)' : 'snap(N)');
+      // 26.2 — remove the axle. No snap. Auto-cal closes the floor instead.
+      // Binary warp (3%) handles 50-150ms silently.
       _consecutiveN++;
 
     } else if (_trit === Z) {
-      const vel = driftVelocity();
-      if (vel === P && abs > snapThreshold * 0.7) {
-        applySnap(lagMs, isBurst ? 'burst-snap(Z→N)' : 'snap(Z→N velocity)');
-      }
+      // Z-velocity preemptive snap removed — too noisy.
       _consecutiveN = 0;
 
     } else {
       _consecutiveN = 0;
+    }
+
+    // Burst mode: snap aggressively at track start (audio is transitioning)
+    if (isBurst && abs >= TER_SNAP_BURST && abs < BIN_THRESHOLD) {
+      applySnap(lagMs, 'burst-snap');
     }
 
     if (!isBurst && _consecutiveN >= 6) {
