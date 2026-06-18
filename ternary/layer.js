@@ -160,6 +160,8 @@
 
   // ── AUTO-CALIBRATION ──────────────────────────────────────────────────────
   function maybeAutoCalibrate() {
+    // Engine has its own auto-cal — skip layer cal when engine is running
+    if (typeof window._terEngineReset === 'function')      { _calState = 1; return; }
     if (_calApplied)                                       { _calState = 1; return; }
     if (typeof window._terAdjustLatency !== 'function')    { _calState = 2; return; }
     const floor = detectFloor();

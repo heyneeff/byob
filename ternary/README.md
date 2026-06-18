@@ -184,6 +184,27 @@ git checkout pre-ternary-engine   # instant rollback
 
 ---
 
+## First live session — ternary engine (June 18, 2026, 21:30)
+
+19 devices. First real data from `sync/ternary-engine.js` in production.
+
+```
+ter_yze77p:   P state (2–6ms) held for 4 consecutive minutes
+ter_2ipzq5:   32ms → P in one burst, held
+dev_2ipzq5:   1.016× warp → 2ms, held
+82 rows with playbackRate ≠ 1.000 — rate legs confirmed running
+4 devices auto-calibrated (engine onCalibrate callback)
+```
+
+Session 0 (binary only): 0 P rows / 1135. 0.0%.
+This session: `ter_yze77p` 52 P rows / 65. **80% converged.**
+
+Known issues fixed after this session:
+- Double auto-cal (layer + engine both adjusting deviceLatencyMs) → layer now defers to engine
+- TH_SEEK raised 150→250ms for high-BT devices stuck at 130ms floor
+
+---
+
 ## I Ching
 
 Hexagram 52 (unchanging): ternary stills the drift.
