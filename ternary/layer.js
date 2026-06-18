@@ -159,7 +159,7 @@
     if (_calApplied || typeof window._terAdjustLatency !== 'function') return;
     const floor = detectFloor();
     if (floor === null) return;
-    const correction = Math.round(-floor * 0.6 * 10) / 10;
+    const correction = Math.round(floor * 0.6 * 10) / 10;
     if (Math.abs(correction) < 5) return;
     window._terAdjustLatency(correction);
     _calApplied = true;
