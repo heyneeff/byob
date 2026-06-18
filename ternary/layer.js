@@ -70,6 +70,8 @@
   let _peerTrits     = {};
   let _driftHistory  = [];
   let _calApplied    = false;
+  let _calState      = 0;  // diagnostic: 0=never tried, 1=already done, 2=no fn, 3=no floor, 4=correction<5, 5=fired
+  let _lastFloor     = null;
   const _history     = [];
 
   // ── BURST MODE ────────────────────────────────────────────────────────────
@@ -147,24 +149,27 @@
   // ── FLOOR DETECTION ───────────────────────────────────────────────────────
   function detectFloor() {
     if (_driftHistory.length < 8) return null;
-    // Filter out track-wrap spikes (>500ms) before stability check
-    const clean = _driftHistory.filter(v => Math.abs(v) < 500);
-    if (clean.length < 4) return null;
-    const mean     = clean.reduce((a, v) => a + v, 0) / clean.length;
-    const variance = clean.reduce((a, v) => a + (v - mean) ** 2, 0) / clean.length;
+    // Trimmed mean: sort, drop top+bottom outlier, check variance of middle 6
+    const sorted = [..._driftHistory].sort((a, b) => a - b);
+    const trimmed = sorted.slice(1, -1); // drop min and max
+    const mean     = trimmed.reduce((a, v) => a + v, 0) / trimmed.length;
+    const variance = trimmed.reduce((a, v) => a + (v - mean) ** 2, 0) / trimmed.length;
     if (variance < 400 && Math.abs(mean) > 20 && Math.abs(mean) < 200) return mean;
     return null;
   }
 
   // ── AUTO-CALIBRATION ──────────────────────────────────────────────────────
   function maybeAutoCalibrate() {
-    if (_calApplied || typeof window._terAdjustLatency !== 'function') return;
+    if (_calApplied)                                       { _calState = 1; return; }
+    if (typeof window._terAdjustLatency !== 'function')    { _calState = 2; return; }
     const floor = detectFloor();
-    if (floor === null) return;
+    _lastFloor = floor;
+    if (floor === null)                                    { _calState = 3; return; }
     const correction = Math.round(floor * 0.6 * 10) / 10;
-    if (Math.abs(correction) < 5) return;
+    if (Math.abs(correction) < 5)                         { _calState = 4; return; }
     window._terAdjustLatency(correction);
     _calApplied = true;
+    _calState   = 5;
     console.log('[ternary] auto-cal: floor', Math.round(floor) + 'ms → adjust', correction + 'ms');
     try {
       const ch = _debugChannel || window._debugChannel;
@@ -277,6 +282,9 @@
           terBurst:      _burstMode,
           terBurstSnaps: _burstSnaps,
           terCalApplied: _calApplied,
+          terCalState:   _calState,
+          terLastFloor:  _lastFloor !== null ? Math.round(_lastFloor) : null,
+          terConsecN:    _consecutiveN,
           playbackRate:  window._audio?.playbackRate ?? 1,
           driftState:    window._driftState ?? 'unknown',
           currentTime:   window._audio?.currentTime ?? null,
