@@ -12,9 +12,9 @@
 // in listener.html or tested in sync-sim.html.
 // ════════════════════════════════════════════════════════════
 
-import { expectedPosition, computeLag, wrapLag, SEEK_STAB_S } from './sync-engine.js';
+import { expectedPosition, computeLag, wrapLag, SEEK_STAB_S, computeSeekTime, bpmWarpRate, computeClockOffset } from './sync-engine.js';
 
-export { expectedPosition, computeLag, wrapLag, SEEK_STAB_S };
+export { expectedPosition, computeLag, wrapLag, SEEK_STAB_S, computeSeekTime, bpmWarpRate, computeClockOffset };
 
 // ── Balanced ternary primitives ───────────────────────────────────────────────
 const N = -1, Z = 0, P = 1;
