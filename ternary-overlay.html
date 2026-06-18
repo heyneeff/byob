@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ternary Overlay</title>
+<style>
+:root{
+  --bg:#050312;--surf:#0a0820;--bdr:#1a1838;
+  --cyan:#40c4f0;--coral:#f04880;--void:#303858;
+  --text:#b0c8d8;--mono:'Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;display:flex;flex-direction:column}
+
+#hdr{padding:16px 24px;background:rgba(3,3,8,0.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:14px;flex-shrink:0;flex-wrap:wrap}
+#title{font-size:16px;letter-spacing:4px;color:var(--cyan);font-weight:bold}
+#pulse{width:10px;height:10px;border-radius:50%;background:var(--void);flex-shrink:0;transition:background 0.3s}
+#pulse.live{background:var(--coral);box-shadow:0 0 8px var(--coral)}
+#hdr-status{font-size:12px;color:#405060;letter-spacing:1px}
+#rec-btn{font-family:var(--mono);font-size:12px;padding:6px 16px;border-radius:3px;cursor:pointer;border:1px solid var(--bdr);color:#405060;background:transparent;margin-left:auto;letter-spacing:1px}
+#rec-btn.recording{border-color:var(--coral);color:var(--coral);background:#200010}
+#exp-btn{font-family:var(--mono);font-size:12px;padding:6px 16px;border-radius:3px;cursor:pointer;border:1px solid var(--bdr);color:#405060;background:transparent;letter-spacing:1px}
+#exp-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+#rec-count{font-size:11px;color:#405060}
+
+#body{flex:1;display:flex;flex-direction:column}
+
+/* ── ZONE PICKER ── */
+#zone-screen{
+  flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:20px;
+  padding:40px;
+}
+#zone-screen.hidden{display:none}
+#zone-title{font-size:14px;letter-spacing:3px;color:var(--cyan)}
+#zone-list{display:flex;flex-direction:column;gap:10px;width:100%;max-width:460px}
+.zone-btn{
+  padding:16px 20px;border-radius:5px;border:1px solid var(--bdr);
+  background:var(--surf);cursor:pointer;text-align:left;
+  font-family:var(--mono);font-size:13px;color:var(--text);
+  transition:border-color 0.2s;
+}
+.zone-btn:hover{border-color:var(--cyan)}
+.zone-btn .zname{color:var(--cyan);font-size:14px;font-weight:bold;display:block;margin-bottom:4px}
+.zone-btn .zmeta{color:#405060;font-size:11px;letter-spacing:1px}
+#no-zones{color:#303858;font-size:13px;letter-spacing:1px}
+#scanning{color:#405060;font-size:12px;letter-spacing:2px}
+
+/* ── LIVE VIEW ── */
+#live-screen{flex:1;display:flex;flex-direction:column}
+#live-screen.hidden{display:none}
+
+#zone-bar{
+  padding:12px 24px;background:var(--surf);border-bottom:1px solid var(--bdr);
+  display:flex;align-items:center;gap:14px;flex-shrink:0;
+}
+#zone-bar-name{font-size:13px;color:var(--cyan);font-weight:bold;letter-spacing:1px}
+#zone-bar-meta{font-size:11px;color:#405060;letter-spacing:1px;flex:1}
+.sm-btn{
+  font-family:var(--mono);font-size:11px;padding:5px 14px;border-radius:3px;
+  cursor:pointer;border:1px solid var(--bdr);color:#405060;background:transparent;
+}
+.sm-btn:hover{border-color:var(--cyan);color:var(--cyan)}
+
+/* ── MAIN DISPLAY ── */
+#display{
+  flex:1;display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:1px;background:var(--bdr);
+}
+.panel{background:var(--bg);padding:28px}
+.panel-label{font-size:10px;letter-spacing:3px;color:#405060;margin-bottom:20px}
+
+/* Big trit */
+.big-trit{font-size:80px;font-weight:bold;line-height:1;margin-bottom:8px;transition:color 0.4s}
+.trit-label{font-size:14px;letter-spacing:3px;margin-bottom:28px;transition:color 0.4s}
+
+/* Drift gauge */
+.gauge-wrap{margin-bottom:24px}
+.gauge-label{font-size:11px;color:#405060;letter-spacing:1px;margin-bottom:6px}
+.gauge-num{font-size:32px;font-weight:bold;margin-bottom:6px;transition:color 0.3s}
+.bar-wrap{height:6px;background:var(--bdr);border-radius:3px;overflow:hidden}
+.bar-fill{height:100%;border-radius:3px;transition:width 0.5s,background 0.5s}
+
+/* Stats */
+.stat{display:flex;justify-content:space-between;font-size:13px;line-height:2.6;border-bottom:1px solid var(--bdr)}
+.stat:last-child{border-bottom:none}
+.sk{color:#405060}.sv{font-weight:bold}
+
+/* Binary state pill */
+.pill{
+  display:inline-block;padding:5px 16px;border-radius:3px;
+  font-size:12px;letter-spacing:2px;border:1px solid;
+  transition:all 0.3s;
+}
+
+/* Log */
+#log{
+  padding:14px 24px;border-top:1px solid var(--bdr);
+  height:90px;overflow-y:auto;flex-shrink:0;
+  font-size:11px;line-height:2;color:#303858;
+}
+</style>
+</head>
+<body>
+
+<div id="hdr">
+  <div id="title">◈ TERNARY OVERLAY</div>
+  <div id="hdr-status">starting up</div>
+  <button id="rec-btn" onclick="toggleRecord()">⏺ RECORD</button>
+  <button id="exp-btn" onclick="exportData()">⬇ EXPORT</button>
+  <span id="rec-count"></span>
+  <div id="pulse"></div>
+</div>
+
+<div id="body">
+
+  <!-- ZONE PICKER -->
+  <div id="zone-screen">
+    <div id="zone-title">ACTIVE ZONES</div>
+    <div id="scanning">scanning…</div>
+    <div id="zone-list" style="display:none"></div>
+    <div id="no-zones" style="display:none">no active zones found — start a broadcast in artist.html</div>
+  </div>
+
+  <!-- LIVE VIEW -->
+  <div id="live-screen" class="hidden">
+
+    <div id="zone-bar">
+      <div id="zone-bar-name"></div>
+      <div id="zone-bar-meta"></div>
+      <button class="sm-btn" onclick="disconnect()">← ZONES</button>
+    </div>
+
+    <div id="display">
+      <!-- BINARY -->
+      <div class="panel" id="bin-panel">
+        <div class="panel-label">BYOB · BINARY ENGINE</div>
+        <div class="big-trit" id="bin-trit" style="color:var(--void)">—</div>
+        <div class="trit-label" id="bin-state-label" style="color:var(--void)">waiting</div>
+        <div class="gauge-wrap">
+          <div class="gauge-label">DRIFT</div>
+          <div class="gauge-num" id="bin-drift">—</div>
+          <div class="bar-wrap"><div class="bar-fill" id="bin-bar" style="width:0%;background:var(--void)"></div></div>
+        </div>
+        <div class="stat"><span class="sk">Binary state</span><span class="sv" id="bin-state-pill">idle</span></div>
+        <div class="stat"><span class="sk">Playback rate</span><span class="sv" id="bin-rate">1.0000</span></div>
+        <div class="stat"><span class="sk">Expected</span><span class="sv" id="bin-exp">—</span></div>
+        <div class="stat"><span class="sk">Actual</span><span class="sv" id="bin-act">—</span></div>
+        <div class="stat"><span class="sk">Snaps</span><span class="sv" id="bin-snaps">0</span></div>
+        <div class="stat"><span class="sk">Clock offset</span><span class="sv" id="bin-clk">—</span></div>
+      </div>
+
+      <!-- TERNARY -->
+      <div class="panel" id="ter-panel">
+        <div class="panel-label">TERNARY ENGINE · TRIT STATE</div>
+        <div class="big-trit" id="ter-trit" style="color:var(--void)">—</div>
+        <div class="trit-label" id="ter-trit-label" style="color:var(--void)">waiting</div>
+        <div class="gauge-wrap">
+          <div class="gauge-label">DRIFT</div>
+          <div class="gauge-num" id="ter-drift">—</div>
+          <div class="bar-wrap"><div class="bar-fill" id="ter-bar" style="width:0%;background:var(--void)"></div></div>
+        </div>
+        <div class="stat"><span class="sk">Trit</span><span class="sv" id="ter-trit-val">—</span></div>
+        <div class="stat"><span class="sk">Would snap?</span><span class="sv" id="ter-snap-q">—</span></div>
+        <div class="stat"><span class="sk">Expected</span><span class="sv" id="ter-exp">—</span></div>
+        <div class="stat"><span class="sk">Actual</span><span class="sv" id="ter-act">—</span></div>
+        <div class="stat"><span class="sk">Snaps (shadow)</span><span class="sv" id="ter-snaps">0</span></div>
+        <div class="stat"><span class="sk">Δ vs binary</span><span class="sv" id="ter-delta">—</span></div>
+      </div>
+    </div>
+
+    <div id="log"></div>
+
+    <!-- HUD DEVICES from byob_debug channel -->
+    <div id="hud-section" style="border-top:1px solid var(--bdr);padding:14px 24px;flex-shrink:0;display:none">
+      <div style="font-size:10px;letter-spacing:3px;color:#405060;margin-bottom:10px">
+        LIVE HUD DEVICES — from byob_debug channel
+      </div>
+      <div id="hud-devices" style="display:flex;flex-wrap:wrap;gap:10px"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── SUPABASE ─────────────────────────────────────────────────────────────
+const SB_URL = 'https://ohacvuwzvuifpyqckise.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+
+const scr = document.createElement('script');
+scr.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+scr.onload = init;
+document.head.appendChild(scr);
+
+let db, zone=null, audio=null;
+let zoneChannel=null, hudChannel=null, scanTimer=null, tickTimer=null;
+let _clockOffset=0;
+let binSnaps=0, terSnaps=0, terShadowDrift=null;
+let hudDevices={};
+
+// ── RECORDING ─────────────────────────────────────────────────────────────
+let recording=false, recordedRows=[];
+
+function toggleRecord(){
+  recording=!recording;
+  const btn=document.getElementById('rec-btn');
+  btn.textContent=recording?'⏹ STOP':'⏺ RECORD';
+  btn.className=recording?'recording':'';
+  if(recording){
+    recordedRows=[];
+    log('Recording started','#40c4f0');
+  } else {
+    log(`Recording stopped — ${recordedRows.length} rows captured`,'#40c4f0');
+  }
+  updateRecCount();
+}
+
+function record(row){
+  if(!recording) return;
+  recordedRows.push({ts:Date.now(), ...row});
+  updateRecCount();
+}
+
+function updateRecCount(){
+  document.getElementById('rec-count').textContent=
+    recording?`● ${recordedRows.length} rows`:(recordedRows.length?`${recordedRows.length} rows ready`:'');
+}
+
+function exportData(){
+  if(!recordedRows.length){ log('Nothing recorded yet','#405060'); return; }
+  const out={
+    exportedAt: new Date().toISOString(),
+    zone: zone?.name||zone?.id||'unknown',
+    clockOffsetMs: Math.round(_clockOffset),
+    rows: recordedRows,
+  };
+  const blob=new Blob([JSON.stringify(out,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`ternary-overlay-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  log(`Exported ${recordedRows.length} rows`,'#40c4f0');
+}
+const SEEK_STAB = 0.19;
+const SNAP_MS = 150;
+const MICRO_GAIN = 0.0004;
+const MICRO_MAX = 0.012;
+
+// ── TRIT PRIMITIVES ──────────────────────────────────────────────────────
+const N=-1, Z=0, P=1;
+const driftToTrit = (ms, thresh=SNAP_MS) =>
+  Math.abs(ms) >= thresh ? N : Math.abs(ms) >= 15 ? Z : P;
+const TCOL = {[-1]:'#40c4f0', [0]:'#607080', [1]:'#f04880'};
+const TNAME = {[-1]:'N', [0]:'Z', [1]:'P'};
+const TLABEL = {[-1]:'DIVERGING', [0]:'NEGOTIATING', [1]:'CONVERGED'};
+
+function setStatus(s){ document.getElementById('hdr-status').textContent=s; }
+function pulse(){
+  const el=document.getElementById('pulse');
+  el.className='live';
+  setTimeout(()=>el.className='',500);
+}
+function log(msg,col='#405060'){
+  const el=document.getElementById('log');
+  el.innerHTML=`<div style="color:${col}">${msg}</div>`+el.innerHTML;
+  el.innerHTML=el.innerHTML.split('<div').slice(0,20).join('<div');
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────
+async function init(){
+  db = window.supabase.createClient(SB_URL, SB_KEY);
+  setStatus('scanning for zones…');
+  await scanZones();
+  scanTimer = setInterval(scanZones, 10000);
+}
+
+// ── SCAN FOR ACTIVE ZONES ─────────────────────────────────────────────────
+async function scanZones(){
+  if(zone) return; // already connected
+  const {data,error} = await db
+    .from('zones')
+    .select('id,name,listeners,track_name,current_track_url,playback_started_at,active')
+    .eq('active',true)
+    .order('listeners',{ascending:false});
+
+  document.getElementById('scanning').style.display='none';
+
+  if(error||!data?.length){
+    document.getElementById('no-zones').style.display='block';
+    document.getElementById('zone-list').style.display='none';
+    setStatus('no active zones');
+    return;
+  }
+
+  document.getElementById('no-zones').style.display='none';
+  document.getElementById('zone-list').style.display='flex';
+
+  // If exactly one active zone — auto-join it
+  if(data.length===1){ joinZone(data[0]); return; }
+
+  // Otherwise show picker
+  const list = document.getElementById('zone-list');
+  list.innerHTML = data.map(z=>`
+    <button class="zone-btn" onclick="joinZone(${JSON.stringify(z).replace(/"/g,'&quot;')})">
+      <span class="zname">${z.name||z.id}</span>
+      <span class="zmeta">${z.listeners||0} listeners · ${z.track_name||'no track'}</span>
+    </button>
+  `).join('');
+  setStatus(`${data.length} zones — pick one`);
+}
+
+// ── JOIN A ZONE ───────────────────────────────────────────────────────────
+async function joinZone(z){
+  clearInterval(scanTimer);
+  zone = z;
+
+  // Show live screen
+  document.getElementById('zone-screen').className='hidden';
+  document.getElementById('live-screen').className='';
+  document.getElementById('zone-bar-name').textContent = z.name||z.id;
+  document.getElementById('zone-bar-meta').textContent =
+    (z.track_name||'no track') + ' · ' + (z.listeners||0) + ' listeners';
+  setStatus('connected');
+
+  // Measure clock offset
+  await measureClock();
+
+  // Load audio (muted — we just use currentTime for drift calc, no sound)
+  if(z.current_track_url){
+    audio = new Audio(z.current_track_url);
+    audio.crossOrigin='anonymous';
+    // Seek to expected position and play
+    audio.addEventListener('canplay', ()=>{
+      const exp = expectedPos();
+      if(exp!==null) audio.currentTime = exp;
+      audio.play().catch(()=>{});
+      log(`Audio loaded. Seeking to ${exp?.toFixed(1)}s`,'#40c4f0');
+    },{once:true});
+  }
+
+  // Subscribe to zone updates
+  zoneChannel = db.channel(`zone_${z.id}`)
+    .on('postgres_changes',{event:'UPDATE',schema:'public',table:'zones',filter:`id=eq.${z.id}`},
+      ({new:row})=>{
+        zone={...zone,...row};
+        document.getElementById('zone-bar-meta').textContent=
+          (row.track_name||'no track')+' · '+(row.listeners||0)+' listeners';
+        log('Zone updated','#405060');
+        // If track changed, reload audio
+        if(row.current_track_url && audio?.src !== row.current_track_url){
+          if(audio){ audio.pause(); audio=null; }
+          audio=new Audio(row.current_track_url);
+          audio.crossOrigin='anonymous';
+          audio.addEventListener('canplay',()=>{
+            const exp=expectedPos();
+            if(exp!==null) audio.currentTime=exp;
+            audio.play().catch(()=>{});
+            log(`New track loaded. Seeking to ${exp?.toFixed(1)}s`,'#40c4f0');
+          },{once:true});
+        }
+      })
+    .subscribe();
+
+  // Also subscribe to byob_debug channel — picks up any open HUD
+  hudChannel = db.channel('byob_debug')
+    .on('broadcast',{event:'hud_data'},({payload})=>handleHud(payload))
+    .on('broadcast',{event:'listener_health'},({payload})=>handleHud(payload))
+    .subscribe();
+
+  // Start tick loop — every 5s
+  tickTimer = setInterval(tick, 5000);
+  // First tick after 1s
+  setTimeout(tick, 1000);
+}
+
+// ── HUD DATA FROM BYOB DEBUG CHANNEL ─────────────────────────────────────
+function handleHud(p){
+  if(!p) return;
+  const id=p.deviceId||p.device_id||'unknown';
+  hudDevices[id]={...p,_ts:Date.now()};
+  renderHudDevices();
+
+  // Record HUD data too
+  record({
+    source:'byob_hud',
+    deviceId:id,
+    driftMs:p.driftMs??p.drift_ms??null,
+    driftState:p.driftState||p.drift_state||null,
+    playbackRate:p.playbackRate??p.playback_rate??null,
+    deviceLatencyMs:p.deviceLatencyMs??p.device_latency_ms??null,
+  });
+}
+
+function renderHudDevices(){
+  // Prune stale (>20s)
+  const now=Date.now();
+  for(const id of Object.keys(hudDevices)){
+    if(now-hudDevices[id]._ts>20000) delete hudDevices[id];
+  }
+  const ids=Object.keys(hudDevices);
+  const sec=document.getElementById('hud-section');
+  sec.style.display=ids.length?'block':'none';
+  const wrap=document.getElementById('hud-devices');
+  wrap.innerHTML=ids.map(id=>{
+    const d=hudDevices[id];
+    const drift=d.driftMs??d.drift_ms??null;
+    const state=d.driftState||d.drift_state||'idle';
+    const trit=drift!==null?driftToTrit(drift):Z;
+    const col=TCOL[trit];
+    const dStr=drift!==null?(drift>=0?'+':'')+Math.round(drift)+'ms':'—';
+    return `<div style="background:var(--surf);border:1px solid ${col}30;border-radius:4px;padding:10px 14px;font-size:11px;min-width:160px">
+      <div style="color:#405060;letter-spacing:1px;margin-bottom:4px">${id.slice(-8).toUpperCase()}</div>
+      <div style="font-size:20px;font-weight:bold;color:${col}">${TNAME[trit]}</div>
+      <div style="color:${col};font-size:10px;letter-spacing:1px;margin-bottom:6px">${TLABEL[trit]}</div>
+      <div style="color:#607080">${dStr} · ${state}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── DISCONNECT ────────────────────────────────────────────────────────────
+function disconnect(){
+  if(zoneChannel) db.removeChannel(zoneChannel);
+  if(hudChannel) db.removeChannel(hudChannel);
+  if(tickTimer) clearInterval(tickTimer);
+  if(audio){ audio.pause(); audio=null; }
+  zone=null; binSnaps=0; terSnaps=0;
+  document.getElementById('zone-screen').className='';
+  document.getElementById('live-screen').className='hidden';
+  document.getElementById('scanning').style.display='block';
+  document.getElementById('zone-list').innerHTML='';
+  setStatus('scanning…');
+  scanTimer=setInterval(scanZones,5000);
+  scanZones();
+}
+
+// ── CLOCK SYNC ────────────────────────────────────────────────────────────
+async function measureClock(){
+  const samples=[];
+  for(let i=0;i<5;i++){
+    const sent=Date.now();
+    const {data}=await db.rpc('server_now');
+    if(!data) continue;
+    const rtt=Date.now()-sent;
+    if(rtt<400) samples.push({offset:new Date(data).getTime()-(sent+rtt/2),rtt});
+  }
+  if(!samples.length) return;
+  const best=samples.sort((a,b)=>a.rtt-b.rtt).slice(0,3);
+  _clockOffset=best.reduce((s,x)=>s+x.offset,0)/best.length;
+  log(`Clock offset: ${Math.round(_clockOffset)}ms (${samples.length} samples)`,'#405060');
+}
+const syncedNow=()=>Date.now()+_clockOffset;
+
+// ── EXPECTED POSITION ─────────────────────────────────────────────────────
+function expectedPos(){
+  if(!zone?.playback_started_at) return null;
+  const dur=audio?.duration||180;
+  const elapsed=(syncedNow()-new Date(zone.playback_started_at).getTime())/1000;
+  const raw=elapsed+SEEK_STAB;
+  return((raw%dur)+dur)%dur;
+}
+
+// ── TICK — compute both engines ───────────────────────────────────────────
+function tick(){
+  if(!zone||!audio) return;
+  pulse();
+
+  const exp=expectedPos();
+  if(exp===null) return;
+  const actual=audio.currentTime;
+  const drift=(exp-actual)*1000; // ms, positive=behind
+
+  // ── BINARY ENGINE (BYOB logic) ────────────────────────────────────────
+  const absDrift=Math.abs(drift);
+  let binState, binRate;
+  if(absDrift>=SNAP_MS){
+    binState='ducking'; binRate=1.0;
+    audio.currentTime=exp;
+    binSnaps++;
+    log(`BINARY SNAP: drift was ${Math.round(drift)}ms`,'#f04880');
+  } else if(absDrift>=15){
+    binState='warping';
+    const pct=Math.max(-MICRO_MAX,Math.min(MICRO_MAX,drift*MICRO_GAIN/1000));
+    binRate=1.0+pct;
+    audio.playbackRate=binRate;
+  } else {
+    binState='idle'; binRate=1.0;
+    audio.playbackRate=1.0;
+  }
+
+  // ── TERNARY ENGINE (shadow — does NOT touch audio) ────────────────────
+  const trit=driftToTrit(drift);
+  let terWouldSnap=false, terWouldRate=1.0;
+  if(trit===N){
+    terWouldSnap=true;
+    terSnaps++;
+    log(`TERNARY would snap: drift ${Math.round(drift)}ms → N`,'#40c4f0');
+  } else if(trit===Z){
+    const pct=Math.max(-MICRO_MAX,Math.min(MICRO_MAX,drift*MICRO_GAIN/1000));
+    terWouldRate=1.0+pct;
+  }
+
+  const delta=terWouldSnap!=(binState==='ducking')
+    ? (terWouldSnap?'ternary would snap, binary did not':'binary snapped, ternary would not')
+    : 'agree';
+
+  // ── RECORD ────────────────────────────────────────────────────────────
+  record({
+    source:'virtual_listener',
+    driftMs:Math.round(drift),
+    expectedS:+exp.toFixed(3),
+    actualS:+actual.toFixed(3),
+    // Binary
+    binState,
+    binRate:+binRate.toFixed(5),
+    binSnaps,
+    // Ternary
+    terTrit:TNAME[trit],
+    terWouldSnap,
+    terWouldRate:+terWouldRate.toFixed(5),
+    terSnaps,
+    delta,
+    clockOffsetMs:Math.round(_clockOffset),
+  });
+
+  // ── UPDATE UI ─────────────────────────────────────────────────────────
+  updateBinary(drift, exp, actual, binState, binRate);
+  updateTernary(drift, trit, exp, actual, terWouldSnap, terWouldRate, delta);
+}
+
+function updateBinary(drift, exp, actual, state, rate){
+  const abs=Math.abs(drift);
+  const col=abs<50?'#40c4f0':abs<150?'#c0d040':'#f04880';
+  const trit=state==='ducking'?N:state==='warping'?Z:P;
+  document.getElementById('bin-trit').textContent=TNAME[trit];
+  document.getElementById('bin-trit').style.color=TCOL[trit];
+  document.getElementById('bin-state-label').textContent=TLABEL[trit];
+  document.getElementById('bin-state-label').style.color=TCOL[trit];
+  document.getElementById('bin-drift').textContent=(drift>=0?'+':'')+Math.round(drift)+'ms';
+  document.getElementById('bin-drift').style.color=col;
+  document.getElementById('bin-bar').style.width=Math.min(100,abs/3)+'%';
+  document.getElementById('bin-bar').style.background=col;
+  document.getElementById('bin-state-pill').textContent=state;
+  document.getElementById('bin-rate').textContent=rate.toFixed(4);
+  document.getElementById('bin-exp').textContent=exp.toFixed(3)+'s';
+  document.getElementById('bin-act').textContent=actual.toFixed(3)+'s';
+  document.getElementById('bin-snaps').textContent=binSnaps;
+  document.getElementById('bin-clk').textContent=Math.round(_clockOffset)+'ms';
+}
+
+function updateTernary(drift, trit, exp, actual, wouldSnap, wouldRate, delta){
+  const abs=Math.abs(drift);
+  document.getElementById('ter-trit').textContent=TNAME[trit];
+  document.getElementById('ter-trit').style.color=TCOL[trit];
+  document.getElementById('ter-trit-label').textContent=TLABEL[trit];
+  document.getElementById('ter-trit-label').style.color=TCOL[trit];
+  document.getElementById('ter-drift').textContent=(drift>=0?'+':'')+Math.round(drift)+'ms';
+  document.getElementById('ter-drift').style.color=TCOL[trit];
+  document.getElementById('ter-bar').style.width=Math.min(100,abs/3)+'%';
+  document.getElementById('ter-bar').style.background=TCOL[trit];
+  document.getElementById('ter-trit-val').textContent=TNAME[trit]+' · '+TLABEL[trit].toLowerCase();
+  document.getElementById('ter-snap-q').textContent=wouldSnap?'YES':'no';
+  document.getElementById('ter-snap-q').style.color=wouldSnap?'#f04880':'#40c4f0';
+  document.getElementById('ter-exp').textContent=exp.toFixed(3)+'s';
+  document.getElementById('ter-act').textContent=actual.toFixed(3)+'s';
+  document.getElementById('ter-snaps').textContent=terSnaps;
+  const dc=delta==='agree'?'#40c4f0':'#c0d040';
+  document.getElementById('ter-delta').textContent=delta;
+  document.getElementById('ter-delta').style.color=dc;
+}
+</script>
+</body>
+</html>
