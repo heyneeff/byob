@@ -76,19 +76,23 @@
     _trit = driftToTrit(lagMs);
 
     if (_trit === N) {
-      // Diverging — snap to expected position using BYOB's own correction path.
-      // cancelDriftCorrection clears any in-flight state first (BYOB invariant).
-      // Only fires if the hooks are available (listener.html is wired up).
-      if (typeof window._terCorrect === 'function' && typeof window._terExpectedNow === 'function') {
-        const target = window._terExpectedNow();
-        if (target != null) {
-          window._terCorrect(target);
-          _snapCount++;
-          console.log('[ternary] snap', Math.round(lagMs) + 'ms → ' + target.toFixed(3) + 's');
+      // Only snap in the 50–150ms range — ternary's exclusive zone.
+      // Below 50ms: Z state, micro-correct (binary handles that).
+      // Above 150ms: binary's snap threshold — let binary handle it, don't double-seek.
+      const abs = Math.abs(lagMs);
+      const BIN_THRESHOLD = 150; // matches DRIFT_SNAP_THRESHOLD_MS in sync-engine.js
+      if (abs >= TER_SNAP_MS && abs < BIN_THRESHOLD) {
+        if (typeof window._terCorrect === 'function' && typeof window._terExpectedNow === 'function') {
+          const target = window._terExpectedNow();
+          if (target != null) {
+            window._terCorrect(target);
+            _snapCount++;
+            console.log('[ternary] snap', Math.round(lagMs) + 'ms → ' + target.toFixed(3) + 's');
+          }
         }
-      } else {
-        _snapCount++; // shadow count when hooks not yet available
       }
+      // >150ms: binary fires; count it for stats but don't interfere
+      if (abs >= BIN_THRESHOLD) _snapCount++;
     }
 
     const row = { ts: Date.now(), lagMs: Math.round(lagMs), trit: TRIT_NAME[_trit] };
