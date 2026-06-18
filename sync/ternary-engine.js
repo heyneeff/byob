@@ -48,10 +48,6 @@ const VEL_MOD = { [P]: 1.40, [Z]: 1.00, [N]: 0.60 }; // P=growing→push harder,
 const MICRO_GAIN = 0.0004; // fractional rate per ms — same as sync-engine.js
 const MICRO_MAX  = 0.012;  // cap ±1.2%
 
-// Settled-recheck: after a warp closes the gap, recheck sooner than the 5s
-// fastDriftCorrect gate so rapid re-accumulation is caught in Z-range (~30ms)
-// rather than allowed to grow back to N-range (~74ms).
-const SETTLED_RECHECK_MS = 1500;
 
 function lagToTrit(absMs) {
   if (absMs < TH_P)    return P;
@@ -186,26 +182,11 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   }
 
   function settleToIdle() {
+    transport.playbackRate = getBaseRate();
     _state = 'idle';
+    // Recheck — drift may not be fully closed
     const lag = computeLagMs();
-    if (lag !== null && Math.abs(lag) >= TH_P) {
-      // Gap not fully closed — continue correcting
-      transport.playbackRate = getBaseRate();
-      requestCorrection(lag);
-      return;
-    }
-    // Gap closed. Apply micro-correction and schedule a settled-recheck sooner
-    // than fastDriftCorrect's 5s gate. Devices with slow audio clocks re-accumulate
-    // 70-100ms of drift in 5s; catching it at 1.5s keeps them in Z-range (~30ms).
-    transport.playbackRate = lag !== null ? microRate(lag) : getBaseRate();
-    function recheckFn() {
-      const l = computeLagMs();
-      if (l === null) return;
-      if (Math.abs(l) >= TH_P) { requestCorrection(l); return; }
-      transport.playbackRate = microRate(l);
-      _warpTimer = timers.setTimeout(recheckFn, SETTLED_RECHECK_MS);
-    }
-    _warpTimer = timers.setTimeout(recheckFn, SETTLED_RECHECK_MS);
+    if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
   }
 
   function cancelDriftCorrection() {
