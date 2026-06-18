@@ -105,6 +105,11 @@
     <canvas id="chart-micro" width="900" height="260"></canvas>
     <table id="stats-micro"></table>
   </div>
+  <div class="panel" style="border:2px solid #f04880">
+    <h2 style="color:#f04880">☯ Ternary — N/Z/P rate table · tcons() consensus · auto-cal (Hex. 50)</h2>
+    <canvas id="chart-ternary" width="900" height="260"></canvas>
+    <table id="stats-ternary"></table>
+  </div>
 </div>
 <div class="legend" id="legend"></div>
 <div class="events" id="event-log"></div>
@@ -112,6 +117,7 @@
 
 <script type="module">
 import { createSyncEngine, expectedPosition } from './sync/sync-engine.js';
+import { createTernaryEngine } from './sync/ternary-engine.js';
 
 // ════════════════════════════════════════════════════════════
 // Fake timers — same virtual clock as sync/sync-engine.test.js, shared by
@@ -327,6 +333,26 @@ function makeEngineListener(rng, id, baseRate, timers, simState, ctx) {
   const getContext = () => ({ playbackStartedAt: ctx.startedAt, deviceLatencyMs: L.deviceLatencyMs, scatterOffsetMs: L.scatterOffsetMs });
   const getBaseRate = () => L.baseRate;
   L.engine = createSyncEngine({ transport, timers, clock, getContext, getBaseRate });
+  return L;
+}
+
+function makeListenerTernary(seed, ctx, simState) {
+  const L = makeListener(seed, ctx, simState);
+  const transport = {
+    get duration()    { return DURATION; },
+    get currentTime() { return L.currentTime; },
+    set currentTime(v){ L.currentTime = v; },
+    get playbackRate(){ return L.playbackRate; },
+    set playbackRate(v){ L.playbackRate = v; },
+    get volume()      { return 1; },
+    set volume(v)     {},
+    hasSrcObject: () => false,
+  };
+  const clock     = { syncedNow: () => simState.simNow + L.clockOffset };
+  const getCtx    = () => ({ playbackStartedAt: ctx.startedAt, deviceLatencyMs: L.deviceLatencyMs, scatterOffsetMs: L.scatterOffsetMs });
+  const getBase   = () => L.baseRate;
+  const onCal     = (deltaMs) => { L.deviceLatencyMs = Math.max(0, L.deviceLatencyMs + deltaMs); };
+  L.engine = createTernaryEngine({ transport, timers, clock, getContext: getCtx, getBaseRate: getBase, onCalibrate: onCal });
   return L;
 }
 
@@ -582,6 +608,72 @@ function runSimEngine(seed, listenerCount, totalMs, disruptRate, eventToggles, t
   return { listeners, eventLog };
 }
 
+// ── Ternary engine tick ───────────────────────────────────────────────────────
+function ternaryTickEngine(L, simNow, dtMs, ctx, simState) {
+  timers.advance(dtMs);
+  const lag = L.engine.computeLagMs();
+  if (lag == null) return;
+  L.engine.requestCorrection(lag);
+}
+
+// ── Ternary sim runner (mirrors runSimEngine but uses makeListenerTernary) ────
+function runSimTernary(seed, listenerCount, totalMs, disruptRate, eventToggles) {
+  const enable = Object.assign({ visibilityWake: true, scatterChange: true, hardSync: true, clusterAssign: true, sceneFire: true, stallsEnabled: true }, eventToggles);
+  const rng = mulberry32(seed);
+  const simState = { simNow: 0 };
+  const ctx = { startedAt: -1, events: {}, scatterFor: () => 0, stallsEnabled: enable.stallsEnabled };
+  ctx.pick = (ev, L, frac) => {
+    const x = Math.abs(Math.sin((L.id + 1) * 12.9898 + ev.r * 78.233) * 43758.5453);
+    return (x - Math.floor(x)) < (frac !== undefined ? frac : ev.frac);
+  };
+  const listeners = Array.from({length:listenerCount}, (_,i) => makeListenerTernary(rng, i, 1.0, timers, simState, ctx));
+  const eventLog = [];
+
+  // Peer trit exchange — devices share trit/lag every 5s
+  function exchangePeerTrits(simNow) {
+    for (const L of listeners) {
+      const trit = L.engine.getTrit();
+      const lag  = L.engine.computeLagMs();
+      for (const peer of listeners) {
+        if (peer !== L) peer.engine.receivePeer(L.id, trit, lag);
+      }
+    }
+  }
+
+  const schedule = [];
+  for (let t = 5000; t < totalMs; t += 1) {
+    if (rng() < 0.00006 * disruptRate && enable.visibilityWake)  schedule.push({ t, type:'visibilityWake' });
+    if (rng() < 0.000015 * disruptRate && enable.hardSync)        schedule.push({ t, type:'hardSync' });
+    if (rng() < 0.00004 * disruptRate && enable.scatterChange) {
+      const voices = 2 + Math.floor(rng()*4), maxMs = 400 + rng()*900;
+      schedule.push({ t, type:'scatterChange', voices, maxMs });
+    }
+  }
+  let si = 0, peerSyncAt = 0;
+  for (let simNow = 0; simNow < totalMs; simNow += TICK_MS) {
+    simState.simNow = simNow;
+    if (ctx.startedAt < 0 && simNow >= 1000) {
+      ctx.startedAt = simNow;
+      for (const L of listeners) L.currentTime = 0;
+    }
+    while (si < schedule.length && schedule[si].t <= simNow) {
+      const ev = schedule[si++];
+      if (ev.type === 'hardSync') {
+        for (const L of listeners) {
+          L.engine.cancelDriftCorrection();
+          const expected = expectedPosition({ elapsedS:(simNow+L.clockOffset-ctx.startedAt)/1000, duration:DURATION, deviceLatencyMs:L.deviceLatencyMs, scatterOffsetMs:L.scatterOffsetMs, warpRate:L.baseRate });
+          L.engine.seekPreservingBT(expected);
+          L.hardSeekCount++;
+        }
+        eventLog.push(`${(simNow/1000).toFixed(1)}s: hard_sync`);
+      }
+    }
+    if (simNow >= peerSyncAt) { exchangePeerTrits(simNow); peerSyncAt = simNow + 5000; }
+    for (const L of listeners) ternaryTickEngine(L, simNow, TICK_MS, ctx, simState);
+  }
+  return { listeners, eventLog };
+}
+
 // ════════════════════════════════════════════════════════════
 // Rendering
 // ════════════════════════════════════════════════════════════
@@ -662,27 +754,31 @@ btnRun.addEventListener('click', () => {
     const fresh    = runSimEngine(seed, count, totalMs, disrupt, eventToggles);
     const stripped = runSimEngine(seed, count, totalMs, disrupt, eventToggles, stripTickEngine);
     const micro    = runSimEngine(seed, count, totalMs, disrupt, eventToggles, microTickEngine);
+    const ternary  = runSimTernary(seed, count, totalMs, disrupt, eventToggles);
 
     drawChart(document.getElementById('chart-legacy'),   legacy.listeners,   totalMs);
     drawChart(document.getElementById('chart-new'),      fresh.listeners,    totalMs);
     drawChart(document.getElementById('chart-stripped'), stripped.listeners, totalMs);
     drawChart(document.getElementById('chart-micro'),    micro.listeners,    totalMs);
+    drawChart(document.getElementById('chart-ternary'),  ternary.listeners,  totalMs);
     const sLegacy   = fillStats(document.getElementById('stats-legacy'),   legacy.listeners,   'legacy');
     const sNew      = fillStats(document.getElementById('stats-new'),      fresh.listeners,    'new');
     const sStripped = fillStats(document.getElementById('stats-stripped'), stripped.listeners, 'new');
     const sMicro    = fillStats(document.getElementById('stats-micro'),    micro.listeners,    'new');
+    const sTernary  = fillStats(document.getElementById('stats-ternary'),  ternary.listeners,  'new');
     buildLegend(legacy.listeners);
     document.getElementById('event-log').innerHTML = '<b>Party timeline (identical for both runs):</b><br>' + legacy.eventLog.map(e=>'• '+e).join('<br>');
 
     const verdict = document.getElementById('verdict');
     const better = (a,b) => a < b ? `<b>new wins</b>` : (a > b ? `<span class="bad">legacy wins</span>` : 'tie');
     const betterStrip = (a,b) => a < b ? `<b>stripped wins</b>` : (a > b ? `<span class="bad">new wins</span>` : 'tie');
-    const betterMicro = (a,b) => a < b ? `<b>micro wins</b>` : (a > b ? `<span class="bad">stripped wins</span>` : 'tie');
+    const betterMicro    = (a,b) => a < b ? `<b>micro wins</b>`    : (a > b ? `<span class="bad">stripped wins</span>` : 'tie');
+    const betterTernary  = (a,b) => a < b ? `<b style="color:#f04880">☯ ternary wins</b>` : (a > b ? `<span class="bad">micro wins</span>` : 'tie');
     verdict.innerHTML = `
       <b>Result</b> — same ${count}-listener party, same ${minutes}-minute timeline, same disruptions:<br><br>
-      <b>Avg settled drift:</b> legacy ${sLegacy.avgMax.toFixed(0)}ms vs new ${sNew.avgMax.toFixed(0)}ms vs stripped ${sStripped.avgMax.toFixed(0)}ms vs micro ${sMicro.avgMax.toFixed(0)}ms — ${better(sNew.avgMax, sLegacy.avgMax)}, ${betterStrip(sStripped.avgMax, sNew.avgMax)}, ${betterMicro(sMicro.avgMax, sStripped.avgMax)}<br>
-      <b>Total audible volume dips:</b> legacy ${sLegacy.totalDips} vs new ${sNew.totalDips} vs stripped ${sStripped.totalDips} vs micro ${sMicro.totalDips} — ${better(sNew.totalDips, sLegacy.totalDips)}, ${betterStrip(sStripped.totalDips, sNew.totalDips)}, ${betterMicro(sMicro.totalDips, sStripped.totalDips)}<br>
-      <b>Total hard seeks:</b> legacy ${sLegacy.totalSeeks} vs new ${sNew.totalSeeks} vs stripped ${sStripped.totalSeeks} vs micro ${sMicro.totalSeeks} — ${better(sNew.totalSeeks, sLegacy.totalSeeks)}, ${betterStrip(sStripped.totalSeeks, sNew.totalSeeks)}, ${betterMicro(sMicro.totalSeeks, sStripped.totalSeeks)}<br>
+      <b>Avg settled drift:</b> legacy ${sLegacy.avgMax.toFixed(0)}ms · new ${sNew.avgMax.toFixed(0)}ms · stripped ${sStripped.avgMax.toFixed(0)}ms · micro ${sMicro.avgMax.toFixed(0)}ms · <span style="color:#f04880">ternary ${sTernary.avgMax.toFixed(0)}ms</span> — ${better(sNew.avgMax, sLegacy.avgMax)}, ${betterStrip(sStripped.avgMax, sNew.avgMax)}, ${betterMicro(sMicro.avgMax, sStripped.avgMax)}, ${betterTernary(sTernary.avgMax, sMicro.avgMax)}<br>
+      <b>Total audible volume dips:</b> legacy ${sLegacy.totalDips} · new ${sNew.totalDips} · stripped ${sStripped.totalDips} · micro ${sMicro.totalDips} · <span style="color:#f04880">ternary ${sTernary.totalDips}</span> — ${better(sNew.totalDips, sLegacy.totalDips)}, ${betterStrip(sStripped.totalDips, sNew.totalDips)}, ${betterMicro(sMicro.totalDips, sStripped.totalDips)}, ${betterTernary(sTernary.totalDips, sMicro.totalDips)}<br>
+      <b>Total hard seeks:</b> legacy ${sLegacy.totalSeeks} · new ${sNew.totalSeeks} · stripped ${sStripped.totalSeeks} · micro ${sMicro.totalSeeks} · <span style="color:#f04880">ternary ${sTernary.totalSeeks}</span> — ${better(sNew.totalSeeks, sLegacy.totalSeeks)}, ${betterStrip(sStripped.totalSeeks, sNew.totalSeeks)}, ${betterMicro(sMicro.totalSeeks, sStripped.totalSeeks)}, ${betterTernary(sTernary.totalSeeks, sMicro.totalSeeks)}<br>
       <b>Direct bypass seeks (the actual "roving" mechanism):</b> legacy had ${sLegacy.totalBypass} — new, stripped, and micro have <b>zero</b>, by construction (nothing can seek without going through the single gate).<br><br>
       <span style="color:var(--muted)">Legacy lines that hover near the gridlines and occasionally spike past ±500ms before "fighting" their way back are the roving signature — a duck and a bypass-seek landing on the same listener within the same correction window. "New" relies on requestCorrection's warp/duck bands; "stripped" drops both and just snaps via seekPreservingBT whenever |lag| &gt;= ${STRIP_THRESHOLD_MS}ms; "micro" is stripped plus a continuous +/-0.6% playbackRate trim (engine.applyMicroCorrection) that cancels each device's constant hardware clock-rate error, so drift settles near 0 between snaps instead of sawtoothing up to the threshold.</span>
     `;
