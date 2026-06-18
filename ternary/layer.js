@@ -360,8 +360,11 @@
       'background:#050312', 'color:#607080',
     ].join(';');
     el.innerHTML =
-      '<span id="ter-badge-trit">Z</span>' +
-      '<span id="ter-badge-sub" style="font-size:7px;letter-spacing:1px;opacity:0.8"></span>';
+      '<span id="ter-badge-trit" style="font-size:9px;letter-spacing:1px">TER</span>' +
+      '<span id="ter-badge-sub" style="font-size:7px;letter-spacing:1px;opacity:0.8">LOAD</span>';
+    el.style.color       = '#ffffff';
+    el.style.borderColor = '#ffffff';
+    el.style.background  = '#1a0030';
     document.body.appendChild(el);
     _badge = el;
   }
