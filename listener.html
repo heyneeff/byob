@@ -5286,9 +5286,13 @@ function showToast(msg){
 function toggleHUD() {
   document.getElementById('hud').classList.toggle('open');
 }
-// Secret HUD: add ?hud to the URL to open it without touching the hidden button
-if (new URLSearchParams(location.search).has('hud'))
-  window.addEventListener('load', toggleHUD);
+// Secret HUD: add ?hud to URL — opens after auth so it never covers login
+if (new URLSearchParams(location.search).has('hud')) {
+  db.auth.onAuthStateChange((event, session) => {
+    if (session && !document.getElementById('hud').classList.contains('open'))
+      toggleHUD();
+  });
+}
 
 function hudVal(val, warnFn) {
   const s = String(val ?? '—');
