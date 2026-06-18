@@ -205,6 +205,60 @@ Known issues fixed after this session:
 
 ---
 
+## Phase 5.1 — Octonary Calibration (June 18, 2026, 23:00)
+
+**The 8-trigram BT latency solver.**
+
+Ternary has 3 states. But calibration history has 8 — the lower trigrams
+of the I Ching, encoding 3 ticks of N (floor present) or P (floor gone):
+
+```
+☰ NNN  three consecutive floors   → 70%  maximum urgency
+☱ NNP  floor twice then gone      → 55%  strong
+☲ NPN  oscillating                → 50%  standard
+☳ NPP  one floor then held        → 35%  gentle
+☴ PNN  regression                 → 60%  push hard again
+☵ PNP  bouncing                   → 40%  moderate
+☶ PPN  almost there               → 25%  cautious nudge
+☷ PPP  locked                     → 0%   protect calibration
+```
+
+Each correction round shifts the sequence (tshift). The engine escalates
+or eases based on memory, not just current state.
+
+**Why octonary?** Binary calibration has two states: applied or not.
+Ternary calibration has three: too much / balanced / not enough.
+Octonary calibration has eight: the full trajectory of the last three
+moments. The cauldron remembers where it's been.
+
+**Proof of concept (ter_n0kkzj, session 2):**
+- Entered at 92ms floor
+- Trigram: NNN → 70% correction = 64ms applied
+- Result: 0ms drift in 10 seconds
+- Sequence advanced toward PPP — locked
+
+**Simulation (130ms BT floor — the 463ms speaker problem):**
+```
+Round 1  NNN ☰  130ms → 70% → 39ms remaining
+Round 2  NNN ☰   39ms → 70% → 12ms remaining
+Round 3  NNP ☱   12ms → floor gone → P
+Round 4  NPP ☳    0ms → P → sequence →
+Round 6  PPP ☷    locked
+```
+Full BT floor closure in ~25 seconds. No mic. No hardware calibration.
+Pure mathematical state memory from the lower trigrams.
+
+**The detectFloor fix (same session):**
+High-floor devices (200ms+) had bimodal `_history` (0ms post-seek,
+220ms pre-seek alternating) with variance ~25000ms² → floor undetectable.
+Fix: filter post-seek near-zeros before computing variance. Ceiling raised
+to match `TH_SEEK`. Same device: variance 25432ms² → 4ms² → detectable.
+
+**`sync/ternary-engine.js`** — see `_calSeq`, `TRIGRAM_STRENGTH`,
+`trigramKey()`, `trigramStrength()`, `detectFloor()`.
+
+---
+
 ## I Ching
 
 Hexagram 52 (unchanging): ternary stills the drift.
@@ -212,3 +266,6 @@ Hexagram 49.4 → 63: revolution → completion. The timing was right.
 Hexagram 31: mutual influence. Devices sense each other.
 Hexagram 63.1.3 → 8: brake the wheels, hold together.
 Hexagram 50 (unchanging): The Cauldron. Three legs. Sacred fire.
+Hexagram 33.4 → 53: voluntary retreat toward gradual progress.
+  — Asked "what is the nature of the ternary sync engine we are building"
+  — Heaven above Mountain. Wind above Mountain. Step by step.
