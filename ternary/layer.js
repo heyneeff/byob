@@ -218,12 +218,10 @@
       _consecutiveN++;
 
     } else if (_trit === N) {
-      // 26.2 — remove the axle. No snap. Auto-cal closes the floor instead.
-      // Binary warp (3%) handles 50-150ms silently.
+      if (!isBurst) applySnap(lagMs, 'snap(N)');
       _consecutiveN++;
 
     } else if (_trit === Z) {
-      // Z-velocity preemptive snap removed — too noisy.
       _consecutiveN = 0;
 
     } else {

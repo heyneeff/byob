@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
-<script src="ternary/layer.js?v=8"></script>
+<script src="ternary/layer.js?v=9"></script>
 
  
   
@@ -2171,7 +2171,8 @@ function fastDriftCorrect() {
   if (lagMs == null) return;
   window._terLayer?.tick(lagMs); // ternary layer — reads drift, broadcasts trit
   window._lastDriftMs = Math.round(lagMs);
-  if (Math.abs(lagMs) >= DRIFT_SNAP_THRESHOLD_MS) {
+  const _absLag = Math.abs(lagMs);
+  if (_absLag >= DRIFT_SNAP_THRESHOLD_MS) {
     window._snapCount = (window._snapCount || 0) + 1;
     // Diagnostic — confirm the seek actually lands. On some BT routes
     // audio.currentTime = x silently no-ops while playing, so the snap
@@ -2190,6 +2191,8 @@ function fastDriftCorrect() {
       window._lastSeekIntendedMs = Math.round(intendedJumpMs);
       window._lastSeekMeasuredMs = Math.round(measuredJumpMs);
     }, 200);
+  } else if (_absLag >= 15) {
+    requestCorrection(lagMs); // warp ±3% for 15–150ms (inaudible)
   }
 }
 audio.addEventListener('timeupdate', () => {
