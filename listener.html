@@ -2091,9 +2091,11 @@ const SNAP_THRESHOLD_MS = 500;
 // a persistent -150ms bias. The real fix is the playing re-anchor below:
 // re-seek to expectedNow() whenever audio resumes from any stall, which
 // re-establishes position from first principles at the earliest natural moment.
-// Without micro-correction the engine is dead-simple: snap if drift >= 150ms,
-// do nothing otherwise — identical to the May 13 baseline spirit.
-const DRIFT_SNAP_THRESHOLD_MS = 150;
+// Chrome-iOS BT audio clocks run ~20-25ms/s slow regardless of playbackRate —
+// warping at 6% has zero effect; drift keeps accumulating. Snap at 60ms so the
+// 5s fastDriftCorrect cycle catches it with a seek (which works) instead of a
+// warp (which doesn't). Chrome stays at ±2ms via micro-correction, never hits 60.
+const DRIFT_SNAP_THRESHOLD_MS = 60;
 
 // "Locking in" indicator — surfaces the warm-up/recovery period (post track
 // load, post hard_sync, etc.) where drift is still settling, so it reads as
