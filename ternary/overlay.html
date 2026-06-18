@@ -197,8 +197,27 @@ document.head.appendChild(scr);
 let db, zone=null, audio=null;
 let zoneChannel=null, hudChannel=null, scanTimer=null, tickTimer=null;
 let _clockOffset=0;
-let binSnaps=0, terSnaps=0, terShadowDrift=null;
 let hudDevices={};
+
+// Binary engine state (controls real audio)
+let binSnaps=0, binRate=1.0;
+
+// Ternary shadow engine — completely independent position tracker
+// Does NOT touch audio.currentTime. Maintains its own position.
+// Corrects itself on its own schedule using ternary logic.
+let terShadowTime=0;   // seconds — ternary's independent position
+let terShadowRate=1.0; // ternary's own playback rate
+let terSnaps=0, terTrit=0;
+let terLastWallMs=null; // wall-clock time of last tick (for shadow advancement)
+let terDriftHistory=[], binDriftHistory=[];
+
+// Ternary uses different thresholds:
+//   N (snap): 50ms — intervene earlier than binary's 150ms
+//   Z (micro-correct): 10ms — start nudging rate sooner
+// This means ternary makes more frequent but smaller corrections,
+// keeping the shadow position consistently tighter.
+const TER_SNAP_MS  = 50;
+const TER_MICRO_MS = 10;
 
 // ── RECORDING ─────────────────────────────────────────────────────────────
 let recording=false, recordedRows=[];
@@ -463,27 +482,46 @@ function expectedPos(){
   return((raw%dur)+dur)%dur;
 }
 
-// ── TICK — compute both engines ───────────────────────────────────────────
+// ── TICK — two truly independent engines ──────────────────────────────────
 function tick(){
   if(!zone||!audio) return;
   pulse();
 
   const exp=expectedPos();
   if(exp===null) return;
-  const actual=audio.currentTime;
-  const drift=(exp-actual)*1000; // ms, positive=behind
+  const nowMs=Date.now();
 
-  // ── BINARY ENGINE (BYOB logic) ────────────────────────────────────────
-  const absDrift=Math.abs(drift);
-  let binState, binRate;
-  if(absDrift>=SNAP_MS){
-    binState='ducking'; binRate=1.0;
-    audio.currentTime=exp;
+  // ── ADVANCE TERNARY SHADOW POSITION ──────────────────────────────────
+  // Shadow advances by wall-clock time × its own rate, independently of audio
+  if(terLastWallMs!==null){
+    const elapsedS=(nowMs-terLastWallMs)/1000;
+    terShadowTime+=elapsedS*terShadowRate;
+    const dur=audio.duration||180;
+    if(terShadowTime>dur) terShadowTime-=dur;
+    if(terShadowTime<0)   terShadowTime+=dur;
+  } else {
+    // First tick: seed shadow at binary's current position
+    terShadowTime=audio.currentTime;
+  }
+  terLastWallMs=nowMs;
+
+  // ── BINARY ENGINE — reads + corrects real audio ───────────────────────
+  const binActual=audio.currentTime;
+  const binDrift=(exp-binActual)*1000;
+  const binAbsDrift=Math.abs(binDrift);
+  binDriftHistory.push(binDrift);
+  if(binDriftHistory.length>30) binDriftHistory.shift();
+
+  let binState;
+  if(binAbsDrift>=SNAP_MS){
+    binState='ducking';
+    audio.currentTime=exp;        // binary snaps audio to expected
+    binRate=1.0; audio.playbackRate=1.0;
     binSnaps++;
-    log(`BINARY SNAP: drift was ${Math.round(drift)}ms`,'#f04880');
-  } else if(absDrift>=15){
+    log(`BINARY snap ${Math.round(binDrift)}ms → seeked to ${exp.toFixed(2)}s`,'#f04880');
+  } else if(binAbsDrift>=15){
     binState='warping';
-    const pct=Math.max(-MICRO_MAX,Math.min(MICRO_MAX,drift*MICRO_GAIN/1000));
+    const pct=Math.max(-MICRO_MAX,Math.min(MICRO_MAX,binDrift*MICRO_GAIN/1000));
     binRate=1.0+pct;
     audio.playbackRate=binRate;
   } else {
@@ -491,44 +529,55 @@ function tick(){
     audio.playbackRate=1.0;
   }
 
-  // ── TERNARY ENGINE (shadow — does NOT touch audio) ────────────────────
-  const trit=driftToTrit(drift);
-  let terWouldSnap=false, terWouldRate=1.0;
-  if(trit===N){
-    terWouldSnap=true;
+  // ── TERNARY ENGINE — reads + corrects its own shadow position ─────────
+  // Uses TER_SNAP_MS=50 (vs binary's 150) — intervenes 3× earlier
+  const terDrift=(exp-terShadowTime)*1000;
+  const terAbsDrift=Math.abs(terDrift);
+  terDriftHistory.push(terDrift);
+  if(terDriftHistory.length>30) terDriftHistory.shift();
+
+  if(terAbsDrift>=TER_SNAP_MS){
+    terTrit=N;
+    terShadowTime=exp;            // ternary snaps its shadow to expected
+    terShadowRate=1.0;
     terSnaps++;
-    log(`TERNARY would snap: drift ${Math.round(drift)}ms → N`,'#40c4f0');
-  } else if(trit===Z){
-    const pct=Math.max(-MICRO_MAX,Math.min(MICRO_MAX,drift*MICRO_GAIN/1000));
-    terWouldRate=1.0+pct;
+    log(`TERNARY snap ${Math.round(terDrift)}ms → shadow to ${exp.toFixed(2)}s`,'#40c4f0');
+  } else if(terAbsDrift>=TER_MICRO_MS){
+    terTrit=Z;
+    const pct=Math.max(-MICRO_MAX,Math.min(MICRO_MAX,terDrift*MICRO_GAIN/1000));
+    terShadowRate=1.0+pct;        // nudge shadow rate, not audio
+  } else {
+    terTrit=P;
+    terShadowRate=1.0;
   }
 
-  const delta=terWouldSnap!=(binState==='ducking')
-    ? (terWouldSnap?'ternary would snap, binary did not':'binary snapped, ternary would not')
-    : 'agree';
+  // ── DIVERGENCE — how far apart are the two engines? ──────────────────
+  const divergenceMs=(terShadowTime-binActual)*1000;
+  const binMean=binDriftHistory.reduce((s,v)=>s+Math.abs(v),0)/(binDriftHistory.length||1);
+  const terMean=terDriftHistory.reduce((s,v)=>s+Math.abs(v),0)/(terDriftHistory.length||1);
 
   // ── RECORD ────────────────────────────────────────────────────────────
   record({
     source:'virtual_listener',
-    driftMs:Math.round(drift),
     expectedS:+exp.toFixed(3),
-    actualS:+actual.toFixed(3),
     // Binary
-    binState,
-    binRate:+binRate.toFixed(5),
-    binSnaps,
+    binActualS:+binActual.toFixed(3),
+    binDriftMs:Math.round(binDrift),
+    binState, binRate:+binRate.toFixed(5), binSnaps,
     // Ternary
-    terTrit:TNAME[trit],
-    terWouldSnap,
-    terWouldRate:+terWouldRate.toFixed(5),
-    terSnaps,
-    delta,
+    terShadowS:+terShadowTime.toFixed(3),
+    terDriftMs:Math.round(terDrift),
+    terTrit:TNAME[terTrit], terShadowRate:+terShadowRate.toFixed(5), terSnaps,
+    // Comparison
+    divergenceMs:Math.round(divergenceMs),
+    binMeanAbsDrift:Math.round(binMean),
+    terMeanAbsDrift:Math.round(terMean),
     clockOffsetMs:Math.round(_clockOffset),
   });
 
   // ── UPDATE UI ─────────────────────────────────────────────────────────
-  updateBinary(drift, exp, actual, binState, binRate);
-  updateTernary(drift, trit, exp, actual, terWouldSnap, terWouldRate, delta);
+  updateBinary(binDrift, exp, binActual, binState, binRate);
+  updateTernary(terDrift, terTrit, exp, terShadowTime, divergenceMs, terMean, binMean);
 }
 
 function updateBinary(drift, exp, actual, state, rate){
@@ -551,25 +600,36 @@ function updateBinary(drift, exp, actual, state, rate){
   document.getElementById('bin-clk').textContent=Math.round(_clockOffset)+'ms';
 }
 
-function updateTernary(drift, trit, exp, actual, wouldSnap, wouldRate, delta){
-  const abs=Math.abs(drift);
+function updateTernary(terDrift, trit, exp, shadowTime, divergenceMs, terMean, binMean){
+  const abs=Math.abs(terDrift);
   document.getElementById('ter-trit').textContent=TNAME[trit];
   document.getElementById('ter-trit').style.color=TCOL[trit];
   document.getElementById('ter-trit-label').textContent=TLABEL[trit];
   document.getElementById('ter-trit-label').style.color=TCOL[trit];
-  document.getElementById('ter-drift').textContent=(drift>=0?'+':'')+Math.round(drift)+'ms';
+  document.getElementById('ter-drift').textContent=(terDrift>=0?'+':'')+Math.round(terDrift)+'ms';
   document.getElementById('ter-drift').style.color=TCOL[trit];
-  document.getElementById('ter-bar').style.width=Math.min(100,abs/3)+'%';
+  document.getElementById('ter-bar').style.width=Math.min(100,abs/3*2)+'%'; // scale to 50ms
   document.getElementById('ter-bar').style.background=TCOL[trit];
-  document.getElementById('ter-trit-val').textContent=TNAME[trit]+' · '+TLABEL[trit].toLowerCase();
-  document.getElementById('ter-snap-q').textContent=wouldSnap?'YES':'no';
-  document.getElementById('ter-snap-q').style.color=wouldSnap?'#f04880':'#40c4f0';
+  document.getElementById('ter-trit-val').textContent=
+    `snap @${TER_SNAP_MS}ms (binary @${SNAP_MS}ms)`;
+  // Shadow position vs expected
+  document.getElementById('ter-snap-q').textContent=shadowTime.toFixed(3)+'s';
+  document.getElementById('ter-snap-q').style.color=TCOL[trit];
   document.getElementById('ter-exp').textContent=exp.toFixed(3)+'s';
-  document.getElementById('ter-act').textContent=actual.toFixed(3)+'s';
+  document.getElementById('ter-act').textContent=shadowTime.toFixed(3)+'s (shadow)';
   document.getElementById('ter-snaps').textContent=terSnaps;
-  const dc=delta==='agree'?'#40c4f0':'#c0d040';
-  document.getElementById('ter-delta').textContent=delta;
+  // Divergence from binary
+  const dStr=(divergenceMs>=0?'+':'')+Math.round(divergenceMs)+'ms vs binary';
+  const dc=Math.abs(divergenceMs)<10?'#40c4f0':Math.abs(divergenceMs)<30?'#c0d040':'#f04880';
+  document.getElementById('ter-delta').textContent=dStr;
   document.getElementById('ter-delta').style.color=dc;
+  // Also show mean drift comparison in stats if we have history
+  if(terMean!==undefined && document.getElementById('ter-mean-drift')){
+    const better=terMean<binMean;
+    document.getElementById('ter-mean-drift').textContent=
+      `ter ${Math.round(terMean)}ms  bin ${Math.round(binMean)}ms  `+(better?'✓ ternary tighter':'binary tighter');
+    document.getElementById('ter-mean-drift').style.color=better?'#40c4f0':'#f04880';
+  }
 }
 </script>
 </body>
