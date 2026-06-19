@@ -54,6 +54,7 @@ body{display:flex;flex-direction:column;}
 
 /* ── Style buttons ── */
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;}
+.g5{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;}
 .style-btn{padding:7px 3px 5px;border-radius:6px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;transition:all .1s;user-select:none;text-align:center;font-size:11px;font-weight:700;letter-spacing:.05em;color:#7070a0;}
 .style-btn.active{border-color:var(--teal);color:var(--teal);background:color-mix(in srgb,var(--teal) 8%,var(--card));}
 .style-btn:active{transform:scale(.95);}
@@ -128,7 +129,7 @@ input[type=range]::-webkit-slider-thumb{
 <!-- Pattern -->
 <div class="section">
   <div class="lbl">Pattern</div>
-  <div class="g3" id="style-grid"></div>
+  <div class="g5" id="style-grid"></div>
 </div>
 
 <!-- Root note -->
@@ -571,8 +572,16 @@ function spinToKey(key) {
 
 // ── Style buttons ─────────────────────────────────────────────────────────────
 const STYLES = {
-  UP:     '↑ ascend', DOWN: '↓ descend', BOUNCE: '↕ leap',
-  FOLD:   '↑↓ fold',  SKIP: '· skip ·',  PULSE:  '● pulse',
+  // Classic
+  UP:       '↑ ascend',    DOWN:     '↓ descend',  BOUNCE:   '↕ leap',
+  FOLD:     '↑↓ fold',     SKIP:     '· skip ·',   PULSE:    '● pulse',
+  // Rhythmic
+  CLAVE:    '3+2 clave',   EUCLID:   '5/9 grid',   STUTTER:  '× stutter',
+  OFFBEAT:  '⇢ offbeat',
+  // Melodic
+  PENDULUM: '~ wave',      CONVERGE: '⟩⟨ close',   LOCK:     '⌛ lock',
+  // Space
+  GHOST:    '· · ghost',   SPIRAL:   '↗ spiral',
 };
 let _style = 'UP';
 

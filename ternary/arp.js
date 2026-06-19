@@ -30,12 +30,52 @@
   // rests[] — 1=play, 0=silent (step still advances time).
   // P=root(0st), Z=third(4st), N=fifth(7st) within whichever trigram chord.
   const ARP_STYLES = {
+    // ── Classic ──────────────────────────────────────────────────────────────────
     UP:       { seq: [P,Z,N, P,Z,N, Z,P,N], rests: [1,1,1, 1,1,1, 1,1,1], name: 'Up' },
     DOWN:     { seq: [N,Z,P, N,Z,P, Z,N,P], rests: [1,1,1, 1,1,1, 1,1,1], name: 'Down' },
     BOUNCE:   { seq: [P,N,Z, P,N,Z, N,P,Z], rests: [1,1,1, 1,1,1, 1,1,1], name: 'Bounce' },
     FOLD:     { seq: [P,Z,N, N,Z,P, Z,P,N], rests: [1,1,1, 1,1,1, 1,1,1], name: 'Fold' },
     SKIP:     { seq: [P,N,P, Z,N,Z, N,P,Z], rests: [1,0,1, 1,0,1, 1,0,1], name: 'Skip' },
     PULSE:    { seq: [P,P,N, P,P,Z, P,N,Z], rests: [1,1,1, 1,0,1, 1,1,0], name: 'Pulse' },
+
+    // ── Rhythmic ─────────────────────────────────────────────────────────────────
+    // Clave: 3+3+2 — the root rhythm of Afro-Latin music, adapted to 9 steps.
+    // All 3 tshift forms sound like variations on the same groove.
+    CLAVE:    { seq: [P,N,Z, P,N,Z, P,Z,N], rests: [1,1,0, 1,0,1, 1,0,1], name: 'Clave' },
+
+    // Euclidean 5/9: 5 notes distributed evenly across 9 steps (Bjorklund).
+    // The spacing creates a slightly off-centre pull — very musical, slightly tense.
+    EUCLID:   { seq: [P,Z,N, P,Z,N, Z,P,N], rests: [1,0,1, 1,0,1, 0,1,0], name: 'Euclid' },
+
+    // Stutter: repeats a note before stepping — urgency, insistence.
+    // The double-P on beat 1 creates a punch that lands differently each form.
+    STUTTER:  { seq: [P,P,Z, N,N,Z, P,N,P], rests: [1,0,1, 1,0,1, 1,1,0], name: 'Stutter' },
+
+    // Offbeat: rests on beats 1 and 4, notes fall in between — syncopated.
+    // tshift forms rotate this so the syncopation moves around the bar.
+    OFFBEAT:  { seq: [P,Z,N, Z,P,N, P,Z,N], rests: [0,1,1, 1,0,1, 1,1,0], name: 'Offbeat' },
+
+    // ── Melodic ──────────────────────────────────────────────────────────────────
+    // Pendulum: ascends then mirrors back sharing the peak — smoother than Bounce.
+    // [N→Z→P→Z→N→Z→P→N→Z] creates a wave shape that never lands the same twice.
+    PENDULUM: { seq: [N,Z,P, Z,N,Z, P,N,Z], rests: [1,1,1, 1,1,1, 1,1,1], name: 'Pendulum' },
+
+    // Converge: high and low voices meet in the middle — closing motion, resolution.
+    // Form 2 (tshift×2) inverts the gesture, giving divergence for free.
+    CONVERGE: { seq: [N,P,Z, N,P,Z, Z,N,P], rests: [1,1,1, 1,1,1, 1,1,1], name: 'Converge' },
+
+    // Lock: 3-note cell that repeats with strategic rests — groove that hypnotises.
+    // The rests fall in a different place each form — feels like it breathes.
+    LOCK:     { seq: [P,Z,P, N,Z,N, P,N,Z], rests: [1,1,0, 1,1,0, 1,0,1], name: 'Lock' },
+
+    // ── Space ────────────────────────────────────────────────────────────────────
+    // Ghost: only 3 notes in 9 steps — the rests ARE the music.
+    // Silence between sparse notes creates anticipation and room for the pad.
+    GHOST:    { seq: [P,Z,N, P,Z,N, Z,P,N], rests: [1,0,0, 0,1,0, 0,0,1], name: 'Ghost' },
+
+    // Spiral: ascending phrase then a leap — feels like it's always climbing.
+    // Each tshift form raises the overall colour one chord tone.
+    SPIRAL:   { seq: [N,Z,P, N,Z,P, P,N,Z], rests: [1,1,1, 1,0,1, 1,1,1], name: 'Spiral' },
   };
 
   // Three tshift() forms computed per style
@@ -207,56 +247,65 @@
     return buf;
   }
 
+  // ── Bandlimited warm saw via PeriodicWave ─────────────────────────────────────
+  // Raw Web Audio sawtooth aliases. createPeriodicWave() with exponential harmonic
+  // rolloff gives a waveform that sounds like an analog oscillator through a gentle
+  // LP — warm fundamental, harmonics taper naturally from 50% at 4th to 6% at 16th.
+  let _warmWave = null;
+  function getWarmWave() {
+    if (_warmWave) return _warmWave;
+    const n    = 32;
+    const real = new Float32Array(n + 1);
+    const imag = new Float32Array(n + 1);
+    for (let i = 1; i <= n; i++) {
+      // Sawtooth coefficient * exponential rolloff — the warmth lives here
+      imag[i] = (2 / (Math.PI * i)) * Math.exp(-i * 0.18);
+    }
+    _warmWave = _audioCtx.createPeriodicWave(real, imag, { disableNormalization: false });
+    return _warmWave;
+  }
+
   // ── Voice pool — 6 pre-built voices, stolen round-robin ──────────────────────
-  // Each voice: osc1(saw) + osc2(saw, detuned) + osc3(square, sub character)
-  //   → vcf (24dB LP, 2×biquad) → ampEnv → voiceBus
+  // Each voice: 2 detuned warm saws + sub sine
+  //   → single LP VCF → ampEnv → voiceBus
   // No nodes created during playback. Zero crashes.
   const NUM_VOICES = 6;
 
   function buildVoice() {
-    const ctx = _audioCtx;
-    const v = {};
+    const ctx  = _audioCtx;
+    const wave = getWarmWave();
+    const v    = {};
 
-    // Three oscillators per voice: 2 detuned saws + 1 square
-    v.osc1 = ctx.createOscillator(); v.osc1.type = 'sawtooth';
-    v.osc2 = ctx.createOscillator(); v.osc2.type = 'sawtooth';
-    v.osc3 = ctx.createOscillator(); v.osc3.type = 'square';
+    // Two warm-saw oscillators: one sharp, one flat — natural beating = warmth
+    v.osc1 = ctx.createOscillator(); v.osc1.setPeriodicWave(wave);
+    v.osc2 = ctx.createOscillator(); v.osc2.setPeriodicWave(wave);
+    v.osc1.detune.value = +8;
+    v.osc2.detune.value = -8;
 
-    // Sub sine — one octave below, gives physical body
-    v.sub  = ctx.createOscillator(); v.sub.type = 'sine';
+    // Sub sine — one octave below, physical body especially for bass voice
+    v.sub = ctx.createOscillator(); v.sub.type = 'sine';
 
-    // Mix gains — osc2 slightly quieter, osc3 sub-character level, sub low
-    v.g1 = ctx.createGain(); v.g1.gain.value = 0.50;
-    v.g2 = ctx.createGain(); v.g2.gain.value = 0.45;
-    v.g3 = ctx.createGain(); v.g3.gain.value = 0.18;
-    v.gs = ctx.createGain(); v.gs.gain.value = 0.22;
+    // Mix gains
+    v.g1 = ctx.createGain(); v.g1.gain.value = 0.52;
+    v.g2 = ctx.createGain(); v.g2.gain.value = 0.52;
+    v.gs = ctx.createGain(); v.gs.gain.value = 0.20;
 
-    // VCF: two biquad LP in series = 24dB/oct Moog-style slope
-    v.vcf1 = ctx.createBiquadFilter();
-    v.vcf1.type = 'lowpass'; v.vcf1.frequency.value = 2200; v.vcf1.Q.value = 0.55;
-    v.vcf2 = ctx.createBiquadFilter();
-    v.vcf2.type = 'lowpass'; v.vcf2.frequency.value = 2200; v.vcf2.Q.value = 0.55;
+    // VCF: single biquad LP — warm and open, not over-filtered
+    // Frequency animated per-note (the filter sweep IS the butter)
+    v.vcf = ctx.createBiquadFilter();
+    v.vcf.type = 'lowpass'; v.vcf.frequency.value = 2200; v.vcf.Q.value = 0.6;
 
     // Amplitude envelope
     v.ampEnv = ctx.createGain(); v.ampEnv.gain.value = 0;
 
-    // Detune: osc1 sharp, osc2 flat, osc3 center — creates natural chorus beating
-    v.osc1.detune.value = +11;
-    v.osc2.detune.value = -11;
-    v.osc3.detune.value = +3;
-
-    // Wire: oscs → gains → vcf1 → vcf2 → ampEnv → voiceBus
-    v.osc1.connect(v.g1); v.g1.connect(v.vcf1);
-    v.osc2.connect(v.g2); v.g2.connect(v.vcf1);
-    v.osc3.connect(v.g3); v.g3.connect(v.vcf1);
-    v.sub.connect(v.gs);  v.gs.connect(v.vcf1);
-    v.vcf1.connect(v.vcf2);
-    v.vcf2.connect(v.ampEnv);
+    // Wire: oscs → gains → vcf → ampEnv → voiceBus
+    v.osc1.connect(v.g1); v.g1.connect(v.vcf);
+    v.osc2.connect(v.g2); v.g2.connect(v.vcf);
+    v.sub.connect(v.gs);  v.gs.connect(v.vcf);
+    v.vcf.connect(v.ampEnv);
     v.ampEnv.connect(_voiceBus);
 
-    // Start oscillators — they run forever, envelope controls amplitude
-    v.osc1.start(); v.osc2.start(); v.osc3.start(); v.sub.start();
-
+    v.osc1.start(); v.osc2.start(); v.sub.start();
     v.noteEndTime = 0;
     return v;
   }
@@ -359,17 +408,15 @@
     v.osc3.frequency.setValueAtTime(hz, startS);
     v.sub.frequency.setValueAtTime(hz / 2, startS);
 
-    // VCF filter sweep — starts closed, sweeps open on attack (the butter)
-    // N-voice: darker open (1200Hz→1800Hz), P-voice: brighter (1800Hz→3200Hz)
-    const vcfStart = branch3(voice, () => 900,  () => 1400, () => 1800);
-    const vcfPeak  = branch3(voice, () => 1800, () => 2600, () => 3800);
-    const vcfSweepTime = effA * 1.4;
-    v.vcf1.frequency.setValueAtTime(vcfStart, startS);
-    v.vcf1.frequency.linearRampToValueAtTime(vcfPeak, startS + vcfSweepTime);
-    v.vcf1.frequency.setTargetAtTime(vcfPeak * 0.85, startS + vcfSweepTime, 0.3);
-    v.vcf2.frequency.setValueAtTime(vcfStart * 1.1, startS);
-    v.vcf2.frequency.linearRampToValueAtTime(vcfPeak * 1.1, startS + vcfSweepTime);
-    v.vcf2.frequency.setTargetAtTime(vcfPeak * 0.95, startS + vcfSweepTime, 0.3);
+    // VCF filter sweep — closed → open over the attack (this is the butter).
+    // Each voice has a different range: N(bass)=dark, Z=mid, P(lead)=bright.
+    const vcfStart     = branch3(voice, () =>  800, () => 1200, () => 1600);
+    const vcfPeak      = branch3(voice, () => 1800, () => 2600, () => 3600);
+    const vcfSweepTime = effA * 1.6;
+    v.vcf.frequency.cancelScheduledValues(startS);
+    v.vcf.frequency.setValueAtTime(vcfStart, startS);
+    v.vcf.frequency.linearRampToValueAtTime(vcfPeak, startS + vcfSweepTime);
+    v.vcf.frequency.setTargetAtTime(vcfPeak * 0.80, startS + vcfSweepTime, 0.4);
 
     // Sub level: louder for N (bass voice), near-silent for P (lead)
     const subLevel = branch3(voice, () => 0.30, () => 0.15, () => 0.05);
