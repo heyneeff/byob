@@ -540,5 +540,5 @@
     TRIGRAM_CHORDS, TRIGRAM_NAMES, ARP_STYLES,
   };
 
-  console.log('[ternary/arp] loaded — 6 styles · 8 trigram chords · proximity EQ · envelope');
+  console.log('[ternary/arp] v2 loaded — 15 styles · 8 trigram chords · voice pool · Juno chorus');
 })();
