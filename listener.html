@@ -11,7 +11,8 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
-<script src="ternary/layer.js?v=11"></script>
+<script src="ternary/layer.js?v=12"></script>
+<script src="ternary/arp.js?v=1"></script>
 
  
   
@@ -2009,7 +2010,7 @@ let _healthInterval = null;
 // firing during real playback regardless of JS timer throttling, so it's
 // the reliable trigger; the interval is a redundant backstop.
 let _lastDriftCheckAt = 0;
-const DRIFT_CHECK_MS = 5000;
+const DRIFT_CHECK_MS = 2500;
 window._stallCount = 0;
 window._resumeAttempts = 0;
 window._trackLoading = false;
@@ -2093,7 +2094,7 @@ const SNAP_THRESHOLD_MS = 500;
 // re-establishes position from first principles at the earliest natural moment.
 // Without micro-correction the engine is dead-simple: snap if drift >= 150ms,
 // do nothing otherwise — identical to the May 13 baseline spirit.
-const DRIFT_SNAP_THRESHOLD_MS = 150;
+const DRIFT_SNAP_THRESHOLD_MS = 100;
 
 // "Locking in" indicator — surfaces the warm-up/recovery period (post track
 // load, post hard_sync, etc.) where drift is still settling, so it reads as
@@ -3463,7 +3464,8 @@ function initGuestListChannel(zoneId) {
   }
   const sendPresence = () => {
     if (!activeZone || !userLat || !window._guestChannel) return;
-    const dist      = distM(userLat, userLng, activeZone.lat, activeZone.lng) * 0.000621371;
+    window._zoneDistM = distM(userLat, userLng, activeZone.lat, activeZone.lng); // expose for arp.js
+    const dist      = window._zoneDistM * 0.000621371;
     const bearing   = getBearing(activeZone.lat, activeZone.lng, userLat, userLng);
     const name      = currentUser?.user_metadata?.display_name || 'Anonymous';
     const emoji     = currentUser?.user_metadata?.emoji || '🎧';
@@ -4017,6 +4019,12 @@ function buildSyncChannel(zoneId) {
     // Direct signal from killStream — don't wait on the zones-table postgres
     // change (which some devices miss/lag on) or the 60s syncZoneAudio poll.
     if (activeZone?.id === zoneId) { stopEverything(); showToast('Zone ended 🎤'); }
+  })
+  .on('broadcast', { event: 'arp_start' }, ({ payload }) => {
+    window._terArp?.start(payload ?? {});
+  })
+  .on('broadcast', { event: 'arp_stop' }, () => {
+    window._terArp?.stop();
   })
   .subscribe((status) => {
     if ((status === 'CHANNEL_ERROR' || status === 'CLOSED') && activeZone?.id === zoneId) {
@@ -4780,6 +4788,7 @@ async function measureClockOffset() {
   if (samples.length) _clockOffset = samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)];
 }
 function syncedNow() { return Math.round(Date.now() + _clockOffset); }
+window.syncedNow = syncedNow; // expose for ternary/arp.js phase-locked scheduling
 
 
 async function calibrateDeviceLatency() {

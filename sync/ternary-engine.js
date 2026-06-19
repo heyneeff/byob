@@ -35,11 +35,11 @@ const TH_SEEK = 250;  // ms — beyond warp reach. Seek. (raised from 150 to let
 // P: barely a breath. Z: steady pull. N: urgent close.
 const BASE_RATE = { [P]: 0.004, [Z]: 0.020, [N]: 0.050 };
 
-// tcons() consensus modifiers
-const CONSENSUS_MOD = { [N]: 1.30, [Z]: 1.00, [P]: 0.50 };
+// tcons() consensus modifiers — never reduce when converged, slight boost when struggling
+const CONSENSUS_MOD = { [N]: 1.10, [Z]: 1.00, [P]: 1.00 };
 
-// tcmp() velocity modifiers (drift growing vs shrinking)
-const VEL_MOD = { [P]: 1.40, [Z]: 1.00, [N]: 0.60 }; // P=growing→push harder, N=shrinking→ease off
+// tcmp() velocity modifiers — gentle range, avoid strangling corrections mid-close
+const VEL_MOD = { [P]: 1.20, [Z]: 1.00, [N]: 0.90 };
 
 // ── Micro-correction (P-state) ────────────────────────────────────────────────
 // Devices with audio clocks running slow re-accumulate drift in the 5s gap

@@ -169,7 +169,7 @@ function mulberry32(seed) {
 const SEEK_STAB_S = 0.27;
 const DURATION    = 200;     // simulated track length, seconds
 const TICK_MS     = 250;     // simulated ms advanced per step
-const FAST_CHECK_MS = 5000;  // fastDriftCorrect cadence
+const FAST_CHECK_MS = 2500;  // fastDriftCorrect cadence (was 5000)
 
 // ── Realistic currentTime stalls (from the 2026-06-14 debug CSV) ─────────
 // (1) Periodic ~150ms freeze every ~25-35s — readyState/stallCount stay
@@ -617,7 +617,16 @@ function ternaryTickEngine(L, simNow, dtMs, ctx, simState) {
   if (simNow >= L.nextFastCheck) {
     L.nextFastCheck = simNow + FAST_CHECK_MS;
     const lag = L.engine.computeLagMs();
-    if (lag != null) L.engine.requestCorrection(lag);
+    if (lag != null) {
+      if (Math.abs(lag) >= 100) {
+        // Snap threshold — mirrors DRIFT_SNAP_THRESHOLD_MS=100 in listener.html
+        L.engine.cancelDriftCorrection();
+        L.engine.seekPreservingBT(L.engine.computeLagMs ? L.currentTime + lag/1000 : L.currentTime);
+        L.hardSeekCount++;
+      } else {
+        L.engine.requestCorrection(lag);
+      }
+    }
   }
   if (ctx.events.visibilityWake || ctx.events.hardSync || ctx.events.scatterChange ||
       ctx.events.clusterAssign || ctx.events.sceneFire) {
