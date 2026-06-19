@@ -100,14 +100,15 @@ function trigramStrength(seq) { return TRIGRAM_STRENGTH[trigramKey(seq)] ?? 0.50
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 export function createTernaryEngine({ transport, timers, clock, getContext, getBaseRate, onCalibrate }) {
-  let _trit      = Z;
-  let _prevLag   = 0;
-  let _warpTimer = null;
-  let _driftGen  = 0;
-  let _state     = 'idle'; // 'idle' | 'warping' | 'seeking'
-  let _history   = [];
-  let _calSeq    = [N, N, N]; // trigram: last 3 cal outcomes (N=floor, P=stable)
-  let _peers     = {};        // { id → { trit, lagMs, ts } }
+  let _trit          = Z;
+  let _prevLag       = 0;
+  let _warpTimer     = null;
+  let _driftGen      = 0;
+  let _state         = 'idle'; // 'idle' | 'warping' | 'seeking'
+  let _floorHistory  = [];     // idle-state only — no warp/seek contamination
+  let _lastWarpEndAt = 0;      // timestamp of last warp/seek completion
+  let _calSeq        = [N, N, N]; // trigram: last 3 cal outcomes (N=floor, P=stable)
+  let _peers         = {};        // { id → { trit, lagMs, ts } }
 
   // ── Micro-correction rate ────────────────────────────────────────────────────
   function microRate(lagMs) {
@@ -172,7 +173,16 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
       return;
     }
 
-    // Z or N — rate correction
+    // Z or N — rate correction.
+    // Record idle-state reading BEFORE warping — clean floor sample.
+    // 2s cooldown after any warp/seek so post-correction overshoots don't
+    // contaminate the floor estimate.
+    if (_state === 'idle' && abs >= TH_Z &&
+        timers.now() - _lastWarpEndAt > 2000) {
+      _floorHistory.push(lagMs);
+      if (_floorHistory.length > 8) _floorHistory.shift();
+    }
+
     _trit = lagToTrit(abs);
 
     // tcmp(): is drift growing or shrinking?
@@ -196,15 +206,11 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     const correctionMs = abs / (warpPct * getBaseRate());
     _warpTimer = timers.setTimeout(settleToIdle, correctionMs);
 
-    // Track history for floor detection
-    _history.push(lagMs);
-    if (_history.length > 8) _history.shift();
-
-    // Trigram auto-calibration — 8-state sequence drives correction strength
+    // Trigram auto-calibration — driven by idle-state floor history only
     if (_trit === N) {
-      const floor = detectFloor(_history);
-      const outcome = floor !== null ? N : P; // N=floor persists, P=floor gone
-      _calSeq = [_calSeq[1], _calSeq[2], outcome]; // shift sequence
+      const floor = detectFloor(_floorHistory);
+      const outcome = floor !== null ? N : P;
+      _calSeq = [_calSeq[1], _calSeq[2], outcome];
 
       const strength = trigramStrength(_calSeq);
       if (floor !== null && strength > 0 && typeof onCalibrate === 'function') {
@@ -213,7 +219,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
           onCalibrate(correction);
           console.log('[ternary-engine] cal trigram', _calSeq.map(t=>t>0?'P':'N').join(''),
             '→', (strength*100).toFixed(0)+'%',
-            'floor', Math.round(floor)+'ms correction', correction+'ms');
+            'floor', Math.round(floor)+'ms → correction', correction+'ms');
         }
       }
     }
@@ -222,7 +228,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   function settleToIdle() {
     transport.playbackRate = getBaseRate();
     _state = 'idle';
-    // Recheck — drift may not be fully closed
+    _lastWarpEndAt = timers.now(); // cooldown — don't record floor right after warp
     const lag = computeLagMs();
     if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
   }
@@ -247,7 +253,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
       const t = Math.min((now - start) / rampMs, 1);
       transport.volume = vol * (t * t * (3 - 2 * t));
       if (t < 1) timers.requestAnimationFrame(ramp);
-      else { transport.volume = vol; _state = 'idle'; }
+      else { transport.volume = vol; _state = 'idle'; _lastWarpEndAt = timers.now(); }
     }
     timers.requestAnimationFrame(ramp);
   }
@@ -255,7 +261,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   // Called on track change — clears floor history so detection restarts.
   // _calSeq is NOT reset: the trigram carries forward across tracks, so
   // a device that was at PPP stays protected; one at NNN keeps correcting.
-  function resetCalibration() { _history = []; }
+  function resetCalibration() { _floorHistory = []; }
 
   return {
     computeLagMs,
