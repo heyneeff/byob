@@ -315,6 +315,9 @@
   }
 
   function broadcastPeerTrit(lagMs) {
+    // Forward own trit to arpeggiator for voice assignment / consensus
+    window._terArpReceivePeer?.(myId(), _trit, Date.now());
+
     if (!_peerChannel) return;
     try {
       _peerChannel.send({
@@ -335,6 +338,8 @@
           receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs);
           // Feed peer data into the ternary engine for tcons() rate modulation
           window._terEngineReceivePeer?.(payload.deviceId, payload.trit, payload.lagMs);
+          // Feed peer trits into arpeggiator for room consensus / voice harmony
+          window._terArpReceivePeer?.(payload.deviceId, payload.trit, payload.ts);
         }
       })
       .subscribe();

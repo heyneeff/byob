@@ -809,6 +809,17 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
       <button onclick="broadcastRally()" class="rack-btn" style="width:100%;color:var(--teal);border-color:var(--teal);">🎯 RALLY</button>
     </div>
 
+    <div class="sr-section-label" style="color:var(--teal);">ARP <span style="font-size:7px;color:var(--muted2);font-weight:400;text-transform:none;">— ternary + octonary</span></div>
+    <div style="padding:4px 8px 8px;display:flex;flex-direction:column;gap:4px;border-bottom:1px solid var(--rim);">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <label style="font-size:9px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;letter-spacing:.1em;flex-shrink:0;">ROOT</label>
+        <input id="arp-root" type="number" value="60" min="36" max="84" step="1"
+          style="background:#1a1a1a;border:1px solid var(--rim);border-radius:5px;color:var(--cream);font-family:'DM Mono',monospace;font-size:11px;padding:4px 6px;outline:none;width:54px;"/>
+        <span style="font-size:9px;color:var(--muted2);">MIDI</span>
+      </div>
+      <button id="btn-arp-toggle" onclick="broadcastArpToggle()" class="rack-btn" style="width:100%;color:var(--teal);border-color:var(--teal);">♦ ARP: OFF</button>
+    </div>
+
   </div>
 
   <!-- BOTTOM HANDLE -->
@@ -1323,6 +1334,25 @@ function broadcastRally(){
     payload:{ lat: zone.lat, lng: zone.lng, label }
   });
   showToast('🎯 Rally sent'+(label?' — '+label:''));
+}
+
+let _arpRunning = false;
+function broadcastArpToggle() {
+  if (!window._djSyncChannel) { showToast('No active zone'); return; }
+  _arpRunning = !_arpRunning;
+  const root = parseInt(document.getElementById('arp-root')?.value ?? '60');
+  if (_arpRunning) {
+    window._djSyncChannel.send({
+      type: 'broadcast', event: 'arp_start',
+      payload: { root, bpm: _masterBPM || 120 },
+    });
+    showToast('♦ Arp on — root ' + root + ', bpm ' + (_masterBPM || 120));
+  } else {
+    window._djSyncChannel.send({ type: 'broadcast', event: 'arp_stop', payload: {} });
+    showToast('♦ Arp off');
+  }
+  const btn = document.getElementById('btn-arp-toggle');
+  if (btn) { btn.textContent = _arpRunning ? '♦ ARP: ON' : '♦ ARP: OFF'; btn.style.background = _arpRunning ? 'var(--teal)' : 'transparent'; btn.style.color = _arpRunning ? '#000' : 'var(--teal)'; }
 }
 
 // ── DEMO MODE ─────────────────────────────────────────────

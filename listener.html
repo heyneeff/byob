@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
-<script src="ternary/layer.js?v=13"></script>
+<script src="ternary/layer.js?v=14"></script>
 <script src="ternary/arp.js?v=1"></script>
 
  
@@ -4764,7 +4764,11 @@ let _syncLastTrackUrl = null;
 let _syncReverifyTimer = null;
 let _syncEnabled = localStorage.getItem('byob_sync_enabled') !== '0';
 let _clockOffset = 0; // ms: our clock vs Supabase server clock
-let _deviceLatencyMs = parseFloat(localStorage.getItem('byob_device_latency') || '0');
+let _deviceLatencyMs = (() => {
+  const stored = parseFloat(localStorage.getItem('byob_device_latency') || '0');
+  if (stored > 1000) { localStorage.removeItem('byob_device_latency'); return 0; } // nuke bad cal
+  return stored;
+})();
 let _scatterOffsetMs = 0;
 let _outputLatencySeeded = false;
 
@@ -5002,7 +5006,7 @@ window._terCorrect        = (pos) => { cancelDriftCorrection(); seekPreservingBT
 window._terExpectedNow    = ()    => _expectedNow();
 window._terGetZone        = ()    => activeZone;   // exposes local var for burst mode polling
 window._terAdjustLatency  = (deltaMs) => {
-  _deviceLatencyMs = Math.max(0, _deviceLatencyMs + deltaMs);
+  _deviceLatencyMs = Math.max(0, Math.min(1000, _deviceLatencyMs + deltaMs));
   console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
 };
 
@@ -5903,7 +5907,7 @@ const engine = createTernaryEngine({
   }),
   getBaseRate: () => _getBpmWarpRate(),
   onCalibrate: (deltaMs) => {
-    _deviceLatencyMs = Math.max(0, _deviceLatencyMs + deltaMs);
+    _deviceLatencyMs = Math.max(0, Math.min(1000, _deviceLatencyMs + deltaMs));
     console.log('[ternary-engine] auto-cal:', deltaMs > 0 ? '+' : '', deltaMs.toFixed(1) + 'ms → deviceLatencyMs =', _deviceLatencyMs.toFixed(1) + 'ms');
   },
 });

@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>♦ CHORD WEB</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;background:#05050f;color:#e8e4f0;font-family:'Barlow Condensed',system-ui,sans-serif;overflow-x:hidden;}
+:root{
+  --teal:#00cba9;--rim:#14142a;--card:#0c0c1a;
+  --green:#22cc66;--red:#e03040;--yellow:#c8a010;--purple:#9955dd;--blue:#3399ff;
+  --mono:'DM Mono',monospace;
+}
+
+/* ── Header ── */
+.hdr{display:flex;align-items:center;gap:10px;padding:9px 13px 7px;border-bottom:1px solid var(--rim);flex-shrink:0;}
+.logo{font-size:14px;font-weight:900;letter-spacing:.12em;color:var(--teal);}
+.hdr-title{flex:1;font-size:11px;font-weight:700;letter-spacing:.18em;color:#484868;}
+.hdr-link{font-size:9px;color:#383858;text-decoration:none;letter-spacing:.1em;border:1px solid #1e1e34;padding:3px 8px;border-radius:3px;}
+.hdr-link:active{color:var(--teal);}
+
+/* ── Key row ── */
+.key-row{display:flex;align-items:center;gap:4px;padding:5px 11px;border-bottom:1px solid var(--rim);overflow-x:auto;-webkit-overflow-scrolling:touch;flex-shrink:0;}
+.key-lbl{font-size:7.5px;letter-spacing:.2em;text-transform:uppercase;color:#383858;flex-shrink:0;margin-right:2px;}
+.kbtn{flex-shrink:0;padding:3px 7px;border-radius:3px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;font-size:9.5px;font-weight:700;color:#484868;transition:all .1s;letter-spacing:.03em;}
+.kbtn.active{border-color:var(--teal);color:var(--teal);background:#081410;}
+.kbtn:active{transform:scale(.90);}
+.ksep{width:1px;height:14px;background:#14142a;flex-shrink:0;margin:0 2px;}
+
+/* ── Web area ── */
+.web-wrap{flex-shrink:0;position:relative;height:290px;border-bottom:1px solid var(--rim);}
+#web-svg{width:100%;height:100%;display:block;}
+
+/* ── Legend ── */
+.legend{display:flex;gap:8px;padding:4px 11px;flex-shrink:0;border-bottom:1px solid var(--rim);flex-wrap:wrap;}
+.leg{display:flex;align-items:center;gap:3px;font-size:7.5px;letter-spacing:.1em;text-transform:uppercase;color:#383858;}
+.ldot{width:7px;height:7px;border-radius:50%;}
+
+/* ── Info panel ── */
+.info-panel{padding:8px 11px 6px;border-bottom:1px solid var(--rim);flex-shrink:0;background:#07070f;}
+.info-empty{color:#242438;font-size:10px;letter-spacing:.08em;}
+.info-name{font-size:16px;font-weight:900;letter-spacing:.05em;line-height:1.1;}
+.info-row{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;}
+.info-sub{font-size:8.5px;color:#505070;letter-spacing:.1em;}
+.info-scale{font-size:8.5px;color:var(--teal);letter-spacing:.1em;}
+.info-notes{font-size:11px;font-family:var(--mono);color:#9090b0;margin-bottom:3px;}
+.info-feel{font-size:8.5px;color:#404060;font-style:italic;margin-bottom:4px;}
+.chips{display:flex;gap:4px;flex-wrap:wrap;}
+.chip{font-size:7.5px;padding:2px 7px;border-radius:3px;border:1px solid #1e1e34;color:#505070;cursor:pointer;transition:all .1s;letter-spacing:.03em;}
+.chip.green{border-color:rgba(34,204,102,.3);color:rgba(34,204,102,.75);}
+.chip.red{border-color:rgba(224,48,64,.3);color:rgba(224,48,64,.75);}
+.chip.yellow{border-color:rgba(200,160,16,.3);color:rgba(200,160,16,.75);}
+.chip.purple{border-color:rgba(153,85,221,.3);color:rgba(153,85,221,.75);}
+.chip.blue{border-color:rgba(51,153,255,.3);color:rgba(51,153,255,.75);}
+.chip:active{opacity:.6;}
+
+/* ── Section ── */
+.section{padding:7px 11px;border-bottom:1px solid var(--rim);}
+.slbl{font-size:7.5px;letter-spacing:.24em;text-transform:uppercase;color:#383858;margin-bottom:5px;font-weight:700;}
+
+/* ── Style buttons ── */
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;}
+.sbtn{padding:7px 3px 5px;border-radius:5px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;font-size:11px;font-weight:700;color:#585878;text-align:center;transition:all .1s;user-select:none;}
+.sbtn.active{border-color:var(--teal);color:var(--teal);background:#081410;}
+.sbtn:active{transform:scale(.94);}
+.sbtn span{display:block;font-size:6.5px;color:#383858;letter-spacing:.06em;margin-top:1px;}
+
+/* ── Sliders ── */
+.slrow{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
+.sllbl{font-size:7.5px;font-family:var(--mono);color:#505070;width:28px;flex-shrink:0;}
+.slval{font-size:7.5px;font-family:var(--mono);color:#707090;width:36px;text-align:right;flex-shrink:0;}
+input[type=range]{
+  -webkit-appearance:none;flex:1;height:3px;border-radius:2px;outline:none;cursor:pointer;
+  background:linear-gradient(to right,var(--teal) var(--pct,0%),#1e1e34 var(--pct,0%));
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--teal);box-shadow:0 0 5px rgba(0,203,169,.35);
+}
+.sl2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.sl-meta{display:flex;justify-content:space-between;font-size:6.5px;color:#2e2e48;margin-top:1px;}
+
+/* ── BPM ── */
+.bpm-row{display:flex;align-items:center;gap:8px;}
+.badj{width:30px;height:30px;border-radius:5px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;font-size:16px;color:#585878;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.badj:active{color:var(--teal);}
+.bdisp{flex:1;text-align:center;font-size:22px;font-weight:900;cursor:pointer;line-height:1.1;}
+.bsub{font-size:7.5px;color:#383858;letter-spacing:.16em;display:block;}
+
+/* ── Octave row ── */
+.orow{display:flex;gap:4px;margin-top:4px;}
+.obtn{flex:1;padding:4px;border-radius:4px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;font-size:9px;font-weight:700;color:#585878;text-align:center;transition:all .1s;}
+.obtn.active{border-color:var(--teal);color:var(--teal);}
+
+/* ── Play row ── */
+.play-row{display:flex;gap:5px;padding:7px 11px 10px;flex-shrink:0;position:sticky;bottom:0;background:#05050f;border-top:1px solid var(--rim);z-index:10;}
+.pbtn{flex:1;padding:11px;border-radius:8px;cursor:pointer;font:900 13px 'Barlow Condensed',system-ui;letter-spacing:.1em;text-transform:uppercase;transition:all .12s;border:1.5px solid var(--rim);background:var(--card);color:#585878;}
+.pbtn.on{background:var(--teal);color:#000;border-color:var(--teal);box-shadow:0 0 14px rgba(0,203,169,.2);}
+.pbtn.pad-on{background:#140a22;border-color:#8844cc;color:#bb88ff;}
+.pbtn:active{transform:scale(.96);}
+</style>
+</head>
+<body style="overflow-y:auto;">
+
+<!-- Header -->
+<div class="hdr">
+  <span class="logo">BYOB</span>
+  <span class="hdr-title">♦ CHORD WEB</span>
+  <a class="hdr-link" href="arp-jam.html">← JAM</a>
+</div>
+
+<!-- Key row -->
+<div class="key-row">
+  <span class="key-lbl">Key</span>
+  <button class="kbtn active" id="k-0"  onclick="setKey(0)">C</button>
+  <button class="kbtn"        id="k-1"  onclick="setKey(1)">C♯</button>
+  <button class="kbtn"        id="k-2"  onclick="setKey(2)">D</button>
+  <button class="kbtn"        id="k-3"  onclick="setKey(3)">E♭</button>
+  <button class="kbtn"        id="k-4"  onclick="setKey(4)">E</button>
+  <button class="kbtn"        id="k-5"  onclick="setKey(5)">F</button>
+  <button class="kbtn"        id="k-6"  onclick="setKey(6)">F♯</button>
+  <button class="kbtn"        id="k-7"  onclick="setKey(7)">G</button>
+  <button class="kbtn"        id="k-8"  onclick="setKey(8)">A♭</button>
+  <button class="kbtn"        id="k-9"  onclick="setKey(9)">A</button>
+  <button class="kbtn"        id="k-10" onclick="setKey(10)">B♭</button>
+  <button class="kbtn"        id="k-11" onclick="setKey(11)">B</button>
+  <div class="ksep"></div>
+  <button class="kbtn"        id="k-oct3" onclick="setOct(3)">3</button>
+  <button class="kbtn active" id="k-oct4" onclick="setOct(4)">4</button>
+  <button class="kbtn"        id="k-oct5" onclick="setOct(5)">5</button>
+</div>
+
+<!-- Chord web -->
+<div class="web-wrap">
+  <svg id="web-svg" viewBox="0 0 360 290" preserveAspectRatio="xMidYMid meet"></svg>
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="leg"><div class="ldot" style="background:var(--green)"></div>resolve</div>
+  <div class="leg"><div class="ldot" style="background:var(--red)"></div>tension</div>
+  <div class="leg"><div class="ldot" style="background:var(--yellow)"></div>passing</div>
+  <div class="leg"><div class="ldot" style="background:var(--purple)"></div>modal swap</div>
+  <div class="leg"><div class="ldot" style="background:var(--blue)"></div>exotic</div>
+</div>
+
+<!-- Info panel -->
+<div class="info-panel" id="info">
+  <div class="info-empty">tap a chord node to explore</div>
+</div>
+
+<!-- Pattern -->
+<div class="section">
+  <div class="slbl">Arp pattern</div>
+  <div class="g3" id="style-grid"></div>
+</div>
+
+<!-- Envelope -->
+<div class="section">
+  <div class="slbl">Envelope</div>
+  <div class="slrow"><span class="sllbl">A</span><input type="range" id="sl-a" min="1" max="500" value="7" oninput="onEnv()"/><span class="slval" id="vl-a">7ms</span></div>
+  <div class="slrow"><span class="sllbl">D</span><input type="range" id="sl-d" min="10" max="800" value="55" oninput="onEnv()"/><span class="slval" id="vl-d">55ms</span></div>
+  <div class="slrow"><span class="sllbl">S</span><input type="range" id="sl-s" min="0" max="100" value="58" oninput="onEnv()"/><span class="slval" id="vl-s">58%</span></div>
+  <div class="slrow"><span class="sllbl">R</span><input type="range" id="sl-r" min="10" max="1500" value="90" oninput="onEnv()"/><span class="slval" id="vl-r">90ms</span></div>
+  <div class="slrow"><span class="sllbl">Gate</span><input type="range" id="sl-gate" min="10" max="200" value="82" oninput="onEnv()"/><span class="slval" id="vl-gate">82%</span></div>
+</div>
+
+<!-- Space & EQ -->
+<div class="section">
+  <div class="slbl">Space & EQ</div>
+  <div class="slrow">
+    <span class="sllbl">Dist</span>
+    <input type="range" id="sl-dist" min="0" max="200" value="20" oninput="onSpace()"/>
+    <span class="slval" id="vl-dist">20 m</span>
+  </div>
+  <div class="sl-meta"><span>close · dry · sub warm</span><span>far · wet · mid boxy</span></div>
+  <div class="sl2" style="margin-top:6px;">
+    <div>
+      <div class="slbl" style="margin-bottom:3px;">Width</div>
+      <div class="slrow" style="margin-bottom:0;">
+        <input type="range" id="sl-haas" min="0" max="100" value="55" oninput="onSpace()"/>
+        <span class="slval" id="vl-haas">55</span>
+      </div>
+    </div>
+    <div>
+      <div class="slbl" style="margin-bottom:3px;">Tremolo</div>
+      <div class="slrow" style="margin-bottom:0;">
+        <input type="range" id="sl-trem" min="0" max="100" value="15" oninput="onSpace()"/>
+        <span class="slval" id="vl-trem">15</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Drone Pad -->
+<div class="section">
+  <div class="slbl">Drone pad</div>
+  <div class="slrow"><span class="sllbl">Mix</span><input type="range" id="sl-pmix" min="0" max="100" value="45" oninput="onPad()"/><span class="slval" id="vl-pmix">45%</span></div>
+  <div class="slrow"><span class="sllbl">Bright</span><input type="range" id="sl-pbri" min="0" max="100" value="35" oninput="onPad()"/><span class="slval" id="vl-pbri">35%</span></div>
+  <div class="slrow"><span class="sllbl">Evolve</span><input type="range" id="sl-pevo" min="0" max="100" value="25" oninput="onPad()"/><span class="slval" id="vl-pevo">25%</span></div>
+  <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+    <span class="sllbl" style="width:auto;">Pad oct</span>
+    <div class="orow" style="flex:1;">
+      <button class="obtn" id="po--2" onclick="setPadOct(-2)">−2</button>
+      <button class="obtn active" id="po--1" onclick="setPadOct(-1)">−1</button>
+      <button class="obtn" id="po-0"  onclick="setPadOct(0)">0</button>
+      <button class="obtn" id="po-1"  onclick="setPadOct(1)">+1</button>
+    </div>
+  </div>
+</div>
+
+<!-- BPM -->
+<div class="section">
+  <div class="slbl">BPM</div>
+  <div class="bpm-row">
+    <button class="badj" onclick="shiftBpm(-5)">−</button>
+    <div class="bdisp" id="bdisp" onclick="tapBpm()">90<span class="bsub">BPM · TAP</span></div>
+    <button class="badj" onclick="shiftBpm(+5)">+</button>
+  </div>
+</div>
+
+<!-- Play row (sticky) -->
+<div class="play-row">
+  <button class="pbtn" id="arp-btn" onclick="toggleArp()">▶ ARP</button>
+  <button class="pbtn" id="pad-btn" onclick="togglePad()">♩ PAD</button>
+</div>
+
+<script src="arp.js"></script>
+<script src="pad.js"></script>
+<script>
+// ── Stubs ─────────────────────────────────────────────────────────────────────
+window.syncedNow  = () => Date.now();
+window._masterBPM = 90;
+window._zoneDistM = 20;
+const _refMs = Date.now() - (Date.now() % (27 * 500));
+window._terGetZone = () => ({ playback_started_at: new Date(_refMs).toISOString() });
+
+// ── Note names ────────────────────────────────────────────────────────────────
+const NOTE_NAMES = ['C','C♯','D','E♭','E','F','F♯','G','A♭','A','B♭','B'];
+
+// ── Chord data ────────────────────────────────────────────────────────────────
+// LAYOUT ZONES (x,y in 0→1 of SVG 360×290):
+//   X: left=tense/dominant, right=stable/tonic
+//   Y: top=bright/Lydian, bottom=dark/interchange
+//
+// Zones:
+//   Tonic:        right  x>.70
+//   Subdominant:  center x=.35–.58  y=.06–.35
+//   Dominant:     left   x<.30
+//   Interchange:  bottom y>.48  x=.40–.75
+//   Exotic:       upper-left  x=.24–.36  y<.28
+
+const CHORDS = {
+  // ── TONIC (green zone, right) ─────────────────────────────────────────────
+  'Ima7s11':{ root:0,  ivs:[0,4,6,7,11],     lb:'Ma7♯11', name:'I Lydian Ma7',       fn:'tonic',       q:.10, sc:'Lydian',     x:.90, y:.06, feel:'Floating — never quite lands' },
+  'VIm9':   { root:9,  ivs:[0,3,7,10,14],    lb:'VIm9',   name:'VI Minor 9',          fn:'tonic',       q:.14, sc:'Aeolian',   x:.84, y:.06, feel:'Deep melancholy — very Frahm' },
+  'Ima9':   { root:0,  ivs:[0,4,7,11,14],    lb:'Ma9',    name:'I Major 9',            fn:'tonic',       q:.08, sc:'Ionian',    x:.90, y:.19, feel:'Lush, complete — the Frahm pad' },
+  'VIm7':   { root:9,  ivs:[0,3,7,10],       lb:'VIm7',   name:'VI Minor 7',           fn:'tonic',       q:.17, sc:'Aeolian',   x:.78, y:.18, feel:'Introspective, relative minor' },
+  'Ima7':   { root:0,  ivs:[0,4,7,11],       lb:'Ma7',    name:'I Major 7',            fn:'tonic',       q:.05, sc:'Ionian',    x:.88, y:.30, feel:'Home. Warm, arrived, complete' },
+  'I69':    { root:0,  ivs:[0,4,7,9,14],     lb:'6/9',    name:'I 6/9',                fn:'tonic',       q:.10, sc:'Ionian',    x:.88, y:.42, feel:'Sweet — no 7th makes it lighter' },
+  'Ima7s5': { root:0,  ivs:[0,4,8,11],       lb:'Ma7♯5',  name:'I Augmented Ma7',      fn:'tonic',       q:.22, sc:'Augmented', x:.76, y:.30, feel:'Hovering, augmented beauty' },
+  'Sus2':   { root:0,  ivs:[0,2,7],          lb:'Sus2',   name:'Suspended 2nd',        fn:'tonic',       q:.20, sc:'Pentatonic', x:.68, y:.40, feel:'Pure ambiguity — lands nowhere' },
+
+  // ── SUBDOMINANT (yellow zone, upper center) ────────────────────────────────
+  'IIm11':  { root:2,  ivs:[0,3,7,10,14,17], lb:'IIm11',  name:'II Minor 11',          fn:'subdominant', q:.26, sc:'Dorian',    x:.44, y:.07, feel:'Spacious, Bill Evans, floats' },
+  'IIm9':   { root:2,  ivs:[0,3,7,10,14],    lb:'IIm9',   name:'II Minor 9',            fn:'subdominant', q:.30, sc:'Dorian',    x:.46, y:.19, feel:'Rich pre-tension — floats more' },
+  'IVma7':  { root:5,  ivs:[0,4,7,11],       lb:'IVMa7',  name:'IV Major 7',            fn:'subdominant', q:.28, sc:'Lydian',    x:.56, y:.14, feel:'Dreamy lift — subdominant glow' },
+  'IIm7':   { root:2,  ivs:[0,3,7,10],       lb:'IIm7',   name:'II Minor 7',            fn:'subdominant', q:.36, sc:'Dorian',    x:.44, y:.31, feel:'Pre-tension — the ii in ii-V-I' },
+  'Vsus4':  { root:7,  ivs:[0,5,7],          lb:'Vsus4',  name:'V Suspended 4',         fn:'subdominant', q:.44, sc:'Mixolydian',x:.32, y:.34, feel:'Tension without the lead tone' },
+
+  // ── DOMINANT (red zone, left) ──────────────────────────────────────────────
+  'V9':     { root:7,  ivs:[0,4,7,10,14],    lb:'Dom9',   name:'V Dominant 9',          fn:'dominant',    q:.56, sc:'Mixolydian',x:.26, y:.44, feel:'Rounder dominant, more colour' },
+  'V7':     { root:7,  ivs:[0,4,7,10],       lb:'Dom7',   name:'V Dominant 7',          fn:'dominant',    q:.64, sc:'Mixolydian',x:.19, y:.56, feel:'Classic tension — wants to resolve' },
+  'V7s9':   { root:7,  ivs:[0,4,7,10,15],    lb:'7♯9',    name:'V Dom 7♯9 (Hendrix)',  fn:'dominant',    q:.78, sc:'HarmMinor', x:.13, y:.66, feel:'Hendrix chord — urgent, bluesy' },
+  'V7b9':   { root:7,  ivs:[0,4,7,10,13],    lb:'7♭9',    name:'V Dom 7♭9',            fn:'dominant',    q:.80, sc:'HarmMinor', x:.09, y:.75, feel:'Spanish/Flamenco bite' },
+  'V7alt':  { root:7,  ivs:[0,4,10,13,20],   lb:'7alt',   name:'V Altered Dom',         fn:'dominant',    q:.92, sc:'Altered',   x:.06, y:.86, feel:'Maximum tension — ♭9 ♯9 ♭13' },
+  'VIIdim7':{ root:11, ivs:[0,3,6,9],        lb:'dim7',   name:'VII Dim 7',             fn:'dominant',    q:.85, sc:'WholeTone', x:.18, y:.80, feel:'Symmetric — resolves four ways' },
+
+  // ── MODAL INTERCHANGE (purple zone, lower center-right) ───────────────────
+  'Imma7':  { root:0,  ivs:[0,3,7,11],       lb:'m(ma7)', name:'I Minor-Major 7',       fn:'interchange', q:.36, sc:'HarmMinor', x:.70, y:.52, feel:'Bittersweet — Bernard Herrmann' },
+  'Im7':    { root:0,  ivs:[0,3,7,10],       lb:'Im7',    name:'I Parallel Minor',      fn:'interchange', q:.30, sc:'Dorian',    x:.68, y:.63, feel:'Parallel minor — sudden dark shift' },
+  'bVIIma7':{ root:10, ivs:[0,4,7,11],       lb:'♭VIIMa7',name:'♭VII Major 7',         fn:'interchange', q:.44, sc:'Mixolydian',x:.52, y:.64, feel:'Rock/modal — borrowed Mixolydian' },
+  'IVm7':   { root:5,  ivs:[0,3,7,10],       lb:'IVm7',   name:'IV Minor 7',            fn:'interchange', q:.50, sc:'Dorian',    x:.42, y:.74, feel:'Borrowed iv — the saddest move' },
+  'bVI':    { root:8,  ivs:[0,4,7],          lb:'♭VI',    name:'♭VI Major',             fn:'interchange', q:.46, sc:'Phrygian',  x:.56, y:.80, feel:'Dark major lift — Radiohead' },
+
+  // ── EXOTIC (blue, upper left) ──────────────────────────────────────────────
+  'Quartal':{ root:0,  ivs:[0,5,10,3],       lb:'Quartal',name:'Quartal Stack',         fn:'exotic',      q:.24, sc:'Ambiguous', x:.28, y:.19, feel:'Stacked 4ths — Miles / McCoy Tyner' },
+};
+
+// ── Edges ─────────────────────────────────────────────────────────────────────
+// rel: resolve=green  tension=red  passing=yellow  interchange=purple  exotic=blue
+const EDGES = [
+  // Tonic internal
+  {f:'Ima7',    t:'Ima9',    r:'resolve',     lb:'extend'},
+  {f:'Ima7',    t:'Ima7s11', r:'passing',     lb:'Lydian float'},
+  {f:'Ima7',    t:'I69',     r:'resolve',     lb:'no 7th'},
+  {f:'Ima7',    t:'VIm7',    r:'passing',     lb:'I→vi'},
+  {f:'VIm7',    t:'VIm9',    r:'resolve',     lb:'extend'},
+  {f:'Ima9',    t:'VIm9',    r:'passing',     lb:'colour swap'},
+  {f:'Ima7',    t:'Ima7s5',  r:'exotic',      lb:'aug colour'},
+  {f:'Ima7s5',  t:'Ima7s11', r:'passing',     lb:'→ Lydian'},
+  {f:'Ima7',    t:'Sus2',    r:'passing',     lb:'suspend'},
+  {f:'Sus2',    t:'Ima7',    r:'resolve',     lb:'land'},
+  {f:'VIm7',    t:'Sus2',    r:'passing',     lb:'vi→sus'},
+  // Subdominant
+  {f:'Ima7',    t:'IVma7',   r:'passing',     lb:'I→IV'},
+  {f:'IVma7',   t:'Ima7',    r:'resolve',     lb:'plagal IV→I'},
+  {f:'Ima7',    t:'IIm7',    r:'passing',     lb:'I→ii'},
+  {f:'VIm7',    t:'IIm7',    r:'passing',     lb:'vi→ii'},
+  {f:'VIm9',    t:'IIm9',    r:'passing',     lb:'vi9→ii9'},
+  {f:'IIm11',   t:'IIm9',    r:'resolve',     lb:'simplify'},
+  {f:'IIm9',    t:'IIm7',    r:'resolve',     lb:'simplify'},
+  {f:'IVma7',   t:'IIm7',    r:'passing',     lb:'IV→ii'},
+  {f:'Ima7',    t:'IIm11',   r:'passing',     lb:'direct ii11'},
+  {f:'Ima7s11', t:'IIm11',   r:'passing',     lb:'Lydian→ii11'},
+  {f:'IIm7',    t:'Vsus4',   r:'tension',     lb:'build tension'},
+  // ii-V-I
+  {f:'IIm7',    t:'V7',      r:'passing',     lb:'ii→V'},
+  {f:'IIm9',    t:'V9',      r:'passing',     lb:'ii9→V9'},
+  {f:'IIm11',   t:'V7',      r:'passing',     lb:'ii11→V'},
+  // Dominant resolves
+  {f:'V7',      t:'Ima7',    r:'resolve',     lb:'V→I'},
+  {f:'V9',      t:'Ima7',    r:'resolve',     lb:'V9→I'},
+  {f:'V9',      t:'Ima9',    r:'resolve',     lb:'V9→Ima9'},
+  {f:'VIIdim7', t:'Ima7',    r:'resolve',     lb:'vii°→I'},
+  {f:'Vsus4',   t:'V7',      r:'tension',     lb:'sus→dom'},
+  {f:'V7',      t:'V9',      r:'passing',     lb:'extend'},
+  {f:'V7',      t:'V7s9',    r:'tension',     lb:'Hendrix'},
+  {f:'V7',      t:'V7b9',    r:'tension',     lb:'Spanish'},
+  {f:'V7s9',    t:'V7alt',   r:'tension',     lb:'go further'},
+  {f:'V7b9',    t:'V7alt',   r:'tension',     lb:'go further'},
+  {f:'V7alt',   t:'Ima7',    r:'resolve',     lb:'alt→I'},
+  {f:'V7alt',   t:'Ima7s11', r:'resolve',     lb:'alt→Lydian'},
+  {f:'VIIdim7', t:'V7',      r:'passing',     lb:'dim→dom'},
+  {f:'Ima7',    t:'V7',      r:'tension',     lb:'I→V depart'},
+  {f:'IVma7',   t:'V7',      r:'passing',     lb:'IV→V'},
+  {f:'VIm7',    t:'V7',      r:'passing',     lb:'vi→V'},
+  // Modal interchange
+  {f:'Ima7',    t:'Im7',     r:'interchange', lb:'parallel ♭'},
+  {f:'Ima7',    t:'bVIIma7', r:'interchange', lb:'♭VII borrow'},
+  {f:'Ima7',    t:'Imma7',   r:'interchange', lb:'m(ma7) shift'},
+  {f:'Im7',     t:'IVm7',    r:'passing',     lb:'i→iv'},
+  {f:'IVm7',    t:'bVI',     r:'passing',     lb:'Andalusian'},
+  {f:'bVI',     t:'bVIIma7', r:'passing',     lb:'♭VI→♭VII'},
+  {f:'bVIIma7', t:'Ima7',    r:'resolve',     lb:'♭VII→I'},
+  {f:'Ima7',    t:'bVI',     r:'interchange', lb:'♭VI direct'},
+  {f:'Im7',     t:'Ima7',    r:'resolve',     lb:'return'},
+  {f:'Imma7',   t:'Im7',     r:'passing',     lb:'→ minor'},
+  {f:'Imma7',   t:'Ima7',    r:'resolve',     lb:'resolve'},
+  {f:'IVm7',    t:'bVIIma7', r:'passing',     lb:'iv→♭VII'},
+  // Exotic
+  {f:'Ima7',    t:'Quartal', r:'exotic',      lb:'quartal color'},
+  {f:'IIm11',   t:'Quartal', r:'exotic',      lb:'open stack'},
+  {f:'Quartal', t:'Ima7',    r:'resolve',     lb:'land on I'},
+  {f:'Quartal', t:'V7',      r:'tension',     lb:'→ dom'},
+];
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+const SVG_W = 360, SVG_H = 290, R = 16;
+const FN_COL = { tonic:'#22cc66', subdominant:'#c8a010', dominant:'#e03040', interchange:'#9955dd', exotic:'#3399ff' };
+const REL_COL = { resolve:'#22cc66', tension:'#e03040', passing:'#c8a010', interchange:'#9955dd', exotic:'#3399ff' };
+
+let _keyRoot = 0, _octave = 4, _active = null;
+function rootMidi()      { return (_octave+1)*12 + _keyRoot; }
+function chordRoot(id)   { return rootMidi() + CHORDS[id].root; }
+function noteNames(id)   { return CHORDS[id].ivs.map(iv => NOTE_NAMES[(chordRoot(id)+iv)%12]); }
+function nxy(id)         { return { x: CHORDS[id].x*SVG_W, y: CHORDS[id].y*SVG_H }; }
+
+// ── SVG build ──────────────────────────────────────────────────────────────────
+const svg = document.getElementById('web-svg');
+let _eEls = {}, _nEls = {};
+
+function svgEl(tag, attrs) {
+  const e = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));
+  return e;
+}
+
+function curvePath(x1,y1,x2,y2) {
+  const mx=(x1+x2)/2, my=(y1+y2)/2;
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy)||1;
+  const ox=-dy/len*16, oy=dx/len*16;
+  return `M${x1.toFixed(1)},${y1.toFixed(1)} Q${(mx+ox).toFixed(1)},${(my+oy).toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
+}
+
+function buildMarkers() {
+  const defs = svgEl('defs',{});
+  Object.entries(REL_COL).forEach(([r,col])=>{
+    const m = svgEl('marker',{id:`a-${r}`,markerWidth:'5',markerHeight:'5',refX:'4',refY:'2.5',orient:'auto'});
+    m.appendChild(svgEl('path',{d:'M0,0 L0,5 L5,2.5 z',fill:col,opacity:'0.75'}));
+    defs.appendChild(m);
+  });
+  svg.appendChild(defs);
+}
+
+function buildZoneBg() {
+  const g = svgEl('g',{opacity:'1'});
+
+  // Zone background fills — very subtle
+  const zones = [
+    { x:SVG_W*.60, y:0, w:SVG_W*.40, h:SVG_H*.55, col:'#22cc66', op:'0.025', label:'STABLE', lx:SVG_W*.95, ly:SVG_H*.04 },
+    { x:0,         y:0, w:SVG_W*.32, h:SVG_H,      col:'#e03040', op:'0.025', label:'TENSION', lx:SVG_W*.02, ly:SVG_H*.04 },
+    { x:SVG_W*.30, y:SVG_H*.55, w:SVG_W*.52, h:SVG_H*.45, col:'#9955dd', op:'0.025', label:'MODAL', lx:SVG_W*.53, ly:SVG_H*.96 },
+    { x:SVG_W*.30, y:0,         w:SVG_W*.38, h:SVG_H*.45, col:'#c8a010', op:'0.022', label:'PASSING', lx:SVG_W*.50, ly:SVG_H*.03 },
+  ];
+
+  zones.forEach(z => {
+    const rect = svgEl('rect', { x:z.x, y:z.y, width:z.w, height:z.h, fill:z.col, opacity:z.op, rx:'8' });
+    g.appendChild(rect);
+    const lbl = svgEl('text', {
+      x:z.lx, y:z.ly, 'text-anchor':'middle', fill:z.col,
+      'font-size':'6.5', 'font-family':'Barlow Condensed,system-ui',
+      'letter-spacing':'0.2em', 'text-transform':'uppercase', opacity:'0.2',
+    });
+    lbl.textContent = z.label;
+    g.appendChild(lbl);
+  });
+
+  svg.appendChild(g);
+}
+
+function buildGraph() {
+  svg.innerHTML = '';
+  buildMarkers();
+  buildZoneBg();
+  _eEls = {}; _nEls = {};
+
+  // Edges
+  const eg = svgEl('g',{});
+  EDGES.forEach(e => {
+    if (!CHORDS[e.f]||!CHORDS[e.t]) return;
+    const {x:x1,y:y1}=nxy(e.f), {x:x2,y:y2}=nxy(e.t);
+    const col = REL_COL[e.r];
+    const p = svgEl('path',{
+      d:curvePath(x1,y1,x2,y2), fill:'none', stroke:col,
+      'stroke-width':'1.3', opacity:'0.15', 'stroke-linecap':'round',
+      'marker-end':`url(#a-${e.r})`,
+    });
+    p.dataset.f=e.f; p.dataset.t=e.t; p.dataset.r=e.r;
+    eg.appendChild(p);
+    _eEls[`${e.f}→${e.t}`]=p;
+  });
+  svg.appendChild(eg);
+
+  // Nodes
+  const ng = svgEl('g',{});
+  Object.entries(CHORDS).forEach(([id,ch])=>{
+    const {x,y}=nxy(id), col=FN_COL[ch.fn];
+    const g = svgEl('g',{cursor:'pointer', transform:`translate(${x},${y})`});
+
+    const glow  = svgEl('circle',{r:R+6, fill:'none', stroke:col, 'stroke-width':'2', opacity:'0'});
+    const body  = svgEl('circle',{r:R, fill:'#0b0b18', stroke:col, 'stroke-width':'1.4', opacity:'0.65'});
+    // Tension indicator: small colored ring inside
+    const tring = svgEl('circle',{r:R-4, fill:'none',
+      stroke:`hsl(${120-ch.q*120},65%,52%)`, 'stroke-width':'1.2', opacity:'0.35'});
+    const lbl   = svgEl('text',{
+      'text-anchor':'middle','dominant-baseline':'middle',
+      fill:col,'font-size':'8','font-weight':'700',
+      'font-family':'Barlow Condensed,system-ui','letter-spacing':'0.01em',opacity:'0.82',
+    });
+    lbl.textContent = ch.lb;
+
+    g.appendChild(glow); g.appendChild(body); g.appendChild(tring); g.appendChild(lbl);
+    g.addEventListener('click',()=>selectChord(id));
+    ng.appendChild(g);
+    _nEls[id]={g,body,glow,lbl};
+  });
+  svg.appendChild(ng);
+}
+
+// ── Selection ──────────────────────────────────────────────────────────────────
+function selectChord(id) {
+  _active = id;
+  const ch = CHORDS[id];
+  const col = FN_COL[ch.fn];
+  const rootName = NOTE_NAMES[(_keyRoot+ch.root)%12];
+
+  // Node visuals
+  Object.entries(_nEls).forEach(([nid,{body,glow,lbl}])=>{
+    if (nid===id) {
+      body.setAttribute('fill',FN_COL[CHORDS[nid].fn]);
+      body.setAttribute('opacity','1'); body.setAttribute('stroke-width','2.5');
+      glow.setAttribute('opacity','0.45');
+      lbl.setAttribute('fill','#fff'); lbl.setAttribute('opacity','1');
+    } else {
+      body.setAttribute('fill','#0b0b18'); body.setAttribute('opacity','0.45');
+      body.setAttribute('stroke-width','1.2');
+      glow.setAttribute('opacity','0');
+      lbl.setAttribute('fill',FN_COL[CHORDS[nid].fn]); lbl.setAttribute('opacity','0.45');
+    }
+  });
+
+  // Edge visuals
+  const connected = new Set(EDGES.filter(e=>e.f===id||e.t===id).map(e=>`${e.f}→${e.t}`));
+  Object.entries(_eEls).forEach(([k,p])=>{
+    if (connected.has(k)) { p.setAttribute('opacity','0.70'); p.setAttribute('stroke-width','2'); }
+    else                  { p.setAttribute('opacity','0.05'); p.setAttribute('stroke-width','1'); }
+  });
+
+  // Neighbor chips (outgoing only)
+  const out = EDGES.filter(e=>e.f===id).slice(0,7);
+  const chipsHtml = out.map(e=>{
+    const tc=CHORDS[e.t]; if (!tc) return '';
+    const cls = e.r==='resolve'?'green':e.r==='tension'?'red':e.r==='interchange'?'purple':e.r==='exotic'?'blue':'yellow';
+    return `<span class="chip ${cls}" onclick="selectChord('${e.t}')">${tc.lb} <span style="opacity:.55">${e.lb}</span></span>`;
+  }).join('');
+
+  const fnLabel = {tonic:'tonic',subdominant:'subdominant',dominant:'dominant',interchange:'modal interchange',exotic:'exotic'};
+  document.getElementById('info').innerHTML = `
+    <div class="info-row">
+      <div class="info-name" style="color:${col}">${rootName} ${ch.lb}</div>
+      <div class="info-sub">${ch.name}</div>
+    </div>
+    <div class="info-row">
+      <div class="info-sub" style="color:${col}">${fnLabel[ch.fn]}</div>
+      <div class="info-scale">→ ${ch.sc}</div>
+    </div>
+    <div class="info-notes">${noteNames(id).join('  ·  ')}</div>
+    <div class="info-feel">${ch.feel}</div>
+    <div class="chips">${chipsHtml}</div>`;
+
+  // Send to arp + pad
+  const rMidi = chordRoot(id);
+  window._terArp?.setRoot(rMidi);
+  window._terPad?.setChord(ch.ivs, rMidi);
+}
+
+// ── Key / octave ───────────────────────────────────────────────────────────────
+function setKey(n) {
+  _keyRoot = n;
+  document.querySelectorAll('[id^=k-]').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`k-${n}`)?.classList.add('active');
+  if (_active) selectChord(_active);
+}
+function setOct(o) {
+  _octave = o;
+  document.querySelectorAll('[id^=k-oct]').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`k-oct${o}`)?.classList.add('active');
+  if (_active) selectChord(_active);
+}
+
+// ── Style buttons ──────────────────────────────────────────────────────────────
+const STYLES = {UP:'↑ ascend',DOWN:'↓ descend',BOUNCE:'↕ leap',FOLD:'↑↓ fold',SKIP:'· skip ·',PULSE:'● pulse'};
+let _style = 'UP';
+function buildStyles() {
+  const g = document.getElementById('style-grid'); g.innerHTML='';
+  Object.entries(STYLES).forEach(([k,d])=>{
+    const b=document.createElement('button');
+    b.className=`sbtn${k===_style?' active':''}`; b.id=`s-${k}`;
+    b.innerHTML=`${k}<span>${d}</span>`;
+    b.onclick=()=>{ _style=k; window._terArp?.setStyle(k); document.querySelectorAll('.sbtn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); };
+    g.appendChild(b);
+  });
+}
+
+// ── Envelope ───────────────────────────────────────────────────────────────────
+function pct(v,mn,mx){ return Math.max(0,Math.min(100,((v-mn)/(mx-mn)*100))).toFixed(1)+'%'; }
+
+function onEnv() {
+  const a    = +document.getElementById('sl-a').value/1000;
+  const d    = +document.getElementById('sl-d').value/1000;
+  const s    = +document.getElementById('sl-s').value/100;
+  const r    = +document.getElementById('sl-r').value/1000;
+  const gate = +document.getElementById('sl-gate').value/100;
+  window._terArp?.setEnvelope({a,d,s,r,gate});
+  document.getElementById('vl-a').textContent    = Math.round(a*1000)+'ms';
+  document.getElementById('vl-d').textContent    = Math.round(d*1000)+'ms';
+  document.getElementById('vl-s').textContent    = Math.round(s*100)+'%';
+  document.getElementById('vl-r').textContent    = Math.round(r*1000)+'ms';
+  document.getElementById('vl-gate').textContent = Math.round(gate*100)+'%';
+  ['a','d','r'].forEach(k=>{const el=document.getElementById(`sl-${k}`);el.style.setProperty('--pct',pct(+el.value,+el.min,+el.max));});
+  document.getElementById('sl-s').style.setProperty('--pct',pct(s*100,0,100));
+  document.getElementById('sl-gate').style.setProperty('--pct',pct(gate*100,0.1,2.0));
+}
+
+// ── Space & EQ ─────────────────────────────────────────────────────────────────
+function onSpace() {
+  const dist = +document.getElementById('sl-dist').value;
+  const haas = +document.getElementById('sl-haas').value;
+  const trem = +document.getElementById('sl-trem').value;
+  window._zoneDistM = dist;
+  window._terArp?.setHaasWidth(haas/100*0.9);
+  window._terArp?.setTremoloDepth(trem/100*0.42);
+  document.getElementById('vl-dist').textContent = dist+' m';
+  document.getElementById('vl-haas').textContent = haas;
+  document.getElementById('vl-trem').textContent = trem;
+  document.getElementById('sl-dist').style.setProperty('--pct',pct(dist,0,200));
+  document.getElementById('sl-haas').style.setProperty('--pct',pct(haas,0,100));
+  document.getElementById('sl-trem').style.setProperty('--pct',pct(trem,0,100));
+}
+
+// ── Pad ────────────────────────────────────────────────────────────────────────
+let _padOct=-1;
+function onPad() {
+  const mix = +document.getElementById('sl-pmix').value/100;
+  const bri = +document.getElementById('sl-pbri').value/100;
+  const evo = +document.getElementById('sl-pevo').value/100;
+  window._terPad?.setMix(mix); window._terPad?.setBrightness(bri); window._terPad?.setEvolution(evo);
+  document.getElementById('vl-pmix').textContent=Math.round(mix*100)+'%';
+  document.getElementById('vl-pbri').textContent=Math.round(bri*100)+'%';
+  document.getElementById('vl-pevo').textContent=Math.round(evo*100)+'%';
+  ['pmix','pbri','pevo'].forEach(k=>{const el=document.getElementById(`sl-${k}`);el.style.setProperty('--pct',pct(+el.value,+el.min,+el.max));});
+}
+function setPadOct(o) {
+  _padOct=o; window._terPad?.setOctave(o);
+  document.querySelectorAll('[id^=po-]').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`po-${o}`)?.classList.add('active');
+}
+
+// ── BPM ────────────────────────────────────────────────────────────────────────
+let _bpm=90, _tapTs=[];
+function shiftBpm(d){ _bpm=Math.max(40,Math.min(240,_bpm+d)); applyBpm(); }
+function tapBpm(){
+  const now=Date.now(); _tapTs.push(now); if(_tapTs.length>8)_tapTs.shift();
+  if(_tapTs.length>=2){const gs=[];for(let i=1;i<_tapTs.length;i++)gs.push(_tapTs[i]-_tapTs[i-1]);_bpm=Math.round(60000/(gs.reduce((a,v)=>a+v,0)/gs.length));applyBpm();}
+  clearTimeout(tapBpm._t); tapBpm._t=setTimeout(()=>{_tapTs=[];},2000);
+}
+function applyBpm(){
+  window._masterBPM=_bpm; window._terArp?.setBpm(_bpm);
+  document.getElementById('bdisp').innerHTML=_bpm+'<span class="bsub">BPM · TAP</span>';
+}
+
+// ── Arp / Pad toggles ──────────────────────────────────────────────────────────
+function toggleArp(){
+  const btn=document.getElementById('arp-btn');
+  if(window._terArp?.isRunning()){
+    window._terArp.stop(); btn.className='pbtn'; btn.textContent='▶ ARP';
+  } else {
+    window._terArp?.start({bpm:_bpm,style:_style});
+    if(_active) window._terArp?.setRoot(chordRoot(_active));
+    btn.className='pbtn on'; btn.textContent='■ ARP';
+  }
+}
+function togglePad(){
+  const btn=document.getElementById('pad-btn');
+  if(window._terPad?.isRunning()){
+    window._terPad.stop(); btn.className='pbtn'; btn.textContent='♩ PAD';
+  } else {
+    if(_active) window._terPad?.setChord(CHORDS[_active].ivs, chordRoot(_active));
+    window._terPad?.start(); btn.className='pbtn pad-on'; btn.textContent='■ PAD';
+  }
+}
+
+// ── Init ────────────────────────────────────────────────────────────────────────
+buildGraph();
+buildStyles();
+onEnv(); onSpace(); onPad(); applyBpm();
+setTimeout(()=>selectChord('Ima7'), 80);
+</script>
+</body>
+</html>

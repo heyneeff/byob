@@ -1,0 +1,787 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>♦ ARP JAM</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;background:#060610;color:#e8e4f0;font-family:'Barlow Condensed',system-ui,sans-serif;overflow-x:hidden;}
+body{display:flex;flex-direction:column;}
+:root{
+  --teal:#00cba9;--rim:#18182e;--card:#0c0c1a;--muted:#484868;--muted2:#606080;
+  --mono:'DM Mono',monospace;
+}
+
+/* ── Header ── */
+.hdr{display:flex;align-items:center;gap:10px;padding:10px 14px 8px;border-bottom:1px solid var(--rim);flex-shrink:0;}
+.logo{font-size:16px;font-weight:900;letter-spacing:.12em;color:var(--teal);}
+.hdr-title{flex:1;font-size:13px;font-weight:700;letter-spacing:.18em;color:var(--muted2);}
+.hdr-status{font-size:9px;font-family:var(--mono);color:var(--muted);text-align:right;line-height:1.4;}
+
+/* ── Step visualizer ── */
+.steps-bar{display:flex;align-items:center;gap:5px;padding:8px 14px 6px;border-bottom:1px solid #0e0e1e;flex-shrink:0;}
+.dot{width:16px;height:16px;border-radius:50%;border:1.5px solid #22223a;background:var(--card);transition:background .07s,box-shadow .07s;flex-shrink:0;}
+.dot.on{background:var(--teal);border-color:var(--teal);box-shadow:0 0 8px rgba(0,203,169,.6);}
+.dot.next{background:#122820;border-color:var(--teal);}
+.form-lbl{margin-left:auto;font-size:9px;font-family:var(--mono);color:var(--muted2);flex-shrink:0;white-space:nowrap;}
+
+/* ── Sections ── */
+.section{padding:8px 12px;border-bottom:1px solid #0e0e1e;flex-shrink:0;}
+.lbl{font-size:8px;letter-spacing:.24em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;font-weight:700;}
+
+/* ── Wheel ── */
+.wheel-wrap{display:flex;flex-direction:column;align-items:center;padding:8px 12px 4px;border-bottom:1px solid #0e0e1e;flex-shrink:0;}
+#wheel-canvas{cursor:grab;touch-action:none;border-radius:50%;}
+#wheel-canvas:active{cursor:grabbing;}
+
+/* ── Hex info panel ── */
+.hex-panel{background:#090916;border:1px solid #1a1a30;border-radius:8px;padding:8px 10px;margin-top:6px;display:none;}
+.hex-panel.on{display:block;}
+.hex-top{display:flex;align-items:baseline;gap:7px;margin-bottom:4px;}
+.hex-sym{font-size:22px;line-height:1;}
+.hex-name{font-size:13px;font-weight:900;letter-spacing:.05em;}
+.hex-sub{font-size:8px;color:var(--muted2);letter-spacing:.07em;}
+.hex-chord{font-size:11px;font-weight:700;color:var(--teal);margin-bottom:2px;}
+.hex-notes{font-size:10px;font-family:var(--mono);color:#8080a0;margin-bottom:3px;}
+.hex-feel{font-size:9px;color:var(--muted2);font-style:italic;}
+.hex-code{font-size:8px;font-family:var(--mono);color:#343450;margin-top:4px;}
+.hex-code span{color:#606080;}
+.hex-next{display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;}
+.next-chip{font-size:8px;padding:2px 7px;border-radius:3px;border:1px solid #22223a;color:var(--muted2);cursor:pointer;transition:all .1s;font-family:'Barlow Condensed',system-ui;letter-spacing:.04em;}
+.next-chip:hover,.next-chip:active{border-color:var(--teal);color:var(--teal);}
+
+/* ── Style buttons ── */
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;}
+.style-btn{padding:7px 3px 5px;border-radius:6px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;transition:all .1s;user-select:none;text-align:center;font-size:11px;font-weight:700;letter-spacing:.05em;color:#7070a0;}
+.style-btn.active{border-color:var(--teal);color:var(--teal);background:color-mix(in srgb,var(--teal) 8%,var(--card));}
+.style-btn:active{transform:scale(.95);}
+.style-sub{font-size:6.5px;color:var(--muted);display:block;margin-top:1px;letter-spacing:.06em;}
+
+/* ── Keys ── */
+.keys-row{display:flex;gap:3px;}
+.key{flex:1;padding:8px 1px 6px;border-radius:5px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;font-size:9px;font-weight:700;color:#6060a0;transition:all .1s;user-select:none;text-align:center;}
+.key.black{background:#080814;color:#484868;}
+.key.gap{background:transparent;border-color:transparent;pointer-events:none;}
+.key.lit,.key:active{background:var(--teal);border-color:var(--teal);color:#000;}
+.oct-row{display:flex;gap:4px;margin-top:4px;}
+.oct-btn{flex:1;padding:4px;border-radius:4px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;font-size:9px;font-weight:700;color:#6060a0;user-select:none;text-align:center;transition:all .1s;}
+.oct-btn.active{border-color:var(--teal);color:var(--teal);background:#0e1a18;}
+
+/* ── Sliders ── */
+.sl-row{display:flex;align-items:center;gap:7px;margin-bottom:5px;}
+.sl-lbl{font-size:8px;font-family:var(--mono);color:var(--muted2);width:28px;flex-shrink:0;}
+.sl-val{font-size:8px;font-family:var(--mono);color:#8080a0;width:38px;text-align:right;flex-shrink:0;}
+input[type=range]{
+  -webkit-appearance:none;flex:1;height:3px;border-radius:2px;outline:none;cursor:pointer;
+  background:linear-gradient(to right,var(--teal) var(--pct,50%),#1e1e34 var(--pct,50%));
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:14px;height:14px;border-radius:50%;
+  background:var(--teal);box-shadow:0 0 5px rgba(0,203,169,.4);
+}
+.sl-meta{display:flex;justify-content:space-between;font-size:7px;color:var(--muted);margin-top:1px;}
+
+/* ── BPM ── */
+.bpm-row{display:flex;align-items:center;gap:8px;}
+.bpm-adj{width:32px;height:32px;border-radius:6px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;font-size:16px;color:#6060a0;display:flex;align-items:center;justify-content:center;transition:all .1s;flex-shrink:0;}
+.bpm-adj:active{color:var(--teal);}
+.bpm-disp{flex:1;text-align:center;font-size:24px;font-weight:900;cursor:pointer;line-height:1.1;}
+.bpm-sub{font-size:8px;color:var(--muted);letter-spacing:.16em;display:block;}
+
+/* ── Play row ── */
+.play-row{display:flex;gap:6px;padding:8px 12px 10px;flex-shrink:0;}
+.play-btn{flex:1;padding:12px;border-radius:9px;border:none;cursor:pointer;font:900 15px 'Barlow Condensed',system-ui;letter-spacing:.1em;text-transform:uppercase;transition:all .12s;}
+.play-btn.off{background:var(--card);border:1.5px solid var(--rim);color:#6060a0;}
+.play-btn.on{background:var(--teal);color:#000;box-shadow:0 0 20px rgba(0,203,169,.25);}
+.play-btn:active{transform:scale(.96);}
+.pad-btn{background:var(--card);border:1.5px solid var(--rim);color:#9060c0;}
+.pad-btn.on{background:#1a0a2e;border-color:#9060c0;color:#c090ff;box-shadow:0 0 16px rgba(144,96,192,.25);}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="hdr">
+  <span class="logo">BYOB</span>
+  <span class="hdr-title">♦ ARP JAM</span>
+  <div class="hdr-status" id="hdr-status">— not playing —</div>
+</div>
+
+<!-- Step visualizer -->
+<div class="steps-bar">
+  <div class="dot" id="dot-0"></div><div class="dot" id="dot-1"></div>
+  <div class="dot" id="dot-2"></div><div class="dot" id="dot-3"></div>
+  <div class="dot" id="dot-4"></div><div class="dot" id="dot-5"></div>
+  <div class="dot" id="dot-6"></div><div class="dot" id="dot-7"></div>
+  <div class="dot" id="dot-8"></div>
+  <span class="form-lbl" id="form-lbl">— ·</span>
+</div>
+
+<!-- Chord Wheel -->
+<div class="wheel-wrap">
+  <canvas id="wheel-canvas" width="280" height="280"></canvas>
+  <div class="hex-panel" id="hex-panel"></div>
+</div>
+
+<!-- Pattern -->
+<div class="section">
+  <div class="lbl">Pattern</div>
+  <div class="g3" id="style-grid"></div>
+</div>
+
+<!-- Root note -->
+<div class="section">
+  <div class="lbl">Root note</div>
+  <div class="keys-row" id="white-keys"></div>
+  <div class="keys-row" style="margin-top:3px;" id="black-keys"></div>
+  <div class="oct-row" id="oct-row"></div>
+</div>
+
+<!-- Space & EQ -->
+<div class="section">
+  <div class="lbl">Space & EQ</div>
+  <div class="sl-row">
+    <span class="sl-lbl">Dist</span>
+    <input type="range" id="sl-dist" min="0" max="200" value="0" oninput="onDist(this)"/>
+    <span class="sl-val" id="vl-dist">0 m</span>
+  </div>
+  <div class="sl-meta"><span>close · dry · sub warm</span><span>far · wet · mid boxy</span></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;">
+    <div>
+      <div class="lbl" style="margin-bottom:3px;">Width</div>
+      <div class="sl-row" style="margin-bottom:0;">
+        <input type="range" id="sl-haas" min="0" max="100" value="50" style="--pct:50%" oninput="onHaas(this)"/>
+        <span class="sl-val" id="vl-haas">50</span>
+      </div>
+    </div>
+    <div>
+      <div class="lbl" style="margin-bottom:3px;">Tremolo</div>
+      <div class="sl-row" style="margin-bottom:0;">
+        <input type="range" id="sl-trem" min="0" max="100" value="10" style="--pct:10%" oninput="onTrem(this)"/>
+        <span class="sl-val" id="vl-trem">10</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Envelope -->
+<div class="section">
+  <div class="lbl">Envelope</div>
+  <div class="sl-row"><span class="sl-lbl">A</span><input type="range" id="sl-a" min="1" max="500" value="7" oninput="onEnv()"/><span class="sl-val" id="vl-a">7ms</span></div>
+  <div class="sl-row"><span class="sl-lbl">D</span><input type="range" id="sl-d" min="10" max="800" value="55" oninput="onEnv()"/><span class="sl-val" id="vl-d">55ms</span></div>
+  <div class="sl-row"><span class="sl-lbl">S</span><input type="range" id="sl-s" min="0" max="100" value="58" style="--pct:58%" oninput="onEnv()"/><span class="sl-val" id="vl-s">58%</span></div>
+  <div class="sl-row"><span class="sl-lbl">R</span><input type="range" id="sl-r" min="10" max="1500" value="90" oninput="onEnv()"/><span class="sl-val" id="vl-r">90ms</span></div>
+  <div class="sl-row"><span class="sl-lbl">Gate</span><input type="range" id="sl-gate" min="10" max="200" value="82" style="--pct:37%" oninput="onEnv()"/><span class="sl-val" id="vl-gate">82%</span></div>
+</div>
+
+<!-- Pad -->
+<div class="section">
+  <div class="lbl">Drone pad</div>
+  <div class="sl-row"><span class="sl-lbl">Mix</span><input type="range" id="sl-pmix" min="0" max="100" value="45" style="--pct:45%" oninput="onPad()"/><span class="sl-val" id="vl-pmix">45%</span></div>
+  <div class="sl-row"><span class="sl-lbl">Bright</span><input type="range" id="sl-pbri" min="0" max="100" value="35" style="--pct:35%" oninput="onPad()"/><span class="sl-val" id="vl-pbri">35%</span></div>
+  <div class="sl-row"><span class="sl-lbl">Evolve</span><input type="range" id="sl-pevo" min="0" max="100" value="25" style="--pct:25%" oninput="onPad()"/><span class="sl-val" id="vl-pevo">25%</span></div>
+  <div style="display:flex;gap:5px;margin-top:4px;">
+    <div class="lbl" style="margin:0;line-height:2;flex-shrink:0;">Oct</div>
+    <div style="display:flex;gap:4px;flex:1;">
+      <button class="oct-btn" id="poct--2" onclick="setPadOct(-2)">−2</button>
+      <button class="oct-btn active" id="poct--1" onclick="setPadOct(-1)">−1</button>
+      <button class="oct-btn" id="poct-0"  onclick="setPadOct(0)">0</button>
+      <button class="oct-btn" id="poct-1"  onclick="setPadOct(1)">+1</button>
+    </div>
+  </div>
+</div>
+
+<!-- BPM -->
+<div class="section">
+  <div class="lbl">BPM</div>
+  <div class="bpm-row">
+    <button class="bpm-adj" onclick="shiftBpm(-5)">−</button>
+    <div class="bpm-disp" id="bpm-disp" onclick="tapBpm()">120<span class="bpm-sub">BPM · TAP</span></div>
+    <button class="bpm-adj" onclick="shiftBpm(+5)">+</button>
+  </div>
+</div>
+
+<!-- Play row -->
+<div class="play-row">
+  <button class="play-btn off" id="arp-btn" onclick="toggleArp()">▶ ARP</button>
+  <button class="play-btn pad-btn off" id="pad-btn" onclick="togglePad()">♩ PAD</button>
+</div>
+
+<script src="arp.js"></script>
+<script src="pad.js"></script>
+<script>
+// ── Stubs ─────────────────────────────────────────────────────────────────────
+window.syncedNow  = () => Date.now();
+window._masterBPM = null;
+window._zoneDistM = 0;
+const _refMs = Date.now() - (Date.now() % (27 * 500));
+window._terGetZone = () => ({ playback_started_at: new Date(_refMs).toISOString() });
+
+// ── Note data ─────────────────────────────────────────────────────────────────
+const LETTERS   = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+const WHITE_IDX = [0,2,4,5,7,9,11];
+const BLACK_LAY = [1,null,3,null,null,6,null,8,null,10];
+let _noteIdx = 0, _octave = 4;
+function rootMidi() { return (_octave + 1) * 12 + _noteIdx; }
+function ivToNotes(ivs, root) { return ivs.map(i => LETTERS[(root+i)%12]).join('  '); }
+
+// ── Trigram data ──────────────────────────────────────────────────────────────
+// Gray-code order: each adjacent pair differs by exactly 1 trit.
+// This means left/right neighbors on the wheel ARE the natural next chords.
+const WHEEL_ORDER = ['NNN','NNP','NPP','NPN','PPN','PPP','PNP','PNN'];
+
+const TGM = {
+  NNN:{ sym:'☰', name:'Heaven',  iching:'Heaven (Qian)', chord:'Major 7',      ivs:[0,4,7,11], feel:'Celestial · expansive · bright',       col:'#e8d840' },
+  NNP:{ sym:'☱', name:'Lake',    iching:'Lake (Dui)',    chord:'Major 6',       ivs:[0,4,7,9],  feel:'Reflective · open · joyful',            col:'#50c0e8' },
+  NPP:{ sym:'☳', name:'Thunder', iching:'Thunder (Zhen)',chord:'Half-dim',      ivs:[0,3,6,10], feel:'Dramatic · searching · unstable',        col:'#9050e8' },
+  NPN:{ sym:'☲', name:'Fire',    iching:'Fire (Li)',     chord:'Dominant 7',    ivs:[0,4,7,10], feel:'Tense · brilliant · yearning',           col:'#e85030' },
+  PPN:{ sym:'☶', name:'Mountain',iching:'Mountain (Gen)',chord:'Diminished 7',  ivs:[0,3,6,9],  feel:'Still · heavy · ambiguous',              col:'#8090a0' },
+  PPP:{ sym:'☷', name:'Earth',   iching:'Earth (Kun)',   chord:'Major',         ivs:[0,4,7],    feel:'Stable · grounded · resolved',           col:'#00cba9' },
+  PNP:{ sym:'☵', name:'Water',   iching:'Water (Kan)',   chord:'Minor 7',       ivs:[0,3,7,10], feel:'Deep · flowing · melancholic',           col:'#3060e0' },
+  PNN:{ sym:'☴', name:'Wind',    iching:'Wind (Xun)',    chord:'Sus4 add9',     ivs:[0,5,7,12], feel:'Floating · gentle · suspended',          col:'#50d870' },
+};
+
+// Neighbors: keys that differ by exactly 1 trit
+function neighbors(key) {
+  return WHEEL_ORDER.filter(k => {
+    let d = 0; for (let i=0;i<3;i++) { if(k[i]!==key[i]) d++; } return d===1;
+  });
+}
+
+// Neighbor type: P-adding = resolve, N-adding = tension, lateral = same count
+function neighborType(from, to) {
+  const fp = from.split('').filter(c=>c==='P').length;
+  const tp = to.split('').filter(c=>c==='P').length;
+  return tp > fp ? 'resolve' : tp < fp ? 'tension' : 'lateral';
+}
+
+// ── Wheel state ───────────────────────────────────────────────────────────────
+let _wheelAngle  = 0;      // radians — rotation of wheel
+let _wheelVel    = 0;      // radians/frame spin velocity
+let _touching    = false;
+let _touchAngle0 = 0;      // angle at touch start
+let _wheelAngle0 = 0;      // wheel angle at touch start
+let _touchTime0  = 0;
+let _prevTouchAngle = 0;
+let _lockedKey   = null;   // null = auto-follow arp consensus
+let _displayKey  = 'PPP';  // what's currently shown
+
+const SEG = Math.PI * 2 / 8;
+
+function wheelSegAtTop() {
+  // Which WHEEL_ORDER index is at the top pointer (angle = -π/2)?
+  const norm = ((-_wheelAngle - Math.PI/2) % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
+  return Math.round(norm / SEG) % 8;
+}
+
+function snapAngleForSeg(i) {
+  // Wheel rotation so that segment i is at the top
+  return -(Math.PI/2 + i * SEG);
+}
+
+// ── Canvas wheel rendering ─────────────────────────────────────────────────────
+const canvas = document.getElementById('wheel-canvas');
+const wCtx   = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const CX = W/2, CY = H/2;
+const R_OUTER = W/2 - 6;
+const R_INNER = W/2 * 0.28;  // center hole
+const R_TEXT  = W/2 * 0.65;
+const R_SYM   = W/2 * 0.50;
+
+function hexToRgba(hex, a) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function drawWheel() {
+  wCtx.clearRect(0,0,W,H);
+
+  const currentIdx = wheelSegAtTop();
+  const currentKey = WHEEL_ORDER[currentIdx];
+  const nbrs = neighbors(currentKey);
+
+  WHEEL_ORDER.forEach((key, i) => {
+    const t   = TGM[key];
+    const mid = _wheelAngle + i * SEG;   // midpoint angle of this segment
+    const a0  = mid - SEG/2;
+    const a1  = mid + SEG/2;
+
+    const isCurrent  = i === currentIdx;
+    const isNeighbor = nbrs.includes(key);
+
+    // ── Segment fill ──
+    const grad = wCtx.createRadialGradient(CX,CY,R_INNER, CX,CY,R_OUTER);
+    if (isCurrent) {
+      grad.addColorStop(0, hexToRgba(t.col, 0.25));
+      grad.addColorStop(1, hexToRgba(t.col, 0.55));
+    } else if (isNeighbor) {
+      grad.addColorStop(0, hexToRgba(t.col, 0.06));
+      grad.addColorStop(1, hexToRgba(t.col, 0.18));
+    } else {
+      grad.addColorStop(0, 'rgba(12,12,26,0.6)');
+      grad.addColorStop(1, 'rgba(8,8,18,0.8)');
+    }
+
+    wCtx.beginPath();
+    wCtx.moveTo(CX + Math.cos(a0) * R_INNER, CY + Math.sin(a0) * R_INNER);
+    wCtx.arc(CX, CY, R_OUTER, a0, a1);
+    wCtx.arc(CX, CY, R_INNER, a1, a0, true);
+    wCtx.closePath();
+    wCtx.fillStyle = grad;
+    wCtx.fill();
+
+    // Divider lines
+    wCtx.beginPath();
+    wCtx.moveTo(CX + Math.cos(a0)*R_INNER, CY + Math.sin(a0)*R_INNER);
+    wCtx.lineTo(CX + Math.cos(a0)*R_OUTER, CY + Math.sin(a0)*R_OUTER);
+    wCtx.strokeStyle = 'rgba(30,30,60,0.8)';
+    wCtx.lineWidth = 1;
+    wCtx.stroke();
+
+    // Glow ring on current
+    if (isCurrent) {
+      wCtx.beginPath();
+      wCtx.arc(CX, CY, R_OUTER, a0, a1);
+      wCtx.strokeStyle = hexToRgba(t.col, 0.7);
+      wCtx.lineWidth = 2.5;
+      wCtx.stroke();
+    }
+
+    // Neighbor arc accent
+    if (isNeighbor) {
+      wCtx.beginPath();
+      wCtx.arc(CX, CY, R_OUTER - 1, a0+0.02, a1-0.02);
+      wCtx.strokeStyle = hexToRgba(t.col, 0.35);
+      wCtx.lineWidth = 1.5;
+      wCtx.stroke();
+    }
+
+    // ── Labels ──
+    const lx = CX + Math.cos(mid) * R_SYM;
+    const ly = CY + Math.sin(mid) * R_SYM;
+    wCtx.save();
+    wCtx.translate(lx, ly);
+    wCtx.rotate(mid + Math.PI/2);
+
+    // Symbol
+    wCtx.font = `${isCurrent ? 19 : 15}px serif`;
+    wCtx.fillStyle = isCurrent ? '#fff' : isNeighbor ? hexToRgba(t.col, 0.85) : '#3a3a5a';
+    wCtx.textAlign = 'center';
+    wCtx.textBaseline = 'middle';
+    wCtx.fillText(t.sym, 0, -6);
+
+    // Chord name
+    wCtx.font = `700 ${isCurrent ? 8 : 7}px 'Barlow Condensed',system-ui`;
+    wCtx.fillStyle = isCurrent ? '#ffffff' : isNeighbor ? hexToRgba(t.col, 0.7) : '#2a2a4a';
+    wCtx.fillText(t.chord.slice(0,8), 0, 6);
+    wCtx.restore();
+  });
+
+  // ── Center circle ──
+  const cGrad = wCtx.createRadialGradient(CX,CY,0, CX,CY,R_INNER);
+  cGrad.addColorStop(0, '#12122a');
+  cGrad.addColorStop(1, '#0a0a18');
+  wCtx.beginPath();
+  wCtx.arc(CX, CY, R_INNER, 0, Math.PI*2);
+  wCtx.fillStyle = cGrad;
+  wCtx.fill();
+  wCtx.strokeStyle = '#1a1a3a';
+  wCtx.lineWidth = 1;
+  wCtx.stroke();
+
+  const ct = TGM[currentKey];
+  wCtx.textAlign = 'center';
+  wCtx.textBaseline = 'middle';
+  wCtx.font = `22px serif`;
+  wCtx.fillStyle = ct.col;
+  wCtx.fillText(ct.sym, CX, CY - 6);
+  wCtx.font = `700 8px 'Barlow Condensed',system-ui`;
+  wCtx.fillStyle = '#7070a0';
+  wCtx.fillText(currentKey, CX, CY + 8);
+
+  // ── Top pointer ──
+  const px = CX;
+  const py = 4;
+  wCtx.beginPath();
+  wCtx.moveTo(px-5, py); wCtx.lineTo(px+5, py); wCtx.lineTo(px, py+9);
+  wCtx.closePath();
+  wCtx.fillStyle = '#ffffff';
+  wCtx.fill();
+
+  // Update display if changed
+  if (currentKey !== _displayKey) {
+    _displayKey = currentKey;
+    onWheelChange(currentKey);
+  }
+}
+
+// ── Wheel physics loop ────────────────────────────────────────────────────────
+let _snapping = false;
+let _snapTarget = 0;
+
+function wheelLoop() {
+  if (!_touching) {
+    if (_snapping) {
+      const diff = _snapTarget - _wheelAngle;
+      if (Math.abs(diff) < 0.002) {
+        _wheelAngle = _snapTarget;
+        _snapping = false;
+        _wheelVel = 0;
+      } else {
+        _wheelAngle += diff * 0.18;  // spring snap
+      }
+    } else if (Math.abs(_wheelVel) > 0.0005) {
+      _wheelAngle += _wheelVel;
+      _wheelVel  *= 0.90;           // friction
+      // Check if slowed enough to snap
+      if (Math.abs(_wheelVel) < 0.04) {
+        const idx = wheelSegAtTop();
+        _snapTarget = snapAngleForSeg(idx);
+        _snapping   = true;
+      }
+    }
+  }
+  drawWheel();
+  requestAnimationFrame(wheelLoop);
+}
+
+// ── Touch / mouse handling ────────────────────────────────────────────────────
+function getEventAngle(e) {
+  const rect = canvas.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return Math.atan2(clientY - rect.top  - CY * (rect.height/H),
+                    clientX - rect.left - CX * (rect.width/W));
+}
+
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  _touching      = true;
+  _touchAngle0   = getEventAngle(e);
+  _wheelAngle0   = _wheelAngle;
+  _prevTouchAngle= _touchAngle0;
+  _touchTime0    = Date.now();
+  _snapping      = false;
+  _wheelVel      = 0;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!_touching) return;
+  const angle  = getEventAngle(e);
+  const dAngle = angle - _touchAngle0;
+  _wheelVel    = (angle - _prevTouchAngle) * 0.6;
+  _prevTouchAngle = angle;
+  _wheelAngle  = _wheelAngle0 + dAngle;
+}, { passive: false });
+
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  _touching = false;
+  // If swipe was fast, keep velocity; otherwise snap immediately
+  if (Math.abs(_wheelVel) < 0.01) {
+    const idx = wheelSegAtTop();
+    _snapTarget = snapAngleForSeg(idx);
+    _snapping   = true;
+  }
+});
+
+// Mouse fallback
+canvas.addEventListener('mousedown', e => {
+  _touching      = true;
+  _touchAngle0   = getEventAngle(e);
+  _wheelAngle0   = _wheelAngle;
+  _prevTouchAngle= _touchAngle0;
+  _snapping      = false; _wheelVel = 0;
+});
+window.addEventListener('mousemove', e => {
+  if (!_touching) return;
+  const angle = getEventAngle(e);
+  _wheelVel   = (angle - _prevTouchAngle) * 0.6;
+  _prevTouchAngle = angle;
+  _wheelAngle = _wheelAngle0 + (angle - _touchAngle0);
+});
+window.addEventListener('mouseup', () => {
+  if (!_touching) return;
+  _touching = false;
+  if (Math.abs(_wheelVel) < 0.01) {
+    const idx = wheelSegAtTop();
+    _snapTarget = snapAngleForSeg(idx);
+    _snapping   = true;
+  }
+});
+
+// ── Wheel selection handler ───────────────────────────────────────────────────
+function onWheelChange(key) {
+  _lockedKey = key;
+  window._terArp?.setTrigram(key);
+
+  const t   = TGM[key];
+  const ivs = t.ivs;
+  window._terPad?.setChord(ivs, rootMidi());
+
+  showHexPanel(key);
+  document.getElementById('hdr-status').textContent = `${t.sym} ${key} — ${t.chord}`;
+}
+
+function showHexPanel(key) {
+  const t    = TGM[key];
+  const ivs  = t.ivs;
+  const root = rootMidi();
+  const nbrs = neighbors(key);
+
+  const nextHtml = nbrs.map(nk => {
+    const nt   = TGM[nk];
+    const type = neighborType(key, nk);
+    const label= type==='resolve'?'↓ resolve':type==='tension'?'↑ tension':'→ lateral';
+    return `<span class="next-chip" onclick="spinToKey('${nk}')" style="border-color:${nt.col}33;color:${nt.col}cc">${nt.sym} ${nt.name} <span style="opacity:.6">${label}</span></span>`;
+  }).join('');
+
+  const panel = document.getElementById('hex-panel');
+  panel.innerHTML = `
+    <div class="hex-top">
+      <span class="hex-sym">${t.sym}</span>
+      <div><div class="hex-name">${t.name}</div><div class="hex-sub">${t.iching}</div></div>
+    </div>
+    <div class="hex-chord">${t.chord}</div>
+    <div class="hex-notes">${LETTERS[root%12]}${_octave}  ${ivToNotes(ivs, root)}</div>
+    <div class="hex-feel">${t.feel}</div>
+    <div class="hex-next">${nextHtml}</div>
+    <div class="hex-code">tcons(<span>${key.split('').join(', ')}</span>) = <span>${key}</span> · <span>[${ivs.join(', ')}]</span></div>`;
+  panel.classList.add('on');
+}
+
+function spinToKey(key) {
+  const idx = WHEEL_ORDER.indexOf(key);
+  if (idx < 0) return;
+  // Spin shortest path
+  const target = snapAngleForSeg(idx);
+  let diff = target - _wheelAngle;
+  // Normalize to [-π, π]
+  while (diff >  Math.PI) diff -= Math.PI*2;
+  while (diff < -Math.PI) diff += Math.PI*2;
+  _snapTarget = _wheelAngle + diff;
+  _snapping   = true;
+}
+
+// ── Style buttons ─────────────────────────────────────────────────────────────
+const STYLES = {
+  UP:     '↑ ascend', DOWN: '↓ descend', BOUNCE: '↕ leap',
+  FOLD:   '↑↓ fold',  SKIP: '· skip ·',  PULSE:  '● pulse',
+};
+let _style = 'UP';
+
+function buildStyles() {
+  const g = document.getElementById('style-grid'); g.innerHTML = '';
+  Object.entries(STYLES).forEach(([k, d]) => {
+    const b = document.createElement('button');
+    b.className = `style-btn ${k===_style?'active':''}`;
+    b.id = `s-${k}`;
+    b.innerHTML = `${k}<span class="style-sub">${d}</span>`;
+    b.onclick = () => {
+      _style = k; window._terArp?.setStyle(k);
+      document.querySelectorAll('.style-btn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+    };
+    g.appendChild(b);
+  });
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+function buildKeyboard() {
+  const wr = document.getElementById('white-keys'); wr.innerHTML = '';
+  WHITE_IDX.forEach(n => {
+    const b = document.createElement('button');
+    b.className='key'; b.id=`wk-${n}`; b.textContent=LETTERS[n];
+    b.onclick = () => selectNote(n); wr.appendChild(b);
+  });
+  const br = document.getElementById('black-keys'); br.innerHTML = '';
+  BLACK_LAY.forEach(n => {
+    const b = document.createElement('button');
+    if (n===null){ b.className='key gap'; b.textContent=' '; }
+    else { b.className='key black'; b.id=`bk-${n}`; b.textContent=LETTERS[n]; b.onclick=()=>selectNote(n); }
+    br.appendChild(b);
+  });
+  const or = document.getElementById('oct-row'); or.innerHTML = '';
+  [3,4,5].forEach(o => {
+    const b = document.createElement('button');
+    b.className=`oct-btn${o===_octave?' active':''}`; b.id=`ot-${o}`;
+    b.textContent=`OCT ${o}`; b.onclick=()=>selectOctave(o); or.appendChild(b);
+  });
+}
+
+function selectNote(n) {
+  _noteIdx = n; window._terArp?.setRoot(rootMidi());
+  if (_lockedKey) window._terPad?.setChord(TGM[_lockedKey].ivs, rootMidi());
+  document.querySelectorAll('.key').forEach(b=>b.classList.remove('lit'));
+  document.getElementById(`wk-${n}`)?.classList.add('lit');
+  document.getElementById(`bk-${n}`)?.classList.add('lit');
+  setTimeout(()=>document.querySelectorAll('.key').forEach(b=>b.classList.remove('lit')), 160);
+  if (_lockedKey) showHexPanel(_lockedKey);
+}
+
+function selectOctave(o) {
+  _octave = o; window._terArp?.setRoot(rootMidi());
+  if (_lockedKey) window._terPad?.setChord(TGM[_lockedKey].ivs, rootMidi());
+  document.querySelectorAll('[id^=ot-]').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`ot-${o}`)?.classList.add('active');
+  if (_lockedKey) showHexPanel(_lockedKey);
+}
+
+// ── Space / EQ ────────────────────────────────────────────────────────────────
+function pct(v,mn,mx){ return ((v-mn)/(mx-mn)*100).toFixed(1)+'%'; }
+
+function onDist(el) {
+  const v=+el.value; window._zoneDistM=v;
+  document.getElementById('vl-dist').textContent=v+' m';
+  el.style.setProperty('--pct', pct(v,0,200));
+}
+function onHaas(el) {
+  const v=+el.value; window._terArp?.setHaasWidth(v/100*0.9);
+  document.getElementById('vl-haas').textContent=v;
+  el.style.setProperty('--pct', pct(v,0,100));
+}
+function onTrem(el) {
+  const v=+el.value; window._terArp?.setTremoloDepth(v/100*0.42);
+  document.getElementById('vl-trem').textContent=v;
+  el.style.setProperty('--pct', pct(v,0,100));
+}
+
+// ── Envelope ──────────────────────────────────────────────────────────────────
+function onEnv() {
+  const a    = +document.getElementById('sl-a').value / 1000;
+  const d    = +document.getElementById('sl-d').value / 1000;
+  const s    = +document.getElementById('sl-s').value / 100;
+  const r    = +document.getElementById('sl-r').value / 1000;
+  const gate = +document.getElementById('sl-gate').value / 100;
+  window._terArp?.setEnvelope({a,d,s,r,gate});
+  document.getElementById('vl-a').textContent    = Math.round(a*1000)+'ms';
+  document.getElementById('vl-d').textContent    = Math.round(d*1000)+'ms';
+  document.getElementById('vl-s').textContent    = Math.round(s*100)+'%';
+  document.getElementById('vl-r').textContent    = Math.round(r*1000)+'ms';
+  document.getElementById('vl-gate').textContent = Math.round(gate*100)+'%';
+  ['a','d','r'].forEach(k=>{
+    const el=document.getElementById(`sl-${k}`);
+    el.style.setProperty('--pct', pct(+el.value,+el.min,+el.max));
+  });
+  document.getElementById('sl-s').style.setProperty('--pct', pct(s*100,0,100));
+  document.getElementById('sl-gate').style.setProperty('--pct', pct(gate*100,0.1,2.0));
+}
+
+// ── Pad ───────────────────────────────────────────────────────────────────────
+let _padOct = -1;
+function onPad() {
+  const mix = +document.getElementById('sl-pmix').value / 100;
+  const bri = +document.getElementById('sl-pbri').value / 100;
+  const evo = +document.getElementById('sl-pevo').value / 100;
+  window._terPad?.setMix(mix);
+  window._terPad?.setBrightness(bri);
+  window._terPad?.setEvolution(evo);
+  document.getElementById('vl-pmix').textContent = Math.round(mix*100)+'%';
+  document.getElementById('vl-pbri').textContent = Math.round(bri*100)+'%';
+  document.getElementById('vl-pevo').textContent = Math.round(evo*100)+'%';
+  ['pmix','pbri','pevo'].forEach(k=>{
+    const el=document.getElementById(`sl-${k}`);
+    el.style.setProperty('--pct', pct(+el.value,+el.min,+el.max));
+  });
+}
+function setPadOct(o) {
+  _padOct = o; window._terPad?.setOctave(o);
+  document.querySelectorAll('[id^=poct-]').forEach(b=>b.classList.remove('active'));
+  document.getElementById(`poct-${o}`)?.classList.add('active');
+}
+
+// ── BPM ───────────────────────────────────────────────────────────────────────
+let _bpm = 120, _tapTs = [];
+function shiftBpm(d) { _bpm=Math.max(40,Math.min(240,_bpm+d)); applyBpm(); }
+function tapBpm() {
+  const now=Date.now(); _tapTs.push(now); if(_tapTs.length>8) _tapTs.shift();
+  if (_tapTs.length>=2) {
+    const gaps=[]; for(let i=1;i<_tapTs.length;i++) gaps.push(_tapTs[i]-_tapTs[i-1]);
+    _bpm=Math.round(60000/(gaps.reduce((a,v)=>a+v,0)/gaps.length));
+    applyBpm();
+  }
+  clearTimeout(tapBpm._t); tapBpm._t=setTimeout(()=>{_tapTs=[];},2000);
+}
+function applyBpm() {
+  window._masterBPM=_bpm; window._terArp?.setBpm(_bpm);
+  document.getElementById('bpm-disp').innerHTML=_bpm+'<span class="bpm-sub">BPM · TAP</span>';
+}
+
+// ── Play ──────────────────────────────────────────────────────────────────────
+function toggleArp() {
+  const btn = document.getElementById('arp-btn');
+  if (window._terArp?.isRunning()) {
+    window._terArp.stop();
+    btn.className='play-btn off'; btn.textContent='▶ ARP';
+  } else {
+    window._terArp?.start({ root:rootMidi(), bpm:_bpm, style:_style });
+    if (_lockedKey) window._terArp?.setTrigram(_lockedKey);
+    btn.className='play-btn on'; btn.textContent='■ ARP';
+  }
+}
+
+function togglePad() {
+  const btn = document.getElementById('pad-btn');
+  if (window._terPad?.isRunning()) {
+    window._terPad.stop();
+    btn.className='play-btn pad-btn off'; btn.textContent='♩ PAD';
+  } else {
+    const key = _lockedKey || 'PPP';
+    window._terPad?.setChord(TGM[key].ivs, rootMidi());
+    window._terPad?.start();
+    btn.className='play-btn pad-btn on'; btn.textContent='■ PAD';
+  }
+}
+
+// ── Step visualizer ───────────────────────────────────────────────────────────
+const FORM_SYM = ['○○○','●○○','●●○'];
+function animateSteps() {
+  const arp = window._terArp;
+  if (arp?.isRunning()) {
+    const { step, form } = arp.getPhase();
+    for (let i=0;i<9;i++) {
+      const d=document.getElementById(`dot-${i}`);
+      if(!d) continue;
+      d.classList.toggle('on', i===step);
+      d.classList.toggle('next', i===(step+1)%9 || i===(step+2)%9);
+    }
+    document.getElementById('form-lbl').textContent=`${FORM_SYM[form]} form ${form+1}`;
+    // Auto-update pad chord to follow arp consensus if not locked
+    if (!_lockedKey) {
+      const k = arp.getTrigramKey();
+      if (k !== _displayKey) {
+        _displayKey = k;
+        window._terPad?.setChord(TGM[k]?.ivs ?? [0,4,7], rootMidi());
+      }
+    }
+  }
+  requestAnimationFrame(animateSteps);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+buildStyles();
+buildKeyboard();
+applyBpm();
+onEnv();
+onPad();
+
+// Start wheel at PPP (Earth — stable starting point)
+const ppIdx = WHEEL_ORDER.indexOf('PPP');
+_wheelAngle = snapAngleForSeg(ppIdx);
+wheelLoop();
+animateSteps();
+
+// Spin to PPP after a brief visual pause
+setTimeout(() => {
+  spinToKey('PPP');
+  onWheelChange('PPP');
+}, 100);
+</script>
+</body>
+</html>
