@@ -405,7 +405,6 @@
     // Retune all oscillators to new pitch
     v.osc1.frequency.setValueAtTime(hz, startS);
     v.osc2.frequency.setValueAtTime(hz, startS);
-    v.osc3.frequency.setValueAtTime(hz, startS);
     v.sub.frequency.setValueAtTime(hz / 2, startS);
 
     // VCF filter sweep — closed → open over the attack (this is the butter).
