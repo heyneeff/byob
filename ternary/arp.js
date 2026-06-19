@@ -102,31 +102,11 @@
   let _peerTrits     = {};
 
   // ── Audio nodes ───────────────────────────────────────────────────────────────
-  let _audioCtx     = null;
-  let _voiceBus     = null;
-  // Haas
-  let _haasDelay    = null;
-  let _haasL        = null;
-  let _haasR        = null;
-  // Distance
-  let _distGain     = null;
-  let _airFilter    = null;
-  // Proximity EQ (3-band driven by distance)
-  let _proxShelf    = null;   // low shelf — sub warmth/loss
-  let _roomPeak     = null;   // low-mid peak — room buildup at distance
-  let _presCut      = null;   // presence peak — forward close, dull far
-  // Reverb
-  let _dryGain      = null;
-  let _reverbSend   = null;
-  let _convolver    = null;
-  let _reverbReturn = null;
-  // Master bus
-  let _comp         = null;
-  let _airShelf     = null;
-  let _tremoloLfo   = null;
-  let _tremoloDepth = null;
-  let _tremoloGain  = null;
-  let _master       = null;
+  let _audioCtx    = null;
+  let _voiceBus    = null;
+  let _master      = null;
+  let _voices      = [];      // pre-built voice pool — no per-note node creation
+  let _voiceIdx    = 0;       // round-robin voice stealing
   let _satCurveCache = null;
 
   // ── Clock helpers ─────────────────────────────────────────────────────────────
@@ -196,21 +176,89 @@
 
   function satCurve() {
     if (_satCurveCache) return _satCurveCache;
-    const n = 512;
-    const c = new Float32Array(n);
-    for (let i = 0; i < n; i++) { const x = (i * 2) / n - 1; c[i] = 3 * x / (1 + 2 * Math.abs(x)); }
+    const n = 512, c = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = (i * 2) / n - 1;
+      c[i] = Math.tanh(x * 2.2) / Math.tanh(2.2);  // tanh — warmer than Padé
+    }
     return (_satCurveCache = c);
   }
 
-  function createReverbIR(durS, decay) {
+  // ── Reverb IR with early reflections ─────────────────────────────────────────
+  function createPlateIR(durS) {
     const sr  = _audioCtx.sampleRate;
     const len = Math.floor(sr * durS);
     const buf = _audioCtx.createBuffer(2, len, sr);
     for (let c = 0; c < 2; c++) {
       const d = buf.getChannelData(c);
-      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+      // Early reflections: 6 discrete echoes in first 80ms
+      const erDelays = [0.011, 0.019, 0.029, 0.041, 0.058, 0.073];
+      const erGains  = [0.60,  0.50,  0.42,  0.35,  0.28,  0.22 ];
+      erDelays.forEach((dly, i) => {
+        const idx = Math.floor(dly * sr);
+        if (idx < len) d[idx] += erGains[i] * (c === 0 ? 1 : -0.85);
+      });
+      // Diffuse tail — exponential decay with slight randomness
+      for (let i = Math.floor(0.08 * sr); i < len; i++) {
+        const env = Math.pow(1 - i / len, 1.8);
+        d[i] += (Math.random() * 2 - 1) * env * 0.35;
+      }
     }
     return buf;
+  }
+
+  // ── Voice pool — 6 pre-built voices, stolen round-robin ──────────────────────
+  // Each voice: osc1(saw) + osc2(saw, detuned) + osc3(square, sub character)
+  //   → vcf (24dB LP, 2×biquad) → ampEnv → voiceBus
+  // No nodes created during playback. Zero crashes.
+  const NUM_VOICES = 6;
+
+  function buildVoice() {
+    const ctx = _audioCtx;
+    const v = {};
+
+    // Three oscillators per voice: 2 detuned saws + 1 square
+    v.osc1 = ctx.createOscillator(); v.osc1.type = 'sawtooth';
+    v.osc2 = ctx.createOscillator(); v.osc2.type = 'sawtooth';
+    v.osc3 = ctx.createOscillator(); v.osc3.type = 'square';
+
+    // Sub sine — one octave below, gives physical body
+    v.sub  = ctx.createOscillator(); v.sub.type = 'sine';
+
+    // Mix gains — osc2 slightly quieter, osc3 sub-character level, sub low
+    v.g1 = ctx.createGain(); v.g1.gain.value = 0.50;
+    v.g2 = ctx.createGain(); v.g2.gain.value = 0.45;
+    v.g3 = ctx.createGain(); v.g3.gain.value = 0.18;
+    v.gs = ctx.createGain(); v.gs.gain.value = 0.22;
+
+    // VCF: two biquad LP in series = 24dB/oct Moog-style slope
+    v.vcf1 = ctx.createBiquadFilter();
+    v.vcf1.type = 'lowpass'; v.vcf1.frequency.value = 2200; v.vcf1.Q.value = 0.55;
+    v.vcf2 = ctx.createBiquadFilter();
+    v.vcf2.type = 'lowpass'; v.vcf2.frequency.value = 2200; v.vcf2.Q.value = 0.55;
+
+    // Amplitude envelope
+    v.ampEnv = ctx.createGain(); v.ampEnv.gain.value = 0;
+
+    // Detune: osc1 sharp, osc2 flat, osc3 center — creates natural chorus beating
+    v.osc1.detune.value = +11;
+    v.osc2.detune.value = -11;
+    v.osc3.detune.value = +3;
+
+    // Wire: oscs → gains → vcf1 → vcf2 → ampEnv → voiceBus
+    v.osc1.connect(v.g1); v.g1.connect(v.vcf1);
+    v.osc2.connect(v.g2); v.g2.connect(v.vcf1);
+    v.osc3.connect(v.g3); v.g3.connect(v.vcf1);
+    v.sub.connect(v.gs);  v.gs.connect(v.vcf1);
+    v.vcf1.connect(v.vcf2);
+    v.vcf2.connect(v.ampEnv);
+    v.ampEnv.connect(_voiceBus);
+
+    // Start oscillators — they run forever, envelope controls amplitude
+    v.osc1.start(); v.osc2.start(); v.osc3.start(); v.sub.start();
+
+    v.noteEndTime = 0;
+    return v;
   }
 
   // ── Audio graph ───────────────────────────────────────────────────────────────
@@ -218,208 +266,125 @@
   function initAudio() {
     if (_audioCtx) return;
     _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    window._arpAudioCtx = _audioCtx;  // shared with pad.js
+    window._arpAudioCtx = _audioCtx;
 
-    _voiceBus = _audioCtx.createGain();
-    _voiceBus.gain.value = 1;
+    _voiceBus = _audioCtx.createGain(); _voiceBus.gain.value = 0.8;
 
-    // Haas stereo spread — 8ms delay below echo threshold, panned L/R
-    _haasDelay = _audioCtx.createDelay(0.02);
-    _haasDelay.delayTime.value = 0.008;
-    _haasL = _audioCtx.createStereoPanner(); _haasL.pan.value = -0.5;
-    _haasR = _audioCtx.createStereoPanner(); _haasR.pan.value = +0.5;
-    _voiceBus.connect(_haasL);
-    _voiceBus.connect(_haasDelay); _haasDelay.connect(_haasR);
+    // ── Juno-style stereo chorus ──────────────────────────────────────────────
+    // Two delay lines, each modulated by a slow LFO, panned L and R.
+    // Center delay 12ms, depth ±7ms, rate 0.45Hz — the butter.
+    const chorusWet  = _audioCtx.createGain(); chorusWet.gain.value  = 0.5;
+    const chorusDry  = _audioCtx.createGain(); chorusDry.gain.value  = 0.5;
+    const delL = _audioCtx.createDelay(0.05); delL.delayTime.value = 0.012;
+    const delR = _audioCtx.createDelay(0.05); delR.delayTime.value = 0.012;
+    const panL = _audioCtx.createStereoPanner(); panL.pan.value = -0.7;
+    const panR = _audioCtx.createStereoPanner(); panR.pan.value = +0.7;
+    const lfoL = _audioCtx.createOscillator(); lfoL.frequency.value = 0.45;
+    const lfoR = _audioCtx.createOscillator(); lfoR.frequency.value = 0.45;
+    // Slight phase offset between L and R LFOs for width
+    lfoR.detune.value = 180 * 100; // ~half cycle offset via detune trick
+    const depL = _audioCtx.createGain(); depL.gain.value = 0.007;
+    const depR = _audioCtx.createGain(); depR.gain.value = 0.007;
+    lfoL.connect(depL); depL.connect(delL.delayTime);
+    lfoR.connect(depR); depR.connect(delR.delayTime);
+    lfoL.start(); lfoR.start();
+    _voiceBus.connect(chorusDry);
+    _voiceBus.connect(delL); delL.connect(panL); panL.connect(chorusWet);
+    _voiceBus.connect(delR); delR.connect(panR); panR.connect(chorusWet);
 
-    // Distance volume
-    _distGain = _audioCtx.createGain(); _distGain.gain.value = 1;
-    _haasL.connect(_distGain); _haasR.connect(_distGain);
+    // ── Soft saturation (tape warmth) ─────────────────────────────────────────
+    const sat = _audioCtx.createWaveShaper();
+    sat.oversample = '4x';
+    const sc = new Float32Array(256);
+    for (let i = 0; i < 256; i++) { const x = (i * 2) / 255 - 1; sc[i] = Math.tanh(x * 1.8) / Math.tanh(1.8); }
+    sat.curve = sc;
 
-    // Air absorption LP
-    _airFilter = _audioCtx.createBiquadFilter();
-    _airFilter.type = 'lowpass'; _airFilter.frequency.value = 14000; _airFilter.Q.value = 0.5;
+    // ── Reverb (plate with early reflections, always 35% wet) ────────────────
+    const reverbSend   = _audioCtx.createGain(); reverbSend.gain.value  = 0.35;
+    const reverbReturn = _audioCtx.createGain(); reverbReturn.gain.value = 0.9;
+    const conv = _audioCtx.createConvolver(); conv.buffer = createPlateIR(3.2);
 
-    // ── Proximity EQ — 3-band parametric driven by distance ──────────────────
-    // Sub shelf: warm proximity bass close, sub-loss far
-    _proxShelf = _audioCtx.createBiquadFilter();
-    _proxShelf.type = 'lowshelf'; _proxShelf.frequency.value = 160; _proxShelf.gain.value = 3;
+    // ── Master bus: gentle limiter + warmth shelf ─────────────────────────────
+    const warmth = _audioCtx.createBiquadFilter();
+    warmth.type = 'lowshelf'; warmth.frequency.value = 200; warmth.gain.value = 2.5;
 
-    // Room buildup: early reflections colour the 300-500Hz band at distance
-    _roomPeak = _audioCtx.createBiquadFilter();
-    _roomPeak.type = 'peaking'; _roomPeak.frequency.value = 370;
-    _roomPeak.Q.value = 0.85; _roomPeak.gain.value = 0;
+    const limiter = _audioCtx.createDynamicsCompressor();
+    limiter.threshold.value = -6; limiter.ratio.value = 12;
+    limiter.attack.value = 0.002; limiter.release.value = 0.25; limiter.knee.value = 3;
 
-    // Presence: forward and intimate close, dull and withdrawn far
-    _presCut = _audioCtx.createBiquadFilter();
-    _presCut.type = 'peaking'; _presCut.frequency.value = 3200;
-    _presCut.Q.value = 1.1; _presCut.gain.value = 3.5;
+    _master = _audioCtx.createGain(); _master.gain.value = 0.55;
 
-    // Reverb
-    _dryGain     = _audioCtx.createGain(); _dryGain.gain.value = 1;
-    _reverbSend  = _audioCtx.createGain(); _reverbSend.gain.value = 0;
-    _convolver   = _audioCtx.createConvolver(); _convolver.buffer = createReverbIR(2.4, 1.6);
-    _reverbReturn = _audioCtx.createGain(); _reverbReturn.gain.value = 0.52;
-
-    // Master bus
-    _comp = _audioCtx.createDynamicsCompressor();
-    _comp.threshold.value = -20; _comp.ratio.value = 4;
-    _comp.attack.value = 0.004; _comp.release.value = 0.18; _comp.knee.value = 8;
-
-    _airShelf = _audioCtx.createBiquadFilter();
-    _airShelf.type = 'highshelf'; _airShelf.frequency.value = 9000; _airShelf.gain.value = 2;
-
-    // Tremolo — BPM-synced sine LFO on master amplitude
-    _tremoloLfo   = _audioCtx.createOscillator();
-    _tremoloLfo.type = 'sine'; _tremoloLfo.frequency.value = getBpm() / 120;
-    _tremoloDepth = _audioCtx.createGain(); _tremoloDepth.gain.value = 0.10;
-    _tremoloGain  = _audioCtx.createGain(); _tremoloGain.gain.value = 0.90;
-    _tremoloLfo.connect(_tremoloDepth); _tremoloDepth.connect(_tremoloGain.gain);
-    _tremoloLfo.start();
-
-    _master = _audioCtx.createGain(); _master.gain.value = 0.42;
-
-    // Wire:
-    // voiceBus → haasL ↘
-    //          → haasDelay→haasR ↗ → distGain → airFilter
-    //   → proxShelf → roomPeak → presCut → dryGain ↘
-    //                                    → reverbSend→convolver→reverbReturn ↗ → comp
-    //   → airShelf → tremoloGain → master → destination
-    _distGain.connect(_airFilter);
-    _airFilter.connect(_proxShelf);
-    _proxShelf.connect(_roomPeak);
-    _roomPeak.connect(_presCut);
-    _presCut.connect(_dryGain);
-    _presCut.connect(_reverbSend);
-    _dryGain.connect(_comp);
-    _reverbSend.connect(_convolver); _convolver.connect(_reverbReturn); _reverbReturn.connect(_comp);
-    _comp.connect(_airShelf);
-    _airShelf.connect(_tremoloGain);
-    _tremoloGain.connect(_master);
+    // Wire: voiceBus → chorus (dry+wet) → sat → warmth → reverb → limiter → master
+    chorusDry.connect(sat); chorusWet.connect(sat);
+    sat.connect(warmth);
+    warmth.connect(limiter);
+    warmth.connect(reverbSend); reverbSend.connect(conv); conv.connect(reverbReturn); reverbReturn.connect(limiter);
+    limiter.connect(_master);
     _master.connect(_audioCtx.destination);
+
+    // Build voice pool
+    _voices = Array.from({ length: NUM_VOICES }, buildVoice);
+    _voiceIdx = 0;
   }
 
-  // ── Distance / proximity EQ update ───────────────────────────────────────────
-
-  function updateSpace() {
-    if (!_audioCtx) return;
-    const distM  = window._zoneDistM ?? 0;
-    const t      = _audioCtx.currentTime;
-    const close  = Math.max(0, 1 - distM / 100);  // 1 at 0m, 0 at 100m+
-    const far    = Math.min(distM / 150, 1);       // 0 at 0m, 1 at 150m+
-
-    // Volume
-    _distGain.gain.setTargetAtTime(Math.max(0.05, 1 / Math.pow(1 + distM / 45, 1.3)), t, 0.1);
-
-    // Air LP
-    _airFilter.frequency.setTargetAtTime(Math.max(500, 14000 * Math.pow(0.5, distM / 65)), t, 0.15);
-
-    // Proximity EQ
-    _proxShelf.gain.setTargetAtTime(close * 3 - far * 5,   t, 0.2);   // bass: +3 close, −5 far
-    _roomPeak.gain.setTargetAtTime(far * 4.5,              t, 0.2);   // 370Hz: 0 close, +4.5 far
-    _presCut.gain.setTargetAtTime(close * 3.5 - far * 5.5, t, 0.2);  // presence: +3.5 close, −5.5 far
-
-    // Reverb wet
-    const wet = Math.min(distM / 140, 0.78);
-    _reverbSend.gain.setTargetAtTime(wet, t, 0.15);
-    _dryGain.gain.setTargetAtTime(1 - wet * 0.25, t, 0.15);
-
-    // Haas width — narrows at distance (reverb does the spreading instead)
-    const w = Math.max(0.18, 0.5 - distM / 450);
-    _haasL?.pan.setTargetAtTime(-w, t, 0.2); _haasR?.pan.setTargetAtTime(+w, t, 0.2);
-
-    // Tremolo rate
-    if (_tremoloLfo) _tremoloLfo.frequency.setTargetAtTime(getBpm() / 120, t, 0.3);
-  }
-
-  // ── Note synthesis ────────────────────────────────────────────────────────────
-  // branch3() drives oscillator type — each trit voice has a distinct timbre.
-  // tcmp()    drives phrasing — ascending lines get crisper attacks,
-  //           descending lines get longer sustain.
+  // ── Note playback via voice stealing ─────────────────────────────────────────
+  // Steal the oldest voice (round-robin). Retune oscillators, sweep VCF,
+  // trigger envelope. No new nodes. tcmp() drives phrasing as before.
 
   function playNote(midi, startS, stepDurS, accent, voice) {
-    if (!_audioCtx) return;
+    if (!_audioCtx || !_voices.length) return;
+
     const hz  = midiToHz(midi);
     const dur = stepDurS * _envGate;
+    const t   = _audioCtx.currentTime;
 
-    // tcmp() — pitch direction shapes phrasing (ascending=crisp, descending=legato)
+    // tcmp() — ascending = crisper attack, descending = more sustain
     const pitchDir   = tcmp(midi, _prevMidi);
-    const attackMod  = branch3(pitchDir, () => 1.35, () => 1.0, () => 0.65);
-    const sustainMod = branch3(pitchDir, () => 1.15, () => 1.0, () => 0.85);
+    const attackMod  = branch3(pitchDir, () => 1.3, () => 1.0, () => 0.70);
+    const sustainMod = branch3(pitchDir, () => 1.1, () => 1.0, () => 0.88);
     _prevMidi = midi;
 
-    const effAttack  = _envA * attackMod;
-    const effSustain = Math.min(_envS * sustainMod, 1);
+    const effA = _envA * attackMod;
+    const effS = Math.min(_envS * sustainMod, 1);
+    const tEnd = startS + dur;
 
-    // branch3(voice) — N/Z/P get distinct oscillator timbres
-    const oscType = branch3(voice,
-      () => 'sine',      // N bass: sine — pure, sub-heavy
-      () => 'triangle',  // Z mid:  triangle — warm, moderate harmonics
-      () => 'sawtooth',  // P lead: sawtooth → shaped → bright, cuts through
-    );
+    // Steal next voice
+    const v = _voices[_voiceIdx % NUM_VOICES];
+    _voiceIdx++;
+    v.noteEndTime = tEnd;
 
-    const osc1 = _audioCtx.createOscillator();
-    const osc2 = _audioCtx.createOscillator();
-    osc1.type = osc2.type = oscType;
-    osc1.frequency.value = hz; osc2.frequency.value = hz;
-    osc1.detune.value = +7;    osc2.detune.value = -7;
+    // Retune all oscillators to new pitch
+    v.osc1.frequency.setValueAtTime(hz, startS);
+    v.osc2.frequency.setValueAtTime(hz, startS);
+    v.osc3.frequency.setValueAtTime(hz, startS);
+    v.sub.frequency.setValueAtTime(hz / 2, startS);
 
-    // Pitch glide on downbeats (accents ≥1.0) — brings the attack alive
-    if (accent >= 1.0) {
-      osc1.detune.setValueAtTime(+24, startS);
-      osc1.detune.linearRampToValueAtTime(+7, startS + effAttack);
-      osc2.detune.setValueAtTime(-24, startS);
-      osc2.detune.linearRampToValueAtTime(-7, startS + effAttack);
-    }
+    // VCF filter sweep — starts closed, sweeps open on attack (the butter)
+    // N-voice: darker open (1200Hz→1800Hz), P-voice: brighter (1800Hz→3200Hz)
+    const vcfStart = branch3(voice, () => 900,  () => 1400, () => 1800);
+    const vcfPeak  = branch3(voice, () => 1800, () => 2600, () => 3800);
+    const vcfSweepTime = effA * 1.4;
+    v.vcf1.frequency.setValueAtTime(vcfStart, startS);
+    v.vcf1.frequency.linearRampToValueAtTime(vcfPeak, startS + vcfSweepTime);
+    v.vcf1.frequency.setTargetAtTime(vcfPeak * 0.85, startS + vcfSweepTime, 0.3);
+    v.vcf2.frequency.setValueAtTime(vcfStart * 1.1, startS);
+    v.vcf2.frequency.linearRampToValueAtTime(vcfPeak * 1.1, startS + vcfSweepTime);
+    v.vcf2.frequency.setTargetAtTime(vcfPeak * 0.95, startS + vcfSweepTime, 0.3);
 
-    // Sub oscillator — bass voice (N) only, adds physical weight
-    if (voice === N) {
-      const sub    = _audioCtx.createOscillator();
-      const subEnv = _audioCtx.createGain();
-      sub.type = 'sine';
-      sub.frequency.value = hz / 2;
-      subEnv.gain.setValueAtTime(0, startS);
-      subEnv.gain.linearRampToValueAtTime(0.25 * accent, startS + effAttack * 1.8);
-      subEnv.gain.setValueAtTime(0.25 * accent * effSustain, startS + effAttack * 1.8 + _envD);
-      subEnv.gain.linearRampToValueAtTime(0, startS + dur);
-      sub.connect(subEnv); subEnv.connect(_voiceBus);
-      sub.start(startS); sub.stop(startS + dur + 0.05);
-    }
+    // Sub level: louder for N (bass voice), near-silent for P (lead)
+    const subLevel = branch3(voice, () => 0.30, () => 0.15, () => 0.05);
+    v.gs.gain.setValueAtTime(subLevel * accent, startS);
 
-    // Soft saturation (sawtooth especially benefits — tames harshness)
-    const shaper = _audioCtx.createWaveShaper();
-    shaper.curve = satCurve(); shaper.oversample = '2x';
-
-    // Voice HP — branch3 for cutoff
-    const hp = _audioCtx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = branch3(voice, () => 28, () => 60, () => 380);
-    hp.Q.value = 0.65;
-
-    // Presence — brighter on P-voice and accented downbeats
-    const pres = _audioCtx.createBiquadFilter();
-    pres.type = 'peaking'; pres.frequency.value = 2500; pres.Q.value = 1.4;
-    pres.gain.value = branch3(voice, () => 0.5, () => 1.5, () => 3.5) * (accent >= 1.0 ? 1.4 : 1.0);
-
-    // ADSR
-    const env  = _audioCtx.createGain();
-    const t0   = startS;
-    const tA   = t0 + effAttack;
-    const tD   = tA + _envD;
-    const tR   = t0 + dur - _envR;
-    const tEnd = t0 + dur;
-
-    env.gain.setValueAtTime(0, t0);
-    env.gain.linearRampToValueAtTime(accent, tA);
-    env.gain.linearRampToValueAtTime(accent * effSustain, tD);
-    env.gain.setValueAtTime(accent * effSustain, Math.max(tD, tR));
-    env.gain.linearRampToValueAtTime(0, tEnd);
-
-    osc1.connect(shaper); osc2.connect(shaper);
-    shaper.connect(hp); hp.connect(pres); pres.connect(env);
-    env.connect(_voiceBus);
-
-    osc1.start(t0); osc1.stop(tEnd + 0.05);
-    osc2.start(t0); osc2.stop(tEnd + 0.05);
+    // ADSR on amplitude envelope
+    const tA = startS + effA;
+    const tD = tA + _envD;
+    const tR = Math.max(tD + 0.01, tEnd - _envR);
+    v.ampEnv.gain.cancelScheduledValues(t);
+    v.ampEnv.gain.setValueAtTime(v.ampEnv.gain.value, startS);
+    v.ampEnv.gain.linearRampToValueAtTime(accent * 0.85, tA);
+    v.ampEnv.gain.linearRampToValueAtTime(accent * effS * 0.75, tD);
+    v.ampEnv.gain.setValueAtTime(accent * effS * 0.75, tR);
+    v.ampEnv.gain.linearRampToValueAtTime(0, tEnd);
   }
 
   // ── Lookahead scheduler ───────────────────────────────────────────────────────
@@ -443,7 +408,6 @@
       }
 
       if (_step === 0) {
-        updateSpace();
         updateTrigram();
         window._terArpOnStep?.({ step: _step, form: _form, trigram: trigramKey() });
       }
@@ -485,21 +449,12 @@
   function toggle(opts) { _running ? stop() : start(opts); }
 
   function setRoot(midi)      { _root = midi; }
-  function setBpm(bpm)        {
-    _bpm = bpm;
-    if (_tremoloLfo && _audioCtx)
-      _tremoloLfo.frequency.setTargetAtTime(bpm / 120, _audioCtx.currentTime, 0.1);
-  }
+  function setBpm(bpm)        { _bpm = bpm; }
   function setStyle(key)      { if (key in ARP_STYLES) { _styleKey = key; recomputeForms(); } }
   function setTrigram(key)    { _forcedTrigram = (key in TRIGRAM_CHORDS) ? key : null; }
   function clearTrigram()     { _forcedTrigram = null; }
-  function setHaasWidth(w)    {
-    if (!_audioCtx) return;
-    const t = _audioCtx.currentTime;
-    _haasL?.pan.setTargetAtTime(-w, t, 0.05);
-    _haasR?.pan.setTargetAtTime(+w, t, 0.05);
-  }
-  function setTremoloDepth(d) { if (_tremoloDepth) _tremoloDepth.gain.value = Math.max(0, Math.min(0.45, d)); }
+  function setHaasWidth()     {}  // chorus handles stereo now
+  function setTremoloDepth()  {}  // removed — chorus provides movement
   function setEnvelope({ a, d, s, r, gate } = {}) {
     if (a    != null) _envA    = Math.max(0.001, a);
     if (d    != null) _envD    = Math.max(0.001, d);
