@@ -2530,7 +2530,7 @@ async function toggleLive(){
     if(window._djSyncChannel){
       setTimeout(()=>window._djSyncChannel.send({
         type:'broadcast',event:'hard_sync',
-        payload:{resyncAt:serverNow()+1000,playback_started_at:startedAt,resetOffsets:false}
+        payload:{resyncAt:serverNow()+1000,playback_started_at:startedAt,track_url:publicUrl,track_name:document.getElementById('track-name').textContent,resetOffsets:false}
       }),1600);
     }
     showToast('Broadcasting track ⚡');
@@ -3015,7 +3015,7 @@ function loadSet(id){
   while(_slotCount < set.slotCount) addSlot();
   while(_slotCount > set.slotCount) removeSlot();
   // Restore tracks
-  Object.keys(zoneTracks).forEach(k=>clearZoneSlot({stopPropagation:()=>{}}, k));
+  Object.keys(zoneTracks).forEach(k=>clearZoneSlot({stopPropagation:()=>{}}, k, {broadcast:false}));
   Object.entries(set.tracks||{}).forEach(([slot,t])=>{ if(t?.url) assignTrackToZone(slot,t.url,t.name); });
   document.getElementById('sets-modal').style.display='none';
   showToast('Loaded: '+set.name);
@@ -3232,12 +3232,11 @@ function _doLaunchClip(sceneId,slot,wasLive){
     // Already live in this slot — stop it.
     delete _liveClipBySlot[slot];
     delete zoneTracks[slot];
-    clearZoneSlot({stopPropagation(){}},slot);
+    clearZoneSlot({stopPropagation(){}},slot,{broadcast:false});
     if(_activeSceneId===sceneId) _activeSceneId=null;
     refreshStemMonitor();
-    // allowEmpty — stopping the last live clip leaves zoneTracks empty, and
-    // broadcastAllZones() bails out silently in that case, leaving listeners
-    // stuck looping the stale track ("stop broadcasts on loop" bug).
+    // allowEmpty — clearZoneSlot(broadcast:false) above skips the broadcast so
+    // we can do it once here, after all local state is cleaned up.
     broadcastAllZones(true);
     renderSceneLauncher();
     return;
@@ -4016,7 +4015,7 @@ setInterval(()=>{
   });
 }, 5000);
 
-function clearZoneSlot(event,zone){
+function clearZoneSlot(event,zone,{broadcast=true}={}){
   event.stopPropagation();delete zoneTracks[zone];
   const slot=document.getElementById('slot-'+zone);
   const nameEl=document.getElementById('slot-'+zone+'-name');
@@ -4032,6 +4031,9 @@ function clearZoneSlot(event,zone){
   if(clipName)clipName.textContent=clipDefaults[zone];
   if(clip)clip.classList.remove('selected');
   refreshStemMonitor();
+  // Persist the deletion to DB so stems don't survive a page reload.
+  // Same allowEmpty path as _doLaunchClip's stop flow.
+  if(broadcast && activeZone?.id && window._djSyncChannel) broadcastAllZones(true);
 }
 // Local-only preview — uses its own <audio> element, never the shared
 // broadcast `audio` (which has `ended` wired to playNext() and feeds
