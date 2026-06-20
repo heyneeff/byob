@@ -3498,6 +3498,7 @@ setInterval(() => {
 let knownZones     = [];   // cached from last loadZones
 let insideZoneIds  = new Set();
 let _revealLockNotified = new Set();
+const _globalMode  = new URLSearchParams(location.search).get('global') === '1';
 
 // A zone tied to an event whose location_reveal_at is still in the future
 // stays locked even if the listener is physically inside the geofence —
@@ -3747,6 +3748,7 @@ async function loadZones(autoJoin=false) {
     list.appendChild(el);
   });
   if (autoJoin && data.length && !isZoneLocked(data[0])) joinZone(data[0]);
+  if (_globalMode && !activeZone && data.length) hudForceEnter();
 }
 
 // Tapping a zone just previews it on map + starts navigation
