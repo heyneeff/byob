@@ -228,8 +228,17 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   function settleToIdle() {
     transport.playbackRate = getBaseRate();
     _state = 'idle';
-    _lastWarpEndAt = timers.now(); // cooldown — don't record floor right after warp
+    _lastWarpEndAt = timers.now();
     const lag = computeLagMs();
+    // Post-warp residual IS the floor for perpetually-warping devices —
+    // the idle+2s gate in requestCorrection never opens when warp cycles are ~1400ms.
+    if (lag !== null) {
+      const abs = Math.abs(lag);
+      if (abs >= TH_Z && abs < TH_SEEK) {
+        _floorHistory.push(lag);
+        if (_floorHistory.length > 8) _floorHistory.shift();
+      }
+    }
     if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
   }
 
