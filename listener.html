@@ -4767,7 +4767,7 @@ let _clockOffset = 0; // ms: our clock vs Supabase server clock
 let _deviceLatencyMs = (() => {
   const stored = parseFloat(localStorage.getItem('byob_device_latency') || '0');
   if (stored > 1000) { localStorage.removeItem('byob_device_latency'); return 0; } // nuke bad cal
-  return Math.min(400, stored); // cap at 400ms — accumulated auto-cal can drift above real BT
+  return Math.min(1000, stored);
 })();
 let _scatterOffsetMs = 0;
 let _outputLatencySeeded = false;
@@ -5006,7 +5006,7 @@ window._terCorrect        = (pos) => { cancelDriftCorrection(); seekPreservingBT
 window._terExpectedNow    = ()    => _expectedNow();
 window._terGetZone        = ()    => activeZone;   // exposes local var for burst mode polling
 window._terAdjustLatency  = (deltaMs) => {
-  _deviceLatencyMs = Math.max(0, Math.min(400, _deviceLatencyMs + deltaMs));
+  _deviceLatencyMs = Math.max(0, Math.min(1000, _deviceLatencyMs + deltaMs));
   console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
 };
 
@@ -5386,12 +5386,26 @@ setInterval(() => {
 let _hudChannel = null;
 const _hudDeviceId = 'dev_' + listenerId.slice(0, 6);
 
+// Single shared byob_debug channel — built once with the latency_cmd receiver
+// so debug.html can nudge _deviceLatencyMs remotely without a mic.
+function _ensureDebugCh() {
+  if (window._debugChannel) return window._debugChannel;
+  window._debugChannel = db.channel('byob_debug')
+    .on('broadcast', { event: 'latency_cmd' }, ({ payload }) => {
+      if (payload.deviceId !== _hudDeviceId) return;
+      const delta = parseFloat(payload.deltaMs);
+      if (isNaN(delta)) return;
+      _deviceLatencyMs = Math.max(0, Math.min(1000, _deviceLatencyMs + delta));
+      localStorage.setItem('byob_device_latency', _deviceLatencyMs.toString());
+      console.log('[debug-cmd] latency', delta > 0 ? '+' : '', delta + 'ms →', _deviceLatencyMs.toFixed(0) + 'ms');
+    })
+    .subscribe();
+  return window._debugChannel;
+}
+
 function ensureHUDChannel() {
   if (_hudChannel) return;
-  // Share one 'byob_debug' subscription with broadcastDebug — now that this
-  // broadcasts unconditionally for every listener, doubling up channel
-  // subscriptions per device would needlessly multiply realtime connections.
-  _hudChannel = window._debugChannel = window._debugChannel || db.channel('byob_debug').subscribe();
+  _hudChannel = _ensureDebugCh();
 }
 
 // Marks a forced re-sync (track change or DJ's hard_sync) on debug.html's
@@ -5555,8 +5569,7 @@ function applySweepOffset(sweep) {
 
 // ── DEBUG BROADCAST ──────────────────────────────────────
 function broadcastDebug() {
-  const ch = window._debugChannel = window._debugChannel || _hudChannel ||
-    db.channel('byob_debug').subscribe();
+  const ch = _ensureDebugCh();
 
   const hasZone   = !!activeZone;
   const hasGPS    = !!userLat;
@@ -5907,7 +5920,7 @@ const engine = createTernaryEngine({
   }),
   getBaseRate: () => _getBpmWarpRate(),
   onCalibrate: (deltaMs) => {
-    _deviceLatencyMs = Math.max(0, Math.min(400, _deviceLatencyMs + deltaMs));
+    _deviceLatencyMs = Math.max(0, Math.min(1000, _deviceLatencyMs + deltaMs));
     console.log('[ternary-engine] auto-cal:', deltaMs > 0 ? '+' : '', deltaMs.toFixed(1) + 'ms → deviceLatencyMs =', _deviceLatencyMs.toFixed(1) + 'ms');
   },
 });

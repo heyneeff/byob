@@ -161,6 +161,10 @@ function drawDriftChart() {
   }
 }
 
+function sendLatencyCmd(deviceId, deltaMs) {
+  debugCh.send({ type: 'broadcast', event: 'latency_cmd', payload: { deviceId, deltaMs } });
+}
+
 function renderEvents() {
   const el = document.getElementById('events');
   if (!_events.length) { el.style.display = 'none'; return; }
@@ -177,7 +181,7 @@ function renderEvents() {
 //   'hud_data'        — broadcastHUD(): real audio-sync data, only sent while a
 //                       listener has their in-app HUD panel open
 //   'listener_health' — broadcastDebug(): always-on GPS/connection health probe
-db.channel('byob_debug')
+const debugCh = db.channel('byob_debug')
   .on('broadcast', { event: 'hud_data' }, ({ payload }) => {
     devs[payload.deviceId] = { ...payload, _kind: 'sync', lastSeen: Date.now() };
     if (payload.driftMs != null && !isNaN(parseFloat(payload.driftMs))) {
@@ -319,6 +323,10 @@ function renderSyncCard(d, age) {
     ${r('seek intend', d.seekIntendedMs!=null ? d.seekIntendedMs+'ms' : '—')}
     ${r('seek landed', d.seekMeasuredMs!=null ? d.seekMeasuredMs+'ms' : '—',
         d.seekIntendedMs!=null && d.seekMeasuredMs!=null && Math.abs(d.seekIntendedMs) > 100 && Math.abs(d.seekMeasuredMs) < Math.abs(d.seekIntendedMs) * 0.3 ? 'bad' : '')}
+    <div class="row" style="padding-top:6px;gap:4px;justify-content:flex-end;border-bottom:none;">
+      <button onclick="sendLatencyCmd('${d.deviceId}',-50)" style="background:#0a0a0a;border:1px solid #333;color:#f57e20;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">−50ms BT</button>
+      <button onclick="sendLatencyCmd('${d.deviceId}',+50)" style="background:#0a0a0a;border:1px solid #333;color:#f57e20;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">+50ms BT</button>
+    </div>
   </div>`;
 }
 
