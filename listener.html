@@ -2215,6 +2215,11 @@ audio.addEventListener('playing', () => {
   if (_reAnchorInFlight) return;
   if (window.SyncEngine?.getDriftState?.() === 'seeking') return; // seek ramp triggers 'playing' on iOS — don't double-seek
   if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject || window._trackLoading) return;
+  // Only re-anchor for genuine stalls (lag > 250ms). Below that the rate warp
+  // handles it silently — re-anchoring at small lags cancels the warp and causes
+  // the device to never converge (observed as constant 1.0 playbackRate on Safari).
+  const _playingLag = computeLagMs();
+  if (_playingLag !== null && Math.abs(_playingLag) < 250) return;
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
