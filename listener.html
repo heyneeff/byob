@@ -4764,10 +4764,14 @@ let _syncLastTrackUrl = null;
 let _syncReverifyTimer = null;
 let _syncEnabled = localStorage.getItem('byob_sync_enabled') !== '0';
 let _clockOffset = 0; // ms: our clock vs Supabase server clock
+if (new URLSearchParams(location.search).get('resetbt') === '1') {
+  localStorage.removeItem('byob_device_latency');
+  history.replaceState(null, '', location.pathname); // clean URL
+}
 let _deviceLatencyMs = (() => {
   const stored = parseFloat(localStorage.getItem('byob_device_latency') || '0');
-  if (stored > 1000) { localStorage.removeItem('byob_device_latency'); return 0; } // nuke bad cal
-  return Math.min(1000, stored);
+  if (stored > 400) { localStorage.removeItem('byob_device_latency'); return 0; } // nuke overcalibrated values
+  return stored;
 })();
 let _scatterOffsetMs = 0;
 let _outputLatencySeeded = false;
@@ -5006,7 +5010,7 @@ window._terCorrect        = (pos) => { cancelDriftCorrection(); seekPreservingBT
 window._terExpectedNow    = ()    => _expectedNow();
 window._terGetZone        = ()    => activeZone;   // exposes local var for burst mode polling
 window._terAdjustLatency  = (deltaMs) => {
-  _deviceLatencyMs = Math.max(0, Math.min(1000, _deviceLatencyMs + deltaMs));
+  _deviceLatencyMs = Math.max(0, Math.min(400, _deviceLatencyMs + deltaMs));
   console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
 };
 
@@ -5920,7 +5924,7 @@ const engine = createTernaryEngine({
   }),
   getBaseRate: () => _getBpmWarpRate(),
   onCalibrate: (deltaMs) => {
-    _deviceLatencyMs = Math.max(0, Math.min(1000, _deviceLatencyMs + deltaMs));
+    _deviceLatencyMs = Math.max(0, Math.min(400, _deviceLatencyMs + deltaMs));
     console.log('[ternary-engine] auto-cal:', deltaMs > 0 ? '+' : '', deltaMs.toFixed(1) + 'ms → deviceLatencyMs =', _deviceLatencyMs.toFixed(1) + 'ms');
   },
 });
