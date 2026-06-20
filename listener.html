@@ -5923,10 +5923,6 @@ const engine = createTernaryEngine({
     scatterOffsetMs: _scatterOffsetMs,
   }),
   getBaseRate: () => _getBpmWarpRate(),
-  onCalibrate: (deltaMs) => {
-    _deviceLatencyMs = Math.max(0, Math.min(400, _deviceLatencyMs + deltaMs));
-    console.log('[ternary-engine] auto-cal:', deltaMs > 0 ? '+' : '', deltaMs.toFixed(1) + 'ms → deviceLatencyMs =', _deviceLatencyMs.toFixed(1) + 'ms');
-  },
 });
 
 // Expose peer feed so ternary/layer.js can share lagMs with the engine

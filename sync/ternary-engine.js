@@ -5,7 +5,7 @@
 //
 // The binary engine has two states: correcting or not.
 // This engine has three: P (hold) · Z (nudge) · N (correct).
-// Every mechanism — rate, threshold, velocity, calibration —
+// Every mechanism — rate, threshold, velocity, consensus —
 // is governed by balanced ternary math.
 //
 // Same interface as sync-engine.js so it can be hot-swapped
@@ -21,7 +21,6 @@ const N = -1, Z = 0, P = 1;
 
 const tcons  = (...vs) => { const s = vs.reduce((a,v) => a+v, 0); return s>0?P:s<0?N:Z; };
 const tcmp   = (a, b)  => a < b ? N : a > b ? P : Z;
-const tshift = a       => a === P ? N : a + 1;
 
 export const TRIT_NAME  = { [-1]:'N', [0]:'Z', [1]:'P' };
 
@@ -29,7 +28,7 @@ export const TRIT_NAME  = { [-1]:'N', [0]:'Z', [1]:'P' };
 // Three zones define the cauldron's three chambers.
 const TH_P   =  10;   // ms — converged. Hold.
 const TH_Z   =  50;   // ms — negotiating. Nudge.
-const TH_SEEK = 250;  // ms — beyond warp reach. Seek. (raised from 150 to let N-rate close more)
+const TH_SEEK = 250;  // ms — beyond warp reach. Seek.
 
 // ── Rate table — one leg of the cauldron per trit ────────────────────────────
 // P: barely a breath. Z: steady pull. N: urgent close.
@@ -45,70 +44,23 @@ const VEL_MOD = { [P]: 1.20, [Z]: 1.00, [N]: 0.90 };
 // Devices with audio clocks running slow re-accumulate drift in the 5s gap
 // between fastDriftCorrect ticks. Micro-correction applies a tiny continuous
 // rate proportional to lag when in P-range, preventing position drift.
-const MICRO_GAIN = 0.0004; // fractional rate per ms — same as sync-engine.js
+const MICRO_GAIN = 0.0004; // fractional rate per ms
 const MICRO_MAX  = 0.012;  // cap ±1.2%
 
-
 function lagToTrit(absMs) {
-  if (absMs < TH_P)    return P;
-  if (absMs < TH_Z)    return Z;
+  if (absMs < TH_P) return P;
+  if (absMs < TH_Z) return Z;
   return N;
 }
 
-// ── Floor detection (stable drift = miscalibrated deviceLatencyMs) ────────────
-function detectFloor(history) {
-  if (history.length < 8) return null;
-  // Exclude post-seek near-zero values — they're correction artifacts, not the floor
-  const floored = history.filter(v => Math.abs(v) > 20);
-  if (floored.length < 4) return null;
-  const sorted = [...floored].sort((a,b) => a-b);
-  const trimmed = sorted.length > 4 ? sorted.slice(1, -1) : sorted;
-  const mean = trimmed.reduce((a,v) => a+v, 0) / trimmed.length;
-  const variance = trimmed.reduce((a,v) => a + (v-mean)**2, 0) / trimmed.length;
-  if (variance < 400 && Math.abs(mean) > 20 && Math.abs(mean) < TH_SEEK) return mean;
-  return null;
-}
-
-// ── Trigram calibration — 8 states (I Ching lower trigrams) ──────────────────
-// _calSeq holds the last 3 calibration outcomes as N (floor persisted) or
-// P (floor gone). The trigram formed by [a, b, c] maps to a correction
-// strength — how aggressively to adjust deviceLatencyMs this round.
-//
-//  ☰ NNN  three consecutive floors   → 0.70  maximum urgency
-//  ☱ NNP  floor twice then gone      → 0.55  strong, something shifted
-//  ☲ NPN  floor / hold / floor       → 0.50  oscillating, standard
-//  ☳ NPP  one floor then held twice  → 0.35  gentle, nearly stable
-//  ☴ PNN  was stable, floor returned → 0.60  regression, push hard
-//  ☵ PNP  bouncing                   → 0.40  mixed signal, moderate
-//  ☶ PPN  almost there               → 0.25  cautious nudge
-//  ☷ PPP  locked                     → 0.00  done — protect the calibration
-//
-// Keys encoded as 'NNN', 'NNP', etc. for lookup
-const TRIGRAM_STRENGTH = {
-  'NNN': 0.70, // ☰ three consecutive floors — maximum urgency
-  'NNP': 0.55, // ☱ floor twice then gone — strong
-  'NPN': 0.50, // ☲ floor / hold / floor — oscillating, standard
-  'NPP': 0.35, // ☳ one floor then held — gentle, nearly stable
-  'PNN': 0.60, // ☴ was stable, floor returned — regression, push hard
-  'PNP': 0.40, // ☵ bouncing — mixed signal, moderate
-  'PPN': 0.25, // ☶ almost there — cautious nudge
-  'PPP': 0.00, // ☷ locked — protect the calibration
-};
-
-function trigramKey(seq) { return seq.map(t => t >= 0 ? 'P' : 'N').join(''); }
-function trigramStrength(seq) { return TRIGRAM_STRENGTH[trigramKey(seq)] ?? 0.50; }
-
 // ── Engine ────────────────────────────────────────────────────────────────────
-export function createTernaryEngine({ transport, timers, clock, getContext, getBaseRate, onCalibrate }) {
-  let _trit          = Z;
-  let _prevLag       = 0;
-  let _warpTimer     = null;
-  let _driftGen      = 0;
-  let _state         = 'idle'; // 'idle' | 'warping' | 'seeking'
-  let _floorHistory  = [];     // idle-state only — no warp/seek contamination
-  let _lastWarpEndAt = 0;      // timestamp of last warp/seek completion
-  let _calSeq        = [N, N, N]; // trigram: last 3 cal outcomes (N=floor, P=stable)
-  let _peers         = {};        // { id → { trit, lagMs, ts } }
+export function createTernaryEngine({ transport, timers, clock, getContext, getBaseRate }) {
+  let _trit      = Z;
+  let _prevLag   = 0;
+  let _warpTimer = null;
+  let _driftGen  = 0;
+  let _state     = 'idle'; // 'idle' | 'warping' | 'seeking'
+  let _peers     = {};     // { id → { trit, lagMs, ts } }
 
   // ── Micro-correction rate ────────────────────────────────────────────────────
   function microRate(lagMs) {
@@ -153,92 +105,46 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
 
   // ── Rate correction ──────────────────────────────────────────────────────────
   function requestCorrection(lagMs) {
-    if (_state === 'seeking') { return; } // let the seek settle
+    if (_state === 'seeking') return; // let the seek settle
     timers.clearTimeout(_warpTimer);
 
     const abs = Math.abs(lagMs);
 
-    // P state — gap is negligible. Apply micro-correction to hold position
-    // against devices whose audio clocks run slightly slow.
+    // P — converged. Hold with micro-correction against slow audio clocks.
     if (abs < TH_P) {
       transport.playbackRate = microRate(lagMs);
       _state = 'idle';
       return;
     }
 
-    // Beyond warp reach — seek
+    // Beyond warp reach — seek.
     if (abs >= TH_SEEK) {
       cancelDriftCorrection();
       seekPreservingBT(transport.currentTime + lagMs / 1000);
       return;
     }
 
-    // Z or N — rate correction.
-    // Record idle-state reading BEFORE warping — clean floor sample.
-    // 2s cooldown after any warp/seek so post-correction overshoots don't
-    // contaminate the floor estimate.
-    if (_state === 'idle' && abs >= TH_Z &&
-        timers.now() - _lastWarpEndAt > 2000) {
-      _floorHistory.push(lagMs);
-      if (_floorHistory.length > 8) _floorHistory.shift();
-    }
-
+    // Z or N — rate warp.
     _trit = lagToTrit(abs);
 
-    // tcmp(): is drift growing or shrinking?
-    const velocity = tcmp(abs, Math.abs(_prevLag));
+    const velocity  = tcmp(abs, Math.abs(_prevLag));
     _prevLag = lagMs;
 
-    // tcons(): peer consensus adjusts urgency
     const consensus = peerConsensus();
 
-    // Compose the rate from the three ternary inputs
-    const baseRate  = BASE_RATE[_trit];
-    const velMod    = VEL_MOD[velocity];
-    const consMod   = CONSENSUS_MOD[consensus];
-    const warpPct   = Math.min(baseRate * velMod * consMod, 0.06); // cap 6%
-
+    const warpPct = Math.min(BASE_RATE[_trit] * VEL_MOD[velocity] * CONSENSUS_MOD[consensus], 0.06);
     const dir = lagMs > 0 ? 1 : -1;
     transport.playbackRate = getBaseRate() * (1 + dir * warpPct);
     _state = 'warping';
 
-    // Timer: restore rate when gap should be closed
     const correctionMs = abs / (warpPct * getBaseRate());
     _warpTimer = timers.setTimeout(settleToIdle, correctionMs);
-
-    // Trigram auto-calibration — driven by idle-state floor history only
-    if (_trit === N) {
-      const floor = detectFloor(_floorHistory);
-      const outcome = floor !== null ? N : P;
-      _calSeq = [_calSeq[1], _calSeq[2], outcome];
-
-      const strength = trigramStrength(_calSeq);
-      if (floor !== null && strength > 0 && typeof onCalibrate === 'function') {
-        const correction = Math.round(floor * strength * 10) / 10;
-        if (Math.abs(correction) >= 5) {
-          onCalibrate(correction);
-          console.log('[ternary-engine] cal trigram', _calSeq.map(t=>t>0?'P':'N').join(''),
-            '→', (strength*100).toFixed(0)+'%',
-            'floor', Math.round(floor)+'ms → correction', correction+'ms');
-        }
-      }
-    }
   }
 
   function settleToIdle() {
     transport.playbackRate = getBaseRate();
     _state = 'idle';
-    _lastWarpEndAt = timers.now();
     const lag = computeLagMs();
-    // Post-warp residual IS the floor for perpetually-warping devices —
-    // the idle+2s gate in requestCorrection never opens when warp cycles are ~1400ms.
-    if (lag !== null) {
-      const abs = Math.abs(lag);
-      if (abs >= TH_Z && abs < TH_SEEK) {
-        _floorHistory.push(lag);
-        if (_floorHistory.length > 8) _floorHistory.shift();
-      }
-    }
     if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
   }
 
@@ -262,15 +168,12 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
       const t = Math.min((now - start) / rampMs, 1);
       transport.volume = vol * (t * t * (3 - 2 * t));
       if (t < 1) timers.requestAnimationFrame(ramp);
-      else { transport.volume = vol; _state = 'idle'; _lastWarpEndAt = timers.now(); }
+      else { transport.volume = vol; _state = 'idle'; }
     }
     timers.requestAnimationFrame(ramp);
   }
 
-  // Called on track change — clears floor history so detection restarts.
-  // _calSeq is NOT reset: the trigram carries forward across tracks, so
-  // a device that was at PPP stays protected; one at NNN keeps correcting.
-  function resetCalibration() { _floorHistory = []; }
+  function resetCalibration() {} // no-op — kept for interface compatibility
 
   return {
     computeLagMs,
