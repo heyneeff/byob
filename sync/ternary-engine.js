@@ -162,7 +162,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     const vol = transport.volume || 1;
     transport.volume = 0;
     transport.currentTime = safeTime;
-    const rampMs = 180, start = timers.now();
+    const rampMs = 80, start = timers.now();
     function ramp(now) {
       if (_driftGen !== gen) return; // cancelled
       const t = Math.min((now - start) / rampMs, 1);
