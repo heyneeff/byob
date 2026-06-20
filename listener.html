@@ -2213,6 +2213,7 @@ let _reAnchorInFlight = false;
 audio.addEventListener('playing', () => {
   if (!_webAudioPlaying) return;
   if (_reAnchorInFlight) return;
+  if (window.SyncEngine?.getDriftState?.() === 'seeking') return; // seek ramp triggers 'playing' on iOS — don't double-seek
   if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject || window._trackLoading) return;
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
