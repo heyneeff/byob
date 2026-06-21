@@ -61,7 +61,7 @@
   <button id="micBtn">Use Microphone</button>
   <div class="or">— or —</div>
   <label for="fileInput"><button id="fileBtn" type="button">Upload Audio File</button></label>
-  <input type="file" id="fileInput" accept="audio/*">
+  <input type="file" id="fileInput" accept="audio/*,.mp3,.m4a,.wav,.aac,.flac,.ogg,.aiff,.caf">
   <div class="or">— or —</div>
   <button id="idleBtn">Skip — Run Ambient Mode</button>
 </div>
@@ -453,9 +453,11 @@
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
       const audioCtx = new AC();
+      await audioCtx.resume(); // iOS often starts this suspended even from a tap handler
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const src = audioCtx.createMediaStreamSource(stream);
       setupAnalyser(src, audioCtx);
+      watchAudioContext(audioCtx);
       enterRunningState();
     } catch (err) {
       alert('Microphone access failed: ' + err.message);
@@ -466,19 +468,31 @@
     document.getElementById('fileInput').click();
   });
 
-  document.getElementById('fileInput').addEventListener('change', (e) => {
+  document.getElementById('fileInput').addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const audioEl = document.getElementById('audioEl');
     audioEl.src = URL.createObjectURL(file);
     const AC = window.AudioContext || window.webkitAudioContext;
     const audioCtx = new AC();
+    await audioCtx.resume();
     const src = audioCtx.createMediaElementSource(audioEl);
     src.connect(audioCtx.destination);
     setupAnalyser(src, audioCtx);
-    audioEl.play();
+    watchAudioContext(audioCtx);
+    await audioEl.play();
     enterRunningState();
   });
+
+  // iOS likes to suspend the AudioContext again on backgrounding/lock —
+  // resume it whenever the tab regains focus so it doesn't go silent mid-session
+  function watchAudioContext(audioCtx) {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    });
+  }
 
   document.getElementById('idleBtn').addEventListener('click', enterRunningState);
 
