@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Circuit Organism — Recursive Music Visualizer</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; overflow: hidden;
+    background: #000; width: 100%; height: 100%;
+    font-family: 'Courier New', monospace;
+  }
+  canvas { display: block; position: fixed; top: 0; left: 0; }
+
+  #ui {
+    position: fixed; top: 24px; left: 24px; z-index: 10;
+    background: rgba(0,0,0,0.72);
+    border: 1px solid #5a4a1c;
+    padding: 20px 22px;
+    color: #f0e6c8;
+    max-width: 340px;
+    box-shadow: 0 0 18px rgba(255,191,0,0.12);
+  }
+  #ui h1 {
+    font-size: 14px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: #FFD700; margin: 0 0 6px 0; font-weight: normal;
+  }
+  #ui p { font-size: 12px; line-height: 1.5; color: #b8ad8a; margin: 0 0 16px 0; }
+  #ui button {
+    display: block; width: 100%; background: #0a0a0a; color: #FFD700;
+    border: 1px solid #FFD700; padding: 10px 12px; margin-bottom: 10px;
+    font-family: inherit; font-size: 12px; letter-spacing: 0.05em;
+    cursor: pointer; text-transform: uppercase;
+  }
+  #ui button:hover { background: #1a1a0a; }
+  #ui input[type=file] { display: none; }
+  #ui .or { text-align: center; color: #5a4a1c; font-size: 10px; margin: 6px 0; letter-spacing: 0.1em; }
+
+  #hud {
+    position: fixed; bottom: 18px; left: 24px; z-index: 9;
+    color: #6a5a2a; font-size: 10px; letter-spacing: 0.08em;
+    display: none;
+  }
+  #hud span { color: #FFD700; }
+  #resetBtn {
+    position: fixed; bottom: 18px; right: 24px; z-index: 9;
+    background: transparent; color: #5a4a1c; border: 1px solid #3a3014;
+    font-family: inherit; font-size: 10px; padding: 8px 12px;
+    cursor: pointer; letter-spacing: 0.08em; display: none;
+  }
+  #resetBtn:hover { color: #FFD700; border-color: #FFD700; }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+<audio id="audioEl" loop></audio>
+
+<div id="ui">
+  <h1>Circuit Organism</h1>
+  <p>A living electronic civilization grown from sound. Bass seeds new structure, mids drive branching, treble adds detail. Choose an audio source to begin — or let it idle on ambient pulses.</p>
+  <button id="micBtn">Use Microphone</button>
+  <div class="or">— or —</div>
+  <label for="fileInput"><button id="fileBtn" type="button">Upload Audio File</button></label>
+  <input type="file" id="fileInput" accept="audio/*">
+  <div class="or">— or —</div>
+  <button id="idleBtn">Skip — Run Ambient Mode</button>
+</div>
+
+<div id="hud">bass <span id="bVal">0.00</span> &nbsp; mid <span id="mVal">0.00</span> &nbsp; treble <span id="tVal">0.00</span> &nbsp; nodes <span id="nVal">0</span></div>
+<button id="resetBtn">reset organism</button>
+
+<script>
+(function(){
+  "use strict";
+
+  // ---------- canvas setup ----------
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  ctx.imageSmoothingEnabled = false;
+
+  const prevCanvas = document.createElement('canvas');
+  const prevCtx = prevCanvas.getContext('2d', { alpha: false });
+  prevCtx.imageSmoothingEnabled = false;
+
+  // ---------- world / growth simulation ----------
+  // Square lattice, 8-fold symmetry implemented as the D4 dihedral group
+  // (4 rotations x 2 reflections) of a single primary wedge. Because all
+  // growth is strictly axis-aligned, every mirrored copy stays axis-aligned
+  // too — true 45° kaleidoscope tiling on a square grid would need
+  // interpolation and would break the "no curves, orthogonal only" rule.
+  //
+  // Growth is hard-bounded to a circle (GRID_RADIUS) rather than a square,
+  // and split into two zones: a dense CORE that gets actively filled solid
+  // (the contiguous orb body), and a sparser ring out to MID_RADIUS where
+  // thin circuit tendrils are allowed to radiate before the boundary stops
+  // them — this is what gives the contained-orb-with-a-corona look instead
+  // of open-ended sprawl.
+  const GRID_RADIUS = 170;
+  const CORE_RADIUS = 55;
+  const MID_RADIUS = 107;
+
+  let W, H, CX, CY, CELL;
+  function resize(){
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    prevCanvas.width = W; prevCanvas.height = H;
+    CX = W / 2; CY = H / 2;
+    // size cells off the smaller viewport dimension so the orb always sits
+    // centered and consistently proportioned, in a square window or a wide one
+    CELL = Math.max(2, Math.floor((Math.min(W, H) * 0.9) / GRID_RADIUS));
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    prevCtx.fillStyle = '#000';
+    prevCtx.fillRect(0, 0, W, H);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ---------- palette ----------
+  const WARM = ['#FFD700', '#E0115F', '#FFBF00', '#FF6F3C', '#FF4040'];
+  const COOL = ['#50C878', '#0F52BA', '#9B5DE5', '#2EC4B6', '#3FA7FF', '#7FFF6B'];
+  const ACCENT = ['#FFFFF0', '#FF3CAC', '#FFE45C'];
+
+  function dist(x, y) { return Math.sqrt(x * x + y * y); }
+
+  // colors band by radius — hot dense core, cool sparse rim, like the
+  // reference: a solid red/gold blob fading out to green circuit traces.
+  // Expanded each pool with extra jewel tones (orange, amethyst, turquoise,
+  // magenta) for more variety while keeping the same hot-to-cool logic.
+  function colorForRadius(r) {
+    if (r < CORE_RADIUS) return WARM[(Math.random() * WARM.length) | 0];
+    if (r < MID_RADIUS) {
+      const pool = Math.random() < 0.55 ? WARM : COOL;
+      return pool[(Math.random() * pool.length) | 0];
+    }
+    if (Math.random() < 0.1) return ACCENT[(Math.random() * ACCENT.length) | 0];
+    return COOL[(Math.random() * COOL.length) | 0];
+  }
+
+  // occupancy map with a time-to-live, so the organism keeps reorganizing
+  // instead of filling up solid and freezing after a few minutes
+  const occupied = new Map(); // key "x,y" -> last-visited frame
+  const OCCUPANCY_TTL = 240; // ~4s — short enough that filled areas keep recycling instead of locking solid
+  let frameCount = 0;
+
+  // ring buffer of recently-plotted core cells, sampled by the dilation
+  // pass below to thicken the core into solid contiguous blocks rather
+  // than thin one-cell traces
+  const recentCore = [];
+  const RECENT_CORE_MAX = 220;
+
+  function mirror8(x, y) {
+    return [
+      [ x,  y], [ y,  x],
+      [-x,  y], [-y,  x],
+      [ x, -y], [ y, -x],
+      [-x, -y], [-y, -x],
+    ];
+  }
+
+  function plotCell(x, y, color, energy) {
+    if (dist(x, y) < CORE_RADIUS) {
+      recentCore.push([x, y]);
+      if (recentCore.length > RECENT_CORE_MAX) recentCore.shift();
+    }
+    const pts = mirror8(x, y);
+    // every cell renders as a smaller outlined square centered inside its
+    // grid pitch, rather than a filled block — reads as PCB pad / circuit
+    // node marks instead of solid pixels
+    ctx.globalCompositeOperation = 'source-over';
+    const drawSize = Math.max(2, CELL - 2);
+    const offset = (CELL - drawSize) / 2;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 8; i++) {
+      const px = pts[i][0], py = pts[i][1];
+      occupied.set(px + ',' + py, frameCount);
+      const sx = Math.round(CX + px * CELL + offset);
+      const sy = Math.round(CY + py * CELL + offset);
+      if (sx < -CELL || sx > W + CELL || sy < -CELL || sy > H + CELL) continue;
+      ctx.globalAlpha = Math.min(1, 0.7 + energy * 0.3);
+      ctx.strokeRect(sx + 0.5, sy + 0.5, drawSize, drawSize);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function densifyCore(amount) {
+    for (let i = 0; i < amount; i++) {
+      if (recentCore.length === 0) return;
+      const [bx, by] = recentCore[(Math.random() * recentCore.length) | 0];
+      const d = DIRS[(Math.random() * 4) | 0];
+      const nx = bx + d[0], ny = by + d[1];
+      if (dist(nx, ny) < CORE_RADIUS && !isBlocked(nx, ny)) {
+        plotCell(nx, ny, colorForRadius(dist(nx, ny)), 0.95);
+      }
+    }
+  }
+
+  function isBlocked(x, y) {
+    const t = occupied.get(x + ',' + y);
+    return t !== undefined && (frameCount - t) < OCCUPANCY_TTL;
+  }
+
+  const DIRS = [[1,0],[0,1],[-1,0],[0,-1]];
+
+  let tips = [];
+  const MAX_TIPS = 800;
+
+  function spawnSeed() {
+    const d = DIRS[(Math.random() * 4) | 0];
+    tips.push({
+      x: 0, y: 0, dx: d[0], dy: d[1],
+      age: 0, life: 240 + Math.random() * 420,
+      color: colorForRadius(0),
+    });
+  }
+
+  function resetOrganism() {
+    tips = [];
+    occupied.clear();
+    recentCore.length = 0;
+    frameCount = 0;
+    for (let i = 0; i < 3; i++) spawnSeed();
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+    prevCtx.fillStyle = '#000'; prevCtx.fillRect(0, 0, W, H);
+  }
+  resetOrganism();
+
+  function updateGrowth(bass, mid, treble) {
+    if (tips.length < MAX_TIPS && Math.random() < bass * 0.32) spawnSeed();
+    if (tips.length === 0) spawnSeed();
+
+    // tuned low enough that growth keeps expanding into open territory
+    // instead of filling its whole footprint within a few seconds
+    const branchChance = 0.010 + mid * 0.14;
+    const detailChance = treble * 0.3;
+    const wanderChance = 0.05 + mid * 0.05;
+    const next = [];
+
+    for (let i = 0; i < tips.length; i++) {
+      const t = tips[i];
+      t.age++;
+
+      const nx = t.x + t.dx, ny = t.y + t.dy;
+      const r = dist(nx, ny);
+
+      if (r > GRID_RADIUS) {
+        // hit the orb's edge — retire here instead of sprawling past it,
+        // which is what keeps the silhouette a contained circle
+        t.age = t.life;
+      } else if (!isBlocked(nx, ny)) {
+        t.x = nx; t.y = ny;
+        plotCell(t.x, t.y, t.color, 0.3 + mid * 0.7);
+      } else {
+        const turn = Math.random() < 0.5 ? 1 : -1;
+        const ndx = -t.dy * turn, ndy = t.dx * turn;
+        t.dx = ndx; t.dy = ndy;
+      }
+
+      if (Math.random() < wanderChance) {
+        const turn = Math.random() < 0.5 ? 1 : -1;
+        const ndx = -t.dy * turn, ndy = t.dx * turn;
+        t.dx = ndx; t.dy = ndy;
+      }
+
+      if (tips.length + next.length < MAX_TIPS && Math.random() < branchChance) {
+        next.push({
+          x: t.x, y: t.y, dx: -t.dy, dy: t.dx,
+          age: 0, life: 150 + Math.random() * 300, color: colorForRadius(dist(t.x, t.y)),
+        });
+      }
+
+      if (tips.length + next.length < MAX_TIPS && Math.random() < detailChance) {
+        const d = DIRS[(Math.random() * 4) | 0];
+        next.push({
+          x: t.x, y: t.y, dx: d[0], dy: d[1],
+          age: 0, life: 18 + Math.random() * 36, color: colorForRadius(dist(t.x, t.y)),
+        });
+      }
+
+      if (t.age < t.life && dist(t.x, t.y) <= GRID_RADIUS) next.push(t);
+    }
+    tips = next;
+
+    // thicken the core into solid contiguous blocks — this is the main
+    // thing that makes it read as an "orb" instead of a sprawl of wires
+    densifyCore(Math.floor(3 + (bass + mid) * 16));
+  }
+
+  // ---------- render loop ----------
+  function renderFrame(bass, mid, treble) {
+    // structure now stays spatially fixed instead of continuously zooming
+    // outward — only a very slow fade-to-black handles "decay," so nothing
+    // drifts or visibly drains away anymore
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 0.999;
+    ctx.drawImage(prevCanvas, 0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    updateGrowth(bass, mid, treble);
+
+    prevCtx.drawImage(canvas, 0, 0);
+  }
+
+  // ---------- audio analysis ----------
+  let analyser = null, freqData = null;
+  let bassLevel = 0, midLevel = 0, trebleLevel = 0;
+
+  function setupAnalyser(sourceNode, audioCtx) {
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.78;
+    sourceNode.connect(analyser);
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+  }
+
+  function updateAudioLevels() {
+    if (!analyser) {
+      const t = performance.now() / 1000;
+      bassLevel   = 0.30 + 0.18 * Math.sin(t * 0.31);
+      midLevel    = 0.22 + 0.14 * Math.sin(t * 0.53 + 1.3);
+      trebleLevel = 0.14 + 0.10 * Math.sin(t * 0.91 + 2.6);
+      return;
+    }
+    analyser.getByteFrequencyData(freqData);
+    const n = freqData.length;
+    const bassEnd = Math.floor(n * 0.08);
+    const midEnd  = Math.floor(n * 0.35);
+    let b = 0, m = 0, tr = 0;
+    for (let i = 0; i < bassEnd; i++) b += freqData[i];
+    for (let i = bassEnd; i < midEnd; i++) m += freqData[i];
+    for (let i = midEnd; i < n; i++) tr += freqData[i];
+    b  /= (bassEnd * 255) || 1;
+    m  /= ((midEnd - bassEnd) * 255) || 1;
+    tr /= ((n - midEnd) * 255) || 1;
+    bassLevel   = bassLevel   * 0.7 + b  * 0.3;
+    midLevel    = midLevel    * 0.7 + m  * 0.3;
+    trebleLevel = trebleLevel * 0.7 + tr * 0.3;
+  }
+
+  // ---------- BYOB multi-listener hook (stub for future wiring) ----------
+  // Each connected listener becomes a seed cluster; sync quality scales how
+  // tightly their growth locks into the shared symmetry. Not wired to a
+  // real network here — call this from BYOB's session state once ready.
+  window.ingestListenerNode = function(nodeId, syncQuality /* 0..1 */) {
+    for (let i = 0; i < Math.ceil(1 + syncQuality * 2); i++) spawnSeed();
+  };
+
+  // ---------- UI wiring ----------
+  const ui = document.getElementById('ui');
+  const hud = document.getElementById('hud');
+  const resetBtn = document.getElementById('resetBtn');
+  const bVal = document.getElementById('bVal');
+  const mVal = document.getElementById('mVal');
+  const tVal = document.getElementById('tVal');
+  const nVal = document.getElementById('nVal');
+
+  function enterRunningState() {
+    ui.style.display = 'none';
+    hud.style.display = 'block';
+    resetBtn.style.display = 'block';
+  }
+
+  document.getElementById('micBtn').addEventListener('click', async () => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AC();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const src = audioCtx.createMediaStreamSource(stream);
+      setupAnalyser(src, audioCtx);
+      enterRunningState();
+    } catch (err) {
+      alert('Microphone access failed: ' + err.message);
+    }
+  });
+
+  document.getElementById('fileBtn').addEventListener('click', () => {
+    document.getElementById('fileInput').click();
+  });
+
+  document.getElementById('fileInput').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const audioEl = document.getElementById('audioEl');
+    audioEl.src = URL.createObjectURL(file);
+    const AC = window.AudioContext || window.webkitAudioContext;
+    const audioCtx = new AC();
+    const src = audioCtx.createMediaElementSource(audioEl);
+    src.connect(audioCtx.destination);
+    setupAnalyser(src, audioCtx);
+    audioEl.play();
+    enterRunningState();
+  });
+
+  document.getElementById('idleBtn').addEventListener('click', enterRunningState);
+
+  resetBtn.addEventListener('click', resetOrganism);
+
+  // ---------- main loop ----------
+  let hudTick = 0;
+  function loop() {
+    frameCount++;
+    updateAudioLevels();
+    renderFrame(bassLevel, midLevel, trebleLevel);
+
+    hudTick++;
+    if (hudTick % 12 === 0) {
+      bVal.textContent = bassLevel.toFixed(2);
+      mVal.textContent = midLevel.toFixed(2);
+      tVal.textContent = trebleLevel.toFixed(2);
+      nVal.textContent = tips.length;
+    }
+    requestAnimationFrame(loop);
+  }
+  loop();
+
+})();
+</script>
+</body>
+</html>
