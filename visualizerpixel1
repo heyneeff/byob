@@ -137,17 +137,33 @@
     return COOL[(Math.random() * COOL.length) | 0];
   }
 
-  // occupancy map with a time-to-live, so the organism keeps reorganizing
-  // instead of filling up solid and freezing after a few minutes
-  const occupied = new Map(); // key "x,y" -> last-visited frame
-  const OCCUPANCY_TTL = 240; // ~4s — short enough that filled areas keep recycling instead of locking solid
+  // ---------- ternary cell lifecycle ----------
+  // Binary occupied/empty replaced with the three states from the ternary
+  // clock work: void (yin — true negative space), becoming (changing — a
+  // cell that is either forming or fading, rendered as a broken/open
+  // square rather than a closed one), and settled (yang — fully formed,
+  // closed outline). A cell always passes through "becoming" in both
+  // directions: nothing snaps directly from solid to void or void to
+  // solid. Keyed by canonical symmetry-class (abs + sort) rather than raw
+  // (x,y) so all 8 mirrored copies share one state and age in lockstep.
+  const cellState = new Map(); // canonKey -> { state, dir, since, color }
   let frameCount = 0;
 
-  // ring buffer of recently-plotted core cells, sampled by the dilation
-  // pass below to thicken the core into solid contiguous blocks rather
-  // than thin one-cell traces
-  const recentCore = [];
+  function canon(x, y) {
+    const ax = Math.abs(x), ay = Math.abs(y);
+    return ax >= ay ? (ax + ',' + ay) : (ay + ',' + ax);
+  }
+
+  // ring buffers sampled probabilistically rather than scanning the full
+  // map every frame — cheap, and exactness doesn't matter for organic growth
+  const recentCore = []; // cells near center, sampled by the core dilation pass
   const RECENT_CORE_MAX = 220;
+  const recentAll = []; // every cell ever plotted, sampled by the aging pass
+  const RECENT_ALL_MAX = 5000;
+
+  const FORM_DURATION = 90; // frames spent "becoming" before settling or finishing a vanish
+  const YANG_LIFE_BASE = 600; // ~10s of settled life at full audio energy
+  const YANG_LIFE_MIN = 90; // ~1.5s during near-silence — this is what carves negative space
 
   function mirror8(x, y) {
     return [
@@ -158,30 +174,99 @@
     ];
   }
 
-  function plotCell(x, y, color, energy) {
+  function forEachMirrorPixel(x, y, cb) {
+    const pts = mirror8(x, y);
+    for (let i = 0; i < 8; i++) {
+      const sx = Math.round(CX + pts[i][0] * CELL);
+      const sy = Math.round(CY + pts[i][1] * CELL);
+      if (sx < -CELL || sx > W + CELL || sy < -CELL || sy > H + CELL) continue;
+      cb(sx, sy);
+    }
+  }
+
+  // settled (yang): a closed square outline — the "resolved" mark
+  function drawYangMark(x, y, color, energy) {
+    const drawSize = Math.max(2, CELL - 2);
+    const offset = (CELL - drawSize) / 2;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = Math.min(1, 0.72 + (energy || 0.6) * 0.28);
+    forEachMirrorPixel(x, y, (sx, sy) => {
+      ctx.strokeRect(sx + offset + 0.5, sy + offset + 0.5, drawSize, drawSize);
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // becoming (changing): an open square, brackets at two opposite corners
+  // only — a different line type for "neither yin nor yang," used both
+  // when a cell is forming and when it's mid-vanish
+  function drawChangingMark(x, y, color) {
+    const drawSize = Math.max(2, CELL - 2);
+    const offset = (CELL - drawSize) / 2;
+    const arm = Math.max(1, Math.round(drawSize * 0.5));
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.85;
+    forEachMirrorPixel(x, y, (sx, sy) => {
+      const left = sx + offset + 0.5, top = sy + offset + 0.5;
+      const right = left + drawSize, bottom = top + drawSize;
+      ctx.beginPath();
+      ctx.moveTo(left + arm, top); ctx.lineTo(left, top); ctx.lineTo(left, top + arm);
+      ctx.moveTo(right - arm, bottom); ctx.lineTo(right, bottom); ctx.lineTo(right, bottom - arm);
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+  }
+
+  // void (yin): actively erased — real negative space, not just absence
+  function eraseMark(x, y) {
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000';
+    ctx.globalAlpha = 1;
+    forEachMirrorPixel(x, y, (sx, sy) => { ctx.fillRect(sx, sy, CELL, CELL); });
+  }
+
+  function plotCell(x, y, color) {
+    const key = canon(x, y);
+    cellState.set(key, { state: 'changing', dir: 'forming', since: frameCount, color });
     if (dist(x, y) < CORE_RADIUS) {
       recentCore.push([x, y]);
       if (recentCore.length > RECENT_CORE_MAX) recentCore.shift();
     }
-    const pts = mirror8(x, y);
-    // every cell renders as a smaller outlined square centered inside its
-    // grid pitch, rather than a filled block — reads as PCB pad / circuit
-    // node marks instead of solid pixels
-    ctx.globalCompositeOperation = 'source-over';
-    const drawSize = Math.max(2, CELL - 2);
-    const offset = (CELL - drawSize) / 2;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 8; i++) {
-      const px = pts[i][0], py = pts[i][1];
-      occupied.set(px + ',' + py, frameCount);
-      const sx = Math.round(CX + px * CELL + offset);
-      const sy = Math.round(CY + py * CELL + offset);
-      if (sx < -CELL || sx > W + CELL || sy < -CELL || sy > H + CELL) continue;
-      ctx.globalAlpha = Math.min(1, 0.7 + energy * 0.3);
-      ctx.strokeRect(sx + 0.5, sy + 0.5, drawSize, drawSize);
+    recentAll.push([x, y]);
+    if (recentAll.length > RECENT_ALL_MAX) recentAll.shift();
+    drawChangingMark(x, y, color);
+  }
+
+  // samples recently-plotted cells and advances their state machine:
+  // changing→yang (settled), changing→void (vanished + erased), or
+  // yang→changing (decay begins). `energy` (roughly 0..1, overall audio
+  // loudness) shortens settled life when it's low — quiet passages erode
+  // structure into real negative space faster than loud ones.
+  function ageCells(amount, energy) {
+    const yangLife = Math.max(YANG_LIFE_MIN, YANG_LIFE_BASE * Math.min(1, energy * 2.2));
+    for (let i = 0; i < amount; i++) {
+      if (recentAll.length === 0) return;
+      const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
+      const key = canon(x, y);
+      const cell = cellState.get(key);
+      if (!cell) continue;
+      const elapsed = frameCount - cell.since;
+      if (cell.state === 'changing' && elapsed > FORM_DURATION) {
+        if (cell.dir === 'forming') {
+          cell.state = 'yang'; cell.since = frameCount;
+          drawYangMark(x, y, cell.color, energy);
+        } else {
+          cellState.delete(key);
+          eraseMark(x, y);
+        }
+      } else if (cell.state === 'yang' && elapsed > yangLife) {
+        cell.state = 'changing'; cell.dir = 'fading'; cell.since = frameCount;
+        drawChangingMark(x, y, cell.color);
+      }
     }
-    ctx.globalAlpha = 1;
   }
 
   function densifyCore(amount) {
@@ -191,14 +276,13 @@
       const d = DIRS[(Math.random() * 4) | 0];
       const nx = bx + d[0], ny = by + d[1];
       if (dist(nx, ny) < CORE_RADIUS && !isBlocked(nx, ny)) {
-        plotCell(nx, ny, colorForRadius(dist(nx, ny)), 0.95);
+        plotCell(nx, ny, colorForRadius(dist(nx, ny)));
       }
     }
   }
 
   function isBlocked(x, y) {
-    const t = occupied.get(x + ',' + y);
-    return t !== undefined && (frameCount - t) < OCCUPANCY_TTL;
+    return cellState.has(canon(x, y));
   }
 
   const DIRS = [[1,0],[0,1],[-1,0],[0,-1]];
@@ -217,8 +301,9 @@
 
   function resetOrganism() {
     tips = [];
-    occupied.clear();
+    cellState.clear();
     recentCore.length = 0;
+    recentAll.length = 0;
     frameCount = 0;
     for (let i = 0; i < 3; i++) spawnSeed();
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
@@ -250,7 +335,7 @@
         t.age = t.life;
       } else if (!isBlocked(nx, ny)) {
         t.x = nx; t.y = ny;
-        plotCell(t.x, t.y, t.color, 0.3 + mid * 0.7);
+        plotCell(t.x, t.y, t.color);
       } else {
         const turn = Math.random() < 0.5 ? 1 : -1;
         const ndx = -t.dy * turn, ndy = t.dx * turn;
@@ -289,9 +374,9 @@
 
   // ---------- render loop ----------
   function renderFrame(bass, mid, treble) {
-    // structure now stays spatially fixed instead of continuously zooming
-    // outward — only a very slow fade-to-black handles "decay," so nothing
-    // drifts or visibly drains away anymore
+    // structure stays spatially fixed — decay is no longer a generic global
+    // fade, it's the ternary lifecycle below (settled → becoming → void),
+    // so this is just a faint safety fade for anything outside that system
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
@@ -300,6 +385,7 @@
     ctx.globalAlpha = 1;
 
     updateGrowth(bass, mid, treble);
+    ageCells(220, (bass + mid + treble) / 3);
 
     prevCtx.drawImage(canvas, 0, 0);
   }
