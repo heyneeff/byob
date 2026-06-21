@@ -123,18 +123,17 @@
 
   function dist(x, y) { return Math.sqrt(x * x + y * y); }
 
-  // colors band by radius — hot dense core, cool sparse rim, like the
-  // reference: a solid red/gold blob fading out to green circuit traces.
-  // Expanded each pool with extra jewel tones (orange, amethyst, turquoise,
-  // magenta) for more variety while keeping the same hot-to-cool logic.
+  // colors blend smoothly by radius instead of switching at hard cutoffs.
+  // The old version locked anything inside CORE_RADIUS to warm-only — but
+  // the core dilation pass generates the large majority of all cells, so
+  // that made the whole piece read as red/gold no matter what the rim did.
+  // Now even dead-center has real odds of pulling cool/accent tones.
   function colorForRadius(r) {
-    if (r < CORE_RADIUS) return WARM[(Math.random() * WARM.length) | 0];
-    if (r < MID_RADIUS) {
-      const pool = Math.random() < 0.55 ? WARM : COOL;
-      return pool[(Math.random() * pool.length) | 0];
-    }
     if (Math.random() < 0.1) return ACCENT[(Math.random() * ACCENT.length) | 0];
-    return COOL[(Math.random() * COOL.length) | 0];
+    const t = Math.min(1, r / GRID_RADIUS); // 0 at center, 1 at the edge
+    const coolChance = 0.32 + t * 0.45; // ~32% cool at center, ~77% at the rim
+    const pool = Math.random() < coolChance ? COOL : WARM;
+    return pool[(Math.random() * pool.length) | 0];
   }
 
   // ---------- ternary cell lifecycle ----------
@@ -369,7 +368,7 @@
 
     // thicken the core into solid contiguous blocks — this is the main
     // thing that makes it read as an "orb" instead of a sprawl of wires
-    densifyCore(Math.floor(3 + (bass + mid) * 16));
+    densifyCore(Math.floor(2 + (bass + mid) * 10));
   }
 
   // ---------- render loop ----------
