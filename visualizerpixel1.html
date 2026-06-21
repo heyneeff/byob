@@ -342,12 +342,89 @@
     });
   }
 
+  // ---------- beat detection + transient overlays ----------
+  // The structural reactivity (branch/seed/decay rates) is a slow-moving
+  // average response — good for long-arc shape, but it can't read as
+  // "reacting to the music" on its own because nothing happens *at* a hit,
+  // only gradually around it. This adds a real onset detector (current
+  // bass against its own rolling baseline, not just raw loudness) and two
+  // effects that fire instantly on a detected hit: a quick additive flash
+  // and an expanding ring of square ticks. Both are drawn *after* the
+  // frame is snapshotted into prevCanvas, so they're visible for one frame
+  // and never get baked into the persistent structure — pure transients.
+  let bassFloor = 0.15;
+  let lastHitFrame = -999;
+  const HIT_REFRACTORY = 9; // ~150ms at 60fps — one drum hit shouldn't fire twice
+  const HIT_RATIO = 1.45;   // current bass must clear the rolling baseline by this much
+  const HIT_MIN = 0.12;     // absolute floor so near-silence can't trigger a "hit"
+
+  let flashStrength = 0;
+  let rings = [];
+  const MAX_RINGS = 6;
+
+  function detectBeat(bass) {
+    bassFloor = bassFloor * 0.965 + bass * 0.035;
+    const threshold = Math.max(HIT_MIN, bassFloor * HIT_RATIO);
+    if (bass > threshold && (frameCount - lastHitFrame) > HIT_REFRACTORY) {
+      lastHitFrame = frameCount;
+      onBeatHit(Math.min(1, (bass - bassFloor) / (bassFloor + 0.05)));
+    }
+  }
+
+  function onBeatHit(strength) {
+    flashStrength = Math.max(flashStrength, 0.35 + strength * 0.45);
+    if (rings.length >= MAX_RINGS) rings.shift();
+    rings.push({ r: 6, alpha: 1, speed: 2.2 + strength * 2.5 });
+    if (tips.length < MAX_TIPS) spawnSeed(); // a small structural kick to match the visual one
+  }
+
+  function drawFlash() {
+    if (flashStrength > 0.01) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = '#FFD700';
+      ctx.globalAlpha = flashStrength * 0.35; // additive + modest cap keeps it a crisp pop, not a wash
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+    flashStrength *= 0.72; // fast decay so it reads as a hit, not a glow
+  }
+
+  function drawRings() {
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = '#FFFFF0';
+    ctx.lineWidth = 1;
+    const size = Math.max(2, CELL - 1);
+    const next = [];
+    for (const ring of rings) {
+      ring.r += ring.speed;
+      ring.alpha -= 0.018;
+      if (ring.alpha > 0.02 && ring.r < GRID_RADIUS * 1.15) {
+        const numPoints = Math.min(300, Math.max(20, Math.floor(ring.r * 0.9)));
+        ctx.globalAlpha = ring.alpha * 0.85;
+        for (let i = 0; i < numPoints; i++) {
+          const angle = (i / numPoints) * Math.PI * 2;
+          const px = Math.round(CX + Math.cos(angle) * ring.r * CELL);
+          const py = Math.round(CY + Math.sin(angle) * ring.r * CELL);
+          if (px < -CELL || px > W + CELL || py < -CELL || py > H + CELL) continue;
+          ctx.strokeRect(px - size / 2 + 0.5, py - size / 2 + 0.5, size, size);
+        }
+        next.push(ring);
+      }
+    }
+    rings = next;
+    ctx.globalAlpha = 1;
+  }
+
   function resetOrganism() {
     tips = [];
     cellState.clear();
     recentCore.length = 0;
     recentAll.length = 0;
     frameCount = 0;
+    bassFloor = 0.15;
+    lastHitFrame = -999;
+    flashStrength = 0;
+    rings = [];
     for (let i = 0; i < 3; i++) spawnSeed();
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     prevCtx.fillStyle = '#000'; prevCtx.fillRect(0, 0, W, H);
@@ -431,6 +508,12 @@
     ageCells(220, (bass + mid + treble) / 3);
 
     prevCtx.drawImage(canvas, 0, 0);
+
+    // overlays below are drawn after the snapshot above, so they show for
+    // this frame only and never get folded into the persistent structure
+    detectBeat(bass);
+    drawRings();
+    drawFlash();
   }
 
   // ---------- audio analysis ----------
