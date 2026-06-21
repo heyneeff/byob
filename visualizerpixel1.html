@@ -48,7 +48,29 @@
     cursor: pointer; letter-spacing: 0.08em; display: none;
   }
   #resetBtn:hover { color: #FFD700; border-color: #FFD700; }
-</style>
+
+  #controlsToggle {
+    position: fixed; top: 18px; right: 24px; z-index: 9;
+    background: transparent; color: #5a4a1c; border: 1px solid #3a3014;
+    font-family: inherit; font-size: 10px; padding: 8px 12px;
+    cursor: pointer; letter-spacing: 0.08em; display: none;
+  }
+  #controlsToggle:hover { color: #FFD700; border-color: #FFD700; }
+  #controlsPanel {
+    position: fixed; top: 56px; right: 24px; z-index: 9;
+    background: rgba(0,0,0,0.78); border: 1px solid #5a4a1c;
+    padding: 16px 18px; width: 200px; display: none;
+  }
+  #controlsPanel label {
+    display: block; color: #b8ad8a; font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px;
+  }
+  #controlsPanel .row { margin-bottom: 14px; }
+  #controlsPanel .row:last-child { margin-bottom: 0; }
+  #controlsPanel input[type=range] {
+    width: 100%; accent-color: #FFD700;
+  }
+  </style>
 </head>
 <body>
 
@@ -68,6 +90,22 @@
 
 <div id="hud">bass <span id="bVal">0.00</span> &nbsp; mid <span id="mVal">0.00</span> &nbsp; treble <span id="tVal">0.00</span> &nbsp; nodes <span id="nVal">0</span></div>
 <button id="resetBtn">reset organism</button>
+<button id="controlsToggle">controls</button>
+<div id="controlsPanel">
+  <div class="row">
+    <label for="sensSlider">Sensitivity</label>
+    <input type="range" id="sensSlider" min="0.5" max="2.5" step="0.05" value="1.3">
+  </div>
+  <div class="row">
+    <label for="voidSlider">Negative Space</label>
+    <input type="range" id="voidSlider" min="0.4" max="2.5" step="0.05" value="1.15">
+  </div>
+  <div class="row">
+    <label for="densSlider">Density</label>
+    <input type="range" id="densSlider" min="0.3" max="2.5" step="0.05" value="1">
+  </div>
+</div>
+
 
 <script>
 (function(){
@@ -164,6 +202,12 @@
   const YANG_LIFE_BASE = 600; // ~10s of settled life at full audio energy
   const YANG_LIFE_MIN = 90; // ~1.5s during near-silence — this is what carves negative space
 
+  // live-adjustable via the controls panel — defaults already include the
+  // requested +15% negative space bump (voidAmount > 1 shortens settled life)
+  let sensitivity = 1.3;
+  let voidAmount = 1.15;
+  let densityAmount = 1.0;
+
   function mirror8(x, y) {
     return [
       [ x,  y], [ y,  x],
@@ -245,7 +289,7 @@
   // loudness) shortens settled life when it's low — quiet passages erode
   // structure into real negative space faster than loud ones.
   function ageCells(amount, energy) {
-    const yangLife = Math.max(YANG_LIFE_MIN, YANG_LIFE_BASE * Math.min(1, energy * 2.2));
+    const yangLife = Math.max(YANG_LIFE_MIN, YANG_LIFE_BASE * Math.min(1, energy * 2.2)) / voidAmount;
     for (let i = 0; i < amount; i++) {
       if (recentAll.length === 0) return;
       const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
@@ -311,13 +355,13 @@
   resetOrganism();
 
   function updateGrowth(bass, mid, treble) {
-    if (tips.length < MAX_TIPS && Math.random() < bass * 0.32) spawnSeed();
+    if (tips.length < MAX_TIPS && Math.random() < bass * 0.32 * densityAmount) spawnSeed();
     if (tips.length === 0) spawnSeed();
 
     // tuned low enough that growth keeps expanding into open territory
     // instead of filling its whole footprint within a few seconds
-    const branchChance = 0.010 + mid * 0.14;
-    const detailChance = treble * 0.3;
+    const branchChance = (0.010 + mid * 0.14) * densityAmount;
+    const detailChance = treble * 0.3 * densityAmount;
     const wanderChance = 0.05 + mid * 0.05;
     const next = [];
 
@@ -368,7 +412,7 @@
 
     // thicken the core into solid contiguous blocks — this is the main
     // thing that makes it read as an "orb" instead of a sprawl of wires
-    densifyCore(Math.floor(2 + (bass + mid) * 10));
+    densifyCore(Math.floor((2 + (bass + mid) * 10) * densityAmount));
   }
 
   // ---------- render loop ----------
@@ -396,7 +440,7 @@
   function setupAnalyser(sourceNode, audioCtx) {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.78;
+    analyser.smoothingTimeConstant = 0.55; // lower = less built-in lag, snappier response
     sourceNode.connect(analyser);
     freqData = new Uint8Array(analyser.frequencyBinCount);
   }
@@ -417,12 +461,14 @@
     for (let i = 0; i < bassEnd; i++) b += freqData[i];
     for (let i = bassEnd; i < midEnd; i++) m += freqData[i];
     for (let i = midEnd; i < n; i++) tr += freqData[i];
-    b  /= (bassEnd * 255) || 1;
-    m  /= ((midEnd - bassEnd) * 255) || 1;
-    tr /= ((n - midEnd) * 255) || 1;
-    bassLevel   = bassLevel   * 0.7 + b  * 0.3;
-    midLevel    = midLevel    * 0.7 + m  * 0.3;
-    trebleLevel = trebleLevel * 0.7 + tr * 0.3;
+    b  = Math.min(1, (b  / ((bassEnd * 255) || 1)) * sensitivity);
+    m  = Math.min(1, (m  / ((midEnd - bassEnd) * 255 || 1)) * sensitivity);
+    tr = Math.min(1, (tr / ((n - midEnd) * 255 || 1)) * sensitivity);
+    // less weight on history = the displayed levels track the actual audio
+    // more tightly instead of smoothing it out
+    bassLevel   = bassLevel   * 0.5 + b  * 0.5;
+    midLevel    = midLevel    * 0.5 + m  * 0.5;
+    trebleLevel = trebleLevel * 0.5 + tr * 0.5;
   }
 
   // ---------- BYOB multi-listener hook (stub for future wiring) ----------
@@ -437,6 +483,8 @@
   const ui = document.getElementById('ui');
   const hud = document.getElementById('hud');
   const resetBtn = document.getElementById('resetBtn');
+  const controlsToggle = document.getElementById('controlsToggle');
+  const controlsPanel = document.getElementById('controlsPanel');
   const bVal = document.getElementById('bVal');
   const mVal = document.getElementById('mVal');
   const tVal = document.getElementById('tVal');
@@ -446,7 +494,22 @@
     ui.style.display = 'none';
     hud.style.display = 'block';
     resetBtn.style.display = 'block';
+    controlsToggle.style.display = 'block';
   }
+
+  controlsToggle.addEventListener('click', () => {
+    controlsPanel.style.display = controlsPanel.style.display === 'block' ? 'none' : 'block';
+  });
+
+  document.getElementById('sensSlider').addEventListener('input', (e) => {
+    sensitivity = parseFloat(e.target.value);
+  });
+  document.getElementById('voidSlider').addEventListener('input', (e) => {
+    voidAmount = parseFloat(e.target.value);
+  });
+  document.getElementById('densSlider').addEventListener('input', (e) => {
+    densityAmount = parseFloat(e.target.value);
+  });
 
   document.getElementById('micBtn').addEventListener('click', async () => {
     try {
