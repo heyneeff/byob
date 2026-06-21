@@ -70,6 +70,17 @@
   #controlsPanel input[type=range] {
     width: 100%; accent-color: #FFD700;
   }
+  #controlsPanel .toggles {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  #controlsPanel .toggleBtn {
+    background: #0a0a0a; color: #5a4a1c; border: 1px solid #3a3014;
+    font-family: inherit; font-size: 10px; padding: 8px 4px;
+    cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase;
+  }
+  #controlsPanel .toggleBtn.active {
+    color: #FFD700; border-color: #FFD700; background: #1a1a0a;
+  }
   </style>
 </head>
 <body>
@@ -104,7 +115,14 @@
     <label for="densSlider">Density</label>
     <input type="range" id="densSlider" min="0.3" max="2.5" step="0.05" value="1">
   </div>
+  <div class="row toggles">
+    <button class="toggleBtn active" id="ringsToggle">Rings</button>
+    <button class="toggleBtn" id="chaosToggle">Chaos</button>
+    <button class="toggleBtn" id="swirlToggle">Swirl</button>
+    <button class="toggleBtn" id="fractalToggle">Fractal</button>
+  </div>
 </div>
+
 
 
 <script>
@@ -158,6 +176,7 @@
   const WARM = ['#FFD700', '#E0115F', '#FFBF00', '#FF6F3C', '#FF4040'];
   const COOL = ['#50C878', '#0F52BA', '#9B5DE5', '#2EC4B6', '#3FA7FF', '#7FFF6B'];
   const ACCENT = ['#FFFFF0', '#FF3CAC', '#FFE45C'];
+  const ALL_COLORS = WARM.concat(COOL, ACCENT);
 
   function dist(x, y) { return Math.sqrt(x * x + y * y); }
 
@@ -165,8 +184,10 @@
   // The old version locked anything inside CORE_RADIUS to warm-only — but
   // the core dilation pass generates the large majority of all cells, so
   // that made the whole piece read as red/gold no matter what the rim did.
-  // Now even dead-center has real odds of pulling cool/accent tones.
+  // Now even dead-center has real odds of pulling cool/accent tones. In
+  // chaos mode, radius is ignored entirely and color is fully random.
   function colorForRadius(r) {
+    if (chaosMode) return ALL_COLORS[(Math.random() * ALL_COLORS.length) | 0];
     if (Math.random() < 0.1) return ACCENT[(Math.random() * ACCENT.length) | 0];
     const t = Math.min(1, r / GRID_RADIUS); // 0 at center, 1 at the edge
     const coolChance = 0.32 + t * 0.45; // ~32% cool at center, ~77% at the rim
@@ -208,6 +229,16 @@
   let voidAmount = 1.15;
   let densityAmount = 1.0;
 
+  // toggleable modes
+  let ringsEnabled = true;
+  let chaosMode = false;
+  let swirlMode = false;
+  let fractalMode = false;
+
+  // updated every frame in renderFrame — read by the mark-drawing functions
+  // so bass continuously controls size/weight, not just discrete beat hits
+  let currentBass = 0;
+
   function mirror8(x, y) {
     return [
       [ x,  y], [ y,  x],
@@ -229,11 +260,12 @@
 
   // settled (yang): a closed square outline — the "resolved" mark
   function drawYangMark(x, y, color, energy) {
-    const drawSize = Math.max(2, CELL - 2);
+    const bassBoost = 1 + currentBass * 0.8;
+    const drawSize = Math.max(2, (CELL - 2) * bassBoost);
     const offset = (CELL - drawSize) / 2;
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 + currentBass * 1.6; // bass also thickens the line itself
     ctx.globalAlpha = Math.min(1, 0.72 + (energy || 0.6) * 0.28);
     forEachMirrorPixel(x, y, (sx, sy) => {
       ctx.strokeRect(sx + offset + 0.5, sy + offset + 0.5, drawSize, drawSize);
@@ -245,12 +277,13 @@
   // only — a different line type for "neither yin nor yang," used both
   // when a cell is forming and when it's mid-vanish
   function drawChangingMark(x, y, color) {
-    const drawSize = Math.max(2, CELL - 2);
+    const bassBoost = 1 + currentBass * 0.8;
+    const drawSize = Math.max(2, (CELL - 2) * bassBoost);
     const offset = (CELL - drawSize) / 2;
     const arm = Math.max(1, Math.round(drawSize * 0.5));
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 + currentBass * 1.6;
     ctx.globalAlpha = 0.85;
     forEachMirrorPixel(x, y, (sx, sy) => {
       const left = sx + offset + 0.5, top = sy + offset + 0.5;
@@ -289,7 +322,7 @@
   // loudness) shortens settled life when it's low — quiet passages erode
   // structure into real negative space faster than loud ones.
   function ageCells(amount, energy) {
-    const yangLife = Math.max(YANG_LIFE_MIN, YANG_LIFE_BASE * Math.min(1, energy * 2.2)) / voidAmount;
+    const yangLife = Math.max(YANG_LIFE_MIN, YANG_LIFE_BASE * Math.min(1, energy * 2.2)) / voidAmount / (chaosMode ? 1.8 : 1);
     for (let i = 0; i < amount; i++) {
       if (recentAll.length === 0) return;
       const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
@@ -342,23 +375,21 @@
     });
   }
 
-  // ---------- beat detection + transient overlays ----------
+  // ---------- beat detection + ring overlay ----------
   // The structural reactivity (branch/seed/decay rates) is a slow-moving
   // average response — good for long-arc shape, but it can't read as
   // "reacting to the music" on its own because nothing happens *at* a hit,
   // only gradually around it. This adds a real onset detector (current
-  // bass against its own rolling baseline, not just raw loudness) and two
-  // effects that fire instantly on a detected hit: a quick additive flash
-  // and an expanding ring of square ticks. Both are drawn *after* the
-  // frame is snapshotted into prevCanvas, so they're visible for one frame
-  // and never get baked into the persistent structure — pure transients.
+  // bass against its own rolling baseline, not just raw loudness) and an
+  // expanding ring of square ticks fired on each detected hit. It's drawn
+  // *after* the frame is snapshotted into prevCanvas, so it's visible for
+  // one frame and never gets baked into the persistent structure.
   let bassFloor = 0.15;
   let lastHitFrame = -999;
   const HIT_REFRACTORY = 9; // ~150ms at 60fps — one drum hit shouldn't fire twice
   const HIT_RATIO = 1.45;   // current bass must clear the rolling baseline by this much
   const HIT_MIN = 0.12;     // absolute floor so near-silence can't trigger a "hit"
 
-  let flashStrength = 0;
   let rings = [];
   const MAX_RINGS = 6;
 
@@ -372,21 +403,11 @@
   }
 
   function onBeatHit(strength) {
-    flashStrength = Math.max(flashStrength, 0.35 + strength * 0.45);
-    if (rings.length >= MAX_RINGS) rings.shift();
-    rings.push({ r: 6, alpha: 1, speed: 2.2 + strength * 2.5 });
-    if (tips.length < MAX_TIPS) spawnSeed(); // a small structural kick to match the visual one
-  }
-
-  function drawFlash() {
-    if (flashStrength > 0.01) {
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = '#FFD700';
-      ctx.globalAlpha = flashStrength * 0.35; // additive + modest cap keeps it a crisp pop, not a wash
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalAlpha = 1;
+    if (ringsEnabled) {
+      if (rings.length >= MAX_RINGS) rings.shift();
+      rings.push({ r: 6, alpha: 1, speed: 2.2 + strength * 2.5 });
     }
-    flashStrength *= 0.72; // fast decay so it reads as a hit, not a glow
+    if (tips.length < MAX_TIPS) spawnSeed(); // a small structural kick to match the hit
   }
 
   function drawRings() {
@@ -423,7 +444,6 @@
     frameCount = 0;
     bassFloor = 0.15;
     lastHitFrame = -999;
-    flashStrength = 0;
     rings = [];
     for (let i = 0; i < 3; i++) spawnSeed();
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
@@ -432,14 +452,15 @@
   resetOrganism();
 
   function updateGrowth(bass, mid, treble) {
-    if (tips.length < MAX_TIPS && Math.random() < bass * 0.32 * densityAmount) spawnSeed();
+    const chaosMult = chaosMode ? 3.5 : 1;
+    if (tips.length < MAX_TIPS && Math.random() < bass * 0.32 * densityAmount * chaosMult) spawnSeed();
     if (tips.length === 0) spawnSeed();
 
     // tuned low enough that growth keeps expanding into open territory
     // instead of filling its whole footprint within a few seconds
-    const branchChance = (0.010 + mid * 0.14) * densityAmount;
-    const detailChance = treble * 0.3 * densityAmount;
-    const wanderChance = 0.05 + mid * 0.05;
+    const branchChance = (0.010 + mid * 0.14) * densityAmount * chaosMult;
+    const detailChance = treble * 0.3 * densityAmount * chaosMult;
+    const wanderChance = chaosMode ? 0.35 : (0.05 + mid * 0.05);
     const next = [];
 
     for (let i = 0; i < tips.length; i++) {
@@ -457,13 +478,16 @@
         t.x = nx; t.y = ny;
         plotCell(t.x, t.y, t.color);
       } else {
-        const turn = Math.random() < 0.5 ? 1 : -1;
+        // swirl mode biases which way tips turn instead of picking randomly
+        // — still a plain 90° step, just consistently the same direction,
+        // which is what makes spiral arms emerge from straight-line moves
+        const turn = swirlMode ? (Math.random() < 0.74 ? 1 : -1) : (Math.random() < 0.5 ? 1 : -1);
         const ndx = -t.dy * turn, ndy = t.dx * turn;
         t.dx = ndx; t.dy = ndy;
       }
 
       if (Math.random() < wanderChance) {
-        const turn = Math.random() < 0.5 ? 1 : -1;
+        const turn = swirlMode ? (Math.random() < 0.74 ? 1 : -1) : (Math.random() < 0.5 ? 1 : -1);
         const ndx = -t.dy * turn, ndy = t.dx * turn;
         t.dx = ndx; t.dy = ndy;
       }
@@ -489,19 +513,31 @@
 
     // thicken the core into solid contiguous blocks — this is the main
     // thing that makes it read as an "orb" instead of a sprawl of wires
-    densifyCore(Math.floor((2 + (bass + mid) * 10) * densityAmount));
+    densifyCore(Math.floor((2 + (bass + mid) * 10) * densityAmount * (chaosMode ? 2 : 1)));
   }
 
   // ---------- render loop ----------
   function renderFrame(bass, mid, treble) {
-    // structure stays spatially fixed — decay is no longer a generic global
-    // fade, it's the ternary lifecycle below (settled → becoming → void),
-    // so this is just a faint safety fade for anything outside that system
-    ctx.globalCompositeOperation = 'source-over';
+    currentBass = bass; // read by drawYangMark/drawChangingMark for the size/weight pulse
+
+    // structure stays spatially fixed by default — decay is the ternary
+    // lifecycle below, not a generic fade. Fractal mode is the one opt-in
+    // exception: a gentle uniform scale-up of the previous frame, which
+    // reintroduces a self-similar "echo" without rotating anything (scale
+    // alone keeps every square axis-aligned — rotation would alias it).
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    if (fractalMode) {
+      const zf = 1.0008 + bass * 0.0025;
+      ctx.translate(CX, CY);
+      ctx.scale(zf, zf);
+      ctx.translate(-CX, -CY);
+    }
+    ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 0.999;
     ctx.drawImage(prevCanvas, 0, 0, W, H);
+    ctx.restore();
     ctx.globalAlpha = 1;
 
     updateGrowth(bass, mid, treble);
@@ -509,11 +545,10 @@
 
     prevCtx.drawImage(canvas, 0, 0);
 
-    // overlays below are drawn after the snapshot above, so they show for
-    // this frame only and never get folded into the persistent structure
+    // ring overlay is drawn after the snapshot above, so it shows for this
+    // frame only and never gets folded into the persistent structure
     detectBeat(bass);
     drawRings();
-    drawFlash();
   }
 
   // ---------- audio analysis ----------
@@ -593,6 +628,19 @@
   document.getElementById('densSlider').addEventListener('input', (e) => {
     densityAmount = parseFloat(e.target.value);
   });
+
+  function wireToggle(id, getSet) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('click', () => {
+      const next = !getSet();
+      getSet(next);
+      btn.classList.toggle('active', next);
+    });
+  }
+  wireToggle('ringsToggle', (v) => v === undefined ? ringsEnabled : (ringsEnabled = v));
+  wireToggle('chaosToggle', (v) => v === undefined ? chaosMode : (chaosMode = v));
+  wireToggle('swirlToggle', (v) => v === undefined ? swirlMode : (swirlMode = v));
+  wireToggle('fractalToggle', (v) => v === undefined ? fractalMode : (fractalMode = v));
 
   document.getElementById('micBtn').addEventListener('click', async () => {
     try {
