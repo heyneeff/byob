@@ -274,7 +274,7 @@
 
   const FORM_DURATION = 90;
   const YANG_LIFE_BASE = 600;
-  const YANG_LIFE_MIN = 90;
+  const YANG_LIFE_MIN = 55;
 
   // live-adjustable via the controls panel
   let sensitivity = 1.3;
@@ -577,8 +577,8 @@
   // one frame and never gets baked into the persistent structure.
   let bassFloor = 0.15;
   let lastHitFrame = -999;
-  const HIT_REFRACTORY = 9; // ~150ms at 60fps — one drum hit shouldn't fire twice
-  const HIT_RATIO = 1.45;   // current bass must clear the rolling baseline by this much
+  const HIT_REFRACTORY = 6;
+  const HIT_RATIO = 1.28;
   const HIT_MIN = 0.12;     // absolute floor so near-silence can't trigger a "hit"
 
   let rings = [];
@@ -639,9 +639,8 @@
     if (bass < 0.06 || recentAll.length === 0) return;
     // mode scales with bass: 1 at low → 6 at peak
     const mode = 1 + bass * 5;
-    const count = Math.floor(bass * bass * 65);
-    // nodal threshold widens with bass — loud bass = wider voids
-    const threshold = 0.10 + bass * 0.32;
+    const count = Math.floor(bass * bass * 92);
+    const threshold = 0.14 + bass * 0.45;
 
     for (let i = 0; i < count; i++) {
       const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
@@ -671,7 +670,7 @@
   // fading so the dissolution reads as a bright crackle, not just loss.
   function trebleEdge(treble) {
     if (treble < 0.08 || recentAll.length === 0) return;
-    const count = Math.floor(treble * treble * 28);
+    const count = Math.floor(treble * treble * 40);
     for (let i = 0; i < count; i++) {
       const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
       if (dist(x, y) < MID_RADIUS * 0.82) continue; // outer ring only
@@ -687,23 +686,46 @@
     }
   }
 
-  // Beat flash: on each detected hit, a sharp gold/white burst covers the
-  // whole orb and decays in ~8 frames. Completely distinct from the bass
-  // glow — this is the kick drum itself, not the general bass level.
-  function drawBeatFlash() {
-    if (beatFlash < 0.01) return;
-    beatFlash *= 0.80; // fast decay ~8 frames
-    const r = GRID_RADIUS * CELL;
-    ctx.save();
-    ctx.beginPath();
-    ctx.arc(CX, CY, r * 1.05, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = '#FFFFFF';
-    ctx.globalAlpha = beatFlash * 0.45;
-    ctx.fillRect(CX - r, CY - r, r * 2, r * 2);
-    ctx.restore();
+  // The center nucleus: the organism's emergent seed point, fully audio-reactive.
+  //   Bass  → core square breathes (tiny at quiet, large on peaks)
+  //   Mid   → color shifts warm↔cool with colorTemp
+  //   Beat  → expanding orthogonal cross in cardinal directions
+  // Drawn after snapshot so it's purely transient — never baked in.
+  function drawNucleus(bass) {
+    if (beatFlash > 0.01) beatFlash *= 0.80; else beatFlash = 0;
+
+    const pal = palette();
+    const pool = colorTemp > 0.58 ? pal.cool
+               : colorTemp < 0.42 ? pal.warm
+               : pal.accent;
+    const col = pool[Math.floor(frameCount * 0.07) % pool.length];
+
+    // core square — breathes quadratically so quiet=tiny, peak=large
+    const minSize = CELL * 2;
+    const size = Math.round(minSize + bass * bass * CELL * 12);
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = col;
+    ctx.globalAlpha = 0.92;
+    ctx.fillRect(Math.round(CX - size / 2), Math.round(CY - size / 2), size, size);
+
+    // beat cross: cell-sized squares along 4 cardinal arms, fading by step
+    if (beatFlash > 0.04) {
+      const arms = 1 + Math.floor(beatFlash * 12);
+      ctx.globalCompositeOperation = 'lighter';
+      for (let step = 1; step <= arms; step++) {
+        const d = step * CELL * 2;
+        const alpha = beatFlash * (1 - (step - 1) / arms) * 0.75;
+        if (alpha < 0.01) break;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#FFFFFF';
+        const s = Math.max(2, CELL - 1);
+        [[d,0],[-d,0],[0,d],[0,-d]].forEach(([ox, oy]) => {
+          ctx.fillRect(Math.round(CX + ox - s/2), Math.round(CY + oy - s/2), s, s);
+        });
+      }
+    }
     ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   function resetOrganism() {
@@ -1014,22 +1036,20 @@
 
     computeHexagram();
     updateGrowth(bass, mid, treble);
-    ageCells(220, (bass + mid + treble) / 3);
+    ageCells(308, (bass + mid + treble) / 3);
 
-    // update mid-driven color temperature (0=warm, 1=cool)
     colorTemp = colorTemp * 0.94 + mid * 0.06;
 
-    // frequency-specific effects — all run BEFORE snapshot so they bake in
-    bassErode(bass);          // carves cymatic negative space (nodal lines)
-    trebleEdge(treble);       // dissolves outer corona with accent sparkle
+    bassErode(bass);
+    trebleEdge(treble);
 
-    if (colorSwirlMode) flowColors(Math.floor(30 + bass * 70), 1);
-    if (spinMode) flowColors(Math.floor(150 + bass * 180), 1);
+    if (colorSwirlMode) flowColors(Math.floor(42 + bass * 98), 1);
+    if (spinMode) flowColors(Math.floor(210 + bass * 252), 1);
 
     prevCtx.drawImage(canvas, 0, 0);
 
     detectBeat(bass);
-    drawBeatFlash();
+    drawNucleus(bass);
     drawRings();
     drawTorusSeam();
     drawConstellationLines();
