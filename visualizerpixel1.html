@@ -118,8 +118,15 @@
   <div class="row toggles">
     <button class="toggleBtn active" id="ringsToggle">Rings</button>
     <button class="toggleBtn" id="chaosToggle">Chaos</button>
-    <button class="toggleBtn" id="swirlToggle">Swirl</button>
-    <button class="toggleBtn" id="fractalToggle">Fractal</button>
+    <button class="toggleBtn" id="swirlToggle">Spiral</button>
+    <button class="toggleBtn" id="colorSwirlToggle">Swirl</button>
+    <button class="toggleBtn" id="fractalToggle">Trails</button>
+    <button class="toggleBtn" id="constellationToggle">Stars</button>
+    <button class="toggleBtn" id="beatLockToggle">Beat Lock</button>
+    <button class="toggleBtn" id="toroidalToggle">Torus</button>
+    <button class="toggleBtn" id="spinToggle">Spin</button>
+    <button class="toggleBtn" id="tendrilsToggle">Tendrils</button>
+    <button class="toggleBtn" id="asymToggle">Asym</button>
   </div>
   <div class="row">
     <label>Color Mode</label>
@@ -261,13 +268,14 @@
   const RECENT_CORE_MAX = 220;
   const recentAll = []; // every cell ever plotted, sampled by the aging pass
   const RECENT_ALL_MAX = 5000;
+  const recentVoid = []; // recently-erased cells, seeded from during silence
+  const RECENT_VOID_MAX = 1200;
 
-  const FORM_DURATION = 90; // frames spent "becoming" before settling or finishing a vanish
-  const YANG_LIFE_BASE = 600; // ~10s of settled life at full audio energy
-  const YANG_LIFE_MIN = 90; // ~1.5s during near-silence — this is what carves negative space
+  const FORM_DURATION = 90;
+  const YANG_LIFE_BASE = 600;
+  const YANG_LIFE_MIN = 90;
 
-  // live-adjustable via the controls panel — defaults already include the
-  // requested +15% negative space bump (voidAmount > 1 shortens settled life)
+  // live-adjustable via the controls panel
   let sensitivity = 1.3;
   let voidAmount = 1.15;
   let densityAmount = 1.0;
@@ -276,11 +284,103 @@
   let ringsEnabled = true;
   let chaosMode = false;
   let swirlMode = false;
+  let colorSwirlMode = false;
+  // spinAngle and colorSwirlAngle removed — both modes now move color values
+  // between cells in the fixed grid instead of transforming the canvas
   let fractalMode = false;
+  let trailsOpacity = 0; // ramps 0→1 when trails on, fades 1→0 when turned off
+  let constellationMode = false;
+  let beatLockMode = false;
+  let toroidalMode = false;
+  let spinMode = false;
+  let tendrilsMode = false;
+  let asymMode = false;   // when off, all 8 sectors always open (symmetric)
 
-  // updated every frame in renderFrame — read by the mark-drawing functions
-  // so bass continuously controls size/weight, not just discrete beat hits
+  let beatWindowFrames = 0;
+  const BEAT_WINDOW = 12;
+  let beatLockPulse = 0;
+
   let currentBass = 0;
+
+  // ---------- silence dreams ----------
+  // when energy drops below threshold for long enough, growth switches
+  // source: instead of seeding from center, tips sprout from the edges of
+  // recently-erased void cells — emptiness itself becomes generative.
+  let silenceEnergy = 0;       // smoothed overall energy
+  let silenceFrames = 0;       // how many consecutive near-silent frames
+  const SILENCE_THRESHOLD = 0.09;
+  const SILENCE_ONSET = 90;    // ~1.5s before dream mode kicks in
+  let dreaming = false;
+
+  function spawnFromVoid() {
+    if (recentVoid.length === 0) return;
+    const [vx, vy] = recentVoid[(Math.random() * recentVoid.length) | 0];
+    const d = DIRS[(Math.random() * 4) | 0];
+    const sx = vx + d[0], sy = vy + d[1];
+    if (dist(sx, sy) <= GRID_RADIUS && !isBlocked(sx, sy)) {
+      // dream-growth uses cool/accent tones — the inverse aesthetic of
+      // the warm, energetic normal growth from center
+      const pal = palette();
+      const pool = pal.cool.concat(pal.accent);
+      const color = pool[(Math.random() * pool.length) | 0];
+      tips.push({
+        x: sx, y: sy, dx: d[0], dy: d[1],
+        age: 0, life: 80 + Math.random() * 160,
+        color,
+        legLen: 1, legProgress: 0, turnCount: 0,
+      });
+    }
+  }
+
+  // ---------- hexagram system ----------
+  // Split the FFT into 6 bands. Each band above its local threshold = yang
+  // (solid line, bit = 1). Below = yin (broken line, bit = 0). The 6 bits
+  // form a number 0-63 = one of the 64 hexagrams, live, every frame.
+  //
+  // Lower trigram (bits 0-2) gates which pairs of the 8 mirror sectors are
+  // open to growth — the music literally determines where the organism can
+  // grow at any moment. Upper trigram (bits 3-5) modulates color density
+  // and branching rate. All 8 sectors always receive erasing/aging updates
+  // so the hexagram controls growth, not decay.
+  let currentHexagram = 63;   // start all-yang
+  let openSectors = 0xFF;     // bitmask, bit i = sector i open
+  const hexBandFloor = [0.08, 0.08, 0.08, 0.08, 0.08, 0.08];
+
+  function computeHexagram() {
+    if (!analyser) {
+      currentHexagram = Math.floor(frameCount / 90) % 64;
+    } else {
+      const n = freqData.length;
+      const boundaries = [0, 0.04, 0.10, 0.20, 0.35, 0.60, 1.0].map(f => Math.floor(f * n));
+      let hex = 0;
+      for (let b = 0; b < 6; b++) {
+        let sum = 0;
+        for (let i = boundaries[b]; i < boundaries[b + 1]; i++) sum += freqData[i];
+        const avg = sum / ((boundaries[b + 1] - boundaries[b]) * 255 || 1) * sensitivity;
+        hexBandFloor[b] = hexBandFloor[b] * 0.97 + avg * 0.03;
+        if (avg > Math.max(0.05, hexBandFloor[b] * 1.3)) hex |= (1 << b);
+      }
+      currentHexagram = hex;
+    }
+    // sector gating only applies in asymMode — otherwise all 8 sectors are
+    // always open, maintaining perfect D4 symmetry at all times
+    if (asymMode) {
+      const lower = currentHexagram & 0x07;
+      openSectors = 0xC0;
+      if (lower & 1) openSectors |= 0x03;
+      if (lower & 2) openSectors |= 0x0C;
+      if (lower & 4) openSectors |= 0x30;
+      if (openSectors === 0xC0) openSectors = 0xFF;
+    } else {
+      openSectors = 0xFF;
+    }
+  }
+
+  // upper trigram (bits 3-5) → branch density modifier 0.5–1.5
+  function hexBranchMod() {
+    const upper = (currentHexagram >> 3) & 0x07;
+    return 0.5 + (upper / 7) * 1.0;
+  }
 
   function mirror8(x, y) {
     return [
@@ -291,9 +391,23 @@
     ];
   }
 
+  // same 8 transforms as mirror8 but as explicit functions so constellation
+  // lines can transform *both* endpoints of a segment identically
+  const D4 = [
+    (x,y) => [ x,  y],
+    (x,y) => [ y,  x],
+    (x,y) => [-x,  y],
+    (x,y) => [-y,  x],
+    (x,y) => [ x, -y],
+    (x,y) => [ y, -x],
+    (x,y) => [-x, -y],
+    (x,y) => [-y, -x],
+  ];
+
   function forEachMirrorPixel(x, y, cb) {
     const pts = mirror8(x, y);
     for (let i = 0; i < 8; i++) {
+      if (!(openSectors & (1 << i))) continue; // hexagram gates which sectors grow
       const sx = Math.round(CX + pts[i][0] * CELL);
       const sy = Math.round(CY + pts[i][1] * CELL);
       if (sx < -CELL || sx > W + CELL || sy < -CELL || sy > H + CELL) continue;
@@ -339,10 +453,20 @@
 
   // void (yin): actively erased — real negative space, not just absence
   function eraseMark(x, y) {
+    recentVoid.push([x, y]);
+    if (recentVoid.length > RECENT_VOID_MAX) recentVoid.shift();
     ctx.globalCompositeOperation = 'source-over';
     ctx.fillStyle = '#000';
     ctx.globalAlpha = 1;
-    forEachMirrorPixel(x, y, (sx, sy) => { ctx.fillRect(sx, sy, CELL, CELL); });
+    // erasure always uses all 8 sectors regardless of hexagram — the hexagram
+    // controls growth, not decay; silence should eat structure uniformly
+    const pts = mirror8(x, y);
+    for (let i = 0; i < 8; i++) {
+      const sx = Math.round(CX + pts[i][0] * CELL);
+      const sy = Math.round(CY + pts[i][1] * CELL);
+      if (sx < -CELL || sx > W + CELL || sy < -CELL || sy > H + CELL) continue;
+      ctx.fillRect(sx, sy, CELL, CELL);
+    }
   }
 
   function plotCell(x, y, color) {
@@ -407,11 +531,32 @@
   let tips = [];
   const MAX_TIPS = 800;
 
+  function spawnRimTendril() {
+    // place a tip near the rim at a random angle, pointing outward —
+    // tendrils shoot off from the edge of the orb rather than branching
+    // from internal growth, so they read as the organism exhaling arms
+    const angle = Math.random() * Math.PI * 2;
+    const rimR = GRID_RADIUS * 0.88;
+    const x = Math.round(rimR * Math.cos(angle));
+    const y = Math.round(rimR * Math.sin(angle));
+    // choose the cardinal direction with the most outward component
+    const outward = DIRS.filter(([dx, dy]) => dx * x + dy * y > 0);
+    if (outward.length === 0) return;
+    const [dx, dy] = outward[(Math.random() * outward.length) | 0];
+    tips.push({
+      x, y, dx, dy,
+      age: 0, life: 200 + Math.random() * 280,
+      color: colorForRadius(rimR),
+      legLen: 1, legProgress: 0, turnCount: 0,
+      isRimTendril: true,
+    });
+  }
+
   function spawnSeed() {
     const d = DIRS[(Math.random() * 4) | 0];
     tips.push({
       x: 0, y: 0, dx: d[0], dy: d[1],
-      age: 0, life: 240 + Math.random() * 420,
+      age: 0, life: (swirlMode ? 900 : 240) + Math.random() * (swirlMode ? 600 : 420),
       color: colorForRadius(0),
       legLen: 1, legProgress: 0, turnCount: 0, // square-spiral state, used only in swirl mode
     });
@@ -449,6 +594,7 @@
       if (rings.length >= MAX_RINGS) rings.shift();
       rings.push({ r: 6, alpha: 1, speed: 2.2 + strength * 2.5 });
     }
+    if (beatLockMode) beatWindowFrames = BEAT_WINDOW;
     if (tips.length < MAX_TIPS) spawnSeed(); // a small structural kick to match the hit
   }
 
@@ -500,10 +646,18 @@
     cellState.clear();
     recentCore.length = 0;
     recentAll.length = 0;
+    recentVoid.length = 0;
     frameCount = 0;
     bassFloor = 0.15;
     lastHitFrame = -999;
     rings = [];
+    beatWindowFrames = 0;
+    beatLockPulse = 0;
+    silenceFrames = 0;
+    dreaming = false;
+    currentHexagram = 63;
+    openSectors = 0xFF;
+    for (let i = 0; i < 6; i++) hexBandFloor[i] = 0.08;
     for (let i = 0; i < 3; i++) spawnSeed();
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
     prevCtx.fillStyle = '#000'; prevCtx.fillRect(0, 0, W, H);
@@ -511,13 +665,29 @@
   resetOrganism();
 
   function updateGrowth(bass, mid, treble) {
+    // beat lock: growth only fires in the short window after each detected beat
+    if (beatLockMode) {
+      if (beatWindowFrames > 0) { beatWindowFrames--; }
+      else { return; } // frozen between beats — only ageCells/decay continues
+    }
+
+    const energy = (bass + mid + treble) / 3;
+    silenceEnergy = silenceEnergy * 0.92 + energy * 0.08;
+    dreaming = silenceEnergy < SILENCE_THRESHOLD;
+    if (dreaming) { silenceFrames++; } else { silenceFrames = 0; }
+
     const chaosMult = chaosMode ? 3.5 : 1;
-    if (tips.length < MAX_TIPS && Math.random() < bass * 0.32 * densityAmount * chaosMult) spawnSeed();
+    const hexMod = hexBranchMod();
+
+    if (!dreaming) {
+      if (tips.length < MAX_TIPS && Math.random() < bass * 0.32 * densityAmount * chaosMult) spawnSeed();
+    } else if (silenceFrames > SILENCE_ONSET) {
+      const dreamSeeds = Math.floor(2 + Math.random() * 3);
+      for (let s = 0; s < dreamSeeds; s++) spawnFromVoid();
+    }
     if (tips.length === 0) spawnSeed();
 
-    // tuned low enough that growth keeps expanding into open territory
-    // instead of filling its whole footprint within a few seconds
-    const branchChance = (0.010 + mid * 0.14) * densityAmount * chaosMult;
+    const branchChance = (0.010 + mid * 0.14) * densityAmount * chaosMult * hexMod;
     const detailChance = treble * 0.3 * densityAmount * chaosMult;
     const wanderChance = chaosMode ? 0.35 : (0.05 + mid * 0.05);
     const next = [];
@@ -538,17 +708,25 @@
       }
 
       const nx = t.x + t.dx, ny = t.y + t.dy;
-      const r = dist(nx, ny);
+      let wx = nx, wy = ny;
+      if (toroidalMode) {
+        const span = GRID_RADIUS * 2;
+        if (wx >  GRID_RADIUS) wx -= span;
+        if (wx < -GRID_RADIUS) wx += span;
+        if (wy >  GRID_RADIUS) wy -= span;
+        if (wy < -GRID_RADIUS) wy += span;
+      }
+      const r = dist(wx, wy);
+      // rim tendrils get extra reach so they visibly shoot out beyond the orb edge
+      const boundary = (t.isRimTendril && tendrilsMode) ? GRID_RADIUS * 1.45 : GRID_RADIUS;
 
-      if (r > GRID_RADIUS) {
-        // hit the orb's edge — retire here instead of sprawling past it,
-        // which is what keeps the silhouette a contained circle
+      if (!toroidalMode && r > boundary) {
         t.age = t.life;
-      } else if (!forcedTurn && !isBlocked(nx, ny)) {
-        t.x = nx; t.y = ny;
+      } else if (!forcedTurn && !isBlocked(wx, wy)) {
+        t.x = wx; t.y = wy;
         plotCell(t.x, t.y, t.color);
       } else if (swirlMode) {
-        const ndx = -t.dy, ndy = t.dx; // always the same rotational sense
+        const ndx = -t.dy, ndy = t.dx;
         t.dx = ndx; t.dy = ndy;
         t.legProgress = 0;
         t.turnCount = (t.turnCount || 0) + 1;
@@ -568,8 +746,10 @@
       if (tips.length + next.length < MAX_TIPS && Math.random() < branchChance) {
         next.push({
           x: t.x, y: t.y, dx: -t.dy, dy: t.dx,
-          age: 0, life: 150 + Math.random() * 300, color: colorForRadius(dist(t.x, t.y)),
+          age: 0, life: (swirlMode ? 600 : 150) + Math.random() * (swirlMode ? 400 : 300),
+          color: colorForRadius(dist(t.x, t.y)),
           legLen: 1, legProgress: 0, turnCount: 0,
+          isRimTendril: t.isRimTendril, // propagate rim status to branches
         });
       }
 
@@ -582,49 +762,264 @@
         });
       }
 
-      if (t.age < t.life && dist(t.x, t.y) <= GRID_RADIUS) next.push(t);
+      // fractal tendrils: periodically spawn new rim tips rather than internal
+      // branch cascades — the orb exhales arms from its edge outward
+      if (tendrilsMode && Math.random() < 0.004 * chaosMult) {
+        spawnRimTendril();
+      }
+      // rim tendrils also self-branch at 3 depth levels for fractal sub-arms
+      if (tendrilsMode && t.isRimTendril && Math.random() < 0.025) {
+        for (let depth = 1; depth <= 3; depth++) {
+          if (tips.length + next.length >= MAX_TIPS) break;
+          const scale = 1 / Math.pow(2, depth - 1);
+          const turnDir = depth % 2 === 0 ? 1 : -1;
+          next.push({
+            x: t.x, y: t.y,
+            dx: -t.dy * turnDir, dy: t.dx * turnDir,
+            age: 0,
+            life: Math.max(8, Math.floor((100 + Math.random() * 120) * scale)),
+            color: colorForRadius(dist(t.x, t.y)),
+            legLen: Math.max(1, Math.floor(4 * scale)),
+            legProgress: 0, turnCount: 0,
+            isRimTendril: true,
+          });
+        }
+      }
+
+      if (t.age < t.life && (toroidalMode || dist(t.x, t.y) <= GRID_RADIUS)) next.push(t);
     }
     tips = next;
 
     // thicken the core into solid contiguous blocks — this is the main
     // thing that makes it read as an "orb" instead of a sprawl of wires
-    densifyCore(Math.floor((2 + (bass + mid) * 10) * densityAmount * (chaosMode ? 2 : 1)));
+    densifyCore(Math.floor((2 + (bass + mid) * 10) * densityAmount * (chaosMode ? 2 : 1) * (constellationMode ? 0.3 : 1)));
   }
 
   // ---------- render loop ----------
-  function renderFrame(bass, mid, treble) {
-    currentBass = bass; // read by drawYangMark/drawChangingMark for the size/weight pulse
+  // ---------- constellation mode ----------
+  // samples settled (yang) cells each frame and draws thin axis-aligned
+  // connection lines to nearby settled neighbors in all 8 mirror sectors.
+  // Both endpoints get the same D4 transform so lines stay perfectly
+  // orthogonal in every sector. Drawn after the prevCanvas snapshot so
+  // the connections are purely transient — they redraw every frame from
+  // current cell state rather than baking into the persistent structure.
+  function drawConstellationLines() {
+    if (!constellationMode) return;
+    const REACH = 22;
+    const SAMPLE = 120;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineWidth = 1.0;
 
-    // structure stays spatially fixed by default — decay is the ternary
-    // lifecycle below, not a generic fade. Fractal mode is the one opt-in
-    // exception: a gentle uniform scale-up of the previous frame, which
-    // reintroduces a self-similar "echo" without rotating anything (scale
-    // alone keeps every square axis-aligned — rotation would alias it).
+    for (let s = 0; s < SAMPLE; s++) {
+      if (recentAll.length === 0) break;
+      const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
+      if (!cellState.has(canon(x, y))) continue;
+      const cell = cellState.get(canon(x, y));
+      if (cell.state !== 'yang') continue;
+
+      for (const [dx, dy] of DIRS) {
+        let found = false;
+        for (let step = 3; step <= REACH && !found; step++) {
+          const nx = x + dx * step, ny = y + dy * step;
+          const nc = cellState.get(canon(nx, ny));
+          if (nc && nc.state === 'yang') {
+            found = true;
+            ctx.strokeStyle = cell.color;
+            ctx.globalAlpha = 0.45;
+            for (let i = 0; i < 8; i++) {
+              if (!(openSectors & (1 << i))) continue;
+              const [px1, py1] = D4[i](x, y);
+              const [px2, py2] = D4[i](nx, ny);
+              const sx1 = Math.round(CX + px1 * CELL) + (CELL >> 1);
+              const sy1 = Math.round(CY + py1 * CELL) + (CELL >> 1);
+              const sx2 = Math.round(CX + px2 * CELL) + (CELL >> 1);
+              const sy2 = Math.round(CY + py2 * CELL) + (CELL >> 1);
+              ctx.beginPath();
+              ctx.moveTo(sx1, sy1);
+              ctx.lineTo(sx2, sy2);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // small indicator for beat lock — a dot that pulses gold on a hit and
+  // dims to near-invisible between beats so you can feel the gate opening
+  // ---------- color flow (swirl + spin) ----------
+  // Colors move between adjacent cells in the fixed grid — no canvas
+  // transform, no overlay. Each call samples `steps` cells, computes the
+  // tangential neighbor (the cell in the rotational direction around center),
+  // swaps their stored colors, erases and redraws both cells with the new
+  // colors — all before the prevCanvas snapshot, so the color change
+  // persists rather than being a transient overlay.
+  //
+  // Tangent at (x,y) for CCW rotation, quantized to cardinal direction:
+  //   |x| >= |y]: move in ±y, sign = sgn(x)    (right side → up, left → down)
+  //   |y| >  |x]: move in ∓x, sign = -sgn(y)   (top → left, bottom → right)
+  // direction = 1 → CCW, -1 → CW
+  function flowColors(steps, direction) {
+    if (recentAll.length < 2) return;
+    for (let i = 0; i < steps; i++) {
+      const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
+      const key = canon(x, y);
+      const cell = cellState.get(key);
+      if (!cell || cell.state !== 'yang') continue;
+
+      // tangential neighbor
+      let tdx, tdy;
+      const ax = Math.abs(x), ay = Math.abs(y);
+      if (ax === 0 && ay === 0) continue;
+      if (ax >= ay) {
+        tdx = 0; tdy = direction * (x >= 0 ? 1 : -1);
+      } else {
+        tdx = direction * (y >= 0 ? -1 : 1); tdy = 0;
+      }
+      const tx = x + tdx, ty = y + tdy;
+      const tkey = canon(tx, ty);
+      if (tkey === key) continue;
+      const tcell = cellState.get(tkey);
+      if (!tcell || tcell.state !== 'yang') continue;
+
+      // swap stored colors
+      const tmp = cell.color;
+      cell.color = tcell.color;
+      tcell.color = tmp;
+
+      // erase old mark and redraw with swapped color so the canvas reflects it
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#000';
+      ctx.globalAlpha = 1;
+      forEachMirrorPixel(x, y, (sx, sy) => ctx.fillRect(sx, sy, CELL, CELL));
+      drawYangMark(x, y, cell.color, 0.8);
+
+      ctx.fillStyle = '#000';
+      forEachMirrorPixel(tx, ty, (sx, sy) => ctx.fillRect(sx, sy, CELL, CELL));
+      drawYangMark(tx, ty, tcell.color, 0.8);
+    }
+  }
+
+  function drawBeatLockIndicator() {
+    if (!beatLockMode) return;
+    if (beatWindowFrames === BEAT_WINDOW) beatLockPulse = 1;
+    beatLockPulse *= 0.82;
+
+    const firing = beatLockPulse > 0.25;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'right';
+
+    if (firing) {
+      ctx.fillStyle = '#FFD700';
+      ctx.globalAlpha = beatLockPulse;
+      ctx.fillText('▶ FIRE', W - 20, H - 20);
+    } else {
+      ctx.fillStyle = '#3a3014';
+      ctx.globalAlpha = 0.7;
+      ctx.fillText('■ LOCK', W - 20, H - 20);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+
+  function renderFrame(bass, mid, treble) {
+    currentBass = bass;
+
+    // ---------- trails fade ----------
+    if (fractalMode) {
+      trailsOpacity = Math.min(1, trailsOpacity + 0.06);
+    } else {
+      trailsOpacity = Math.max(0, trailsOpacity - 0.008);
+    }
+
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
     ctx.save();
-    if (fractalMode) {
-      const zf = 1.0008 + bass * 0.0025;
+    if (trailsOpacity > 0.01) {
+      const zf = 1.0 + (0.0008 + bass * 0.0025) * trailsOpacity;
       ctx.translate(CX, CY);
       ctx.scale(zf, zf);
       ctx.translate(-CX, -CY);
     }
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.999;
+    const persist = (trailsOpacity > 0 && !fractalMode)
+      ? (0.94 + trailsOpacity * 0.055)
+      : 0.999;
+    ctx.globalAlpha = persist;
     ctx.drawImage(prevCanvas, 0, 0, W, H);
     ctx.restore();
     ctx.globalAlpha = 1;
 
+    computeHexagram();
     updateGrowth(bass, mid, treble);
     ageCells(220, (bass + mid + treble) / 3);
 
+    // color flow — runs BEFORE snapshot so moved colors bake into prevCanvas
+    // swirl: gentle tangential rotation (~30-80 cells/frame)
+    if (colorSwirlMode) flowColors(Math.floor(30 + bass * 70), 1);
+    // spin: much faster flow — the whole color field rotates visibly (~150-300)
+    if (spinMode) flowColors(Math.floor(150 + bass * 180), 1);
+
     prevCtx.drawImage(canvas, 0, 0);
 
-    // ring overlay is drawn after the snapshot above, so it shows for this
-    // frame only and never gets folded into the persistent structure
     detectBeat(bass);
     drawRings();
     drawBassFrame(bass);
+    drawTorusSeam();
+    drawConstellationLines();
+    drawBeatLockIndicator();
+    drawHexagramDisplay();
+  }
+
+  // faint square seam lines show the torus "fold" points — where growth
+  // that exits the right edge re-enters from the left. Without these,
+  // wrapping is invisible since the canvas still looks like a normal orb.
+  function drawTorusSeam() {
+    if (!toroidalMode) return;
+    const edge = GRID_RADIUS * CELL;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = '#2EC4B6';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.globalAlpha = 0.28 + 0.12 * Math.sin(frameCount * 0.03);
+    // draw the 4 seam edges of the rectangular torus grid
+    ctx.strokeRect(CX - edge, CY - edge, edge * 2, edge * 2);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1;
+  }
+
+  // draws the live hexagram as 6 small lines bottom-center — yin broken,
+  // yang solid — plus a subtle "dreaming" label when silence mode is active
+  function drawHexagramDisplay() {
+    const bw = 18, bh = 3, gap = 5, margin = 22;
+    const startX = Math.round(CX - bw / 2);
+    const startY = H - margin - (6 * (bh + gap));
+    ctx.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < 6; i++) {
+      const yang = !!(currentHexagram & (1 << i));
+      const y = startY + (5 - i) * (bh + gap);
+      ctx.fillStyle = yang ? '#FFD700' : '#3a3014';
+      ctx.globalAlpha = 0.75;
+      if (yang) {
+        ctx.fillRect(startX, y, bw, bh);
+      } else {
+        // broken line: two short segments with a gap in the middle
+        const seg = Math.floor(bw * 0.38);
+        ctx.fillRect(startX, y, seg, bh);
+        ctx.fillRect(startX + bw - seg, y, seg, bh);
+      }
+    }
+    if (dreaming && silenceFrames > SILENCE_ONSET) {
+      ctx.font = '9px monospace';
+      ctx.fillStyle = '#3FA7FF';
+      ctx.globalAlpha = 0.55 + 0.3 * Math.sin(frameCount * 0.04);
+      ctx.textAlign = 'center';
+      ctx.fillText('dreaming', CX, startY - 8);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
   }
 
   // ---------- audio analysis ----------
@@ -716,7 +1111,14 @@
   wireToggle('ringsToggle', (v) => v === undefined ? ringsEnabled : (ringsEnabled = v));
   wireToggle('chaosToggle', (v) => v === undefined ? chaosMode : (chaosMode = v));
   wireToggle('swirlToggle', (v) => v === undefined ? swirlMode : (swirlMode = v));
+  wireToggle('colorSwirlToggle', (v) => v === undefined ? colorSwirlMode : (colorSwirlMode = v));
   wireToggle('fractalToggle', (v) => v === undefined ? fractalMode : (fractalMode = v));
+  wireToggle('constellationToggle', (v) => v === undefined ? constellationMode : (constellationMode = v));
+  wireToggle('beatLockToggle', (v) => v === undefined ? beatLockMode : (beatLockMode = v));
+  wireToggle('toroidalToggle', (v) => v === undefined ? toroidalMode : (toroidalMode = v));
+  wireToggle('spinToggle', (v) => v === undefined ? spinMode : (spinMode = v));
+  wireToggle('tendrilsToggle', (v) => v === undefined ? tendrilsMode : (tendrilsMode = v));
+  wireToggle('asymToggle', (v) => v === undefined ? asymMode : (asymMode = v));
 
   document.querySelectorAll('#paletteButtons button').forEach((btn) => {
     btn.addEventListener('click', () => {
