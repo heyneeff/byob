@@ -121,6 +121,16 @@
     <button class="toggleBtn" id="swirlToggle">Swirl</button>
     <button class="toggleBtn" id="fractalToggle">Fractal</button>
   </div>
+  <div class="row">
+    <label>Color Mode</label>
+    <div class="toggles" id="paletteButtons">
+      <button class="toggleBtn active" data-palette="jewel">Jewel</button>
+      <button class="toggleBtn" data-palette="fire">Fire</button>
+      <button class="toggleBtn" data-palette="ocean">Ocean</button>
+      <button class="toggleBtn" data-palette="mono">Mono</button>
+      <button class="toggleBtn" data-palette="spectrum">Spectrum</button>
+    </div>
+  </div>
 </div>
 
 
@@ -172,11 +182,39 @@
   window.addEventListener('resize', resize);
   resize();
 
-  // ---------- palette ----------
-  const WARM = ['#FFD700', '#E0115F', '#FFBF00', '#FF6F3C', '#FF4040'];
-  const COOL = ['#50C878', '#0F52BA', '#9B5DE5', '#2EC4B6', '#3FA7FF', '#7FFF6B'];
-  const ACCENT = ['#FFFFF0', '#FF3CAC', '#FFE45C'];
-  const ALL_COLORS = WARM.concat(COOL, ACCENT);
+  // ---------- palette / color modes ----------
+  // Several full warm/cool/accent sets to swap between live. colorForRadius
+  // always reads from whichever is currently active rather than the old
+  // hardcoded arrays.
+  const PALETTES = {
+    jewel: {
+      warm: ['#FFD700', '#E0115F', '#FFBF00', '#FF6F3C', '#FF4040'],
+      cool: ['#50C878', '#0F52BA', '#9B5DE5', '#2EC4B6', '#3FA7FF', '#7FFF6B'],
+      accent: ['#FFFFF0', '#FF3CAC', '#FFE45C'],
+    },
+    fire: {
+      warm: ['#FF0000', '#FF4500', '#FF8C00', '#FFD700', '#DC143C'],
+      cool: ['#FF6347', '#FFA500', '#FF8C00', '#E0115F'], // stays warm on purpose — an inferno, not a blend
+      accent: ['#FFFFF0', '#FFFF00'],
+    },
+    ocean: {
+      warm: ['#1E90FF', '#00CED1', '#20B2AA', '#3FA7FF'],
+      cool: ['#0F52BA', '#2EC4B6', '#00FFFF', '#4169E1', '#7FFFD4'],
+      accent: ['#FFFFFF', '#E0FFFF'],
+    },
+    mono: {
+      warm: ['#FFD700', '#FFE45C', '#FFBF00'],
+      cool: ['#FFD700', '#FFE45C', '#FFFFF0'],
+      accent: ['#FFFFFF'],
+    },
+    spectrum: {
+      warm: ['#FF0000', '#FF7F00', '#FFFF00', '#FF1493'],
+      cool: ['#00FF00', '#00CED1', '#0000FF', '#8B00FF', '#4B0082'],
+      accent: ['#FFFFFF'],
+    },
+  };
+  let activePaletteName = 'jewel';
+  function palette() { return PALETTES[activePaletteName]; }
 
   function dist(x, y) { return Math.sqrt(x * x + y * y); }
 
@@ -185,13 +223,18 @@
   // the core dilation pass generates the large majority of all cells, so
   // that made the whole piece read as red/gold no matter what the rim did.
   // Now even dead-center has real odds of pulling cool/accent tones. In
-  // chaos mode, radius is ignored entirely and color is fully random.
+  // chaos mode, radius is ignored entirely and color is fully random
+  // (still scoped to whichever palette is active).
   function colorForRadius(r) {
-    if (chaosMode) return ALL_COLORS[(Math.random() * ALL_COLORS.length) | 0];
-    if (Math.random() < 0.1) return ACCENT[(Math.random() * ACCENT.length) | 0];
+    const pal = palette();
+    if (chaosMode) {
+      const all = pal.warm.concat(pal.cool, pal.accent);
+      return all[(Math.random() * all.length) | 0];
+    }
+    if (Math.random() < 0.1) return pal.accent[(Math.random() * pal.accent.length) | 0];
     const t = Math.min(1, r / GRID_RADIUS); // 0 at center, 1 at the edge
     const coolChance = 0.32 + t * 0.45; // ~32% cool at center, ~77% at the rim
-    const pool = Math.random() < coolChance ? COOL : WARM;
+    const pool = Math.random() < coolChance ? pal.cool : pal.warm;
     return pool[(Math.random() * pool.length) | 0];
   }
 
@@ -260,12 +303,11 @@
 
   // settled (yang): a closed square outline — the "resolved" mark
   function drawYangMark(x, y, color, energy) {
-    const bassBoost = 1 + currentBass * 0.8;
-    const drawSize = Math.max(2, (CELL - 2) * bassBoost);
+    const drawSize = Math.max(2, CELL - 2);
     const offset = (CELL - drawSize) / 2;
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1 + currentBass * 1.6; // bass also thickens the line itself
+    ctx.lineWidth = 1;
     ctx.globalAlpha = Math.min(1, 0.72 + (energy || 0.6) * 0.28);
     forEachMirrorPixel(x, y, (sx, sy) => {
       ctx.strokeRect(sx + offset + 0.5, sy + offset + 0.5, drawSize, drawSize);
@@ -277,13 +319,12 @@
   // only — a different line type for "neither yin nor yang," used both
   // when a cell is forming and when it's mid-vanish
   function drawChangingMark(x, y, color) {
-    const bassBoost = 1 + currentBass * 0.8;
-    const drawSize = Math.max(2, (CELL - 2) * bassBoost);
+    const drawSize = Math.max(2, CELL - 2);
     const offset = (CELL - drawSize) / 2;
     const arm = Math.max(1, Math.round(drawSize * 0.5));
     ctx.globalCompositeOperation = 'source-over';
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1 + currentBass * 1.6;
+    ctx.lineWidth = 1;
     ctx.globalAlpha = 0.85;
     forEachMirrorPixel(x, y, (sx, sy) => {
       const left = sx + offset + 0.5, top = sy + offset + 0.5;
@@ -372,6 +413,7 @@
       x: 0, y: 0, dx: d[0], dy: d[1],
       age: 0, life: 240 + Math.random() * 420,
       color: colorForRadius(0),
+      legLen: 1, legProgress: 0, turnCount: 0, // square-spiral state, used only in swirl mode
     });
   }
 
@@ -436,6 +478,23 @@
     ctx.globalAlpha = 1;
   }
 
+  // a pulsing border around the whole viewport, brightness/thickness tied
+  // directly to instantaneous bass. This replaced bass-driven per-cell
+  // sizing — that approach baked inconsistent square sizes permanently
+  // into the structure and broke crispness, especially with small CELL
+  // values on phones. A screen-edge frame never touches lattice geometry,
+  // so it can be as reactive as it wants without costing any crispness.
+  function drawBassFrame(bass) {
+    if (bass < 0.04) return;
+    const inset = 3;
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 2 + bass * 9;
+    ctx.globalAlpha = Math.min(0.85, 0.12 + bass * 0.55);
+    ctx.strokeRect(inset, inset, W - inset * 2, H - inset * 2);
+    ctx.globalAlpha = 1;
+  }
+
   function resetOrganism() {
     tips = [];
     cellState.clear();
@@ -467,6 +526,17 @@
       const t = tips[i];
       t.age++;
 
+      // square-spiral schedule: always turn the same rotational way, and
+      // lengthen the leg every other turn (1,1,2,2,3,3...). That growing-leg
+      // part is what actually produces an outward spiral — a turn biased
+      // toward one direction with random-length legs just traces a wobbly
+      // closed loop near the origin, since nothing pushes it outward.
+      let forcedTurn = false;
+      if (swirlMode) {
+        t.legProgress = (t.legProgress || 0) + 1;
+        if (t.legProgress >= (t.legLen || 1)) forcedTurn = true;
+      }
+
       const nx = t.x + t.dx, ny = t.y + t.dy;
       const r = dist(nx, ny);
 
@@ -474,20 +544,23 @@
         // hit the orb's edge — retire here instead of sprawling past it,
         // which is what keeps the silhouette a contained circle
         t.age = t.life;
-      } else if (!isBlocked(nx, ny)) {
+      } else if (!forcedTurn && !isBlocked(nx, ny)) {
         t.x = nx; t.y = ny;
         plotCell(t.x, t.y, t.color);
+      } else if (swirlMode) {
+        const ndx = -t.dy, ndy = t.dx; // always the same rotational sense
+        t.dx = ndx; t.dy = ndy;
+        t.legProgress = 0;
+        t.turnCount = (t.turnCount || 0) + 1;
+        if (t.turnCount % 2 === 0) t.legLen = (t.legLen || 1) + 1;
       } else {
-        // swirl mode biases which way tips turn instead of picking randomly
-        // — still a plain 90° step, just consistently the same direction,
-        // which is what makes spiral arms emerge from straight-line moves
-        const turn = swirlMode ? (Math.random() < 0.74 ? 1 : -1) : (Math.random() < 0.5 ? 1 : -1);
+        const turn = Math.random() < 0.5 ? 1 : -1;
         const ndx = -t.dy * turn, ndy = t.dx * turn;
         t.dx = ndx; t.dy = ndy;
       }
 
-      if (Math.random() < wanderChance) {
-        const turn = swirlMode ? (Math.random() < 0.74 ? 1 : -1) : (Math.random() < 0.5 ? 1 : -1);
+      if (!swirlMode && Math.random() < wanderChance) {
+        const turn = Math.random() < 0.5 ? 1 : -1;
         const ndx = -t.dy * turn, ndy = t.dx * turn;
         t.dx = ndx; t.dy = ndy;
       }
@@ -496,6 +569,7 @@
         next.push({
           x: t.x, y: t.y, dx: -t.dy, dy: t.dx,
           age: 0, life: 150 + Math.random() * 300, color: colorForRadius(dist(t.x, t.y)),
+          legLen: 1, legProgress: 0, turnCount: 0,
         });
       }
 
@@ -504,6 +578,7 @@
         next.push({
           x: t.x, y: t.y, dx: d[0], dy: d[1],
           age: 0, life: 18 + Math.random() * 36, color: colorForRadius(dist(t.x, t.y)),
+          legLen: 1, legProgress: 0, turnCount: 0,
         });
       }
 
@@ -549,6 +624,7 @@
     // frame only and never gets folded into the persistent structure
     detectBeat(bass);
     drawRings();
+    drawBassFrame(bass);
   }
 
   // ---------- audio analysis ----------
@@ -641,6 +717,14 @@
   wireToggle('chaosToggle', (v) => v === undefined ? chaosMode : (chaosMode = v));
   wireToggle('swirlToggle', (v) => v === undefined ? swirlMode : (swirlMode = v));
   wireToggle('fractalToggle', (v) => v === undefined ? fractalMode : (fractalMode = v));
+
+  document.querySelectorAll('#paletteButtons button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      activePaletteName = btn.dataset.palette;
+      document.querySelectorAll('#paletteButtons button').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
 
   document.getElementById('micBtn').addEventListener('click', async () => {
     try {
