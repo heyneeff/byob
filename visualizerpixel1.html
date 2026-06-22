@@ -690,45 +690,8 @@
   }
 
   // The center nucleus: the organism's emergent seed point, fully audio-reactive.
-  //   Bass  → core square breathes (tiny at quiet, large on peaks)
-  //   Mid   → color shifts warm↔cool with colorTemp
-  //   Beat  → expanding orthogonal cross in cardinal directions
-  // Drawn after snapshot so it's purely transient — never baked in.
-  function drawNucleus(bass) {
+  function decayBeatFlash() {
     if (beatFlash > 0.01) beatFlash *= 0.80; else beatFlash = 0;
-
-    const pal = palette();
-    const pool = colorTemp > 0.58 ? pal.cool
-               : colorTemp < 0.42 ? pal.warm
-               : pal.accent;
-    const col = pool[Math.floor(frameCount * 0.07) % pool.length];
-
-    // core square — breathes quadratically so quiet=tiny, peak=large
-    const minSize = CELL * 2;
-    const size = Math.round(minSize + bass * bass * CELL * 12);
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.fillStyle = col;
-    ctx.globalAlpha = 0.92;
-    ctx.fillRect(Math.round(CX - size / 2), Math.round(CY - size / 2), size, size);
-
-    // beat cross: cell-sized squares along 4 cardinal arms, fading by step
-    if (beatFlash > 0.04) {
-      const arms = 1 + Math.floor(beatFlash * 12);
-      ctx.globalCompositeOperation = 'lighter';
-      for (let step = 1; step <= arms; step++) {
-        const d = step * CELL * 2;
-        const alpha = beatFlash * (1 - (step - 1) / arms) * 0.75;
-        if (alpha < 0.01) break;
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = '#FFFFFF';
-        const s = Math.max(2, CELL - 1);
-        [[d,0],[-d,0],[0,d],[0,-d]].forEach(([ox, oy]) => {
-          ctx.fillRect(Math.round(CX + ox - s/2), Math.round(CY + oy - s/2), s, s);
-        });
-      }
-    }
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
   }
 
   function resetOrganism() {
@@ -1020,8 +983,17 @@
       trailsOpacity = Math.max(0, trailsOpacity - 0.008);
     }
 
+    // ---------- BASS: direct black fill opacity ----------
+    // The single most obvious audio effect. Bass directly controls how much
+    // black is painted over the structure each frame. At silence ~0 alpha
+    // (structure fully persists). At peak bass ~0.35 alpha (structure visibly
+    // dims and pulses on every hit). Simple, immediate, unmistakable.
     ctx.fillStyle = '#000';
+    ctx.globalAlpha = 0.02 + bass * 0.33;
     ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    // draw the persisted structure on top
     ctx.save();
     if (trailsOpacity > 0.01) {
       const zf = 1.0 + (0.0008 + bass * 0.0025) * trailsOpacity;
@@ -1030,37 +1002,107 @@
       ctx.translate(-CX, -CY);
     }
     ctx.globalCompositeOperation = 'source-over';
-    // dynamic persistence: the MAIN audio-reactive parameter.
-    // at silence → 0.999 (stable structure).
-    // at peak energy → ~0.87 (structure visibly dissolves in real time).
-    // half-life drops from 11 seconds at silence to ~5 frames at full energy.
-    const persist = Math.max(0.87, 0.999 - energy * 0.13);
-    ctx.globalAlpha = persist;
+    ctx.globalAlpha = 1;
     ctx.drawImage(prevCanvas, 0, 0, W, H);
     ctx.restore();
-    ctx.globalAlpha = 1;
 
     computeHexagram();
     updateGrowth(bass, mid, treble);
     ageCells(308, energy);
-
     colorTemp = colorTemp * 0.94 + mid * 0.06;
-
     bassErode(bass);
     trebleEdge(treble);
 
-    if (colorSwirlMode) flowColors(Math.floor(42 + bass * 98), 1);
-    if (spinMode) flowColors(Math.floor(210 + bass * 252), 1);
+    // ---------- SPIN: deterministic full-ring color rotation ----------
+    // Every frame in spin mode, ALL cells rotate their color to the next
+    // cell in the tangential direction. No sampling, no probability — all
+    // cells at every radius ring advance together. You will see it spin.
+    if (spinMode) rotateAllColors(1);
+    if (colorSwirlMode) rotateAllColors(1);
 
+    // snapshot BEFORE the wave overlay so waves stay transient
     prevCtx.drawImage(canvas, 0, 0);
 
+    // ---------- BASS WAVES: radial sine rings ----------
+    // Bright concentric rings drawn directly on canvas each frame.
+    // Contract toward center with bass, expand outward with treble.
+    // Completely direct — drawn fresh every frame, always visible.
+    drawBassWaves(bass, mid, treble);
+
     detectBeat(bass);
-    drawNucleus(bass);
+    decayBeatFlash();
     drawRings();
     drawTorusSeam();
     drawConstellationLines();
     drawBeatLockIndicator();
     drawHexagramDisplay();
+  }
+
+  // Rotate ALL cell colors one step tangentially around center.
+  // Collects every occupied cell, sorts by angle, shifts colors by 1 position.
+  // No probability — the whole ring moves together, visibly.
+  let spinColorBuf = [];
+  function rotateAllColors(direction) {
+    spinColorBuf.length = 0;
+    for (const [key, cell] of cellState) {
+      if (cell.state !== 'yang') continue;
+      const parts = key.split(',');
+      const ax = parseInt(parts[0]), ay = parseInt(parts[1]);
+      const angle = Math.atan2(ay, ax);
+      spinColorBuf.push({ key, cell, angle });
+    }
+    if (spinColorBuf.length < 2) return;
+    // sort by angle
+    spinColorBuf.sort((a, b) => a.angle - b.angle);
+    // shift all colors by 1 step in the rotation direction
+    const n = spinColorBuf.length;
+    const shift = direction > 0 ? 1 : n - 1;
+    const tmp = spinColorBuf[0].cell.color;
+    for (let i = 0; i < n - 1; i++) {
+      spinColorBuf[i].cell.color = spinColorBuf[(i + shift) % n].cell.color;
+    }
+    spinColorBuf[n - 1].cell.color = tmp;
+    // repaint affected cells with new colors
+    ctx.globalCompositeOperation = 'source-over';
+    for (const { key, cell } of spinColorBuf) {
+      const parts = key.split(',');
+      const ax = parseInt(parts[0]), ay = parseInt(parts[1]);
+      ctx.fillStyle = '#000';
+      ctx.globalAlpha = 1;
+      forEachMirrorPixel(ax, ay, (sx, sy) => ctx.fillRect(sx, sy, CELL, CELL));
+      drawYangMark(ax, ay, cell.color, 0.85);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Radial sine wave rings drawn directly as colored annular brightness pulses.
+  // Bass makes rings contract inward, treble pushes them outward.
+  // Mid controls ring color temperature. Rings are always visible.
+  let wavePhase = 0;
+  function drawBassWaves(bass, mid, treble) {
+    if (bass < 0.04 && treble < 0.04) return;
+    wavePhase += bass * 0.18 + treble * 0.09;
+    const maxR = GRID_RADIUS * CELL * 1.1;
+    const ringCount = 3 + Math.floor(bass * 4);
+    const pal = palette();
+
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < ringCount; i++) {
+      const t = (i / ringCount + wavePhase * 0.04) % 1;
+      const r = t * maxR;
+      const alpha = Math.sin(t * Math.PI) * (0.08 + bass * 0.18 + treble * 0.08);
+      if (alpha < 0.01) continue;
+      const pool = mid > 0.4 ? pal.cool : pal.warm;
+      const col = pool[(i + Math.floor(wavePhase)) % pool.length];
+      ctx.strokeStyle = col;
+      ctx.lineWidth = Math.max(1, CELL - 1);
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.arc(CX, CY, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   // faint square seam lines show the torus "fold" points — where growth
