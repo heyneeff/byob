@@ -168,9 +168,9 @@
   // thin circuit tendrils are allowed to radiate before the boundary stops
   // them — this is what gives the contained-orb-with-a-corona look instead
   // of open-ended sprawl.
-  const GRID_RADIUS = 170;
-  const CORE_RADIUS = 55;
-  const MID_RADIUS = 107;
+  const GRID_RADIUS = 108;
+  const CORE_RADIUS = 34;
+  const MID_RADIUS = 68;
 
   let W, H, CX, CY, CELL;
   function resize(){
@@ -301,6 +301,9 @@
   let beatLockPulse = 0;
 
   let currentBass = 0;
+  let bassBreath = 0;    // smoothed bass — drives the per-frame orb glow
+  let beatFlash = 0;     // 0→1 on hit, fast decay — the unmistakable "that was a kick"
+  let sweepAngle = 0;    // coherent flow sweep front — advances each frame
 
   // ---------- silence dreams ----------
   // when energy drops below threshold for long enough, growth switches
@@ -594,6 +597,7 @@
       if (rings.length >= MAX_RINGS) rings.shift();
       rings.push({ r: 6, alpha: 1, speed: 2.2 + strength * 2.5 });
     }
+    beatFlash = Math.min(1, 0.5 + strength * 0.5);
     if (beatLockMode) beatWindowFrames = BEAT_WINDOW;
     if (tips.length < MAX_TIPS) spawnSeed(); // a small structural kick to match the hit
   }
@@ -624,20 +628,42 @@
     ctx.globalAlpha = 1;
   }
 
-  // a pulsing border around the whole viewport, brightness/thickness tied
-  // directly to instantaneous bass. This replaced bass-driven per-cell
-  // sizing — that approach baked inconsistent square sizes permanently
-  // into the structure and broke crispness, especially with small CELL
-  // values on phones. A screen-edge frame never touches lattice geometry,
-  // so it can be as reactive as it wants without costing any crispness.
-  function drawBassFrame(bass) {
-    if (bass < 0.04) return;
-    const inset = 3;
+  // Bass glow: additive brightness fill over the entire orb area each frame.
+  // Since it's drawn after prevCtx.drawImage (after the snapshot), it's
+  // purely transient — it shows exactly the current bass level, never
+  // accumulates. You see the orb brighten and dim with every bass note.
+  function drawBassGlow(bass) {
+    bassBreath = bassBreath * 0.72 + bass * 0.28; // fast-ish smoothing
+    if (bassBreath < 0.03) return;
+    const r = GRID_RADIUS * CELL;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX, CY, r, 0, Math.PI * 2);
+    ctx.clip();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth = 2 + bass * 9;
-    ctx.globalAlpha = Math.min(0.85, 0.12 + bass * 0.55);
-    ctx.strokeRect(inset, inset, W - inset * 2, H - inset * 2);
+    ctx.fillStyle = '#FFD700';
+    ctx.globalAlpha = bassBreath * 0.28;
+    ctx.fillRect(CX - r, CY - r, r * 2, r * 2);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // Beat flash: on each detected hit, a sharp gold/white burst covers the
+  // whole orb and decays in ~8 frames. Completely distinct from the bass
+  // glow — this is the kick drum itself, not the general bass level.
+  function drawBeatFlash() {
+    if (beatFlash < 0.01) return;
+    beatFlash *= 0.80; // fast decay ~8 frames
+    const r = GRID_RADIUS * CELL;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(CX, CY, r * 1.05, 0, Math.PI * 2);
+    ctx.clip();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.globalAlpha = beatFlash * 0.45;
+    ctx.fillRect(CX - r, CY - r, r * 2, r * 2);
+    ctx.restore();
     ctx.globalAlpha = 1;
   }
 
@@ -848,30 +874,28 @@
 
   // small indicator for beat lock — a dot that pulses gold on a hit and
   // dims to near-invisible between beats so you can feel the gate opening
-  // ---------- color flow (swirl + spin) ----------
-  // Colors move between adjacent cells in the fixed grid — no canvas
-  // transform, no overlay. Each call samples `steps` cells, computes the
-  // tangential neighbor (the cell in the rotational direction around center),
-  // swaps their stored colors, erases and redraws both cells with the new
-  // colors — all before the prevCanvas snapshot, so the color change
-  // persists rather than being a transient overlay.
-  //
-  // Tangent at (x,y) for CCW rotation, quantized to cardinal direction:
-  //   |x| >= |y]: move in ±y, sign = sgn(x)    (right side → up, left → down)
-  //   |y| >  |x]: move in ∓x, sign = -sgn(y)   (top → left, bottom → right)
-  // direction = 1 → CCW, -1 → CW
+  // Color flow with coherent sweep front. Instead of fully random sampling,
+  // a sweepAngle rotates each frame and cells near that angle are far more
+  // likely to have their colors moved — creating a visible rotating wave
+  // rather than incoherent static shimmer.
   function flowColors(steps, direction) {
     if (recentAll.length < 2) return;
+    sweepAngle = (sweepAngle + direction * (0.05 + currentBass * 0.06)) % (Math.PI * 2);
+
     for (let i = 0; i < steps; i++) {
       const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
       const key = canon(x, y);
       const cell = cellState.get(key);
       if (!cell || cell.state !== 'yang') continue;
 
-      // tangential neighbor
-      let tdx, tdy;
+      // probability drops sharply away from the sweep front
+      const angle = Math.atan2(y, x);
+      const diff = ((angle - sweepAngle + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      if (Math.random() > Math.exp(-diff * diff * 6)) continue;
+
       const ax = Math.abs(x), ay = Math.abs(y);
       if (ax === 0 && ay === 0) continue;
+      let tdx, tdy;
       if (ax >= ay) {
         tdx = 0; tdy = direction * (x >= 0 ? 1 : -1);
       } else {
@@ -883,18 +907,15 @@
       const tcell = cellState.get(tkey);
       if (!tcell || tcell.state !== 'yang') continue;
 
-      // swap stored colors
       const tmp = cell.color;
       cell.color = tcell.color;
       tcell.color = tmp;
 
-      // erase old mark and redraw with swapped color so the canvas reflects it
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = '#000';
       ctx.globalAlpha = 1;
       forEachMirrorPixel(x, y, (sx, sy) => ctx.fillRect(sx, sy, CELL, CELL));
       drawYangMark(x, y, cell.color, 0.8);
-
       ctx.fillStyle = '#000';
       forEachMirrorPixel(tx, ty, (sx, sy) => ctx.fillRect(sx, sy, CELL, CELL));
       drawYangMark(tx, ty, tcell.color, 0.8);
@@ -965,8 +986,9 @@
     prevCtx.drawImage(canvas, 0, 0);
 
     detectBeat(bass);
+    drawBassGlow(bass);
+    drawBeatFlash();
     drawRings();
-    drawBassFrame(bass);
     drawTorusSeam();
     drawConstellationLines();
     drawBeatLockIndicator();
