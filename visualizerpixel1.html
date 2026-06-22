@@ -599,6 +599,18 @@
       rings.push({ r: 6, alpha: 1, speed: 2.2 + strength * 2.5 });
     }
     beatFlash = Math.min(1, 0.5 + strength * 0.5);
+
+    // direct geometric void painted instantly at beat — no cell state, no delay
+    // a black cross from center clears structure visibly on every hit
+    const arm = Math.floor(GRID_RADIUS * CELL * (0.3 + strength * 0.45));
+    const thick = Math.max(CELL, Math.floor(CELL * 2.5));
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#000';
+    ctx.globalAlpha = 0.75 + strength * 0.2;
+    ctx.fillRect(CX - arm, CY - thick, arm * 2, thick * 2);
+    ctx.fillRect(CX - thick, CY - arm, thick * 2, arm * 2);
+    ctx.globalAlpha = 1;
+
     if (beatLockMode) beatWindowFrames = BEAT_WINDOW;
     if (tips.length < MAX_TIPS) spawnSeed(); // a small structural kick to match the hit
   }
@@ -637,29 +649,20 @@
   // rather than being random scatter.
   function bassErode(bass) {
     if (bass < 0.06 || recentAll.length === 0) return;
-    // mode scales with bass: 1 at low → 6 at peak
     const mode = 1 + bass * 5;
     const count = Math.floor(bass * bass * 92);
     const threshold = 0.14 + bass * 0.45;
-
     for (let i = 0; i < count; i++) {
       const [x, y] = recentAll[(Math.random() * recentAll.length) | 0];
       const key = canon(x, y);
-      const cell = cellState.get(key);
-      if (!cell || cell.state !== 'yang') continue;
-
+      if (!cellState.has(key)) continue;
       const r = dist(x, y) / GRID_RADIUS;
       const theta = Math.atan2(y, x);
-      // standing wave: radial rings × angular spokes (8-fold for D4 harmony)
-      // as mode increases the pattern subdivides into denser geometry
-      const cymVal = Math.abs(
-        Math.sin(mode * Math.PI * r) * Math.cos(8 * theta)
-      );
+      const cymVal = Math.abs(Math.sin(mode * Math.PI * r) * Math.cos(8 * theta));
       if (cymVal < threshold) {
-        cell.state = 'changing';
-        cell.dir = 'fading';
-        cell.since = frameCount;
-        drawChangingMark(x, y, cell.color);
+        // direct instant erase — bypasses the 90-frame ternary delay entirely
+        eraseMark(x, y);
+        cellState.delete(key);
       }
     }
   }
@@ -879,7 +882,8 @@
 
     // thicken the core into solid contiguous blocks — this is the main
     // thing that makes it read as an "orb" instead of a sprawl of wires
-    densifyCore(Math.floor((2 + (bass + mid) * 10) * densityAmount * (chaosMode ? 2 : 1) * (constellationMode ? 0.3 : 1)));
+    // 10× range: at silence bass+mid≈0 → 2 cells/frame, at peak → ~52 cells/frame
+    densifyCore(Math.floor((2 + (bass + mid) * 50) * densityAmount * (chaosMode ? 2 : 1) * (constellationMode ? 0.3 : 1)));
   }
 
   // ---------- render loop ----------
@@ -1008,8 +1012,8 @@
 
   function renderFrame(bass, mid, treble) {
     currentBass = bass;
+    const energy = (bass + mid + treble) / 3;
 
-    // ---------- trails fade ----------
     if (fractalMode) {
       trailsOpacity = Math.min(1, trailsOpacity + 0.06);
     } else {
@@ -1026,9 +1030,11 @@
       ctx.translate(-CX, -CY);
     }
     ctx.globalCompositeOperation = 'source-over';
-    const persist = (trailsOpacity > 0 && !fractalMode)
-      ? (0.94 + trailsOpacity * 0.055)
-      : 0.999;
+    // dynamic persistence: the MAIN audio-reactive parameter.
+    // at silence → 0.999 (stable structure).
+    // at peak energy → ~0.87 (structure visibly dissolves in real time).
+    // half-life drops from 11 seconds at silence to ~5 frames at full energy.
+    const persist = Math.max(0.87, 0.999 - energy * 0.13);
     ctx.globalAlpha = persist;
     ctx.drawImage(prevCanvas, 0, 0, W, H);
     ctx.restore();
@@ -1036,7 +1042,7 @@
 
     computeHexagram();
     updateGrowth(bass, mid, treble);
-    ageCells(308, (bass + mid + treble) / 3);
+    ageCells(308, energy);
 
     colorTemp = colorTemp * 0.94 + mid * 0.06;
 
