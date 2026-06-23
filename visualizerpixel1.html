@@ -9,78 +9,84 @@
     background: #000; width: 100%; height: 100%;
     font-family: 'Courier New', monospace;
   }
-  canvas { display: block; position: fixed; top: 0; left: 0; }
+  canvas { display: block; position: fixed; top: 0; left: 0; transform-origin: center center; }
 
   #ui {
     position: fixed; top: 24px; left: 24px; z-index: 10;
-    background: rgba(0,0,0,0.72);
-    border: 1px solid #5a4a1c;
-    padding: 20px 22px;
-    color: #f0e6c8;
-    max-width: 340px;
-    box-shadow: 0 0 18px rgba(255,191,0,0.12);
+    background: rgba(0,0,0,0.82); border: 1px solid #5a4a1c;
+    padding: 20px 22px; color: #f0e6c8; max-width: 320px;
   }
-  #ui h1 {
-    font-size: 14px; letter-spacing: 0.18em; text-transform: uppercase;
-    color: #FFD700; margin: 0 0 6px 0; font-weight: normal;
-  }
-  #ui p { font-size: 12px; line-height: 1.5; color: #b8ad8a; margin: 0 0 16px 0; }
+  #ui h1 { font-size: 13px; letter-spacing: 0.18em; text-transform: uppercase; color: #FFD700; margin: 0 0 6px 0; font-weight: normal; }
+  #ui p  { font-size: 11px; line-height: 1.5; color: #b8ad8a; margin: 0 0 14px 0; }
   #ui button {
     display: block; width: 100%; background: #0a0a0a; color: #FFD700;
-    border: 1px solid #FFD700; padding: 10px 12px; margin-bottom: 10px;
-    font-family: inherit; font-size: 12px; letter-spacing: 0.05em;
-    cursor: pointer; text-transform: uppercase;
+    border: 1px solid #FFD700; padding: 9px 12px; margin-bottom: 8px;
+    font-family: inherit; font-size: 11px; letter-spacing: 0.05em; cursor: pointer; text-transform: uppercase;
   }
   #ui button:hover { background: #1a1a0a; }
   #ui input[type=file] { display: none; }
-  #ui .or { text-align: center; color: #5a4a1c; font-size: 10px; margin: 6px 0; letter-spacing: 0.1em; }
+  #ui .or { text-align: center; color: #5a4a1c; font-size: 10px; margin: 4px 0; letter-spacing: 0.1em; }
 
-  #hud {
-    position: fixed; bottom: 18px; left: 24px; z-index: 9;
-    color: #6a5a2a; font-size: 10px; letter-spacing: 0.08em;
-    display: none;
+  /* ── Bottom toolbar — replaces scattered floating buttons ── */
+  #toolbar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 9;
+    background: rgba(0,0,0,0.88); border-top: 1px solid #3a3014;
+    padding: 10px 16px; display: none;
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
   }
-  #hud span { color: #FFD700; }
-  #resetBtn {
-    position: fixed; bottom: 18px; right: 24px; z-index: 9;
+  #toolbar.hidden { display: none !important; }
+  #toolbar button {
     background: transparent; color: #5a4a1c; border: 1px solid #3a3014;
-    font-family: inherit; font-size: 10px; padding: 8px 12px;
-    cursor: pointer; letter-spacing: 0.08em; display: none;
+    font-family: inherit; font-size: 10px; padding: 7px 12px;
+    cursor: pointer; letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap;
   }
-  #resetBtn:hover { color: #FFD700; border-color: #FFD700; }
+  #toolbar button:hover { color: #FFD700; border-color: #FFD700; }
+  #toolbar button.action { color: #FFD700; border-color: #FFD700; }
+  #toolbar .zoom-group { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+  #toolbar .zoom-group button { padding: 7px 10px; }
+  #zoomLabel { color: #5a4a1c; font-size: 10px; min-width: 38px; text-align: center; letter-spacing: 0.04em; }
 
+  /* ── HUD ── */
+  #hud { position: fixed; top: 18px; right: 24px; z-index: 8; color: #6a5a2a; font-size: 9px; letter-spacing: 0.08em; display: none; }
+  #hud span { color: #6a5a2a; }
+
+  /* ── Controls toggle + panel ── */
   #controlsToggle {
-    position: fixed; top: 18px; right: 24px; z-index: 9;
-    background: transparent; color: #5a4a1c; border: 1px solid #3a3014;
-    font-family: inherit; font-size: 10px; padding: 8px 12px;
-    cursor: pointer; letter-spacing: 0.08em; display: none;
+    display: none; position: fixed; top: 50%; right: 0; z-index: 11;
+    transform: translateY(-50%) rotate(180deg);
+    writing-mode: vertical-rl; text-orientation: mixed;
+    background: rgba(0,0,0,0.82); color: #5a4a1c; border: 1px solid #3a3014;
+    border-right: none; font-family: inherit; font-size: 9px;
+    padding: 14px 6px; cursor: pointer; letter-spacing: 0.1em; text-transform: uppercase;
   }
   #controlsToggle:hover { color: #FFD700; border-color: #FFD700; }
+
   #controlsPanel {
-    position: fixed; top: 56px; right: 24px; z-index: 9;
-    background: rgba(0,0,0,0.78); border: 1px solid #5a4a1c;
-    padding: 16px 18px; width: 200px; display: none;
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 10;
+    background: rgba(0,0,0,0.92); border-left: 1px solid #5a4a1c;
+    width: 210px; display: none; overflow-y: auto;
+    padding: 0 0 80px 0; /* bottom padding clears toolbar */
   }
-  #controlsPanel label {
-    display: block; color: #b8ad8a; font-size: 10px;
-    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px;
+
+  /* Panel sections */
+  .panel-section { border-bottom: 1px solid #1a1600; padding: 14px 16px; }
+  .panel-section-title {
+    font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #5a4a1c; margin: 0 0 10px 0;
   }
-  #controlsPanel .row { margin-bottom: 14px; }
-  #controlsPanel .row:last-child { margin-bottom: 0; }
-  #controlsPanel input[type=range] {
-    width: 100%; accent-color: #FFD700;
+  .panel-section label {
+    display: block; color: #b8ad8a; font-size: 9px;
+    letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 4px; margin-top: 8px;
   }
-  #controlsPanel .toggles {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
-  }
-  #controlsPanel .toggleBtn {
+  .panel-section label:first-child { margin-top: 0; }
+  .panel-section input[type=range] { width: 100%; accent-color: #FFD700; }
+  .toggles { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  .toggleBtn {
     background: #0a0a0a; color: #5a4a1c; border: 1px solid #3a3014;
-    font-family: inherit; font-size: 10px; padding: 8px 4px;
-    cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase;
+    font-family: inherit; font-size: 9px; padding: 7px 4px;
+    cursor: pointer; letter-spacing: 0.04em; text-transform: uppercase;
   }
-  #controlsPanel .toggleBtn.active {
-    color: #FFD700; border-color: #FFD700; background: #1a1a0a;
-  }
+  .toggleBtn.active { color: #FFD700; border-color: #FFD700; background: #141000; }
   </style>
 </head>
 <body>
@@ -99,38 +105,56 @@
   <button id="idleBtn">Skip — Run Ambient Mode</button>
 </div>
 
-<div id="hud">bass <span id="bVal">0.00</span> &nbsp; mid <span id="mVal">0.00</span> &nbsp; treble <span id="tVal">0.00</span> &nbsp; nodes <span id="nVal">0</span></div>
-<button id="resetBtn">reset organism</button>
-<button id="controlsToggle">controls</button>
+<div id="hud">b<span id="bVal">0.00</span> m<span id="mVal">0.00</span> t<span id="tVal">0.00</span> n<span id="nVal">0</span> <span id="zoomHud">1.0×</span></div>
+
+<!-- Bottom toolbar: always-visible action bar -->
+<div id="toolbar" class="hidden">
+  <button id="resetBtn">Reset</button>
+  <button id="burstBtn" class="action">⚡ Burst</button>
+  <div class="zoom-group">
+    <button id="zoomOutBtn">−</button>
+    <span id="zoomLabel">100%</span>
+    <button id="zoomInBtn">+</button>
+    <button id="zoomResetBtn">1:1</button>
+  </div>
+</div>
+
+<!-- Side panel toggle tab -->
+<button id="controlsToggle">Controls</button>
+
+<!-- Scrollable side panel with sections -->
 <div id="controlsPanel">
-  <div class="row">
+
+  <div class="panel-section">
+    <p class="panel-section-title">Audio</p>
     <label for="sensSlider">Sensitivity</label>
     <input type="range" id="sensSlider" min="0.5" max="2.5" step="0.05" value="1.3">
-  </div>
-  <div class="row">
     <label for="voidSlider">Negative Space</label>
     <input type="range" id="voidSlider" min="0.4" max="2.5" step="0.05" value="1.15">
-  </div>
-  <div class="row">
     <label for="densSlider">Density</label>
     <input type="range" id="densSlider" min="0.3" max="2.5" step="0.05" value="1">
   </div>
-  <div class="row toggles">
-    <button class="toggleBtn active" id="ringsToggle">Rings</button>
-    <button class="toggleBtn" id="chaosToggle">Chaos</button>
-    <button class="toggleBtn" id="swirlToggle">Spiral</button>
-    <button class="toggleBtn" id="colorSwirlToggle">Swirl</button>
-    <button class="toggleBtn" id="fractalToggle">Trails</button>
-    <button class="toggleBtn" id="constellationToggle">Stars</button>
-    <button class="toggleBtn" id="beatLockToggle">Beat Lock</button>
-    <button class="toggleBtn" id="toroidalToggle">Torus</button>
-    <button class="toggleBtn" id="spinToggle">Spin</button>
-    <button class="toggleBtn" id="tendrilsToggle">Tendrils</button>
-    <button class="toggleBtn" id="asymToggle">Asym</button>
-    <button class="toggleBtn" id="drawToggle">Draw</button>
+
+  <div class="panel-section">
+    <p class="panel-section-title">Modes</p>
+    <div class="toggles">
+      <button class="toggleBtn active" id="ringsToggle">Rings</button>
+      <button class="toggleBtn" id="chaosToggle">Chaos</button>
+      <button class="toggleBtn" id="swirlToggle">Spiral</button>
+      <button class="toggleBtn" id="colorSwirlToggle">Swirl</button>
+      <button class="toggleBtn" id="fractalToggle">Trails</button>
+      <button class="toggleBtn" id="constellationToggle">Stars</button>
+      <button class="toggleBtn" id="beatLockToggle">Beat Lock</button>
+      <button class="toggleBtn" id="toroidalToggle">Torus</button>
+      <button class="toggleBtn" id="spinToggle">Spin</button>
+      <button class="toggleBtn" id="tendrilsToggle">Tendrils</button>
+      <button class="toggleBtn" id="asymToggle">Asym</button>
+      <button class="toggleBtn" id="drawToggle">Draw</button>
+    </div>
   </div>
-  <div class="row">
-    <label>Color Mode</label>
+
+  <div class="panel-section">
+    <p class="panel-section-title">Palette</p>
     <div class="toggles" id="paletteButtons">
       <button class="toggleBtn active" data-palette="jewel">Jewel</button>
       <button class="toggleBtn" data-palette="fire">Fire</button>
@@ -139,10 +163,12 @@
       <button class="toggleBtn" data-palette="spectrum">Spectrum</button>
     </div>
   </div>
-  <div class="row" id="drawControls" style="display:none">
-    <label for="brushSlider">Brush Size</label>
+
+  <div class="panel-section" id="drawControls" style="display:none">
+    <p class="panel-section-title">Draw</p>
+    <label for="brushSlider">Brush Size (px)</label>
     <input type="range" id="brushSlider" min="4" max="80" step="2" value="24">
-    <label style="margin-top:10px;display:block">Draw Color</label>
+    <label style="margin-top:10px;display:block">Color</label>
     <div id="drawColorPicker" style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:6px">
       <button class="dcb" data-col="palette" style="background:linear-gradient(135deg,#FFD700,#FF3CAC,#50C878);border:2px solid #FFD700;height:22px;cursor:pointer;font-size:7px;color:#000;line-height:22px;text-align:center">PAL</button>
       <button class="dcb" data-col="#39FF14" style="background:#39FF14;border:2px solid #3a3014;height:22px;cursor:pointer"></button>
@@ -151,9 +177,10 @@
       <button class="dcb" data-col="#FF4500" style="background:#FF4500;border:2px solid #3a3014;height:22px;cursor:pointer"></button>
       <button class="dcb" data-col="#00FFFF" style="background:#00FFFF;border:2px solid #3a3014;height:22px;cursor:pointer"></button>
       <button class="dcb" data-col="#9B5DE5" style="background:#9B5DE5;border:2px solid #3a3014;height:22px;cursor:pointer"></button>
-      <button class="dcb" data-col="erase"   style="background:#111;border:2px solid #3a3014;height:22px;cursor:pointer;color:#666;font-size:9px;line-height:22px;text-align:center">✕</button>
+      <button class="dcb" data-col="erase"   style="background:#111;border:2px solid #3a3014;height:22px;cursor:pointer;color:#555;font-size:9px;line-height:22px;text-align:center">✕</button>
     </div>
   </div>
+
 </div>
 
 
@@ -1253,6 +1280,82 @@
   canvas.addEventListener('mouseup',     () => { isDrawing = false; });
   canvas.addEventListener('mouseleave',  () => { isDrawing = false; });
 
+  // ── zoom ──────────────────────────────────────────────────────────────────
+  // CSS transform zoom — no simulation changes, pure visual scaling.
+  let zoom = 1.0;
+  let lastPinchDist = null;
+
+  function applyZoom() {
+    canvas.style.transform = `scale(${zoom})`;
+    const pct = Math.round(zoom * 100) + '%';
+    const lbl = document.getElementById('zoomLabel');
+    const hud = document.getElementById('zoomHud');
+    if (lbl) lbl.textContent = pct;
+    if (hud) hud.textContent = zoom.toFixed(1) + '×';
+  }
+
+  function setZoom(z) {
+    zoom = Math.max(0.25, Math.min(5.0, z));
+    applyZoom();
+  }
+
+  // Pinch-to-zoom (two fingers on iPad)
+  canvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 2) {
+      lastPinchDist = Math.hypot(
+        e.touches[1].clientX - e.touches[0].clientX,
+        e.touches[1].clientY - e.touches[0].clientY
+      );
+    }
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const d = Math.hypot(
+        e.touches[1].clientX - e.touches[0].clientX,
+        e.touches[1].clientY - e.touches[0].clientY
+      );
+      if (lastPinchDist) setZoom(zoom * (d / lastPinchDist));
+      lastPinchDist = d;
+    }
+  }, { passive: false });
+
+  canvas.addEventListener('touchend', e => {
+    if (e.touches.length < 2) lastPinchDist = null;
+  });
+
+  // Scroll wheel zoom (desktop)
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    setZoom(zoom * (e.deltaY < 0 ? 1.08 : 0.93));
+  }, { passive: false });
+
+  // ── burst ──────────────────────────────────────────────────────────────────
+  // Clears drawn cells from the center zone and fires a fresh radial seed
+  // burst, restoring the emergent pattern without resetting the whole organism.
+  function burstFromCenter() {
+    // erase drawn cells in the core area
+    const toDelete = [];
+    for (const [key] of cellState) {
+      const [ax, ay] = key.split(',').map(Number);
+      if (Math.sqrt(ax*ax + ay*ay) < CORE_RADIUS * 0.85) toDelete.push([key, ax, ay]);
+    }
+    toDelete.forEach(([key, ax, ay]) => { cellState.delete(key); eraseMark(ax, ay); });
+
+    // spawn a radial burst of seeds
+    for (let i = 0; i < 24; i++) spawnSeed();
+    // add a ring of seeds mid-way out for more visual structure
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const r = Math.round(CORE_RADIUS * 0.6);
+      const bx = Math.round(r * Math.cos(angle));
+      const by = Math.round(r * Math.sin(angle));
+      const d = DIRS[(Math.random() * 4) | 0];
+      tips.push({ x: bx, y: by, dx: d[0], dy: d[1], age: 0, life: 180 + Math.random() * 120, color: colorForRadius(r), legLen: 1, legProgress: 0, turnCount: 0 });
+    }
+  }
+
   // ---------- audio analysis ----------
   let analyser = null, freqData = null;
   let bassLevel = 0, midLevel = 0, trebleLevel = 0;
@@ -1300,11 +1403,10 @@
   };
 
   // ---------- UI wiring ----------
-  const ui = document.getElementById('ui');
-  const hud = document.getElementById('hud');
-  const resetBtn = document.getElementById('resetBtn');
+  const ui             = document.getElementById('ui');
+  const toolbar        = document.getElementById('toolbar');
   const controlsToggle = document.getElementById('controlsToggle');
-  const controlsPanel = document.getElementById('controlsPanel');
+  const controlsPanel  = document.getElementById('controlsPanel');
   const bVal = document.getElementById('bVal');
   const mVal = document.getElementById('mVal');
   const tVal = document.getElementById('tVal');
@@ -1312,29 +1414,36 @@
 
   function enterRunningState() {
     ui.style.display = 'none';
-    hud.style.display = 'block';
-    resetBtn.style.display = 'block';
+    document.getElementById('hud').style.display = 'block';
+    toolbar.classList.remove('hidden');
     controlsToggle.style.display = 'block';
   }
 
+  let panelOpen = false;
   controlsToggle.addEventListener('click', () => {
-    controlsPanel.style.display = controlsPanel.style.display === 'block' ? 'none' : 'block';
+    panelOpen = !panelOpen;
+    controlsPanel.style.display = panelOpen ? 'block' : 'none';
+    controlsToggle.style.right = panelOpen ? '210px' : '0';
   });
 
-  document.getElementById('sensSlider').addEventListener('input', (e) => {
-    sensitivity = parseFloat(e.target.value);
-  });
-  document.getElementById('voidSlider').addEventListener('input', (e) => {
-    voidAmount = parseFloat(e.target.value);
-  });
-  document.getElementById('densSlider').addEventListener('input', (e) => {
-    densityAmount = parseFloat(e.target.value);
-  });
+  // Toolbar action buttons
+  document.getElementById('resetBtn').addEventListener('click', resetOrganism);
+  document.getElementById('burstBtn').addEventListener('click', burstFromCenter);
+  document.getElementById('zoomInBtn').addEventListener('click',    () => setZoom(zoom * 1.25));
+  document.getElementById('zoomOutBtn').addEventListener('click',   () => setZoom(zoom * 0.8));
+  document.getElementById('zoomResetBtn').addEventListener('click', () => setZoom(1.0));
+
+  // Sliders
+  document.getElementById('sensSlider').addEventListener('input',  e => { sensitivity   = parseFloat(e.target.value); });
+  document.getElementById('voidSlider').addEventListener('input',  e => { voidAmount    = parseFloat(e.target.value); });
+  document.getElementById('densSlider').addEventListener('input',  e => { densityAmount = parseFloat(e.target.value); });
   document.getElementById('brushSlider').addEventListener('input', e => { brushPx = parseInt(e.target.value); });
+
+  // Draw color swatches
   document.querySelectorAll('.dcb').forEach(btn => {
     btn.addEventListener('click', () => {
       const col = btn.dataset.col;
-      drawColor = (col === 'palette') ? null : col; // null = use live palette
+      drawColor = (col === 'palette') ? null : col;
       document.querySelectorAll('.dcb').forEach(b => b.style.outline = '');
       btn.style.outline = '2px solid #FFD700';
     });
@@ -1342,24 +1451,25 @@
 
   function wireToggle(id, getSet) {
     const btn = document.getElementById(id);
+    if (!btn) return;
     btn.addEventListener('click', () => {
       const next = !getSet();
       getSet(next);
       btn.classList.toggle('active', next);
     });
   }
-  wireToggle('ringsToggle', (v) => v === undefined ? ringsEnabled : (ringsEnabled = v));
-  wireToggle('chaosToggle', (v) => v === undefined ? chaosMode : (chaosMode = v));
-  wireToggle('swirlToggle', (v) => v === undefined ? swirlMode : (swirlMode = v));
-  wireToggle('colorSwirlToggle', (v) => v === undefined ? colorSwirlMode : (colorSwirlMode = v));
-  wireToggle('fractalToggle', (v) => v === undefined ? fractalMode : (fractalMode = v));
-  wireToggle('constellationToggle', (v) => v === undefined ? constellationMode : (constellationMode = v));
-  wireToggle('beatLockToggle', (v) => v === undefined ? beatLockMode : (beatLockMode = v));
-  wireToggle('toroidalToggle', (v) => v === undefined ? toroidalMode : (toroidalMode = v));
-  wireToggle('spinToggle', (v) => v === undefined ? spinMode : (spinMode = v));
-  wireToggle('tendrilsToggle', (v) => v === undefined ? tendrilsMode : (tendrilsMode = v));
-  wireToggle('asymToggle', (v) => v === undefined ? asymMode : (asymMode = v));
-  wireToggle('drawToggle', (v) => {
+  wireToggle('ringsToggle',        v => v === undefined ? ringsEnabled     : (ringsEnabled     = v));
+  wireToggle('chaosToggle',        v => v === undefined ? chaosMode        : (chaosMode        = v));
+  wireToggle('swirlToggle',        v => v === undefined ? swirlMode        : (swirlMode        = v));
+  wireToggle('colorSwirlToggle',   v => v === undefined ? colorSwirlMode   : (colorSwirlMode   = v));
+  wireToggle('fractalToggle',      v => v === undefined ? fractalMode      : (fractalMode      = v));
+  wireToggle('constellationToggle',v => v === undefined ? constellationMode: (constellationMode= v));
+  wireToggle('beatLockToggle',     v => v === undefined ? beatLockMode     : (beatLockMode     = v));
+  wireToggle('toroidalToggle',     v => v === undefined ? toroidalMode     : (toroidalMode     = v));
+  wireToggle('spinToggle',         v => v === undefined ? spinMode         : (spinMode         = v));
+  wireToggle('tendrilsToggle',     v => v === undefined ? tendrilsMode     : (tendrilsMode     = v));
+  wireToggle('asymToggle',         v => v === undefined ? asymMode         : (asymMode         = v));
+  wireToggle('drawToggle', v => {
     if (v === undefined) return drawMode;
     drawMode = v;
     document.getElementById('drawControls').style.display = v ? 'block' : 'none';
@@ -1367,10 +1477,10 @@
     return drawMode;
   });
 
-  document.querySelectorAll('#paletteButtons button').forEach((btn) => {
+  document.querySelectorAll('#paletteButtons button').forEach(btn => {
     btn.addEventListener('click', () => {
       activePaletteName = btn.dataset.palette;
-      document.querySelectorAll('#paletteButtons button').forEach((b) => b.classList.remove('active'));
+      document.querySelectorAll('#paletteButtons button').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     });
   });
