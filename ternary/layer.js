@@ -73,6 +73,7 @@
   let _calCount      = 0;     // corrections applied this track (max 4)
   let _calState      = 0;  // diagnostic: 0=never tried, 1=already done, 2=no fn, 3=no floor, 4=correction<5, 5=fired
   let _lastFloor     = null;
+  let _lastCalTs     = 0;    // timestamp of last correction — enforces minimum settle gap
   const _history     = [];
 
   // ── BURST MODE ────────────────────────────────────────────────────────────
@@ -167,17 +168,21 @@
   }
 
   // ── AUTO-CALIBRATION ──────────────────────────────────────────────────────
+  const CAL_SETTLE_MS = 60000; // minimum gap between corrections — lets each one settle before next
+
   function maybeAutoCalibrate() {
     if (_calCount >= 4)                                    { _calState = 1; return; } // max 4 per track
+    if (Date.now() - _lastCalTs < CAL_SETTLE_MS)          { _calState = 1; return; } // wait for previous to settle
     if (typeof window._terAdjustLatency !== 'function')    { _calState = 2; return; }
     const floor = detectFloor();
     _lastFloor = floor;
     if (floor === null)                                    { _calState = 3; return; }
-    const correction = Math.round(floor * 0.5); // 50% step — conservative, converges in 2-3 cycles
+    const correction = Math.round(floor * 0.5); // 50% step — converges in 2-3 cycles
     if (Math.abs(correction) < 8)                         { _calState = 4; return; }
     window._terAdjustLatency(correction); // updates _deviceLatencyMs + localStorage
     _calApplied = true;
     _calCount++;
+    _lastCalTs = Date.now();
     _calState = 5;
     // Reset so next cycle measures fresh drift against the new calibration
     _driftHistory = [];
@@ -377,6 +382,7 @@
           enterBurst('track_change detected');
           _calApplied = false;
           _calCount   = 0;
+          _lastCalTs  = 0;
           _driftHistory = [];
           _consecutiveN = 0;
           window._terEngineReset?.(); // clear engine's floor history for new track (cal lock preserved)
