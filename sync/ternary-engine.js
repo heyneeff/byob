@@ -125,21 +125,23 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
       return;
     }
 
-    // Z or N — rate warp.
+    // Z or N — proportional warp. Rate scales continuously with drift magnitude:
+    // no sudden 0%→5% jumps (those sound like a warped record). At 100ms drift
+    // the rate is 1.02 (3.5 cents) — imperceptible. At 250ms: capped at 2.5%
+    // (4.3 cents). Converges against 20ms/s stall rate from 125ms drift upward.
+    // Oracle 22.2.4.5→1 (Grace → The Creative): elegant, invisible correction.
     _trit = lagToTrit(abs);
-
-    const velocity  = tcmp(abs, Math.abs(_prevLag));
     _prevLag = lagMs;
 
-    const consensus = peerConsensus();
-
-    const warpPct = Math.min(BASE_RATE[_trit] * VEL_MOD[velocity] * CONSENSUS_MOD[consensus], 0.06);
+    const PROP_GAIN = 0.0002;           // rate change per ms of drift
+    const MAX_WARP  = 0.025;            // 2.5% — imperceptible ceiling
     const dir = lagMs > 0 ? 1 : -1;
+    const warpPct = Math.min(abs * PROP_GAIN, MAX_WARP);
     transport.playbackRate = getBaseRate() * (1 + dir * warpPct);
     _state = 'warping';
 
-    const correctionMs = abs / (warpPct * getBaseRate());
-    _warpTimer = timers.setTimeout(settleToIdle, correctionMs);
+    // Re-evaluate after one drift-check interval — rate adjusts naturally as drift changes
+    _warpTimer = timers.setTimeout(settleToIdle, 2600);
   }
 
   function settleToIdle() {
