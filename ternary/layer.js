@@ -205,8 +205,16 @@
   function applySnap(lagMs, reason) {
     if (typeof window._terCorrect     !== 'function') return;
     if (typeof window._terExpectedNow !== 'function') return;
+    // Guard: if BT latency exceeds elapsed, expectedPosition() wraps negative raw
+    // to near end-of-track. Seeking there plays ~500ms then loops from 0.
+    const zone = window._terGetZone?.();
+    if (zone?.playback_started_at) {
+      const elapsed = (Date.now() - new Date(zone.playback_started_at).getTime()) / 1000;
+      const btS = (window._terGetDeviceLatencyMs?.() ?? 0) / 1000;
+      if (elapsed < btS) return;
+    }
     const target = window._terExpectedNow();
-    if (target == null || target < 0) return; // negative = deviceLatencyMs > elapsed, track still loading
+    if (target == null || target < 0) return;
     window._terCorrect(target);
     _snapCount++;
     _burstSnaps++;

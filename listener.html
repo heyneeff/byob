@@ -5040,9 +5040,10 @@ function cancelDriftCorrection() { window.SyncEngine.cancelDriftCorrection(); }
 function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime); }
 function seekSilent(newTime) { window.SyncEngine.seekSilent(newTime); }
 // Ternary layer hooks — exposes correction entry points to ternary/layer.js
-window._terCorrect        = (pos) => { cancelDriftCorrection(); seekPreservingBT(pos); };
-window._terExpectedNow    = ()    => _expectedNow();
-window._terGetZone        = ()    => activeZone;   // exposes local var for burst mode polling
+window._terCorrect           = (pos) => { cancelDriftCorrection(); seekPreservingBT(pos); };
+window._terExpectedNow       = ()    => _expectedNow();
+window._terGetZone           = ()    => activeZone;   // exposes local var for burst mode polling
+window._terGetDeviceLatencyMs = ()   => _deviceLatencyMs;
 window._terAdjustLatency  = (deltaMs) => {
   const prevLatencyMs = _deviceLatencyMs;
   _deviceLatencyMs = Math.max(0, Math.min(1200, _deviceLatencyMs + deltaMs));

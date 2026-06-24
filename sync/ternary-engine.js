@@ -41,12 +41,6 @@ const CONSENSUS_MOD = { [N]: 1.10, [Z]: 1.00, [P]: 1.00 };
 // tcmp() velocity modifiers — gentle range, avoid strangling corrections mid-close
 const VEL_MOD = { [P]: 1.20, [Z]: 1.00, [N]: 0.90 };
 
-// ── Dead band ─────────────────────────────────────────────────────────────────
-// When drift is within the dead band, tie the sack: rate = 1.000, no correction.
-// Prevents overshoot oscillation — micro-corrections were pushing devices past
-// 0ms to negative drift and back, never settling.
-// Oracle 2.4.5.6→12 (Receptive → Standstill): line 4, 'a tied-up sack, no blame'.
-const DEAD_BAND_MS = 30;
 
 function lagToTrit(absMs) {
   if (absMs < TH_P) return P;
@@ -105,14 +99,6 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
 
     const abs = Math.abs(lagMs);
 
-    // Dead band — sack tied. Hold at base rate, no correction.
-    if (abs < DEAD_BAND_MS) {
-      _trit = lagToTrit(abs);
-      transport.playbackRate = getBaseRate();
-      _state = 'idle';
-      return;
-    }
-
     // Beyond warp reach — seek.
     if (abs >= TH_SEEK) {
       cancelDriftCorrection();
@@ -120,11 +106,10 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
       return;
     }
 
-    // Z or N — proportional warp. Rate scales continuously with drift magnitude:
-    // no sudden 0%→5% jumps (those sound like a warped record). At 100ms drift
-    // the rate is 1.02 (3.5 cents) — imperceptible. At 250ms: capped at 2.5%
-    // (4.3 cents). Converges against 20ms/s stall rate from 125ms drift upward.
-    // Oracle 22.2.4.5→1 (Grace → The Creative): elegant, invisible correction.
+    // Proportional warp across the full range (P/Z/N). Rate scales continuously
+    // with drift — no hard cutoffs, no micro-correction tier. At 5ms: 0.1%.
+    // At 100ms: 2%. At 250ms+: capped at 2.5%. Gentle enough to be inaudible,
+    // strong enough to overcome BT stalls. Oracle 27.4→21, 53 unchanging.
     _trit = lagToTrit(abs);
     _prevLag = lagMs;
 
