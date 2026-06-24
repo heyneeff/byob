@@ -85,18 +85,30 @@ where `elapsed = (syncedNow() - new Date(playback_started_at).getTime()) / 1000`
 
 `SEEK_STAB_S = 0.19` — audio seek stabilization latency constant.
 
-### Drift corrector — single gate `_driftState`
-One state variable `_driftState` (`'idle' | 'warping' | 'ducking'`), one entry point `requestCorrection(lagMs)`:
-- **<15ms** → ignored
-- **15–500ms** → `'warping'`: ±3% `audio.playbackRate` nudge (inaudible), snaps back when gap closes. A new request during `'warping'` recomputes immediately — never deferred (a deferred warp runs a stale rate in the wrong direction).
-- **>500ms** → `'ducking'`: `seekWithDuck()` — fade down, seek, fade up (~2.5s, audible). A new request during `'ducking'` sets `_driftPendingRecheck`; `settleToIdle()` re-checks drift when the duck finishes — without this recheck, deferred drift accumulates silently.
+### Drift corrector — ternary engine (Jun 24 2026 state)
+`sync/ternary-engine.js` is `window.SyncEngine`. One state variable `_state` (`'idle' | 'warping' | 'seeking'`).
+
+**`fastDriftCorrect()` path (listener.html, runs every 2500ms via timeupdate):**
+- **<15ms** → `requestCorrection()` → micro-correct (±1.2% rate, imperceptible)
+- **15–500ms** → `requestCorrection()` → **proportional warp**: `rate = 1 + |lag| × 0.0002`, capped at 2.5% max. At 100ms: 2% (3.5 cents — imperceptible). Replaces stepped BASE_RATE approach. Re-evaluates every 2600ms.
+- **>500ms** → `seekPreservingBT()` — mute, seek, 180ms ramp (audible)
+- `DRIFT_SNAP_THRESHOLD_MS = 500` in listener.html
+
+**`playing` event handler and `_resumeAndReseek()`:** both check `abs(lag) < 500ms` before calling `seekPreservingBT`. BT buffer refills fire `playing` every 4-6s — previously each one triggered a 180ms mute/ramp; now gated.
+
+**TH_SEEK = 500ms** in ternary engine (matches DRIFT_SNAP_THRESHOLD_MS).
 
 **Coordinated snaps** (`hard_sync`, `scatter`, sweep beam, `resync_at`, track change) are NOT drift — they call `cancelDriftCorrection()` (resets state, clears pending recheck, kills in-flight warp timer, restores base rate) then seek directly via `seekPreservingBT()`. Scatter especially: it's a forced snap, never feed it into `requestCorrection()` (a multi-hundred-ms scatter offset triggers a duck and reads as "broken" for 2.5s).
 
 Note: `_syncState` (`'idle' | 'locking' | 'locked' | 'verifying'`) is a **different** state machine — the mic-based auto-sync verifier. Don't confuse the two.
 
 ### Bluetooth latency calibration
-`calibrateDeviceLatency()` plays a click, listens via mic, measures round-trip → `_deviceLatencyMs` (cached in localStorage `byob_device_latency`). Auto-runs once via `preSyncApproach()` during GPS approach; `activateZone` has a fallback that calibrates at zone entry if the localStorage key is missing (covers force-enter, which skips the approach phase). Manual re-run: HUD **📡 CALIBRATE** button (`hudCalibrateNow()`) — pauses, calibrates, re-seeks. An uncalibrated phone (`deviceLatencyMs: 0` on a BT speaker) sounds offset even with `driftMs ≈ 0`.
+**Mic calibration is permanently removed.** `calibrateDeviceLatency()` is a no-op. `hudCalibrateNow()` shows the stored value only. See invariant section for the full ban notice.
+
+`_deviceLatencyMs` sources (Jun 24 2026 state):
+- `localStorage byob_device_latency` — capped at 1000ms on load, nuked if >1000ms
+- `ctx.outputLatency` seed on first tick (Chrome/Android only)
+- **Auto-cal**: `ternary/layer.js` `maybeAutoCalibrate()` — fires after 10 consecutive N-state ticks (30s), applies 50% of detected floor offset, max 4 corrections per track. Uses `detectFloor()` which sorts by |drift| and takes bottom 40% (handles high-stall devices that the old std<25ms approach missed). Corrections are logged as `correction_event` on `byob_debug` and visible in `debug.html`'s convergence chart.
 
 ### Sync channel — `buildSyncChannel(zoneId)`
 The sync channel is extracted into `buildSyncChannel(zoneId)` so it can be rebuilt on reconnect. It auto-retries on CHANNEL_ERROR/CLOSED after 3s. **Always call `buildSyncChannel` — never inline the channel chain again.**
