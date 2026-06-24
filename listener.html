@@ -4831,11 +4831,13 @@ window.syncedNow = syncedNow; // expose for ternary/arp.js phase-locked scheduli
 
 
 async function calibrateDeviceLatency() {
-  // Never run during playback — iOS kills BT when mic opens during audio session
-  if (_webAudioPlaying || (audio.src && !audio.paused)) {
-    console.log('[Calibrate] Skipping — audio is playing');
-    return;
-  }
+  // Mic calibration removed — auto-cal (ternary/layer.js detectFloor) now handles
+  // deviceLatencyMs adjustment automatically and more accurately than the click/mic
+  // round-trip (which measured 142ms on devices with 900ms true BT latency).
+  // outputLatency seeds the initial value on Chrome/Android; auto-cal converges
+  // within 90s. Oracle 35.2→64 confirmed removal.
+  console.log('[Calibrate] Mic cal disabled — auto-cal handles latency. Stored:', localStorage.getItem('byob_device_latency') || '0', 'ms');
+  return;
 
   console.log('[Calibrate] Starting device latency measurement...');
   let micStream = null;
@@ -5558,9 +5560,10 @@ function hudResetCal() {
 }
 
 async function hudCalibrateNow() {
-  // Manual override for calibrateDeviceLatency()'s normal trigger (preSyncApproach,
-  // GPS-gated). Lets a "force enter" test device calibrate on the spot, regardless
-  // of zone distance or prior calibration state.
+  // Mic calibration removed — auto-cal handles latency automatically.
+  // Button now shows current stored calibration value.
+  showToast('📡 Auto-cal active — stored latency: ' + Math.round(_deviceLatencyMs) + 'ms');
+  return;
   const wasPlaying = _webAudioPlaying && audio.src && !audio.paused;
   if (wasPlaying) audio.pause();
   showToast('📡 Calibrating — stay quiet for a sec...');
