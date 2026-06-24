@@ -2107,10 +2107,11 @@ const SNAP_THRESHOLD_MS = 500;
 // a persistent -150ms bias. The real fix is the playing re-anchor below:
 // re-seek to expectedNow() whenever audio resumes from any stall, which
 // re-establishes position from first principles at the earliest natural moment.
-// Live tuner (2026-06-24): stall amplitude on real devices is 120-170ms,
-// so 150ms threshold fires on every stall → 60 audible cuts/5min on worst device.
-// 300ms lets warp handle normal BT variance; snap only fires for severe drift.
-const DRIFT_SNAP_THRESHOLD_MS = 300;
+// Live tuner (2026-06-24): floor + stall combined peaks at 310-320ms on real
+// devices. 300ms still fired on every stall cycle. 500ms lets warp handle all
+// normal BT variance; auto-cal corrects the floor within ~30s; snap fires only
+// for truly severe drift. Oracle 27.4→21 (Biting Through) confirmed: act fully.
+const DRIFT_SNAP_THRESHOLD_MS = 500;
 const DRIFT_AUDIBLE_THRESHOLD_MS = 400; // above this, use mute/ramp seek; below, use silent direct seek
 const TH_SEEK_SANITY = 2000; // above this = wrapLag artifact — skip
 
