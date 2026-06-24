@@ -566,7 +566,6 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
 <div class="topbar">
   <img id="logo-img" style="height:28px;max-height:28px;width:auto;max-width:110px;object-fit:contain;mix-blend-mode:screen;" alt="BYOB"/>
-  <span id="dj-user-label" style="font-size:10px;color:#555;letter-spacing:.06em;font-family:monospace;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="toggleDJMenu()" title="Tap to log out"></span>
   <img id="boom-img" onclick="toggleDJMenu()" style="height:32px;cursor:pointer;mix-blend-mode:screen;margin-left:2px;position:relative;z-index:901;" alt="menu"/>
   <div class="tb-bpm-ctrl" title="Master BPM — stems warp to this tempo">
     <input type="number" id="master-bpm" min="40" max="240" placeholder="—" oninput="onMasterBpm(this.value)" onclick="event.stopPropagation()"/>
@@ -585,6 +584,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
   </div>
   <div class="tb-trackname" id="tb-trackname"></div>
   <button class="btn-live" id="btn-live" onclick="onTopLiveBtn()">⚡ Go Live</button>   <button onclick="triggerResync()" style="padding:6px 12px;border:none;border-radius:14px;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:13px;font-weight:900;letter-spacing:.08em;background:var(--teal);color:#000;flex-shrink:0;margin-left:4px;">⟳ Sync</button>
+  <span id="dj-user-label" style="font-size:10px;color:#555;letter-spacing:.06em;font-family:monospace;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;margin-left:6px;" onclick="toggleDJMenu()" title="Tap to switch account"></span>
 </div>
 
 <div class="app">
