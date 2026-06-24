@@ -47,6 +47,12 @@ h1{font-size:14px;color:var(--teal);letter-spacing:.2em;text-transform:uppercase
   <canvas id="drift-chart"></canvas>
   <div id="drift-legend"></div>
 </div>
+<div id="cal-chart-wrap" style="margin-bottom:12px;background:#050505;border:1px solid #1a1a1a;border-radius:6px;padding:8px;">
+  <div style="font-size:10px;color:var(--orange);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">
+    latency convergence — deviceLatencyMs per device  <span style="color:#444;font-size:9px;margin-left:8px;">▼ = auto-cal correction fired</span>
+  </div>
+  <canvas id="cal-chart" style="display:block;width:100%;height:120px;"></canvas>
+</div>
 <div id="diff">
   <div id="diff-label">position delta between devices</div>
   <div id="diff-val">—</div>
@@ -71,6 +77,7 @@ const CHART_COLORS = ['#00cc99','#f57e20','#ef3c23','#4fc3f7','#ce93d8','#fff176
 const CHART_WINDOW_MS = 180000; // 3 minutes
 const CHART_Y_RANGE   = 200;    // ±200ms
 const driftHistory = {};        // deviceId → [{ts, driftMs}]
+const calHistory   = {};        // deviceId → [{ts, latencyMs, correction, correctionMs?}]
 const devColorMap  = {};        // deviceId → color (stable across renders)
 let   _colorIdx    = 0;
 
@@ -161,6 +168,68 @@ function drawDriftChart() {
   }
 }
 
+function drawCalChart() {
+  const canvas = document.getElementById('cal-chart');
+  if (!canvas) return;
+  canvas.width  = canvas.offsetWidth  || 800;
+  canvas.height = canvas.offsetHeight || 120;
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const CAL_WINDOW_MS = 300000; // 5 minutes
+  const now = Date.now();
+
+  ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H);
+
+  // Y axis: 0 to 1200ms
+  const Y_MAX = 1200, Y_MIN = 0;
+  const toY = ms => H - ((ms - Y_MIN) / (Y_MAX - Y_MIN)) * H;
+  const toX = ts => W * (1 - (now - ts) / CAL_WINDOW_MS);
+
+  // Grid lines at 200, 400, 600, 800, 1000ms
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.5;
+  [200, 400, 600, 800, 1000].forEach(ms => {
+    const y = toY(ms);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = '#333'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(ms + 'ms', W - 2, y - 2);
+  });
+
+  // One line per device
+  const devices = Object.keys(calHistory);
+  devices.forEach(id => {
+    const h = calHistory[id].filter(p => now - p.ts < CAL_WINDOW_MS);
+    if (h.length < 1) return;
+    const col = devColor(id);
+
+    // Draw line
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath();
+    h.forEach((p, i) => {
+      const x = toX(p.ts), y = toY(p.latencyMs);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Correction event markers — vertical tick + label
+    h.filter(p => p.correction).forEach(p => {
+      const x = toX(p.ts);
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = col; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left';
+      const label = (p.correctionMs > 0 ? '+' : '') + p.correctionMs + 'ms';
+      ctx.fillText(label, x + 2, toY(p.latencyMs) - 4);
+    });
+
+    // Device label at right edge
+    const last = h[h.length - 1];
+    const lx = toX(last.ts);
+    ctx.fillStyle = col; ctx.font = '9px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(id.slice(-6) + ' ' + Math.round(last.latencyMs) + 'ms', Math.min(lx + 4, W - 80), toY(last.latencyMs) - 4);
+  });
+}
+
 function sendLatencyCmd(deviceId, deltaMs) {
   debugCh.send({ type: 'broadcast', event: 'latency_cmd', payload: { deviceId, deltaMs } });
 }
@@ -187,9 +256,22 @@ const debugCh = db.channel('byob_debug')
     if (payload.driftMs != null && !isNaN(parseFloat(payload.driftMs))) {
       pushDriftHistory(payload.deviceId, payload.driftMs);
     }
+    // Track latency for convergence chart
+    const latMs = parseFloat(payload.deviceLatencyMs);
+    if (!isNaN(latMs) && latMs > 0) {
+      if (!calHistory[payload.deviceId]) calHistory[payload.deviceId] = [];
+      const h = calHistory[payload.deviceId];
+      const last = h[h.length - 1];
+      // Only push if value changed or first reading — avoids redundant flat segments
+      if (!last || last.latencyMs !== latMs) {
+        h.push({ ts: Date.now(), latencyMs: latMs, correction: false });
+        if (h.length > 200) h.shift();
+      }
+    }
     if (_recording) recordRow('sync', payload);
     render();
     drawDriftChart();
+    drawCalChart();
   })
   .on('broadcast', { event: 'listener_health' }, ({ payload }) => {
     devs[payload.deviceId] = { ...payload, _kind: 'health', lastSeen: Date.now() };
@@ -205,6 +287,15 @@ const debugCh = db.channel('byob_debug')
     if (_events.length > 20) _events.length = 20;
     if (_recording) recordRow('event', { ...payload, note: payload.kind });
     renderEvents();
+  })
+  .on('broadcast', { event: 'correction_event' }, ({ payload }) => {
+    // Auto-cal correction — log to convergence chart
+    const id = payload.deviceId;
+    if (!calHistory[id]) calHistory[id] = [];
+    calHistory[id].push({ ts: Date.now(), latencyMs: payload.newLatencyMs, correction: true,
+                          prevMs: payload.prevLatencyMs, correctionMs: payload.correctionMs });
+    if (calHistory[id].length > 200) calHistory[id].shift();
+    drawCalChart();
   })
   .subscribe(s => {
     document.getElementById('status').textContent =
