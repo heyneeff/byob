@@ -5030,9 +5030,26 @@ window._terCorrect        = (pos) => { cancelDriftCorrection(); seekPreservingBT
 window._terExpectedNow    = ()    => _expectedNow();
 window._terGetZone        = ()    => activeZone;   // exposes local var for burst mode polling
 window._terAdjustLatency  = (deltaMs) => {
+  const prevLatencyMs = _deviceLatencyMs;
   _deviceLatencyMs = Math.max(0, Math.min(400, _deviceLatencyMs + deltaMs));
   try { localStorage.setItem('byob_device_latency', _deviceLatencyMs.toFixed(1)); } catch(e) {}
   console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
+  // Broadcast correction event — visible in live-tuner and debug.html
+  ensureHUDChannel();
+  try {
+    _hudChannel?.send({
+      type: 'broadcast', event: 'correction_event',
+      payload: {
+        deviceId:      _hudDeviceId,
+        ts:            syncedNow(),
+        kind:          'auto_cal',
+        prevLatencyMs: Math.round(prevLatencyMs),
+        newLatencyMs:  Math.round(_deviceLatencyMs),
+        correctionMs:  Math.round(deltaMs),
+        driftMs:       window._lastDriftMs ?? null,
+      }
+    });
+  } catch(e) {}
 };
 
 async function _runLockingPass(){
