@@ -5031,6 +5031,7 @@ window._terExpectedNow    = ()    => _expectedNow();
 window._terGetZone        = ()    => activeZone;   // exposes local var for burst mode polling
 window._terAdjustLatency  = (deltaMs) => {
   _deviceLatencyMs = Math.max(0, Math.min(400, _deviceLatencyMs + deltaMs));
+  try { localStorage.setItem('byob_device_latency', _deviceLatencyMs.toFixed(1)); } catch(e) {}
   console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
 };
 

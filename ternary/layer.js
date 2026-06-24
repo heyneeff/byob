@@ -69,7 +69,8 @@
   let _badge         = null;
   let _peerTrits     = {};   // { deviceId → { trit, lagMs, ts } }
   let _driftHistory  = [];
-  let _calApplied    = false;
+  let _calApplied    = false;  // true once any correction fires (for badge)
+  let _calCount      = 0;     // corrections applied this track (max 4)
   let _calState      = 0;  // diagnostic: 0=never tried, 1=already done, 2=no fn, 3=no floor, 4=correction<5, 5=fired
   let _lastFloor     = null;
   const _history     = [];
@@ -148,37 +149,44 @@
 
   // ── FLOOR DETECTION ───────────────────────────────────────────────────────
   function detectFloor() {
-    if (_driftHistory.length < 8) return null;
-    // Trimmed mean: sort, drop top+bottom outlier, check variance of middle 6
+    if (_driftHistory.length < 10) return null;
+    // Trimmed mean: sort, drop top+bottom 2 to remove seek artifacts
     const sorted = [..._driftHistory].sort((a, b) => a - b);
-    const trimmed = sorted.slice(1, -1); // drop min and max
+    const trimmed = sorted.slice(2, -2);
+    if (trimmed.length < 6) return null;
     const mean     = trimmed.reduce((a, v) => a + v, 0) / trimmed.length;
     const variance = trimmed.reduce((a, v) => a + (v - mean) ** 2, 0) / trimmed.length;
-    if (variance < 400 && Math.abs(mean) > 20 && Math.abs(mean) < 200) return mean;
-    return null;
+    const std      = Math.sqrt(variance);
+    // Stable floor: std < 25ms (not stall-driven noise), meaningful magnitude, not a seek artifact
+    if (std > 25)            return null; // too noisy — BT stalls, not a calibration floor
+    if (Math.abs(mean) < 30) return null; // already close enough
+    if (Math.abs(mean) > 500) return null; // wrapLag artifact — skip
+    return mean;
   }
 
   // ── AUTO-CALIBRATION ──────────────────────────────────────────────────────
   function maybeAutoCalibrate() {
-    // Engine has its own auto-cal — skip layer cal when engine is running
-    if (typeof window._terEngineReset === 'function')      { _calState = 1; return; }
-    if (_calApplied)                                       { _calState = 1; return; }
+    if (_calCount >= 4)                                    { _calState = 1; return; } // max 4 per track
     if (typeof window._terAdjustLatency !== 'function')    { _calState = 2; return; }
     const floor = detectFloor();
     _lastFloor = floor;
     if (floor === null)                                    { _calState = 3; return; }
-    const correction = Math.round(floor * 0.6 * 10) / 10;
-    if (Math.abs(correction) < 5)                         { _calState = 4; return; }
-    window._terAdjustLatency(correction);
+    const correction = Math.round(floor * 0.5); // 50% step — conservative, converges in 2-3 cycles
+    if (Math.abs(correction) < 8)                         { _calState = 4; return; }
+    window._terAdjustLatency(correction); // updates _deviceLatencyMs + localStorage
     _calApplied = true;
-    _calState   = 5;
-    console.log('[ternary] auto-cal: floor', Math.round(floor) + 'ms → adjust', correction + 'ms');
+    _calCount++;
+    _calState = 5;
+    // Reset so next cycle measures fresh drift against the new calibration
+    _driftHistory = [];
+    _consecutiveN = 0;
+    console.log(`[ternary] auto-cal #${_calCount}: floor ${Math.round(floor)}ms → adjust ${correction}ms`);
     try {
       const ch = _debugChannel || window._debugChannel;
       ch?.send({
         type: 'broadcast', event: 'sync_event',
         payload: { deviceId: myId(), kind: 'ter_calibration',
-                   floorMs: Math.round(floor), correctionMs: correction }
+                   floorMs: Math.round(floor), correctionMs: correction, calCount: _calCount }
       });
     } catch (e) {}
   }
@@ -205,7 +213,7 @@
 
     const abs = Math.abs(lagMs);
     _driftHistory.push(lagMs);
-    if (_driftHistory.length > 8) _driftHistory.shift();
+    if (_driftHistory.length > 12) _driftHistory.shift(); // 12 readings = ~36s at 3s tick
 
     const snapThreshold = consensusSnapThreshold(isBurst);
     _trit = driftToTrit(lagMs, snapThreshold);
@@ -236,7 +244,7 @@
       applySnap(lagMs, 'burst-snap');
     }
 
-    if (!isBurst && _consecutiveN >= 6) {
+    if (!isBurst && _consecutiveN >= 10) { // 10 × 3s = 30s of stable N-state before attempting cal
       maybeAutoCalibrate();
       _consecutiveN = 0;
     }
@@ -364,6 +372,7 @@
           // It changed — new track starting
           enterBurst('track_change detected');
           _calApplied = false;
+          _calCount   = 0;
           _driftHistory = [];
           _consecutiveN = 0;
           window._terEngineReset?.(); // clear engine's floor history for new track (cal lock preserved)
