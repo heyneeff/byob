@@ -47,12 +47,32 @@
   .compare-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   #log { font-size: 12px; color: var(--muted); font-family: monospace; max-height: 80px;
           overflow-y: auto; background: var(--surface2); border-radius: 6px; padding: 8px; }
+  .live-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+               padding: 12px; min-width: 175px; max-width: 210px; transition: border-color 0.2s; }
+  .live-card.selected { border-color: var(--teal); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .pulse { display:inline-block; width:8px; height:8px; border-radius:50%;
+           background:var(--teal); animation:pulse 1.5s infinite; margin-right:6px; }
 </style>
 </head>
 <body>
 
 <h1>⚡ BYOB Sync Tuner</h1>
 <h2>TUNE ENGINE PARAMETERS · REPLAY STALL MODELS · SCORE OUTPUT</h2>
+
+<!-- ── LIVE FEED ──────────────────────────────────────────────────────────── -->
+<div class="card wide" style="margin-bottom:12px">
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <h3 style="margin:0">LIVE FEED</h3>
+    <button class="btn btn-primary" id="live-btn" onclick="toggleLive()"
+            style="padding:6px 18px;font-size:14px">CONNECT</button>
+    <span id="live-status" style="color:var(--muted);font-size:13px">Not connected — click to subscribe to byob_debug</span>
+    <span id="live-count" style="color:var(--muted);font-size:12px;margin-left:auto"></span>
+  </div>
+  <div id="live-devices" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;min-height:20px">
+    <span style="color:var(--muted);font-size:13px" id="live-hint">Devices appear here as they broadcast (every 3s)</span>
+  </div>
+</div>
 
 <div class="row">
   <!-- CSV Drop -->
@@ -514,6 +534,227 @@ function log(msg) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadProfile('stall');
 log('Ready. Load a CSV or pick a profile, then Run Sim.');
+</script>
+
+<!-- Live feed: Supabase + subscription logic -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const { createClient } = supabase;
+const sb = createClient(
+  'https://ohacvuwzvuifpyqckise.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY'
+);
+
+// ── Live state ────────────────────────────────────────────────────────────────
+let liveChannel = null;
+let liveConnected = false;
+const liveBuffers = {};   // deviceId → last 40 hud_data payloads
+const liveModels  = {};   // deviceId → extracted stall model
+let selectedLiveDevice = null;
+let livePacketCount = 0;
+
+// ── Connect / disconnect ──────────────────────────────────────────────────────
+function toggleLive() {
+  liveConnected ? disconnectLive() : connectLive();
+}
+
+function connectLive() {
+  document.getElementById('live-btn').textContent = 'Connecting…';
+  liveChannel = sb.channel('byob_debug')
+    .on('broadcast', { event: 'hud_data' }, ({ payload }) => onLiveData(payload))
+    .subscribe(status => {
+      if (status === 'SUBSCRIBED') {
+        liveConnected = true;
+        document.getElementById('live-btn').textContent = 'DISCONNECT';
+        document.getElementById('live-status').innerHTML = '<span class="pulse"></span>Live';
+        document.getElementById('live-status').style.color = 'var(--teal)';
+        log('Live feed connected — waiting for devices');
+      } else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        liveConnected = false;
+        document.getElementById('live-btn').textContent = 'CONNECT';
+        document.getElementById('live-status').textContent = 'Connection error — retry';
+        document.getElementById('live-status').style.color = 'var(--red)';
+      }
+    });
+}
+
+function disconnectLive() {
+  if (liveChannel) { liveChannel.unsubscribe(); liveChannel = null; }
+  liveConnected = false;
+  document.getElementById('live-btn').textContent = 'CONNECT';
+  document.getElementById('live-status').textContent = 'Disconnected';
+  document.getElementById('live-status').style.color = 'var(--muted)';
+  log('Live feed disconnected');
+}
+
+// ── Incoming data ─────────────────────────────────────────────────────────────
+function onLiveData(p) {
+  const id = p.deviceId;
+  if (!id || !id.startsWith('dev_')) return;
+
+  if (!liveBuffers[id]) liveBuffers[id] = [];
+  liveBuffers[id].push({ ...p, _wallTs: Date.now() });
+  if (liveBuffers[id].length > 40) liveBuffers[id].shift();
+
+  livePacketCount++;
+  document.getElementById('live-count').textContent =
+    `${livePacketCount} packets · ${Object.keys(liveBuffers).length} devices`;
+
+  // Remove hint text once first device arrives
+  const hint = document.getElementById('live-hint');
+  if (hint) hint.remove();
+
+  extractModel(id);
+  renderDeviceCard(id);
+
+  // Auto re-run simulation for selected device every 5 new readings
+  if (id === selectedLiveDevice && liveBuffers[id].length % 5 === 0) {
+    applyLiveModel(id);
+    runSim('A');
+  }
+}
+
+// ── Stall model extraction ────────────────────────────────────────────────────
+function extractModel(id) {
+  const buf = liveBuffers[id];
+  if (buf.length < 4) return;
+
+  const bt = parseFloat(buf[buf.length-1].deviceLatencyMs) || 0;
+  const stalls = [], idleDrifts = [];
+  let stallEvents = 0, totalWindows = 0;
+
+  for (let i = 1; i < buf.length; i++) {
+    const prev = buf[i-1], curr = buf[i];
+    const sc0 = parseInt(prev.snapCount) || 0, sc1 = parseInt(curr.snapCount) || 0;
+    const el0 = parseFloat(prev.elapsed), el1 = parseFloat(curr.elapsed);
+    const ct0 = parseFloat(prev.currentTime), ct1 = parseFloat(curr.currentTime);
+    const rate = parseFloat(prev.playbackRate) || 1.0;
+    if (!isFinite(el0) || !isFinite(el1) || !isFinite(ct0) || !isFinite(ct1)) continue;
+    const wallDelta = el1 - el0;
+    if (wallDelta < 0.5 || wallDelta > 8) continue;
+    totalWindows++;
+
+    if (sc0 === sc1 && curr.driftState !== 'seeking') {
+      // Idle window — natural stall visible
+      const expectedCtAdv = wallDelta * rate;
+      const actualCtAdv   = ct1 - ct0;
+      const stall = Math.max(0, (expectedCtAdv - actualCtAdv) * 1000);
+      if (stall < 500) {
+        stalls.push(stall);
+        if (stall > 50) stallEvents++;
+      }
+      const d = parseFloat(curr.driftMs);
+      if (isFinite(d) && Math.abs(d) < 2000) idleDrifts.push(d);
+    }
+  }
+
+  const sorted = [...stalls].sort((a,b)=>a-b);
+  const medStall = sorted.length ? sorted[Math.floor(sorted.length / 2)] : 0;
+  const sortedD  = [...idleDrifts].sort((a,b)=>a-b);
+  const medFloor = sortedD.length ? sortedD[Math.floor(sortedD.length / 2)] : 0;
+
+  // Estimate stall period (how often stalls > 50ms occur)
+  const stallPer = stallEvents > 0 ? Math.round((totalWindows * 3) / stallEvents) : 10;
+
+  const last = buf[buf.length-1];
+  liveModels[id] = {
+    bt, floor: Math.round(medFloor), avgStall: Math.round(medStall),
+    stallPer: Math.max(2, Math.min(15, stallPer)),
+    lastDrift: Math.round(parseFloat(last.driftMs) || 0),
+    lastState: last.driftState || '?',
+    lastRate:  parseFloat(last.playbackRate) || 1,
+    snapCount: parseInt(last.snapCount) || 0,
+    n: buf.length,
+  };
+}
+
+// ── Device card ───────────────────────────────────────────────────────────────
+function renderDeviceCard(id) {
+  let card = document.getElementById('lc-' + id);
+  if (!card) {
+    card = document.createElement('div');
+    card.id = 'lc-' + id;
+    card.className = 'live-card';
+    document.getElementById('live-devices').appendChild(card);
+  }
+
+  const m = liveModels[id] || {};
+  const drift = m.lastDrift ?? 0;
+  const isSelected = id === selectedLiveDevice;
+  const driftCol = Math.abs(drift) < 10 ? 'var(--teal)'
+                 : Math.abs(drift) < 50  ? 'var(--yellow)'
+                 : Math.abs(drift) < 150 ? 'var(--orange)' : 'var(--red)';
+  const stateLabel = m.lastState || '?';
+
+  card.className = 'live-card' + (isSelected ? ' selected' : '');
+  card.innerHTML = `
+    <div style="font-size:11px;color:var(--muted);font-family:monospace;margin-bottom:2px">${id}</div>
+    <div style="font-size:30px;font-weight:900;color:${driftCol};line-height:1.1">
+      ${drift > 0 ? '+' : ''}${drift}ms
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px">
+      ${stateLabel} · rate=${m.lastRate?.toFixed(3)||'1.000'}
+    </div>
+    <canvas id="mini-${id}" width="160" height="44"
+      style="width:100%;height:44px;border-radius:4px;margin:6px 0;display:block"></canvas>
+    <div style="font-size:11px;color:var(--muted)">
+      BT=${m.bt||'?'}ms · floor≈${m.floor||0}ms<br>
+      stall≈${m.avgStall||0}ms / ~${m.stallPer||'?'}s · ${m.n||0} readings
+    </div>
+    <button onclick="selectLiveDevice('${id}')"
+      style="margin-top:8px;width:100%;padding:5px;background:${isSelected?'var(--teal)':'var(--surface)'};
+             color:${isSelected?'#000':'var(--text)'};border:1px solid ${isSelected?'var(--teal)':'var(--border)'};
+             border-radius:6px;font-family:inherit;font-size:13px;cursor:pointer;font-weight:700">
+      ${isSelected ? '✓ SELECTED' : 'Load & tune →'}
+    </button>
+  `;
+
+  // Mini drift chart
+  const canvas = document.getElementById('mini-' + id);
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#111'; ctx.fillRect(0, 0, 160, 44);
+    const pts = (liveBuffers[id] || []).map(r => parseFloat(r.driftMs)).filter(isFinite);
+    if (pts.length > 1) {
+      const maxAbs = Math.max(200, ...pts.map(Math.abs));
+      const midY = 22;
+      ctx.strokeStyle = driftCol; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      pts.forEach((d, i) => {
+        const x = (i / (pts.length - 1)) * 158 + 1;
+        const y = midY - (d / maxAbs) * 20;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+    ctx.strokeStyle = '#222'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(0, 22); ctx.lineTo(160, 22); ctx.stroke();
+  }
+}
+
+// ── Select device → load model → run sim ─────────────────────────────────────
+function selectLiveDevice(id) {
+  selectedLiveDevice = id;
+  applyLiveModel(id);
+  runSim('A');
+  log(`${id} selected — model loaded, simulation running`);
+  // Re-render all cards to update selection highlight
+  Object.keys(liveModels).forEach(did => renderDeviceCard(did));
+}
+
+function applyLiveModel(id) {
+  const m = liveModels[id];
+  if (!m) return;
+  const clampFloor  = Math.min(0, Math.max(-400, m.floor));
+  const clampStall  = Math.min(300, Math.max(0, m.avgStall));
+  const clampPer    = Math.min(15, Math.max(2, m.stallPer));
+  document.getElementById('s-bt').value    = m.bt;       syncVal('bt',    m.bt + 'ms');
+  document.getElementById('s-floor').value = clampFloor; syncVal('floor', clampFloor + 'ms');
+  document.getElementById('s-stall').value = clampStall; syncVal('stall', clampStall + 'ms');
+  document.getElementById('s-stallper').value = clampPer; syncVal('stallper', clampPer + 's');
+  // Clear profile badge highlights (live model is now active)
+  document.querySelectorAll('.profile-badge').forEach(b => b.classList.remove('active'));
+}
 </script>
 </body>
 </html>
