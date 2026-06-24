@@ -2248,11 +2248,7 @@ audio.addEventListener('playing', () => {
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
-  if (_reAnchorLag < DRIFT_AUDIBLE_THRESHOLD_MS) {
-    window.SyncEngine.seekSilent(_expectedNow());
-  } else {
-    seekPreservingBT(_expectedNow());
-  }
+  seekPreservingBT(_expectedNow());
   setTimeout(() => { _reAnchorInFlight = false; }, 500);
 });
 
