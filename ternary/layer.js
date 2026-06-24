@@ -150,17 +150,19 @@
   // ── FLOOR DETECTION ───────────────────────────────────────────────────────
   function detectFloor() {
     if (_driftHistory.length < 10) return null;
-    // Trimmed mean: sort, drop top+bottom 2 to remove seek artifacts
-    const sorted = [..._driftHistory].sort((a, b) => a - b);
-    const trimmed = sorted.slice(2, -2);
-    if (trimmed.length < 6) return null;
-    const mean     = trimmed.reduce((a, v) => a + v, 0) / trimmed.length;
-    const variance = trimmed.reduce((a, v) => a + (v - mean) ** 2, 0) / trimmed.length;
+    // Sort by absolute value — readings with smallest |drift| are post-warp
+    // settled states. Stall spikes land at the high-|drift| end and are
+    // naturally excluded. This works for high-stall devices (BT=200ms+) where
+    // the old trimmed-mean approach was rejected by the std>25ms guard because
+    // stall oscillations of 150-214ms blew the variance wide open.
+    const byAbs = [..._driftHistory].sort((a, b) => Math.abs(a) - Math.abs(b));
+    const settle = byAbs.slice(0, Math.max(3, Math.ceil(byAbs.length * 0.4)));
+    const mean     = settle.reduce((a, v) => a + v, 0) / settle.length;
+    const variance = settle.reduce((a, v) => a + (v - mean) ** 2, 0) / settle.length;
     const std      = Math.sqrt(variance);
-    // Stable floor: std < 25ms (not stall-driven noise), meaningful magnitude, not a seek artifact
-    if (std > 25)            return null; // too noisy — BT stalls, not a calibration floor
-    if (Math.abs(mean) < 30) return null; // already close enough
-    if (Math.abs(mean) > 500) return null; // wrapLag artifact — skip
+    if (std > 40)             return null; // settled samples still too noisy
+    if (Math.abs(mean) < 30)  return null; // already converged
+    if (Math.abs(mean) > 500) return null; // wrapLag artifact
     return mean;
   }
 
