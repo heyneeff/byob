@@ -206,7 +206,7 @@
     if (typeof window._terCorrect     !== 'function') return;
     if (typeof window._terExpectedNow !== 'function') return;
     const target = window._terExpectedNow();
-    if (target == null) return;
+    if (target == null || target < 0) return; // negative = deviceLatencyMs > elapsed, track still loading
     window._terCorrect(target);
     _snapCount++;
     _burstSnaps++;
