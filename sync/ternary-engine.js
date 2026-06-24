@@ -127,11 +127,8 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   function settleToIdle() {
     transport.playbackRate = getBaseRate();
     _state = 'idle';
-    timers.setTimeout(() => {
-      if (_state !== 'idle') return;
-      const lag = computeLagMs();
-      if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
-    }, 100);
+    // No self-recheck. Oracle 36.2.6→26 (Darkening→Great Taming) + 51.1.3→27 + 2 unchanging:
+    // when warp ends, hold still. fastDriftCorrect re-enters at ≥15ms only.
   }
 
   function cancelDriftCorrection() {
