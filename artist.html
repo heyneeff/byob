@@ -566,6 +566,7 @@ body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:998;op
 
 <div class="topbar">
   <img id="logo-img" style="height:28px;max-height:28px;width:auto;max-width:110px;object-fit:contain;mix-blend-mode:screen;" alt="BYOB"/>
+  <span id="dj-user-label" style="font-size:10px;color:#555;letter-spacing:.06em;font-family:monospace;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;" onclick="toggleDJMenu()" title="Tap to log out"></span>
   <img id="boom-img" onclick="toggleDJMenu()" style="height:32px;cursor:pointer;mix-blend-mode:screen;margin-left:2px;position:relative;z-index:901;" alt="menu"/>
   <div class="tb-bpm-ctrl" title="Master BPM — stems warp to this tempo">
     <input type="number" id="master-bpm" min="40" max="240" placeholder="—" oninput="onMasterBpm(this.value)" onclick="event.stopPropagation()"/>
@@ -1225,6 +1226,8 @@ window.addEventListener('DOMContentLoaded', async()=>{
     const {data:{session}}=await db.auth.getSession();
     if(session){
       currentUser=session.user;
+      const _djUserLabel = document.getElementById('dj-user-label');
+      if (_djUserLabel) _djUserLabel.textContent = currentUser.email.split('@')[0];
       window._mapInited=true;  // init map immediately on startup
       document.getElementById('dj-auth').style.display='none';
       document.getElementById('dj-app').style.display='block';
@@ -1266,6 +1269,8 @@ async function handleDJAuth(){
     measureClockOffset();setInterval(measureClockOffset,60000);
     initZonesGlobalSub();
     setInterval(()=>db.from('zones').select('id').limit(1).then(()=>{}).catch(()=>{}),4*60*1000);
+    const _djUserLabel = document.getElementById('dj-user-label');
+    if (_djUserLabel) _djUserLabel.textContent = currentUser.email.split('@')[0];
     showToast('Welcome DJ '+currentUser.email.split('@')[0]+' 🎛️');
   } catch(e) {
     errEl.textContent='Connection failed — check if Supabase project is paused.';
