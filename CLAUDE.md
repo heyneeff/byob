@@ -106,7 +106,7 @@ Note: `_syncState` (`'idle' | 'locking' | 'locked' | 'verifying'`) is a **differ
 **Mic calibration is permanently removed.** `calibrateDeviceLatency()` is a no-op. `hudCalibrateNow()` shows the stored value only. See invariant section for the full ban notice.
 
 `_deviceLatencyMs` sources (Jun 24 2026 state):
-- `localStorage byob_device_latency` — capped at 1000ms on load, nuked if >1000ms
+- `localStorage byob_device_latency` — capped at 1200ms on load, nuked if >1200ms
 - `ctx.outputLatency` seed on first tick (Chrome/Android only)
 - **Auto-cal**: `ternary/layer.js` `maybeAutoCalibrate()` — fires after 10 consecutive N-state ticks (30s), applies 50% of detected floor offset, max 4 corrections per track. Uses `detectFloor()` which sorts by |drift| and takes bottom 40% (handles high-stall devices that the old std<25ms approach missed). Corrections are logged as `correction_event` on `byob_debug` and visible in `debug.html`'s convergence chart.
 

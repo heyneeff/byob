@@ -235,10 +235,12 @@
       _consecutiveN++;
 
     } else if (_trit === Z) {
-      _consecutiveN = 0;
+      // Z-state (drift 10–50ms): still structurally offset — don't reset.
+      // Proportional warp oscillates through Z while correcting toward the floor;
+      // resetting here prevented auto-cal from ever reaching the 10-tick trigger.
 
     } else {
-      _consecutiveN = 0;
+      _consecutiveN = 0; // P-state only: truly converged, no cal needed
     }
 
     // Burst mode: snap aggressively at track start (audio is transitioning)
