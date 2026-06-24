@@ -2203,11 +2203,7 @@ function fastDriftCorrect() {
     const target = _expectedNow();
     const intendedJumpMs = window.SyncEngine.wrapLag((target - preSeekTime) * 1000, audio.duration * 1000);
     cancelDriftCorrection();
-    if (_absLag < DRIFT_AUDIBLE_THRESHOLD_MS) {
-      seekSilent(target); // direct seek, no mute/ramp — BT buffer absorbs small jumps
-    } else {
-      seekPreservingBT(target); // mute/ramp only for large corrections
-    }
+    seekPreservingBT(target);
     setTimeout(() => {
       const measuredJumpMs = window.SyncEngine.wrapLag((audio.currentTime - preSeekTime) * 1000, audio.duration * 1000);
       window._lastSeekIntendedMs = Math.round(intendedJumpMs);
@@ -2238,12 +2234,7 @@ audio.addEventListener('playing', () => {
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
-  const _reAnchorLag = Math.abs(window.SyncEngine?.computeLagMs?.() ?? 0);
-  if (_reAnchorLag < DRIFT_AUDIBLE_THRESHOLD_MS) {
-    seekSilent(_expectedNow()); // typical BT stall (150–400ms) — no audible cut
-  } else {
-    seekPreservingBT(_expectedNow()); // large stall — mute/ramp
-  }
+  seekPreservingBT(_expectedNow());
   setTimeout(() => { _reAnchorInFlight = false; }, 500);
 });
 
