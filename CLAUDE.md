@@ -6,6 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 BYOB is a mobile-first, no-infrastructure party platform. Attendees use their phones as Bluetooth speakers that sync to a DJ's live stream. The DJ draws a GPS geofence ("zone") — being inside it is the ticket. No build tools, no bundler, no npm. Edit HTML files directly and push to GitHub Pages.
 
+## I Ching Protocol — MANDATORY before any code change
+
+Before implementing ANY change to sync engine code, auto-cal, burst mode, warp, thresholds, caps, or corrector logic:
+
+1. **Identify the decision fork clearly** — what exactly is being changed and why
+2. **Cast the oracle**: run `/home/lewis/iching` in the terminal
+3. **Interpret in code context** — apply the hexagram and moving lines directly to the technical question
+4. **Ask the user to confirm** — share the reading and your interpretation before touching any file
+5. **Only proceed if the cast confirms** — if the oracle says hold (Keeping Still, Retreat, Conflict, Splitting Apart, Contemplation), do not implement. Wait, observe, reframe the question.
+
+The user may also cast independently. When both casts agree, that is the strongest signal. When they diverge, discuss before acting.
+
+The I Ching path: `/home/lewis/iching`
+
+This protocol exists because the sync engine is a living system — changes interact in non-obvious ways, and the oracle has consistently identified the correct action (or non-action) faster than pure analysis. Do not skip it. Do not implement "just a quick fix" without casting.
+
 ## Development
 
 No build step. Serve locally with:
