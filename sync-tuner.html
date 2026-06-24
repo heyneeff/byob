@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BYOB Sync Tuner</title>
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #111; --surface2: #1a1a1a; --border: #222;
+    --teal: #00cc99; --orange: #f57e20; --red: #ef3c23; --muted: #555;
+    --text: #e8e8e8; --yellow: #f5c842; --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Barlow Condensed', system-ui, sans-serif;
+         font-size: 15px; padding: 16px; max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 900; color: var(--teal); letter-spacing: 1px; margin-bottom: 4px; }
+  h2 { font-size: 16px; font-weight: 700; color: var(--muted); margin-bottom: 12px; letter-spacing: 1px; }
+  h3 { font-size: 14px; font-weight: 700; color: var(--orange); margin-bottom: 8px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; flex: 1; min-width: 220px; }
+  .card.wide { min-width: 100%; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+  label b { font-size: 15px; color: var(--text); font-weight: 700; }
+  input[type=range] { width: 100%; accent-color: var(--teal); cursor: pointer; }
+  input[type=file] { display: none; }
+  .val { font-family: monospace; font-size: 16px; font-weight: 900; color: var(--teal); }
+  .btn { padding: 10px 22px; border: none; border-radius: 8px; font-family: inherit;
+          font-size: 16px; font-weight: 900; cursor: pointer; letter-spacing: 0.5px; }
+  .btn-primary { background: var(--teal); color: #000; }
+  .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+  .btn-danger { background: var(--red); color: #fff; }
+  .btn:hover { opacity: 0.85; }
+  .drop-zone { border: 2px dashed var(--border); border-radius: 10px; padding: 24px;
+                text-align: center; cursor: pointer; color: var(--muted); transition: border-color 0.2s; }
+  .drop-zone:hover, .drop-zone.drag { border-color: var(--teal); color: var(--teal); }
+  canvas { width: 100%; height: 220px; display: block; border-radius: 8px; }
+  .score-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .score-item { background: var(--surface2); border-radius: 8px; padding: 10px; text-align: center; }
+  .score-num { font-size: 26px; font-weight: 900; }
+  .score-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .good { color: var(--teal); } .warn { color: var(--yellow); } .bad { color: var(--red); }
+  .profile-badge { display: inline-block; background: var(--surface2); border: 1px solid var(--border);
+                    border-radius: 6px; padding: 4px 10px; font-size: 13px; margin: 2px; cursor: pointer; }
+  .profile-badge.active { border-color: var(--teal); color: var(--teal); }
+  select { background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+            padding: 6px 10px; border-radius: 6px; font-family: inherit; font-size: 14px; }
+  .compare-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  #log { font-size: 12px; color: var(--muted); font-family: monospace; max-height: 80px;
+          overflow-y: auto; background: var(--surface2); border-radius: 6px; padding: 8px; }
+</style>
+</head>
+<body>
+
+<h1>⚡ BYOB Sync Tuner</h1>
+<h2>TUNE ENGINE PARAMETERS · REPLAY STALL MODELS · SCORE OUTPUT</h2>
+
+<div class="row">
+  <!-- CSV Drop -->
+  <div class="card" style="min-width:280px;max-width:320px">
+    <h3>1 · LOAD SESSION CSV</h3>
+    <div class="drop-zone" id="drop-zone" onclick="document.getElementById('csv-input').click()">
+      Drop CSV here or click<br><small>Extracts device stall profiles automatically</small>
+    </div>
+    <input type="file" id="csv-input" accept=".csv">
+    <div style="margin-top:10px" id="device-list"></div>
+    <div id="log" style="margin-top:8px"></div>
+  </div>
+
+  <!-- Device Model -->
+  <div class="card">
+    <h3>2 · DEVICE STALL MODEL</h3>
+    <div class="row" style="margin-bottom:8px;gap:6px">
+      <span class="profile-badge active" onclick="loadProfile('floor')" id="pb-floor">Floor (miscal)</span>
+      <span class="profile-badge" onclick="loadProfile('stall')" id="pb-stall">BT Stalls</span>
+      <span class="profile-badge" onclick="loadProfile('both')" id="pb-both">Floor + Stalls</span>
+      <span class="profile-badge" onclick="loadProfile('clean')" id="pb-clean">Clean</span>
+    </div>
+    <label><b>BT Latency (deviceLatencyMs) <span class="val" id="v-bt">139</span>ms</b>
+      <input type="range" id="s-bt" min="0" max="500" value="139" step="1" oninput="syncVal('bt',this.value+'ms')"></label>
+    <label style="margin-top:8px"><b>Calibration floor offset <span class="val" id="v-floor">0</span>ms</b>
+      <input type="range" id="s-floor" min="-400" max="0" value="0" step="5" oninput="syncVal('floor',this.value+'ms')"></label>
+    <label style="margin-top:8px"><b>Stall amplitude <span class="val" id="v-stall">0</span>ms/window</b>
+      <input type="range" id="s-stall" min="0" max="300" value="0" step="5" oninput="syncVal('stall',this.value+'ms')"></label>
+    <label style="margin-top:8px"><b>Stall every <span class="val" id="v-stallper">3</span>s</b>
+      <input type="range" id="s-stallper" min="2" max="15" value="3" step="1" oninput="syncVal('stallper',this.value+'s')"></label>
+    <label style="margin-top:8px"><b>Stall jitter <span class="val" id="v-jitter">40</span>%</b>
+      <input type="range" id="s-jitter" min="0" max="100" value="40" step="5" oninput="syncVal('jitter',this.value+'%')"></label>
+  </div>
+
+  <!-- Engine Params -->
+  <div class="card">
+    <h3>3 · ENGINE PARAMETERS</h3>
+    <label><b>Snap threshold <span class="val" id="v-snap">150</span>ms</b>
+      <input type="range" id="s-snap" min="50" max="800" value="150" step="10" oninput="syncVal('snap',this.value+'ms')"></label>
+    <label style="margin-top:8px"><b>Warp cap <span class="val" id="v-warp">6</span>%</b>
+      <input type="range" id="s-warp" min="1" max="20" value="6" step="0.5" oninput="syncVal('warp',this.value+'%')"></label>
+    <label style="margin-top:8px"><b>TH_SEEK (engine internal) <span class="val" id="v-thseek">400</span>ms</b>
+      <input type="range" id="s-thseek" min="150" max="1000" value="400" step="25" oninput="syncVal('thseek',this.value+'ms')"></label>
+    <label style="margin-top:8px"><b>DRIFT_CHECK interval <span class="val" id="v-tick">2500</span>ms</b>
+      <input type="range" id="s-tick" min="500" max="5000" value="2500" step="100" oninput="syncVal('tick',this.value+'ms')"></label>
+    <label style="margin-top:8px"><b>Seek settle (SEEK_STAB_S) <span class="val" id="v-settle">190</span>ms</b>
+      <input type="range" id="s-settle" min="50" max="400" value="190" step="10" oninput="syncVal('settle',this.value+'ms')"></label>
+    <label style="margin-top:8px"><b>Seek ramp (mute duration) <span class="val" id="v-ramp">180</span>ms</b>
+      <input type="range" id="s-ramp" min="0" max="500" value="180" step="10" oninput="syncVal('ramp',this.value+'ms')"></label>
+  </div>
+</div>
+
+<!-- Buttons -->
+<div class="row" style="gap:8px;align-items:center;margin-bottom:12px">
+  <button class="btn btn-primary" onclick="runSim('A')">▶ RUN SIM A</button>
+  <button class="btn btn-secondary" onclick="runSim('B')">⚡ RUN SIM B (compare)</button>
+  <button class="btn btn-secondary" onclick="runPreset('current')">Load current prod params</button>
+  <button class="btn btn-secondary" onclick="runPreset('aggressive')">Try aggressive warp</button>
+  <button class="btn btn-secondary" onclick="runPreset('conservative')">Try conservative</button>
+  <span style="color:var(--muted);font-size:13px" id="sim-status"></span>
+</div>
+
+<!-- Chart A -->
+<div class="card wide" style="margin-bottom:10px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <h3 style="margin:0">SIM A — DRIFT OVER TIME</h3>
+    <span style="font-size:12px;color:var(--muted)">
+      <span style="color:var(--teal)">■</span> P-state (&lt;10ms)
+      <span style="color:var(--yellow);margin-left:8px">■</span> Z-state (&lt;50ms)
+      <span style="color:var(--orange);margin-left:8px">■</span> N-state
+      <span style="color:var(--red);margin-left:8px">▼</span> audible snap
+      <span style="color:var(--purple);margin-left:8px">▼</span> warp snap
+    </span>
+  </div>
+  <canvas id="chart-a"></canvas>
+  <div class="score-grid" style="margin-top:10px" id="score-a">
+    <div class="score-item"><div class="score-num muted">—</div><div class="score-label">P-STATE %</div></div>
+    <div class="score-item"><div class="score-num muted">—</div><div class="score-label">MEAN DRIFT</div></div>
+    <div class="score-item"><div class="score-num muted">—</div><div class="score-label">AUDIBLE SNAPS</div></div>
+    <div class="score-item"><div class="score-num muted">—</div><div class="score-label">WARP SNAPS</div></div>
+    <div class="score-item"><div class="score-num muted">—</div><div class="score-label">MAX CLEAN STREAK</div></div>
+  </div>
+</div>
+
+<!-- Chart B -->
+<div class="card wide" id="chart-b-card" style="display:none;margin-bottom:10px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <h3 style="margin:0">SIM B — COMPARE</h3>
+    <button class="btn btn-secondary" style="padding:4px 12px;font-size:13px" onclick="document.getElementById('chart-b-card').style.display='none'">✕</button>
+  </div>
+  <canvas id="chart-b"></canvas>
+  <div class="score-grid" style="margin-top:10px" id="score-b"></div>
+</div>
+
+<script>
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function syncVal(key, val) {
+  document.getElementById('v-' + key).textContent = val;
+}
+function getParams() {
+  return {
+    bt:       +document.getElementById('s-bt').value,
+    floor:    +document.getElementById('s-floor').value,
+    stall:    +document.getElementById('s-stall').value,
+    stallPer: +document.getElementById('s-stallper').value,
+    jitter:   +document.getElementById('s-jitter').value / 100,
+    snap:     +document.getElementById('s-snap').value,
+    warp:     +document.getElementById('s-warp').value / 100,
+    thSeek:   +document.getElementById('s-thseek').value,
+    tick:     +document.getElementById('s-tick').value,
+    settle:   +document.getElementById('s-settle').value,
+    ramp:     +document.getElementById('s-ramp').value,
+  };
+}
+function setParams(p) {
+  if (p.snap  !== undefined) { document.getElementById('s-snap').value  = p.snap;  syncVal('snap', p.snap+'ms'); }
+  if (p.warp  !== undefined) { document.getElementById('s-warp').value  = p.warp*100; syncVal('warp', p.warp*100+'%'); }
+  if (p.thSeek!== undefined) { document.getElementById('s-thseek').value= p.thSeek; syncVal('thseek', p.thSeek+'ms'); }
+  if (p.tick  !== undefined) { document.getElementById('s-tick').value  = p.tick;  syncVal('tick', p.tick+'ms'); }
+  if (p.ramp  !== undefined) { document.getElementById('s-ramp').value  = p.ramp;  syncVal('ramp', p.ramp+'ms'); }
+}
+
+// ── Presets ───────────────────────────────────────────────────────────────────
+function runPreset(name) {
+  const presets = {
+    current:     { snap: 150,  warp: 0.06, thSeek: 400, tick: 2500, ramp: 180 },
+    aggressive:  { snap: 150,  warp: 0.12, thSeek: 500, tick: 2500, ramp: 180 },
+    conservative:{ snap: 300,  warp: 0.08, thSeek: 600, tick: 2500, ramp: 180 },
+  };
+  if (presets[name]) setParams(presets[name]);
+}
+
+// ── Device profiles ───────────────────────────────────────────────────────────
+const PROFILES = {
+  floor:  { floor: -315, stall: 0,   stallPer: 3,  label: 'Floor only (dev_emse53 BT=78ms)' },
+  stall:  { floor: -40,  stall: 130, stallPer: 3,  label: 'BT stalls (dev_w6758o BT=336ms)' },
+  both:   { floor: -180, stall: 100, stallPer: 3,  label: 'Floor + stalls (combined)' },
+  clean:  { floor: 0,    stall: 20,  stallPer: 8,  label: 'Clean device (best case)' },
+};
+function loadProfile(name) {
+  const p = PROFILES[name];
+  document.getElementById('s-floor').value = p.floor; syncVal('floor', p.floor+'ms');
+  document.getElementById('s-stall').value = p.stall; syncVal('stall', p.stall+'ms');
+  document.getElementById('s-stallper').value = p.stallPer; syncVal('stallper', p.stallPer+'s');
+  document.querySelectorAll('.profile-badge').forEach(b => b.classList.remove('active'));
+  document.getElementById('pb-' + name).classList.add('active');
+  log('Profile: ' + p.label);
+}
+
+// ── Seeded PRNG ───────────────────────────────────────────────────────────────
+function mulberry32(seed) {
+  return function() {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// ── Core simulation ───────────────────────────────────────────────────────────
+function simulate(p, seedVal = 42) {
+  const rand = mulberry32(seedVal);
+  const SIM_S = 300;          // 5 minute session
+  const TICK_S = p.tick / 1000;
+  const TICKS = Math.floor(SIM_S / TICK_S);
+
+  // State
+  let drift = p.floor;         // starts at floor offset (calibration error)
+  let rate = 1.0;
+  let warpRemaining = 0;       // ticks remaining in current warp correction
+  let snapCooldown = 0;        // ticks before next seek allowed (settle window)
+  let nextStallIn = 0;         // ticks until next stall
+
+  // Results
+  const drifts = [];
+  const states = [];           // 'P','Z','N','snap-audible','snap-warp'
+  let audibleSnaps = 0;
+  let silentSnaps = 0;
+  let pStreak = 0, maxPStreak = 0;
+
+  for (let t = 0; t < TICKS; t++) {
+    // 1. Natural drift accumulation this tick
+    //    - BT stall: reduces ct advance
+    //    - Audio clock runs at `rate` × wall
+    let naturalAdvance = TICK_S * rate;   // how much ct would advance
+
+    // Stall injection
+    if (nextStallIn <= 0 && p.stall > 0) {
+      const jitter = 1 + (rand() - 0.5) * 2 * p.jitter;
+      const thisStall = p.stall * jitter;
+      drift -= thisStall;       // stall = ct falls behind ep
+      const intervalJitter = 1 + (rand() - 0.5) * 0.4;
+      nextStallIn = Math.round(p.stallPer / TICK_S * intervalJitter);
+    }
+    nextStallIn--;
+
+    // Warp effect on drift: warp at +r% means ct advances faster, recovering drift
+    if (warpRemaining > 0) {
+      const warpPct = Math.sign(-drift) * p.warp;  // sign: catch up in right direction
+      drift += warpPct * TICK_S * 1000;             // drift change this tick
+      warpRemaining--;
+      if (warpRemaining <= 0) rate = 1.0;
+    }
+
+    // 2. Measure drift
+    const absDrift = Math.abs(drift);
+    let state;
+
+    // 3. Apply correction
+    if (snapCooldown > 0) {
+      snapCooldown--;
+      state = (warpRemaining > 0) ? 'N' : (absDrift < 10 ? 'P' : absDrift < 50 ? 'Z' : 'N');
+    } else if (absDrift >= p.snap) {
+      // Seek — snap to reference
+      drift = p.floor;  // after seek, residual = floor offset (calibration error)
+      const seekableAudible = p.ramp > 80; // audible if ramp is significant
+      if (seekableAudible) { audibleSnaps++; state = 'snap-audible'; }
+      else                 { silentSnaps++;  state = 'snap-warp'; }
+      // Settle: during seek ramp, dt is occupied
+      snapCooldown = Math.ceil((p.settle + p.ramp) / (p.tick));
+      rate = 1.0;
+      warpRemaining = 0;
+    } else if (absDrift >= p.thSeek) {
+      // Engine internal seek (TH_SEEK)
+      drift = p.floor;
+      audibleSnaps++;
+      state = 'snap-audible';
+      snapCooldown = Math.ceil((p.settle + p.ramp) / p.tick);
+      rate = 1.0; warpRemaining = 0;
+    } else if (absDrift >= 15) {
+      // Warp
+      const warpPct = Math.sign(-drift) * p.warp;
+      rate = 1.0 + warpPct;
+      const correctionTicks = Math.ceil(absDrift / (p.warp * 1000 * TICK_S));
+      warpRemaining = Math.min(correctionTicks, Math.ceil(10 / TICK_S));
+      state = absDrift < 50 ? 'Z' : 'N';
+    } else {
+      rate = 1.0;
+      state = absDrift < 10 ? 'P' : 'Z';
+    }
+
+    drifts.push(drift);
+    states.push(state);
+
+    if (state === 'P') { pStreak++; maxPStreak = Math.max(maxPStreak, pStreak); }
+    else pStreak = 0;
+  }
+
+  const absDrifts = drifts.map(Math.abs);
+  const pCount = states.filter(s => s === 'P').length;
+  const zCount = states.filter(s => s === 'Z').length;
+  const meanDrift = absDrifts.reduce((a,b)=>a+b,0) / absDrifts.length;
+
+  return { drifts, states, audibleSnaps, silentSnaps, pCount, zCount,
+           meanDrift, maxPStreak, ticks: TICKS, tickS: TICK_S };
+}
+
+// ── Chart renderer ────────────────────────────────────────────────────────────
+function renderChart(canvasId, result) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const W = canvas.offsetWidth * window.devicePixelRatio;
+  const H = canvas.offsetHeight * window.devicePixelRatio;
+  canvas.width = W; canvas.height = H;
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  const w = canvas.offsetWidth, h = canvas.offsetHeight;
+
+  // Background
+  ctx.fillStyle = '#111'; ctx.fillRect(0, 0, w, h);
+
+  const N = result.drifts.length;
+  const maxDrift = Math.max(400, ...result.drifts.map(Math.abs));
+  const midY = h / 2;
+  const scaleY = (h * 0.45) / maxDrift;
+
+  // Grid lines
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  [50, 150, 300].forEach(ms => {
+    const y = midY - ms * scaleY;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, midY + ms * scaleY); ctx.lineTo(w, midY + ms * scaleY); ctx.stroke();
+  });
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(w, midY); ctx.stroke();
+
+  // Labels
+  ctx.font = '10px monospace'; ctx.fillStyle = '#333'; ctx.textAlign = 'left';
+  ctx.fillText('±150ms', 4, midY - 150 * scaleY - 2);
+  ctx.fillText('±300ms', 4, midY - 300 * scaleY - 2);
+
+  // Drift area
+  const xScale = w / N;
+  for (let i = 0; i < N; i++) {
+    const x = i * xScale;
+    const d = result.drifts[i];
+    const s = result.states[i];
+    const y = midY - d * scaleY;
+
+    if (s === 'snap-audible') {
+      ctx.fillStyle = 'rgba(239,60,35,0.7)';
+      ctx.fillRect(x, 2, Math.max(1, xScale), h - 4);
+    } else if (s === 'snap-warp') {
+      ctx.fillStyle = 'rgba(167,139,250,0.4)';
+      ctx.fillRect(x, 2, Math.max(1, xScale), h - 4);
+    } else {
+      const col = s === 'P' ? '#00cc99' : s === 'Z' ? '#f5c842' : '#f57e20';
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      if (i > 0) {
+        ctx.beginPath();
+        ctx.moveTo((i-1) * xScale, midY - result.drifts[i-1] * scaleY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Time labels
+  ctx.font = '10px monospace'; ctx.fillStyle = '#444'; ctx.textAlign = 'center';
+  const simS = N * result.tickS;
+  [0.25, 0.5, 0.75, 1.0].forEach(frac => {
+    const xi = Math.floor(frac * N);
+    if (xi < N) ctx.fillText(Math.round(frac * simS) + 's', xi * xScale, h - 4);
+  });
+}
+
+function renderScore(elId, r, params) {
+  const pPct = Math.round(100 * r.pCount / r.ticks);
+  const zpPct = Math.round(100 * (r.pCount + r.zCount) / r.ticks);
+  const pClass = pPct > 60 ? 'good' : pPct > 20 ? 'warn' : 'bad';
+  const snapClass = r.audibleSnaps < 5 ? 'good' : r.audibleSnaps < 20 ? 'warn' : 'bad';
+  const driftClass = r.meanDrift < 50 ? 'good' : r.meanDrift < 150 ? 'warn' : 'bad';
+  document.getElementById(elId).innerHTML = `
+    <div class="score-item"><div class="score-num ${pClass}">${pPct}%</div><div class="score-label">P-STATE</div></div>
+    <div class="score-item"><div class="score-num warn">${zpPct}%</div><div class="score-label">P+Z STATE</div></div>
+    <div class="score-item"><div class="score-num ${driftClass}">${Math.round(r.meanDrift)}ms</div><div class="score-label">MEAN DRIFT</div></div>
+    <div class="score-item"><div class="score-num ${snapClass}">${r.audibleSnaps}</div><div class="score-label">AUDIBLE CUTS</div></div>
+    <div class="score-item"><div class="score-num">${Math.round(r.maxPStreak * params.tick / 1000)}s</div><div class="score-label">BEST P-STREAK</div></div>
+  `;
+}
+
+// ── Run simulation ────────────────────────────────────────────────────────────
+let lastResultA = null, lastParamsA = null;
+function runSim(slot) {
+  const p = getParams();
+  const t0 = performance.now();
+  const r = simulate(p);
+  const ms = (performance.now() - t0).toFixed(1);
+  log(`Sim ${slot}: ${r.audibleSnaps} audible cuts, P=${Math.round(100*r.pCount/r.ticks)}%, mean=${Math.round(r.meanDrift)}ms [${ms}ms]`);
+  document.getElementById('sim-status').textContent = `Ran in ${ms}ms`;
+  if (slot === 'A') {
+    lastResultA = r; lastParamsA = p;
+    renderChart('chart-a', r);
+    renderScore('score-a', r, p);
+  } else {
+    document.getElementById('chart-b-card').style.display = 'block';
+    renderChart('chart-b', r);
+    renderScore('score-b', r, p);
+  }
+}
+
+// ── CSV Parser ────────────────────────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line => {
+    const vals = line.split(',');
+    const row = {};
+    headers.forEach((h, i) => { row[h.trim()] = vals[i]?.trim() ?? ''; });
+    return row;
+  });
+}
+
+function extractDeviceProfiles(rows) {
+  const devices = {};
+  const syncRows = rows.filter(r => r.kind === 'sync' && r.deviceId?.startsWith('dev_'));
+  syncRows.forEach(r => {
+    if (!devices[r.deviceId]) devices[r.deviceId] = [];
+    devices[r.deviceId].push(r);
+  });
+
+  const profiles = {};
+  Object.entries(devices).forEach(([id, dr]) => {
+    const bt = parseFloat(dr[0]?.deviceLatencyMs) || 0;
+    // Extract idle windows (no snaps, no seeking)
+    const idleRows = [];
+    for (let i = 1; i < dr.length; i++) {
+      const sc0 = parseInt(dr[i-1].snapCount) || 0;
+      const sc1 = parseInt(dr[i].snapCount) || 0;
+      const el0 = parseFloat(dr[i-1].elapsed), el1 = parseFloat(dr[i].elapsed);
+      const ct0 = parseFloat(dr[i-1].currentTime), ct1 = parseFloat(dr[i].currentTime);
+      if (sc0 === sc1 && dr[i].driftState !== 'seeking' && isFinite(el0) && isFinite(el1)) {
+        const wallDelta = el1 - el0;
+        const ctDelta = ct1 - ct0;
+        if (wallDelta > 0.5 && wallDelta < 8) {
+          const stall = Math.max(0, (wallDelta - ctDelta)) * 1000;
+          idleRows.push({ stall, drift: parseFloat(dr[i].driftMs) || 0 });
+        }
+      }
+    }
+
+    const drifts = dr.map(r => parseFloat(r.driftMs)).filter(d => isFinite(d) && Math.abs(d) < 2000);
+    const stalls = idleRows.map(r => r.stall).filter(s => s > 20 && s < 500);
+    const floor = drifts.length ? Math.round(drifts.reduce((a,b)=>a+b,0)/drifts.length) : 0;
+    const avgStall = stalls.length ? Math.round(stalls.reduce((a,b)=>a+b,0)/stalls.length) : 0;
+
+    profiles[id] = { bt, floor, avgStall, n: dr.length };
+  });
+  return profiles;
+}
+
+function loadCSV(text) {
+  const rows = parseCSV(text);
+  log(`Parsed ${rows.length} rows`);
+  const profiles = extractDeviceProfiles(rows);
+  const el = document.getElementById('device-list');
+  el.innerHTML = '';
+  Object.entries(profiles).forEach(([id, p]) => {
+    const div = document.createElement('div');
+    div.style.cssText = 'margin:4px 0;padding:8px;background:var(--surface2);border-radius:6px;cursor:pointer;font-size:13px';
+    div.innerHTML = `<b style="color:var(--teal)">${id}</b> BT=${p.bt}ms<br>
+      floor≈${p.floor}ms · stall≈${p.avgStall}ms · ${p.n} rows`;
+    div.onclick = () => {
+      document.getElementById('s-bt').value = p.bt; syncVal('bt', p.bt+'ms');
+      document.getElementById('s-floor').value = Math.min(0, p.floor); syncVal('floor', Math.min(0,p.floor)+'ms');
+      document.getElementById('s-stall').value = Math.min(300, p.avgStall); syncVal('stall', Math.min(300,p.avgStall)+'ms');
+      log(`Loaded profile for ${id}`);
+    };
+    el.appendChild(div);
+  });
+  log(`Found ${Object.keys(profiles).length} devices. Click a device to load its profile.`);
+}
+
+// ── Drag + drop / file input ──────────────────────────────────────────────────
+const dz = document.getElementById('drop-zone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) readFile(file);
+});
+document.getElementById('csv-input').addEventListener('change', e => {
+  if (e.target.files[0]) readFile(e.target.files[0]);
+});
+function readFile(file) {
+  dz.textContent = '⏳ Parsing ' + file.name + '…';
+  const reader = new FileReader();
+  reader.onload = e => { loadCSV(e.target.result); dz.textContent = '✓ ' + file.name; };
+  reader.readAsText(file);
+}
+
+// ── Log ───────────────────────────────────────────────────────────────────────
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent = msg + '\n' + el.textContent;
+  el.textContent = el.textContent.slice(0, 500);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadProfile('stall');
+log('Ready. Load a CSV or pick a profile, then Run Sim.');
+</script>
+</body>
+</html>
