@@ -10,287 +10,245 @@ dozens of these phones play the *same instant* of the *same track* at the
 There's no audio stream being pushed to listeners (except in WebRTC live mode).
 Instead, every phone downloads the same track file and the DJ broadcasts a
 single timestamp: **`playback_started_at`** — "this track began playing at
-this exact moment." Every phone then independently computes:
-
-```
-elapsed  = (serverNow() - playback_started_at) / 1000
-expected = elapsed position within the track right now
-```
-
-...and makes sure its `audio.currentTime` matches `expected`. If every phone
-agrees on what time it is and agrees on when the track started, they all land
-on the same position — no streaming required.
+this exact moment." Every phone then independently computes where the audio
+file should be right now, and holds it there.
 
 ## Step 1: agreeing on what time it is — `syncedNow()`
 
 Phones' clocks are not in sync with each other or the server. `measureClockOffset()`
 asks the server "what time is it?" several times via `db.rpc('server_now')`,
-measures round-trip time, and keeps the offset from the fastest (most reliable)
-samples. That offset (`_clockOffset`) gets added to the phone's own clock:
+measures round-trip time, and keeps the median offset from samples with RTT < 400ms.
+That offset (`_clockOffset`) gets added to the phone's own clock:
 
 ```
 syncedNow() = Date.now() + _clockOffset
 ```
 
-From this point on, **nothing in the sync engine is allowed to use raw
-`Date.now()`** — only `syncedNow()`. This is re-measured every 30s to track
-clock drift over the course of a party.
+**Nothing in the sync engine is allowed to use raw `Date.now()`** — only
+`syncedNow()`. Re-measured every 30s to track clock drift over a long party.
 
 ## Step 2: the seek formula
 
-This one expression is the heart of the whole system, and it appears
-everywhere a phone needs to know "where should I be right now":
+This one expression is the heart of the whole system:
 
 ```
-expected = (elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000) % duration
+expected = ((elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000)
+            % duration + duration) % duration
 ```
 
-- **`elapsed`** — seconds since the track officially started (per the shared clock)
-- **`SEEK_STAB_S`** (0.27s) — a fixed fudge factor; seeking an `<audio>` element
-  isn't instant, this compensates for that settling time
-- **`_deviceLatencyMs`** — how long it takes *this specific phone* to actually
-  emit sound after the browser asks it to (Bluetooth speakers add real delay —
-  measured once via a mic-and-click calibration routine and cached)
-- **`_scatterOffsetMs`** — a *deliberate* per-listener delay the DJ can dial in
-  for spatial effects (sweep beams, scattered voices) — this isn't an error to
-  correct, it's an intentional offset baked into the same formula
+- **`elapsed`** — seconds since the track officially started, per the shared clock
+- **`SEEK_STAB_S`** (0.19s) — fixed compensation for the time an `<audio>` seek
+  takes to actually settle
+- **`_deviceLatencyMs`** — how long *this specific phone* takes to emit sound
+  after the browser requests it. Bluetooth speakers add 150–400ms of invisible
+  acoustic delay. See Step 6 for how this gets set.
+- **`_scatterOffsetMs`** — a deliberate per-listener delay the DJ dials in for
+  spatial effects (sweep, scatter). Not a correction — an intentional offset
+  baked into the same formula.
 
 ## Step 3: two independent loops keep it locked in
 
-- **`fastDriftCorrect()`** — runs every 5 seconds, purely from memory (no
-  network call). Computes `expected` vs. `audio.currentTime` (via
-  `computeLagMs()`), and if they've drifted apart by `DRIFT_SNAP_THRESHOLD_MS`
-  (150ms, Phase 5v) or more, snaps directly: `cancelDriftCorrection()` then
-  `seekPreservingBT(expected)` (mute, jump, ~180ms ramp back up). Below
-  150ms, it applies a tiny continuous `playbackRate` trim via
-  `applyMicroCorrection()` (Phase 5v, capped at ±1.2%) — see Step 4a.
-- **`syncZoneAudio()`** — runs every 60 seconds, does an actual database fetch.
-  Its job isn't fine-tuning — it's a safety net that catches things memory
-  can miss: "did the zone end?", "did the track change and I missed the
-  broadcast?"
+**`fastDriftCorrect()`** — runs on the `timeupdate` event, gated to at most
+once per `DRIFT_CHECK_MS` (2500ms). Pure memory — no network call. Computes
+`lagMs = currentTime - expected` via `computeLagMs()`, then acts:
 
-These stay deliberately separate: one is a tight feedback loop for staying
-glued to the beat, the other is a slow heartbeat for catching structural
-changes (zone ended, track changed, etc).
+- **|lag| ≥ 150ms** (and < 2000ms sanity ceiling) → hard snap:
+  `cancelDriftCorrection()` then `seekPreservingBT(expected)` — mute, jump,
+  ~180ms volume ramp. Audible as a brief dip, but rare: only when real drift
+  has accumulated past the threshold.
+- **|lag| 15–150ms** → hand off to the ternary engine via `requestCorrection(lagMs)`.
+  The engine warms the playback rate to close the gap inaudibly.
+- **|lag| < 15ms** → nothing. Micro-correction (inside the engine) holds position.
 
-## Step 4: how a correction actually gets applied
+**`syncZoneAudio()`** — runs every 60s, does a real database fetch. Not
+fine-tuning — a safety net for structural changes the memory loop can't see:
+zone ended, track changed, missed broadcast.
 
-**Phase 5p (2026-06-12): the periodic loop no longer warps `playbackRate` at
-all.** Earlier designs (Phase 5h-5o) tiered the response — small drift got an
-inaudible ±3% `playbackRate` nudge (`'warping'`), only large drift got a
-seek+fade (`'ducking'`). In practice, real devices' drift sat continuously
-inside the 15-500ms "warping" band, which meant `playbackRate` was pinned at
-1.03 almost permanently — an audible, continuous pitch wobble ("a finger on
-a record"), the opposite of "inaudible."
+These stay deliberately separate. Merging them would either slow the correction
+loop (DB latency on every tick) or lose the structural safety net.
 
-The May 13 2026 baseline (`6f4f5b0`) — which the manual HUD-sync workflow
-worked great against — never touched `playbackRate` at all: a periodic
-check, and if `|drift| > 300ms`, an instant `seekPreservingBT()` snap
-(mute/seek/~180ms ramp). Otherwise, nothing. Phase 5p restores this for
-`fastDriftCorrect()`, and Phase 5v (2026-06-15) retuned the threshold:
+The 2000ms sanity ceiling (`TH_SEEK_SANITY`) guards against `wrapLag` artifacts
+at track loop boundaries — a computed lag of e.g. −169000ms is a wrap artifact,
+not real drift, and must not trigger a seek.
 
-- **Drift under 150ms** → ignored by the snap path. Audio plays at base rate
-  plus whatever `applyMicroCorrection()` (Step 4a) is trimming — no seeking,
-  ever, from this loop.
-- **Drift 150ms or more** → `cancelDriftCorrection()` (clears any in-flight
-  state from the mechanism below) then `seekPreservingBT(expected)` — an
-  instant jump with a brief mute/ramp to mask the discontinuity. Audible as
-  a very short (~180ms) dip, but rare: only when real drift has actually
-  accumulated past 150ms, not every tick.
+## Step 4: the ternary engine — three zones, not two
 
-**Why 150ms, not lower:** `seekPreservingBT()` itself eats ~130ms of real
-playback time right after a snap (mute/seek/ramp). A `sync-sim.html` batch
-sweep (30 seeds × 15min × 8 listeners) showed thresholds at or below that
-floor (100-120ms tried) cause snap *cascades* — each snap's own post-seek
-stall immediately re-triggers another snap — 264-306 hard seeks/listener vs
-~100 at 150ms, and *worse* mean drift than the old 300ms. 150ms is the
-practical floor.
+`sync/ternary-engine.js` is the production sync engine. It replaces a binary
+"fix or don't" approach with three zones defined by how far off the audio is:
 
-### Step 4a: closing the residual gap — `applyMicroCorrection()` (Phase 5r/5v)
+| State | Range | Action |
+|-------|-------|--------|
+| **P** | < 10ms | Converged. Apply micro-correction only. |
+| **Z** | 10–50ms | Slipping. Warp rate at 2%. |
+| **N** | 50–250ms | Lost. Warp rate at 5%. |
+| seek | > 250ms | Beyond warp reach. Seek directly. |
 
-Snap-only held drift *bounded* (never past the snap threshold) but not
-*tight*: real devices carry a small, constant hardware clock-rate error
-(their audio clock runs a fixed fraction fast or slow relative to
-`syncedNow()`), which made drift sawtooth up to the threshold and back every
-couple of minutes — median drift sat around -60 to -180ms across a
-67-minute session at the old 300ms/0.6% settings, well above the ~50ms
-target.
-
-`applyMicroCorrection(lagMs)` — called every `fastDriftCorrect()` tick
-whenever `|lagMs| < DRIFT_SNAP_THRESHOLD_MS` — applies:
+**Warp rate composition** — three ternary inputs multiply together:
 
 ```
-pct  = clamp(lagMs * MICRO_GAIN_PER_MS, ±MICRO_MAX_PCT)   // MICRO_GAIN_PER_MS = 0.0004, MICRO_MAX_PCT = 0.012 (Phase 5v)
-rate = baseRate * (1 + pct)
+warpPct = BASE_RATE[trit] × VEL_MOD[velocity] × CONSENSUS_MOD[consensus]  (cap 6%)
 ```
 
-This is a proportional controller: a constant hardware-drift error is
-cancelled once the trim's magnitude matches it, so drift converges to a
-small constant offset (`|lag| ≈ hwDriftPct / MICRO_GAIN_PER_MS`) instead of
-sawtoothing up to the snap threshold. At the worst-case ±0.5% hardware drift
-modeled in `sync-sim.html`, steady-state `|lag|` converges to ~12.5ms — under
-the cap (0.5% < 1.2%), so it's never saturated at equilibrium.
+- `BASE_RATE`: P=0.4%, Z=2.0%, N=5.0%
+- `tcmp()` **velocity** — is lag growing or shrinking? Growing (N) → ease off
+  slightly (×0.90). Shrinking (P) → push a little harder (×1.20).
+- `tcons()` **consensus** — are peers also struggling? If the group is in N-state,
+  boost urgency (×1.10).
 
-Phase 5v (2026-06-15) widened this from 0.0002/0.6% to 0.0004/1.2%, paired
-with the 300→150ms snap threshold above. A `sync-sim.html` batch sweep showed
-either change alone left mean settled drift around 102-110ms (and ~6-17% of
-samples ≥150ms); together, mean drift dropped to ~91ms and samples ≥150ms to
-~6%, for about 30% more snaps (77→101 per listener per 15min — roughly one
-extra ~180ms snap every ~2 minutes).
+**Micro-correction (P-state)** — when converged, a tiny continuous rate offset
+counteracts the audio clock running slightly slow:
 
-This is still the *opposite* shape of the Phase 5h-5o tiered warp that caused
-the "finger on a record" complaint: that was a large (±3%), frequently
-*flipping* correction — audible as flutter. This trim is small (≤±1.2%,
-still ~2.5x gentler than ±3%) and settles to a *constant* offset — nothing to
-hear oscillate. It's a no-op whenever `_driftState !== 'idle'` (the
-verifier's warp/duck is active), so the two mechanisms never fight over
-`playbackRate`.
+```
+rate = baseRate × (1 + clamp(lagMs × 0.0004, ±1.2%))
+```
 
-### The tiered `requestCorrection()` / `_driftState` machine still exists — for the BT-latency auto-sync verifier only
+This is a proportional controller: a constant hardware-drift error cancels once
+the trim's magnitude matches it. Steady-state |lag| converges to ~12.5ms at
+worst-case ±0.5% hardware clock error.
 
-`sync/sync-engine.js` still exports the single-gated `_driftState`
-(`'idle'` / `'warping'` / `'ducking'`) state machine and its entry point
-`requestCorrection(lagMs)`, with the same `<15ms` / `15-500ms` (±3% warp,
-`'warping'`) / `>500ms` (fade/seek/fade, `seekWithDuck()`, `'ducking'`)
-tiers described in earlier revisions of this doc. **`fastDriftCorrect()`
-no longer calls it.** It's still used by the mic-based BT-latency
-auto-sync verifier (`_syncState` — a *different* state machine, see CLAUDE.md),
-which occasionally calls `requestCorrection()` with a small lag measured via
-cross-correlation. Because that's rare and short-lived, `_driftState` should
-sit at `'idle'` / `playbackRate === 1.000` almost all the time in practice.
-
-`settleToIdle()` (called when a warp/duck completes) still rechecks live
-drift and re-fires `requestCorrection()` if still ≥15ms (Phase 5o) — this
-remains correct for the verifier's occasional use, even though the periodic
-loop no longer exercises it.
+**Engine state** — `_state` is `'idle' | 'warping' | 'seeking'`. Warp fires a
+timer that restores the base rate when the gap should be closed (`settleToIdle`),
+then re-checks and re-fires if drift remains. Seeks use a volume ramp to mask
+the discontinuity.
 
 ## Step 5: deliberate "everyone snap together NOW" moments
 
 Separate from continuous drift correction, the DJ (or a spatial effect) can
-also trigger a **coordinated snap** — "jump to this exact position right now."
-Used for: starting a new track, a coordinated `resync_at`, a sweep beam
-reaching a listener's bearing, a manual `hard_sync`, and **scatter** (the DJ
-staggers each listener's start offset for a spatial effect). These don't go
-through the gentle ±3% warp — they're supposed to snap immediately, because
-the reference point itself just changed, not because the listener drifted.
+trigger a **coordinated snap** — "jump to this exact position right now."
+Used for: starting a new track, `resync_at`, sweep beam reaching a listener,
+manual `hard_sync`, and scatter (deliberate staggered offsets for spatial effect).
 
-Because these are forced, immediate seeks, they first call
-`cancelDriftCorrection()` — which resets `_driftState` to `'idle'`, clears
-`_driftPendingRecheck`, cancels any in-flight rate-warp timer, and resets the
-playback rate to baseline. Without this, a coordinated snap could land
-*during* an unrelated drift correction, get immediately "corrected" again by
-that stale in-flight adjustment, and the listener would end up worse off than
-before the snap.
+These always call `cancelDriftCorrection()` first — resets engine state to idle,
+cancels any in-flight warp timer, restores playback rate to baseline — then seek
+via `seekPreservingBT()`. Without this, a coordinated snap could collide with
+an in-flight warp and leave the device worse off than before.
 
-Scatter used to be treated as ordinary drift (fed into `requestCorrection()`),
-but the simulator showed that's wrong: a scatter offset can be hundreds of ms,
-which lands in `'ducking'` territory — and a duck takes ~2.5s to ramp down,
-seek, and ramp back up. For that whole window, the listener measures as
-hundreds of ms "off" even though nothing is actually wrong, just stale. Treating
-it as a forced snap (cancel + immediate seek, like `hard_sync`) fixed this.
+## Step 6: Bluetooth latency calibration
 
-## The other golden rule: one reference point per zone
+`_deviceLatencyMs` in the seek formula only compensates BT delay if it's
+accurately set. Without mic access, three mechanisms set it:
 
-The DJ side has an equivalent invariant: **spatial reassignment changes WHICH
-stem a phone plays, never WHEN the set started.** Every `cluster_assign`
-broadcast (cluster, ring, remix, movement ticks) must carry the zone's
-*existing* `playback_started_at` — `currentStartedAt()` in `artist.html` —
-not a freshly minted "now".
+**1. `outputLatency` seed** — on the first `fastDriftCorrect()` tick,
+if `_deviceLatencyMs === 0`, the browser's `AudioContext.outputLatency`
+(Chrome/Android only; Safari returns 0) is read and used as a bootstrap value.
+One-time, no feedback loop.
 
-This was the June 2026 spatial-era regression: the four `cluster_assign`
-sites each stamped `playback_started_at: new Date(serverNow())` into the
-broadcast (and never the DB). A reassigned phone reloaded its stem and seeked
-against that private reference — landing at position ~0 — while
-`fastDriftCorrect` still measured against the zone's real reference and
-duck-yanked it back seconds later. With movement mode rebroadcasting every
-2s, the crowd's shared reference fragmented continuously: that's what
-"we lost the sync" sounded like. Simulated in `sync-sim.html` ("Cluster
-reassigns" toggle): legacy behavior produced ~90,000ms max drift and ~180
-audible dips per 20-minute party; the shared-reference fix holds worst-case
-drift under ~70ms with zero time spent >100ms off.
+**2. Ternary auto-calibration** — the engine watches for a *floor*: a persistent
+residual lag that warp can never fully close, indicating that `_deviceLatencyMs`
+is wrong by a fixed amount. Floor detection uses only samples collected while
+the engine is in `idle` state AND at least 2s past the last warp completing —
+preventing post-warp overshoots from contaminating the estimate.
 
-Sites that *legitimately* restart playback (track change, scene fire,
-go-live) register the new timestamp through `noteStartedAt()` so later
-broadcasts (`cluster_assign`, `hard_sync`) reuse it instead of going stale.
-And on the listener side, a scene fire must snap **every** listener to the
-new reference — including those whose stem didn't change (the
-`spatial_config` handler's same-track branch force-snaps when the payload's
-timestamp differs from the current one by >250ms).
+When a stable floor is detected (low variance, 20–250ms magnitude), the engine
+fires `onCalibrate(delta)` which adjusts `_deviceLatencyMs` and the floor
+shrinks. How hard to push is governed by the **octonary trigram** (see Step 7).
 
-## The golden rule: one corrector to rule them all
+**3. Remote debug nudge** — `debug.html` can send a `latency_cmd` broadcast on
+the `byob_debug` channel with `{ deviceId, deltaMs }`. The listener receives it,
+applies the delta in-memory, and persists to `localStorage`. Each press is ±50ms.
+Use this when a device's drift floor is visible in the debug chart but the
+ternary auto-cal hasn't converged yet. The stored value survives reloads.
 
-The single most important invariant in this system: **every code path that
-wants to nudge a listener's playback position calls `cancelDriftCorrection()`
-first, then either `seekPreservingBT()` (instant snap) or
-`requestCorrection()` (the tiered warp/duck machine, now verifier-only —
-see Step 4).** Nothing calls `seekPreservingBT()` directly without first
-clearing any in-flight correction via `cancelDriftCorrection()`.
+`_deviceLatencyMs` is capped at 1000ms. Values above 1000ms stored from a
+previous bad run are nuked on page load.
 
-This matters because BYOB has many independent triggers that *could* want to
-adjust position — the 5s drift loop (now itself a `cancelDriftCorrection()` +
-`seekPreservingBT()` snap above 150ms, Phase 5v), the 60s health check, waking
-the phone from a locked screen, reconnecting to the network, scatter/sweep
-spatial effects, slot reassignment, and the mic-based BT-latency verifier's
-occasional `requestCorrection()`. If even one of these jumps straight to a raw
-seek without clearing whatever another path left in flight, you get two (or
-more) corrections actively fighting over the same `audio.currentTime` — each
-one "fixing" drift that the other one just introduced. That's the *roving*
-bug: audio that endlessly dips and re-seeks, never settling, because no single
-part of the system has the full picture of what's currently being corrected.
-`cancelDriftCorrection()` resets `_driftState` to `'idle'`, clears
-`_driftPendingRecheck`, cancels any in-flight rate-warp timer, and restores
-`playbackRate` to baseline — giving whichever path calls it next a clean
-slate.
+## Step 7: the octonary trigram calibration
 
-## Calibration: the missing piece for Bluetooth speakers
+The auto-calibration doesn't apply a fixed correction — it reads a *history* of
+outcomes to decide how hard to push.
 
-The seek formula's `_deviceLatencyMs` term only does anything if it's been
-*measured*. `calibrateDeviceLatency()` plays a click through the speaker,
-listens for it via the mic, and measures the round-trip — this captures each
-phone's real Bluetooth output delay (often 100–300ms+, and different per
-device/speaker).
+Each time the engine enters N-state (large correction needed), it checks for a
+floor and records the outcome as a trit:
 
-Normally this runs automatically, once, the first time a phone is detected
-*approaching* a zone (`preSyncApproach()`, GPS-gated) and not yet calibrated.
-A phone using the "⚡ ENTER" HUD button to force-join from far outside the
-zone skips that approach phase — so `activateZone` has a fallback: if the
-`byob_device_latency` localStorage key has never been written, it runs
-`calibrateDeviceLatency()` at zone entry, before audio starts.
+- **N** — floor detected, calibration error persists
+- **P** — no floor, device is stable
 
-An *uncalibrated* phone (`_deviceLatencyMs` stuck at `0` on a Bluetooth
-speaker) is what an audible "speakers aren't synced" gap looks like even when
-`driftState: idle` and `driftMs` near 0 on every device — every phone's
-`audio.currentTime` is perfectly converged while the *audible* sound from
-each speaker is still offset by its uncompensated output latency.
+`_calSeq` holds the last 3 outcomes: `[oldest, middle, newest]`. Three binary
+values, eight possible patterns, mapped to the eight I Ching lower trigrams:
 
-**Manual re-run**: the HUD has a **📡 CALIBRATE** button (`hudCalibrateNow()`)
-— pauses playback, runs `calibrateDeviceLatency()`, then re-seeks
-(`cancelDriftCorrection()` + `seekToSync()`) and resumes. Use this when a
-cached calibration looks wrong (e.g. the user switched to a different
-speaker since it was measured).
+| Sequence | Trigram | Strength | Reading |
+|----------|---------|----------|---------|
+| NNN | ☰ | 0.70 | Three consecutive floors — push hard |
+| NNP | ☱ | 0.55 | Floor twice then gone — something shifted |
+| NPN | ☲ | 0.50 | Alternating — oscillating, standard |
+| NPP | ☳ | 0.35 | One floor, then held — nearly stable |
+| PNN | ☴ | 0.60 | Was stable, floor returned — regression |
+| PNP | ☵ | 0.40 | Bouncing — mixed signal |
+| PPN | ☶ | 0.25 | Almost there — cautious nudge |
+| PPP | ☷ | 0.00 | Locked — stop touching it |
+
+```
+correction = floor_mean × trigram_strength
+```
+
+This delta is applied to `_deviceLatencyMs`. At NPN (0.50), an 80ms floor
+produces a 40ms correction. Next time, 40ms floor → 20ms correction. Converges
+geometrically. At PPP (0.00), the engine stops touching the calibration
+entirely — it's locked.
+
+**Cross-track persistence** — on track change, `resetCalibration()` clears
+`_floorHistory` (fresh floor samples for the new track) but leaves `_calSeq`
+untouched. A device that reached PPP stays protected across tracks. The trigram
+represents the device's hardware, not the track.
+
+## The golden rule: one corrector, one entry point
+
+**Every code path that wants to nudge a listener's playback position calls
+`cancelDriftCorrection()` first**, then either `seekPreservingBT()` (instant
+snap) or `requestCorrection(lagMs)` (ternary engine). Nothing goes directly to
+`audio.currentTime` without clearing any in-flight correction first.
+
+This exists because BYOB has many independent triggers — the 2.5s drift loop,
+the 60s health check, wake from locked screen, network reconnect, scatter/sweep
+spatial effects, slot reassignment. If two of these compete over `audio.currentTime`
+without coordination, you get the *roving* bug: audio that dips and re-seeks
+endlessly, each correction "fixing" drift the other one just introduced.
+`cancelDriftCorrection()` gives whichever path calls it next a clean slate.
+
+## The golden rule: one reference point per zone
+
+`playback_started_at` is the anchor. Every `cluster_assign` broadcast (cluster,
+ring, sweep, movement) must carry the zone's *existing* `playback_started_at`
+via `currentStartedAt()` in `artist.html` — never a freshly minted timestamp.
+
+Spatial reassignment changes **which** stem a phone plays, not **when** the set
+started. The June 2026 regression happened because four `cluster_assign` sites
+each stamped a new `new Date(serverNow())` — reassigned phones seeked to
+position ~0 against that private reference while `fastDriftCorrect` yanked
+them back seconds later against the real one. With movement mode rebroadcasting
+every 2s, the result was continuous reference fragmentation.
+
+Sites that *legitimately* restart playback (track change, scene fire, go-live)
+register the new timestamp through `noteStartedAt()` so later broadcasts
+inherit it rather than going stale.
 
 ## Live debugging: `debug.html`
 
-`broadcastHUD()` sends a snapshot every 3s on the shared `byob_debug`
-realtime channel whenever a listener has their HUD panel open. `debug.html`
-subscribes and renders one card per device — `currentTime`, `expectedPos`,
-`driftMs`, `deviceLatencyMs`, `playbackRate`, `driftState`, plus a
-"position delta between devices" readout when 2+ devices are reporting.
+`broadcastHUD()` sends a snapshot every 3s on `byob_debug` while a listener
+has their HUD panel open. `debug.html` renders one card per device.
 
-`expectedPos` here uses the **same formula** as `computeLagMs()`
-(`elapsed + SEEK_STAB_S - _deviceLatencyMs/1000 - _scatterOffsetMs/1000`,
-wrapped into `[0, duration)`) — keep these in sync; a simplified/divergent
-copy here will make `driftMs` look wrong by a constant offset (previously
-off by ~`SEEK_STAB_S`, ~270ms) even when the corrector itself is fine.
+`expectedPos` in the card uses the **same formula** as `computeLagMs()` —
+keep them in sync. A simplified copy here will make `driftMs` read wrong by a
+constant offset even when the corrector is fine.
 
-## Where this design was proven: `sync-sim.html`
+The `[−50ms BT]` / `[+50ms BT]` buttons on each sync card send a `latency_cmd`
+broadcast to that specific device. Use them when a device's drift line is stable
+but offset from zero — that's a calibration floor, not a sync failure.
 
-Before porting this design into `listener.html`, it was validated in
-`sync-sim.html` — a standalone simulator (no audio, no Supabase, just numbers)
-that runs the same randomized "party" through the old scattered-flags
-controller and the new single-gate controller side by side, with identical
-seeds and event schedules. It includes checkboxes to toggle screen-wake,
-scatter, and hard-sync events on/off, so the core 5s drift-correction loop can
-be tested in isolation from the "snap" events. Open it locally
-(`python3 -m http.server` from the repo root, then `sync-sim.html`) to
-re-run or extend these comparisons.
+## Where this design was validated: `sync-sim.html`
+
+A standalone simulator (no audio, no Supabase) that runs the same randomized
+party through engine designs side by side, with identical seeds and event
+schedules. Validate corrector changes here before porting to `listener.html`.
+The ternary panel (coral/pink) is `runSimTernary()`.
+
+**Three reference commits — return here when lost:**
+
+- `6f4f5b0` (May 2026) — the philosophical anchor: no `playbackRate` touching,
+  just `if (drift > 0.3) seekPreservingBT(expected)` every 10s. Everything since
+  is a refinement of this.
+- `d015bbc` (`baseline-sync-jun16`) — Phase 5w: added `playing` re-anchor for
+  stall recovery. Achieved 1ms drift live.
+- `bf76374` (`baseline-sync-jun16b`) — validated ceiling: SEEK_STAB_S=0.19,
+  triggerResync uses existing reference. Every improvement must beat all three
+  on real CSV data. **More complexity is never the answer.**
