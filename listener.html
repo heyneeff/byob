@@ -2233,6 +2233,12 @@ audio.addEventListener('playing', () => {
   if (_reAnchorInFlight) return;
   if (window.SyncEngine?.getDriftState?.() === 'seeking') return; // our own seek ramp — don't cascade
   if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject || window._trackLoading) return;
+  // BT buffer refills fire 'playing' every few seconds even for tiny stalls.
+  // Don't seekPreservingBT (180ms mute/ramp) unless drift is genuinely large —
+  // that was the hidden source of cuts every few seconds on high-latency BT speakers.
+  // Warp handles anything under the snap threshold silently.
+  const _reAnchorLag = Math.abs(window.SyncEngine?.computeLagMs?.() ?? 0);
+  if (_reAnchorLag < DRIFT_SNAP_THRESHOLD_MS) return;
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
