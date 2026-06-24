@@ -22,6 +22,47 @@ The I Ching path: `/home/lewis/iching`
 
 This protocol exists because the sync engine is a living system — changes interact in non-obvious ways, and the oracle has consistently identified the correct action (or non-action) faster than pure analysis. Do not skip it. Do not implement "just a quick fix" without casting.
 
+## Live Sync Tuner — watch this during every session
+
+The live tuner connects to `byob_debug` and reports per-device stall models, parameter sweep recommendations, and auto-cal corrections inline as they fire.
+
+```bash
+cd /home/lewis/byob/sync
+node live-tuner.mjs        # 90s collection window (default)
+node live-tuner.mjs 120    # 120s window — recommended during active sessions
+```
+
+**Run this at the start of every session and re-run after each track change or CSV drop.** It tells you:
+- Which devices are active and their current BT latency (`BT=Xms`)
+- Floor and recent drift per device
+- Auto-cal corrections as they fire: `🔧 AUTO-CAL dev_xxx: latency Ams → Bms (+Cms)`
+- Whether corrections are hitting the 1200ms cap (→ means no change despite nonzero correction)
+- Simulation sweep: optimal `snap`, `warp`, `thSeek` per device model
+
+**Browser dashboard**: `boombox.productions/ternary/overlay.html` — live drift graph for all devices, ternary trit state bar, calibration event log.
+
+**Reading the auto-cal log:** if you see `latency 1200ms → 1200ms (+Xms)` repeatedly, the device is hitting the cap and can't converge. Do NOT raise the cap without casting the I Ching first (oracle has said hold twice: 44→6 and 52 unchanging, Jun 24 2026).
+
+## Current sync engine state (as of Jun 24 2026, commit c9fe772)
+
+**What's working:**
+- Auto-cal fires reliably — Z-state no longer resets `_consecutiveN` (only P-state/drift<10ms resets it)
+- 60s minimum settle gap between corrections (`CAL_SETTLE_MS = 60000`) prevents rapid-fire overcorrection
+- `deviceLatencyMs` cap raised to **1200ms** (was 1000ms) — handles most BT devices
+- Burst-mode loop bug fixed — `applySnap` guards `target < 0` (was looping first 500ms on track launch when `deviceLatencyMs > elapsed`)
+- Best spread achieved today: **10–45ms sustained for 12+ minutes** across 3 devices
+
+**Known remaining issues:**
+- Devices with true BT latency > 1200ms (e.g. h8yx6w ~1388ms) hit the cap and can't fully converge — oracle says do not raise cap further right now
+- Track changes are still chaotic — burst mode + fresh `_calCount` fire aggressively at track start
+- The graph "sawtooth" (converge to 0, retreat) means structural `deviceLatencyMs` floor is not yet fully closed — needs more auto-cal cycles across tracks
+
+**Key constants to know:**
+- `TH_P=10ms`, `TH_Z=50ms`, `TH_SEEK=500ms` (ternary-engine.js)
+- `DRIFT_SNAP_THRESHOLD_MS=500ms`, `DRIFT_CHECK_MS=2500ms` (listener.html)
+- `CAL_SETTLE_MS=60000ms`, max 4 corrections per track, 50% step per correction (layer.js)
+- Proportional warp: `rate = 1 + drift_ms × 0.0002`, capped ±2.5%
+
 ## Development
 
 No build step. Serve locally with:
