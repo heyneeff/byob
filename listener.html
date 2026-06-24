@@ -2010,7 +2010,7 @@ let _healthInterval = null;
 // firing during real playback regardless of JS timer throttling, so it's
 // the reliable trigger; the interval is a redundant backstop.
 let _lastDriftCheckAt = 0;
-const DRIFT_CHECK_MS = 2500;
+const DRIFT_CHECK_MS = 1500;
 window._stallCount = 0;
 window._resumeAttempts = 0;
 window._trackLoading = false;

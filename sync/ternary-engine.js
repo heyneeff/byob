@@ -144,8 +144,11 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   function settleToIdle() {
     transport.playbackRate = getBaseRate();
     _state = 'idle';
-    const lag = computeLagMs();
-    if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
+    timers.setTimeout(() => {
+      if (_state !== 'idle') return;
+      const lag = computeLagMs();
+      if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
+    }, 100);
   }
 
   function cancelDriftCorrection() {
@@ -168,7 +171,11 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
       const t = Math.min((now - start) / rampMs, 1);
       transport.volume = vol * (t * t * (3 - 2 * t));
       if (t < 1) timers.requestAnimationFrame(ramp);
-      else { transport.volume = vol; _state = 'idle'; }
+      else {
+        transport.volume = vol; _state = 'idle';
+        const lag = computeLagMs();
+        if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
+      }
     }
     timers.requestAnimationFrame(ramp);
   }
