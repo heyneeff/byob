@@ -2038,6 +2038,11 @@ window._trackLoading = false;
 function _resumeAndReseek() {
   audio.play().then(() => {
     if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject) return;
+    // Same principle as the playing handler: don't seekPreservingBT for small drift —
+    // that 180ms mute/ramp is audible and unnecessary for BT stalls <500ms.
+    // Warp handles sub-threshold recovery silently after audio resumes.
+    const _lag = window.SyncEngine?.computeLagMs?.() ?? null;
+    if (_lag !== null && Math.abs(_lag) < DRIFT_SNAP_THRESHOLD_MS) return;
     cancelDriftCorrection();
     seekPreservingBT(_expectedNow());
   }).catch(() => {});
