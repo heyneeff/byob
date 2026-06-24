@@ -28,7 +28,7 @@ export const TRIT_NAME  = { [-1]:'N', [0]:'Z', [1]:'P' };
 // Three zones define the cauldron's three chambers.
 const TH_P   =  10;   // ms — converged. Hold.
 const TH_Z   =  50;   // ms — negotiating. Nudge.
-const TH_SEEK = 400;  // ms — beyond warp reach. Seek.
+const TH_SEEK = 500;  // ms — beyond warp reach. Seek. Matches DRIFT_SNAP_THRESHOLD_MS.
 
 // ── Rate table — one leg of the cauldron per trit ────────────────────────────
 // P: barely a breath. Z: steady pull. N: urgent close.

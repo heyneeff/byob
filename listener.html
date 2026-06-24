@@ -2107,11 +2107,11 @@ const SNAP_THRESHOLD_MS = 500;
 // a persistent -150ms bias. The real fix is the playing re-anchor below:
 // re-seek to expectedNow() whenever audio resumes from any stall, which
 // re-establishes position from first principles at the earliest natural moment.
-// 300ms: matches the May 13 baseline which achieved 1ms drift live. That engine
-// had properly calibrated floors (~0ms); auto-cal now converges floors to the
-// same state within 90s. 250ms was too aggressive — snapping on floor+stall
-// combinations that warp can handle. Oracle 18 unchanging (Work on What is Spoiled).
-const DRIFT_SNAP_THRESHOLD_MS = 300;
+// 500ms: matches the original sync-engine.js corrector design — warp handles
+// everything under 500ms silently, duck-and-seek only for truly severe drift.
+// With auto-cal converging floors to <100ms, floor+stall stays well under 500ms
+// and warp alone is sufficient. Oracle 17.1.2→47 (Following → perseverance).
+const DRIFT_SNAP_THRESHOLD_MS = 500;
 const DRIFT_AUDIBLE_THRESHOLD_MS = 400; // above this, use mute/ramp seek; below, use silent direct seek
 const TH_SEEK_SANITY = 2000; // above this = wrapLag artifact — skip
 
