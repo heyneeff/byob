@@ -445,7 +445,7 @@
       s.textContent = _burstMode ? 'SYNC'
                     : _calApplied ? 'cal'
                     : peerCount   ? peerCount + 'p'
-                    : '';
+                    : myId().slice(4); // short device ID (6 chars) when idle
     }
   }
 
