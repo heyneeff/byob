@@ -1364,17 +1364,24 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   window._trackLoading = true;
   window._currentTrackUrl = url;
   window._currentTrackTitle = title;
-  // Watchdog: if 'loadedmetadata' never fires (seen 2026-06-15, dev_wq3pp2 —
-  // currentTime frozen for ~13s with driftState stuck 'idle' and engineLagMs
-  // unchanged, because fastDriftCorrect's `if (window._trackLoading) return`
-  // gate above never cleared), _trackLoading would block drift correction
-  // forever until a manual hard_sync. Retry via _hardReloadTrack() instead.
+  // Reset retry counter when a new URL comes in
+  if (window._hardReloadUrl !== url) { window._hardReloadUrl = url; window._hardReloadCount = 0; }
+  // Watchdog: if 'loadedmetadata' never fires, retry via _hardReloadTrack().
+  // Capped at 3 attempts — if the URL itself is broken, retrying forever
+  // keeps the device silently stuck. After 3 failures, clear the loading gate
+  // and surface the error so the DJ knows to load a different track.
   clearTimeout(window._trackLoadWatchdog);
   window._trackLoadWatchdog = setTimeout(() => {
     if (window._trackLoading && window._currentTrackUrl === url) {
-      console.warn('loadedmetadata never fired for', url, '— reloading track');
+      window._hardReloadCount = (window._hardReloadCount || 0) + 1;
+      console.warn('loadedmetadata never fired for', url, '— attempt', window._hardReloadCount);
       window._trackLoading = false;
-      _hardReloadTrack();
+      if (window._hardReloadCount < 3) {
+        _hardReloadTrack();
+      } else {
+        console.error('Track failed after 3 attempts — giving up on', url);
+        boomSay('⚠️ Track failed to load. DJ needs to switch tracks.', 0, false, 'regular');
+      }
     }
   }, 4000);
   // Clean up any WebRTC
@@ -1404,6 +1411,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     audio.removeEventListener('loadedmetadata', onMeta);
     clearTimeout(window._trackLoadWatchdog);
     if (!audio.duration) { _hardReloadTrack(); return; }
+    window._hardReloadCount = 0; // track loaded successfully — reset retry counter
     seekToSync(startedAt, playAt, playFromS);
     window._trackLoading = false;
     // Apply master BPM warp if DJ has set one
