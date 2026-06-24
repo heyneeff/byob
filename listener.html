@@ -1353,6 +1353,11 @@ function zoomToRally() {
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
 function loadTrack(url, title, startedAt, playAt, playFromS) {
+  // Prevent double-load: zone channel + hard_sync can both fire for the same
+  // track change within milliseconds. A second loadTrack while the first is
+  // still loading adds a duplicate loadedmetadata listener → double seeks,
+  // double audio.play(), and an 8-seek cascade that takes seconds to settle.
+  if (url === window._currentTrackUrl && window._trackLoading) return;
   broadcastSyncEvent('track_change');
   // activeZone.playback_started_at is updated (by the caller) to the NEW
   // track's value before this runs, but audio.duration/currentTime still
@@ -1420,10 +1425,12 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 
     audio.addEventListener('playing', function onPlaying() {
       audio.removeEventListener('playing', onPlaying);
+      // Block the persistent playing re-anchor handler for the full settle window
+      // so our scheduled seeks don't cascade into extra re-anchors on iOS.
+      _reAnchorInFlight = true;
       seekToSync(startedAt, playAt, playFromS);
-      setTimeout(() => seekToSync(startedAt, playAt, playFromS), 400);
-      setTimeout(() => seekToSync(startedAt, playAt, playFromS), 800);
-      setTimeout(() => seekToSync(startedAt, playAt, playFromS), 1500);
+      setTimeout(() => seekToSync(startedAt, playAt, playFromS), 600);
+      setTimeout(() => { seekToSync(startedAt, playAt, playFromS); _reAnchorInFlight = false; }, 1300);
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title: title||'BYOB', artist: 'Live from the Zone 🎧', album: activeZone?.name||'BYOB' });
         navigator.mediaSession.setActionHandler('play',  () => { audio.play(); setMuteBtn(false); });
@@ -2103,6 +2110,7 @@ const SNAP_THRESHOLD_MS = 500;
 // Without micro-correction the engine is dead-simple: snap if drift >= 150ms,
 // do nothing otherwise — identical to the May 13 baseline spirit.
 const DRIFT_SNAP_THRESHOLD_MS = 150;
+const DRIFT_AUDIBLE_THRESHOLD_MS = 400; // above this, use mute/ramp seek; below, use silent direct seek
 const TH_SEEK_SANITY = 2000; // above this = wrapLag artifact — skip
 
 // "Locking in" indicator — surfaces the warm-up/recovery period (post track
@@ -2195,7 +2203,11 @@ function fastDriftCorrect() {
     const target = _expectedNow();
     const intendedJumpMs = window.SyncEngine.wrapLag((target - preSeekTime) * 1000, audio.duration * 1000);
     cancelDriftCorrection();
-    seekPreservingBT(target);
+    if (_absLag < DRIFT_AUDIBLE_THRESHOLD_MS) {
+      seekSilent(target); // direct seek, no mute/ramp — BT buffer absorbs small jumps
+    } else {
+      seekPreservingBT(target); // mute/ramp only for large corrections
+    }
     setTimeout(() => {
       const measuredJumpMs = window.SyncEngine.wrapLag((audio.currentTime - preSeekTime) * 1000, audio.duration * 1000);
       window._lastSeekIntendedMs = Math.round(intendedJumpMs);
@@ -2226,7 +2238,12 @@ audio.addEventListener('playing', () => {
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
-  seekPreservingBT(_expectedNow());
+  const _reAnchorLag = Math.abs(window.SyncEngine?.computeLagMs?.() ?? 0);
+  if (_reAnchorLag < DRIFT_AUDIBLE_THRESHOLD_MS) {
+    seekSilent(_expectedNow()); // typical BT stall (150–400ms) — no audible cut
+  } else {
+    seekPreservingBT(_expectedNow()); // large stall — mute/ramp
+  }
   setTimeout(() => { _reAnchorInFlight = false; }, 500);
 });
 
@@ -5015,6 +5032,7 @@ function computeLagMs() { return window.SyncEngine.computeLagMs(); }
 function requestCorrection(lagMs) { window.SyncEngine.requestCorrection(lagMs); }
 function cancelDriftCorrection() { window.SyncEngine.cancelDriftCorrection(); }
 function seekPreservingBT(newTime) { window.SyncEngine.seekPreservingBT(newTime); }
+function seekSilent(newTime) { window.SyncEngine.seekSilent(newTime); }
 // Ternary layer hooks — exposes correction entry points to ternary/layer.js
 window._terCorrect        = (pos) => { cancelDriftCorrection(); seekPreservingBT(pos); };
 window._terExpectedNow    = ()    => _expectedNow();

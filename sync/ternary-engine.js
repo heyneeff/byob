@@ -28,7 +28,7 @@ export const TRIT_NAME  = { [-1]:'N', [0]:'Z', [1]:'P' };
 // Three zones define the cauldron's three chambers.
 const TH_P   =  10;   // ms — converged. Hold.
 const TH_Z   =  50;   // ms — negotiating. Nudge.
-const TH_SEEK = 250;  // ms — beyond warp reach. Seek.
+const TH_SEEK = 400;  // ms — beyond warp reach. Seek.
 
 // ── Rate table — one leg of the cauldron per trit ────────────────────────────
 // P: barely a breath. Z: steady pull. N: urgent close.
@@ -180,6 +180,24 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     timers.requestAnimationFrame(ramp);
   }
 
+  // Direct seek without mute/ramp — for moderate drift (150–400ms) where the
+  // BT buffer absorbs the small position jump without an audible click.
+  // Sets 'seeking' state for 300ms to block cascade re-anchors.
+  function seekSilent(newTime) {
+    const gen = ++_driftGen;
+    _state = 'seeking';
+    const safeTime = Math.max(0, Math.min(newTime, (transport.duration || 9999) - 0.1));
+    // Restore volume if a prior seekPreservingBT was cancelled mid-ramp
+    if (transport.volume === 0) transport.volume = 1;
+    transport.currentTime = safeTime;
+    timers.setTimeout(() => {
+      if (_driftGen !== gen) return;
+      _state = 'idle';
+      const lag = computeLagMs();
+      if (lag !== null && Math.abs(lag) >= TH_P) requestCorrection(lag);
+    }, 300);
+  }
+
   function resetCalibration() {} // no-op — kept for interface compatibility
 
   return {
@@ -191,6 +209,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     peerConsensus,
     peerMedianLag,
     resetCalibration,
+    seekSilent,
     getDriftState:           () => _state,
     getDriftPendingRecheck:  () => false,
     getTrit:                 () => _trit,
