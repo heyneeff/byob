@@ -41,12 +41,12 @@ const CONSENSUS_MOD = { [N]: 1.10, [Z]: 1.00, [P]: 1.00 };
 // tcmp() velocity modifiers — gentle range, avoid strangling corrections mid-close
 const VEL_MOD = { [P]: 1.20, [Z]: 1.00, [N]: 0.90 };
 
-// ── Micro-correction (P-state) ────────────────────────────────────────────────
-// Devices with audio clocks running slow re-accumulate drift in the 5s gap
-// between fastDriftCorrect ticks. Micro-correction applies a tiny continuous
-// rate proportional to lag when in P-range, preventing position drift.
-const MICRO_GAIN = 0.0004; // fractional rate per ms
-const MICRO_MAX  = 0.012;  // cap ±1.2%
+// ── Dead band ─────────────────────────────────────────────────────────────────
+// When drift is within the dead band, tie the sack: rate = 1.000, no correction.
+// Prevents overshoot oscillation — micro-corrections were pushing devices past
+// 0ms to negative drift and back, never settling.
+// Oracle 2.4.5.6→12 (Receptive → Standstill): line 4, 'a tied-up sack, no blame'.
+const DEAD_BAND_MS = 30;
 
 function lagToTrit(absMs) {
   if (absMs < TH_P) return P;
@@ -62,12 +62,6 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   let _driftGen  = 0;
   let _state     = 'idle'; // 'idle' | 'warping' | 'seeking'
   let _peers     = {};     // { id → { trit, lagMs, ts } }
-
-  // ── Micro-correction rate ────────────────────────────────────────────────────
-  function microRate(lagMs) {
-    const pct = Math.max(-MICRO_MAX, Math.min(MICRO_MAX, lagMs * MICRO_GAIN));
-    return getBaseRate() * (1 + pct);
-  }
 
   // ── Compute lag ─────────────────────────────────────────────────────────────
   function computeLagMs() {
@@ -111,9 +105,10 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
 
     const abs = Math.abs(lagMs);
 
-    // P — converged. Hold with micro-correction against slow audio clocks.
-    if (abs < TH_P) {
-      transport.playbackRate = microRate(lagMs);
+    // Dead band — sack tied. Hold at base rate, no correction.
+    if (abs < DEAD_BAND_MS) {
+      _trit = lagToTrit(abs);
+      transport.playbackRate = getBaseRate();
       _state = 'idle';
       return;
     }
