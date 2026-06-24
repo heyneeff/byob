@@ -1295,7 +1295,7 @@ async function djLogout(){
   document.getElementById('dj-auth-btn').textContent='Sign In';
 }
 document.addEventListener('click',e=>{
-  if(!e.target.closest('#boom-menu')&&!e.target.closest('#boom-img'))
+  if(!e.target.closest('#boom-menu')&&!e.target.closest('#boom-img')&&!e.target.closest('#dj-user-label'))
     document.getElementById('boom-menu')?.classList.remove('open');
 });
 function toggleDJSignUp(){
