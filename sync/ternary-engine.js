@@ -32,9 +32,8 @@ const TH_SEEK = 400;  // ms — beyond warp reach. Seek.
 
 // ── Rate table — one leg of the cauldron per trit ────────────────────────────
 // P: barely a breath. Z: steady pull. N: urgent close.
-// All set to 0 — playbackRate changes cause BT codec frame drops every stall cycle.
-// Correction is seek-only until a non-BT-glitching warp strategy is found.
-const BASE_RATE = { [P]: 0, [Z]: 0, [N]: 0 };
+// P: barely a breath. Z: steady pull. N: urgent close.
+const BASE_RATE = { [P]: 0.004, [Z]: 0.020, [N]: 0.050 };
 
 // tcons() consensus modifiers — never reduce when converged, slight boost when struggling
 const CONSENSUS_MOD = { [N]: 1.10, [Z]: 1.00, [P]: 1.00 };
