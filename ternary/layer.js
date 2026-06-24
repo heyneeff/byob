@@ -179,9 +179,9 @@
     if (floor === null)                                    { _calState = 3; return; }
     const correction = Math.round(floor * 0.5); // 50% step — converges in 2-3 cycles
     if (Math.abs(correction) < 8)                         { _calState = 4; return; }
-    window._terAdjustLatency(correction); // updates _deviceLatencyMs + localStorage
+    const actualDelta = window._terAdjustLatency(correction); // updates _deviceLatencyMs + localStorage
     _calApplied = true;
-    _calCount++;
+    if (Math.abs(actualDelta ?? correction) >= 5) _calCount++; // only count if cap didn't swallow it
     _lastCalTs = Date.now();
     _calState = 5;
     // Reset so next cycle measures fresh drift against the new calibration
@@ -248,9 +248,13 @@
       _consecutiveN = 0; // P-state only: truly converged, no cal needed
     }
 
-    // Burst mode: snap aggressively at track start (audio is transitioning)
+    // Burst mode: snap aggressively at track start (audio is transitioning).
+    // If floor detection has confirmed a large uncorrectable residual (device is
+    // beyond the 1200ms BT cap), snapping only causes seekPreservingBT ramps that
+    // bounce drift back. Still the reflex — let warp handle it instead.
     if (isBurst && abs >= TER_SNAP_BURST && abs < BIN_THRESHOLD) {
-      applySnap(lagMs, 'burst-snap');
+      const overCap = _lastFloor !== null && _lastFloor > 150;
+      if (!overCap) applySnap(lagMs, 'burst-snap');
     }
 
     if (!isBurst && _consecutiveN >= 10) { // 10 × 3s = 30s of stable N-state before attempting cal

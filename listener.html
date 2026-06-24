@@ -5047,7 +5047,8 @@ window._terAdjustLatency  = (deltaMs) => {
   const prevLatencyMs = _deviceLatencyMs;
   _deviceLatencyMs = Math.max(0, Math.min(1200, _deviceLatencyMs + deltaMs));
   try { localStorage.setItem('byob_device_latency', _deviceLatencyMs.toFixed(1)); } catch(e) {}
-  console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms →', _deviceLatencyMs.toFixed(1), 'ms');
+  const actualDelta = _deviceLatencyMs - prevLatencyMs;
+  console.log('[ternary] deviceLatencyMs adjusted by', deltaMs.toFixed(1), 'ms (actual:', actualDelta.toFixed(1), 'ms) →', _deviceLatencyMs.toFixed(1), 'ms');
   // Broadcast correction event — visible in live-tuner and debug.html
   ensureHUDChannel();
   try {
@@ -5064,6 +5065,7 @@ window._terAdjustLatency  = (deltaMs) => {
       }
     });
   } catch(e) {}
+  return actualDelta;
 };
 
 async function _runLockingPass(){
