@@ -2211,7 +2211,8 @@ function fastDriftCorrect() {
       window._lastSeekMeasuredMs = Math.round(measuredJumpMs);
     }, 200);
   } else if (_absLag >= 15) {
-    requestCorrection(lagMs); // warp ±3% for 15–150ms (inaudible)
+    // warp disabled — playbackRate changes cause BT codec frame drops every stall cycle
+    // requestCorrection(lagMs);
   }
 }
 audio.addEventListener('timeupdate', () => {
