@@ -175,6 +175,7 @@ input[type=range]::-webkit-slider-thumb{
   <div class="sl-row"><span class="sl-lbl">S</span><input type="range" id="sl-s" min="0" max="100" value="58" style="--pct:58%" oninput="onEnv()"/><span class="sl-val" id="vl-s">58%</span></div>
   <div class="sl-row"><span class="sl-lbl">R</span><input type="range" id="sl-r" min="10" max="1500" value="90" oninput="onEnv()"/><span class="sl-val" id="vl-r">90ms</span></div>
   <div class="sl-row"><span class="sl-lbl">Gate</span><input type="range" id="sl-gate" min="10" max="200" value="82" style="--pct:37%" oninput="onEnv()"/><span class="sl-val" id="vl-gate">82%</span></div>
+  <div class="sl-row"><span class="sl-lbl">Glide</span><input type="range" id="sl-glide" min="0" max="200" value="0" style="--pct:0%" oninput="onGlide()"/><span class="sl-val" id="vl-glide">off</span></div>
 </div>
 
 <!-- Pad -->
@@ -680,6 +681,14 @@ function onEnv() {
   });
   document.getElementById('sl-s').style.setProperty('--pct', pct(s*100,0,100));
   document.getElementById('sl-gate').style.setProperty('--pct', pct(gate*100,0.1,2.0));
+}
+
+function onGlide() {
+  const el  = document.getElementById('sl-glide');
+  const ms  = +el.value;
+  window._terArp?.setPortamento(ms / 1000);
+  document.getElementById('vl-glide').textContent = ms === 0 ? 'off' : ms + 'ms';
+  el.style.setProperty('--pct', pct(ms, 0, 200));
 }
 
 // ── Pad ───────────────────────────────────────────────────────────────────────

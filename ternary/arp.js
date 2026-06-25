@@ -125,10 +125,11 @@
   let _envGate = 0.82;   // note length as fraction of step duration
 
   // ── Core state ────────────────────────────────────────────────────────────────
-  let _root    = 60;
-  let _bpm     = 120;
-  let _running = false;
-  let _prevMidi = 60;  // for tcmp() pitch-direction phrasing
+  let _root       = 60;
+  let _bpm        = 120;
+  let _running    = false;
+  let _prevMidi   = 60;    // for tcmp() pitch-direction phrasing
+  let _portamento = 0;     // glide time in seconds (0 = off)
 
   // Sequencer
   let _step       = 0;
@@ -279,8 +280,8 @@
     // Two warm-saw oscillators: one sharp, one flat — natural beating = warmth
     v.osc1 = ctx.createOscillator(); v.osc1.setPeriodicWave(wave);
     v.osc2 = ctx.createOscillator(); v.osc2.setPeriodicWave(wave);
-    v.osc1.detune.value = +8;
-    v.osc2.detune.value = -8;
+    v.osc1.detune.value = +14;   // wider spread = lusher unison
+    v.osc2.detune.value = -14;
 
     // Sub sine — one octave below, physical body especially for bass voice
     v.sub = ctx.createOscillator(); v.sub.type = 'sine';
@@ -290,10 +291,9 @@
     v.g2 = ctx.createGain(); v.g2.gain.value = 0.52;
     v.gs = ctx.createGain(); v.gs.gain.value = 0.20;
 
-    // VCF: single biquad LP — warm and open, not over-filtered
-    // Frequency animated per-note (the filter sweep IS the butter)
+    // VCF: single biquad LP — Q is animated per-note (see playNote)
     v.vcf = ctx.createBiquadFilter();
-    v.vcf.type = 'lowpass'; v.vcf.frequency.value = 2200; v.vcf.Q.value = 0.6;
+    v.vcf.type = 'lowpass'; v.vcf.frequency.value = 2200; v.vcf.Q.value = 0.65;
 
     // Amplitude envelope
     v.ampEnv = ctx.createGain(); v.ampEnv.gain.value = 0;
@@ -402,35 +402,60 @@
     _voiceIdx++;
     v.noteEndTime = tEnd;
 
-    // Retune all oscillators to new pitch
-    v.osc1.frequency.setValueAtTime(hz, startS);
-    v.osc2.frequency.setValueAtTime(hz, startS);
-    v.sub.frequency.setValueAtTime(hz / 2, startS);
+    // Retune all oscillators to new pitch — with optional portamento glide
+    const prevHz = midiToHz(_prevMidi);
+    if (_portamento > 0.005 && prevHz > 0) {
+      v.osc1.frequency.cancelScheduledValues(startS);
+      v.osc1.frequency.setValueAtTime(prevHz, startS);
+      v.osc1.frequency.exponentialRampToValueAtTime(hz, startS + _portamento);
+      v.osc2.frequency.cancelScheduledValues(startS);
+      v.osc2.frequency.setValueAtTime(prevHz, startS);
+      v.osc2.frequency.exponentialRampToValueAtTime(hz, startS + _portamento);
+      v.sub.frequency.cancelScheduledValues(startS);
+      v.sub.frequency.setValueAtTime(prevHz / 2, startS);
+      v.sub.frequency.exponentialRampToValueAtTime(hz / 2, startS + _portamento);
+    } else {
+      v.osc1.frequency.setValueAtTime(hz, startS);
+      v.osc2.frequency.setValueAtTime(hz, startS);
+      v.sub.frequency.setValueAtTime(hz / 2, startS);
+    }
 
-    // VCF filter sweep — closed → open over the attack (this is the butter).
+    // VCF filter sweep — closed → open over the attack.
     // Each voice has a different range: N(bass)=dark, Z=mid, P(lead)=bright.
-    const vcfStart     = branch3(voice, () =>  800, () => 1200, () => 1600);
+    const vcfStart     = branch3(voice, () =>  700, () => 1100, () => 1500);
     const vcfPeak      = branch3(voice, () => 1800, () => 2600, () => 3600);
     const vcfSweepTime = effA * 1.6;
     v.vcf.frequency.cancelScheduledValues(startS);
     v.vcf.frequency.setValueAtTime(vcfStart, startS);
     v.vcf.frequency.linearRampToValueAtTime(vcfPeak, startS + vcfSweepTime);
-    v.vcf.frequency.setTargetAtTime(vcfPeak * 0.80, startS + vcfSweepTime, 0.4);
+    v.vcf.frequency.setTargetAtTime(vcfPeak * 0.78, startS + vcfSweepTime, 0.38);
+
+    // VCF Q sweep — resonance peaks during the filter opening, settles back.
+    // This is what gives a synth its character: the "phwaaah" on each note.
+    // Louder accents get more resonance for natural punch.
+    const qPeak = 1.6 + accent * 1.2;
+    v.vcf.Q.cancelScheduledValues(startS);
+    v.vcf.Q.setValueAtTime(0.65, startS);
+    v.vcf.Q.linearRampToValueAtTime(qPeak, startS + vcfSweepTime);
+    v.vcf.Q.setTargetAtTime(1.1, startS + vcfSweepTime, 0.28);
 
     // Sub level: louder for N (bass voice), near-silent for P (lead)
     const subLevel = branch3(voice, () => 0.30, () => 0.15, () => 0.05);
     v.gs.gain.setValueAtTime(subLevel * accent, startS);
 
-    // ADSR on amplitude envelope
-    const tA = startS + effA;
-    const tD = tA + _envD;
-    const tR = Math.max(tD + 0.01, tEnd - _envR);
+    // ADSR on amplitude envelope — exponential curves for decay and release.
+    // Linear ramps sound digital; exponential decay/release sounds analog.
+    const tA         = startS + effA;
+    const tR         = Math.max(tA + _envD + 0.01, tEnd - _envR);
+    const decayTau   = Math.max(0.001, _envD  * 0.38);
+    const releaseTau = Math.max(0.001, _envR  * 0.42);
+    const susGain    = accent * effS * 0.75;
     v.ampEnv.gain.cancelScheduledValues(t);
     v.ampEnv.gain.setValueAtTime(v.ampEnv.gain.value, startS);
-    v.ampEnv.gain.linearRampToValueAtTime(accent * 0.85, tA);
-    v.ampEnv.gain.linearRampToValueAtTime(accent * effS * 0.75, tD);
-    v.ampEnv.gain.setValueAtTime(accent * effS * 0.75, tR);
-    v.ampEnv.gain.linearRampToValueAtTime(0, tEnd);
+    v.ampEnv.gain.linearRampToValueAtTime(accent * 0.85, tA);   // linear attack (punchy)
+    v.ampEnv.gain.setTargetAtTime(susGain, tA, decayTau);       // exp decay
+    v.ampEnv.gain.setValueAtTime(susGain, tR);
+    v.ampEnv.gain.setTargetAtTime(0.0001, tR, releaseTau);      // exp release
   }
 
   // ── Lookahead scheduler ───────────────────────────────────────────────────────
@@ -499,6 +524,7 @@
   function setStyle(key)      { if (key in ARP_STYLES) { _styleKey = key; recomputeForms(); } }
   function setTrigram(key)    { _forcedTrigram = (key in TRIGRAM_CHORDS) ? key : null; }
   function clearTrigram()     { _forcedTrigram = null; }
+  function setPortamento(s)   { _portamento = Math.max(0, Math.min(0.5, s)); }
   function setHaasWidth()     {}  // chorus handles stereo now
   function setTremoloDepth()  {}  // removed — chorus provides movement
   function setEnvelope({ a, d, s, r, gate } = {}) {
@@ -532,7 +558,7 @@
   window._terArp = {
     start, stop, toggle,
     setRoot, setBpm, setStyle, setTrigram, clearTrigram,
-    setHaasWidth, setTremoloDepth, setEnvelope,
+    setPortamento, setHaasWidth, setTremoloDepth, setEnvelope,
     isRunning, receivePeer,
     getPhase: phaseState,
     getTrigramKey,
