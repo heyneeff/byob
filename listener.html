@@ -2183,7 +2183,7 @@ function fastDriftCorrect() {
     _outputLatencySeeded = true;
     if (_deviceLatencyMs === 0) {
       const ol = getOutputLatencyMs();
-      if (ol !== null && ol > 10 && ol < 400) {
+      if (ol !== null && ol > 10 && ol < 1200) {
         _deviceLatencyMs = ol;
         console.log('[Latency] Seeded from outputLatency:', ol + 'ms');
       }
