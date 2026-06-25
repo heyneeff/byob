@@ -2238,15 +2238,13 @@ audio.addEventListener('playing', () => {
   if (_reAnchorInFlight) return;
   if (window.SyncEngine?.getDriftState?.() === 'seeking') return; // our own seek ramp — don't cascade
   if (!activeZone?.playback_started_at || !audio.duration || audio.srcObject || window._trackLoading) return;
-  // Guard: if elapsed < BT latency, _expectedNow() returns a negative raw position that
-  // wraps to near end-of-track. seekPreservingBT would seek there, play 200ms, hit the
-  // end, loop — and fire 'playing' again. Same guard as applySnap() in layer.js.
-  const _reAnchorElapsed = (Date.now() - new Date(activeZone.playback_started_at).getTime()) / 1000;
-  if (_reAnchorElapsed < (window._terGetDeviceLatencyMs?.() ?? 0) / 1000) return;
-  // BT stalls fire 'playing' on resume with ~100-250ms drift. Snap back via
-  // seekPreservingBT (mute→seek→ramp) which forces BT resync. Oracle 53.1→37.
+  // BT stalls fire 'playing' on resume with ~150-250ms drift. Snap back immediately
+  // via seekSilent (direct seek, no mute/ramp — BT buffer absorbs the jump silently).
+  // Oracle 59.1.5→41: act at the first moment with the horse's strength; decrease the
+  // 10-second warp recovery to a 300ms silent snap. Threshold 100ms catches stalls
+  // without firing on tiny jitter. seekPreservingBT (mute/ramp) reserved for severe drift.
   const _reAnchorLag = Math.abs(window.SyncEngine?.computeLagMs?.() ?? 0);
-  if (_reAnchorLag < 200) return;
+  if (_reAnchorLag < 100) return;
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
