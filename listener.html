@@ -2246,7 +2246,7 @@ audio.addEventListener('playing', () => {
   // BT stalls fire 'playing' on resume with ~100-250ms drift. Snap back via
   // seekPreservingBT (mute→seek→ramp) which forces BT resync. Oracle 53.1→37.
   const _reAnchorLag = Math.abs(window.SyncEngine?.computeLagMs?.() ?? 0);
-  if (_reAnchorLag < 100) return;
+  if (_reAnchorLag < 50) return;
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
