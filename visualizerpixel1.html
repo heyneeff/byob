@@ -315,7 +315,7 @@
   const recentVoid = []; // recently-erased cells, seeded from during silence
   const RECENT_VOID_MAX = 1200;
 
-  const FORM_DURATION = 90;
+  const FORM_DURATION = 18;
   const YANG_LIFE_BASE = 600;
   const YANG_LIFE_MIN = 55;
 
@@ -734,7 +734,7 @@
 
   // The center nucleus: the organism's emergent seed point, fully audio-reactive.
   function decayBeatFlash() {
-    if (beatFlash > 0.01) beatFlash *= 0.80; else beatFlash = 0;
+    if (beatFlash > 0.01) beatFlash *= 0.68; else beatFlash = 0;
   }
 
   function resetOrganism() {
@@ -1038,8 +1038,10 @@
 
     // draw the persisted structure on top
     ctx.save();
-    if (trailsOpacity > 0.01) {
-      const zf = 1.0 + (0.0008 + bass * 0.0025) * trailsOpacity;
+    const beatScale = 1.0 + beatFlash * 0.09;
+    const trailScale = trailsOpacity > 0.01 ? 1.0 + (0.0008 + bass * 0.0025) * trailsOpacity : 1.0;
+    const zf = beatScale * trailScale;
+    if (zf > 1.0005) {
       ctx.translate(CX, CY);
       ctx.scale(zf, zf);
       ctx.translate(-CX, -CY);
@@ -1079,6 +1081,7 @@
     drawConstellationLines();
     drawBeatLockIndicator();
     drawHexagramDisplay();
+    drawObjects3D(bass, mid);
   }
 
   // Rotate ALL cell colors one step tangentially around center.
@@ -1197,6 +1200,81 @@
     ctx.textAlign = 'left';
   }
 
+  // ---------- false-3D objects ----------
+  const _TS = 80, _PS = 200;
+  const _cosT = new Float32Array(_TS), _sinT = new Float32Array(_TS);
+  const _cosP = new Float32Array(_PS), _sinP = new Float32Array(_PS);
+  for (let i = 0; i < _TS; i++) { const a = i/_TS*Math.PI*2; _cosT[i]=Math.cos(a); _sinT[i]=Math.sin(a); }
+  for (let j = 0; j < _PS; j++) { const a = j/_PS*Math.PI*2; _cosP[j]=Math.cos(a); _sinP[j]=Math.sin(a); }
+  let _zBuf = null, _lBuf = null, _zBufW = 0, _zBufH = 0;
+
+  // ox/oy: screen-space offset as fraction of organism radius
+  // sA/sB: base rotation speed (negative = reverse axis)
+  // aA/aB: current angles (staggered so they start in different orientations)
+  const _objs = [
+    { R: 1.0,  r: 0.36, ox: -0.38, oy: -0.28, sA:  0.007, sB:  0.003, aA: 0,    aB: 1.0  },
+    { R: 1.0,  r: 0.36, ox:  0.30, oy:  0.22, sA: -0.003, sB:  0.008, aA: 1.57, aB: 3.14 },
+    { R: 0.60, r: 0.24, ox:  0.22, oy: -0.44, sA:  0.011, sB:  0.005, aA: 3.0,  aB: 0.5  },
+    { R: 0.52, r: 0.20, ox: -0.22, oy:  0.40, sA: -0.005, sB: -0.009, aA: 0.8,  aB: 2.2  },
+  ];
+
+  function drawObjects3D(bass, mid) {
+    const orbR = GRID_RADIUS * CELL;
+    const K    = orbR * 0.88;
+    const D    = 3.0;
+    const sc   = 1.0 + beatFlash * 0.15;
+    const lx   = -0.45, ly = 0.60, lz = 0.66;
+
+    const GW = Math.ceil(W / CELL) + 2, GH = Math.ceil(H / CELL) + 2;
+    if (GW !== _zBufW || GH !== _zBufH) {
+      _zBuf = new Float32Array(GW * GH).fill(-99); _lBuf = new Float32Array(GW * GH);
+      _zBufW = GW; _zBufH = GH;
+    } else { _zBuf.fill(-99); }
+
+    for (const o of _objs) {
+      o.aA += o.sA * (1.0 + bass * 3.0);
+      o.aB += o.sB * (1.0 + mid  * 3.0);
+      const cosA = Math.cos(o.aA), sinA = Math.sin(o.aA);
+      const cosB = Math.cos(o.aB), sinB = Math.sin(o.aB);
+      const pcx = CX + o.ox * orbR, pcy = CY + o.oy * orbR;
+
+      for (let i = 0; i < _TS; i++) {
+        const cosT = _cosT[i], sinT = _sinT[i], rCosT = o.r*cosT, rSinT = o.r*sinT;
+        for (let j = 0; j < _PS; j++) {
+          const cosP = _cosP[j], sinP = _sinP[j];
+          const ox = (o.R + rCosT)*cosP, oy = (o.R + rCosT)*sinP;
+          const oy1 = oy*cosA - rSinT*sinA, oz1 = oy*sinA + rSinT*cosA;
+          const rx = ox*cosB - oy1*sinB, ry = ox*sinB + oy1*cosB, rz = oz1;
+          const ny1 = cosT*sinP*cosA - sinT*sinA, nz1 = cosT*sinP*sinA + sinT*cosA;
+          const rnx = cosT*cosP*cosB - ny1*sinB,  rny = cosT*cosP*sinB + ny1*cosB;
+          const L = rnx*lx + rny*ly + nz1*lz;
+          const zp = rz + D; if (zp < 0.1) continue;
+          const gi = Math.round((pcx + rx*K*sc/zp) / CELL);
+          const gj = Math.round((pcy + ry*K*sc/zp) / CELL);
+          if (gi < 0 || gi >= GW || gj < 0 || gj >= GH) continue;
+          const idx = gj*GW + gi;
+          if (rz > _zBuf[idx]) { _zBuf[idx] = rz; _lBuf[idx] = L; }
+        }
+      }
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = '#111111';
+    for (let gj = 0; gj < GH; gj++) for (let gi = 0; gi < GW; gi++) {
+      const idx = gj*GW+gi; if (_zBuf[idx] === -99) continue;
+      const L = _lBuf[idx]; if (L >= 0) continue;
+      ctx.globalAlpha = Math.min(0.55, -L*0.75);
+      ctx.fillRect(gi*CELL, gj*CELL, CELL, CELL);
+    }
+    ctx.fillStyle = '#FFFFFF';
+    for (let gj = 0; gj < GH; gj++) for (let gi = 0; gi < GW; gi++) {
+      const idx = gj*GW+gi; if (_zBuf[idx] === -99) continue;
+      const L = _lBuf[idx]; if (L <= 0) continue;
+      ctx.globalAlpha = Math.min(1, L*1.1)*0.95;
+      ctx.fillRect(gi*CELL, gj*CELL, CELL, CELL);
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // ── drawing mode ──────────────────────────────────────────────────────────
   // Touch/mouse painting plants bold flat filled cells, 8-fold mirrored.
@@ -1363,7 +1441,7 @@
   function setupAnalyser(sourceNode, audioCtx) {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 1024;
-    analyser.smoothingTimeConstant = 0.55; // lower = less built-in lag, snappier response
+    analyser.smoothingTimeConstant = 0.15; // lower = less built-in lag, snappier response
     sourceNode.connect(analyser);
     freqData = new Uint8Array(analyser.frequencyBinCount);
   }
@@ -1389,9 +1467,9 @@
     tr = Math.min(1, (tr / ((n - midEnd) * 255 || 1)) * sensitivity);
     // less weight on history = the displayed levels track the actual audio
     // more tightly instead of smoothing it out
-    bassLevel   = bassLevel   * 0.5 + b  * 0.5;
-    midLevel    = midLevel    * 0.5 + m  * 0.5;
-    trebleLevel = trebleLevel * 0.5 + tr * 0.5;
+    bassLevel   = bassLevel   * 0.3 + b  * 0.7;
+    midLevel    = midLevel    * 0.3 + m  * 0.7;
+    trebleLevel = trebleLevel * 0.3 + tr * 0.7;
   }
 
   // ---------- BYOB multi-listener hook (stub for future wiring) ----------
