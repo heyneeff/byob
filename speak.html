@@ -349,6 +349,15 @@ header {
 }
 .dl-circle.ready { border-color: var(--blue); color: var(--blue); }
 
+.rec-btn {
+  flex: 1; padding: 14px 8px; border: 2px solid var(--dim2); background: none;
+  color: var(--dim2); font-family: 'Courier New', monospace; font-size: 13px;
+  font-weight: 700; letter-spacing: 1px; cursor: pointer; touch-action: manipulation;
+  border-radius: 2px; transition: all .12s;
+}
+.rec-btn.armed { border-color: var(--red); color: var(--red); }
+.rec-btn.on { background: var(--red); color: #fff; border-color: var(--red); }
+
 .status { font-size: 12px; letter-spacing: 1px; color: var(--dim2); text-align: center; padding: 6px 14px 8px; flex-shrink: 0; }
 </style>
 </head>
@@ -599,9 +608,9 @@ header {
 
 </div>
 
-<!-- TRANSPORT -->
-<button class="mic-circle" id="mic-btn">🎤</button>
-<div style="display:flex;gap:6px;padding:0 12px 0;flex-shrink:0">
+<div class="transport">
+  <button class="mic-circle" id="mic-btn">🎤</button>
+  <button class="rec-btn" id="rec-btn">⏺ REC</button>
   <button class="seq-btn" id="seq-btn">▶ SEQ</button>
   <button class="dl-circle" id="dl-btn">↓</button>
 </div>
@@ -1033,7 +1042,7 @@ async function setupAudio() {
   setStatus('SPACE READY · DRAG XY PAD TO PLACE SOUND');
   startScope();
   startMovement();
-  setTimeout(startAutoRecord, 800);
+  document.getElementById('rec-btn').classList.add('armed');
 }
 
 // ── Voice processor ─────────────────────────────────────────────
@@ -1581,41 +1590,59 @@ document.getElementById('seq-btn').addEventListener('click', () => {
   if (seqPlaying) stopSeq(); else startSeq();
 });
 
-// ── Record / Download ────────────────────────────────────────────
-function startAutoRecord() {
+// ── Record ───────────────────────────────────────────────────────
+let recStart = 0, recTimerInt = null;
+
+document.getElementById('rec-btn').addEventListener('click', () => {
+  if (!micActive) { setStatus('TAP 🎤 FIRST'); return; }
+  if (!recActive) startRecord(); else stopRecord();
+});
+
+function startRecord() {
   if (!recDest || recActive) return;
   const mime = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t)) || '';
   try { recRec = mime ? new MediaRecorder(recDest.stream, { mimeType: mime }) : new MediaRecorder(recDest.stream); }
   catch { recRec = new MediaRecorder(recDest.stream); }
   recChunks = [];
   recRec.ondataavailable = e => { if (e.data.size > 0) recChunks.push(e.data); };
-  recRec.onstop = () => {
-    recBlob = new Blob(recChunks, { type: recChunks[0]?.type });
-    document.getElementById('dl-btn').classList.add('ready');
-  };
-  recRec.start(200);
+  recRec.start(100);
   recActive = true;
+  recStart = Date.now();
+  const btn = document.getElementById('rec-btn');
+  btn.classList.remove('armed');
+  btn.classList.add('on');
+  btn.textContent = '■ STOP';
+  recTimerInt = setInterval(() => {
+    const s = (Date.now() - recStart) / 1000;
+    const m = Math.floor(s / 60), ss = Math.floor(s % 60).toString().padStart(2, '0');
+    setStatus(`● REC ${m}:${ss}`);
+  }, 250);
 }
-function stopAutoRecord() {
+
+function stopRecord() {
   if (!recActive) return;
   recActive = false;
-  if (recRec?.state !== 'inactive') recRec.stop();
-}
-document.getElementById('dl-btn').addEventListener('click', () => {
-  stopAutoRecord();
-  if (recBlob) {
-    const ext = recBlob.type.includes('mp4') ? 'mp4' : 'webm';
-    const url = URL.createObjectURL(recBlob);
-    const a = document.createElement('a');
+  clearInterval(recTimerInt);
+  const btn = document.getElementById('rec-btn');
+  btn.classList.remove('on');
+  btn.classList.add('armed');
+  btn.textContent = '⏺ REC';
+  recRec.onstop = () => {
+    if (!recChunks.length) { setStatus('NO AUDIO CAPTURED'); return; }
+    const blob = new Blob(recChunks, { type: recChunks[0]?.type || 'audio/webm' });
+    const ext  = blob.type.includes('mp4') ? 'mp4' : 'webm';
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
     a.href = url; a.download = `byob-speak-${Date.now()}.${ext}`; a.click();
     URL.revokeObjectURL(url);
-    recBlob = null;
-    document.getElementById('dl-btn').classList.remove('ready');
-    setTimeout(startAutoRecord, 400);
-    setStatus('SAVED · NEW RECORDING STARTED');
-  } else {
-    setTimeout(startAutoRecord, 300);
-  }
+    setStatus('SAVED ↓');
+  };
+  if (recRec?.state !== 'inactive') recRec.stop();
+  setStatus('SAVING…');
+}
+
+document.getElementById('dl-btn').addEventListener('click', () => {
+  if (recActive) stopRecord();
 });
 
 // ── LPC / SYNTH tab ─────────────────────────────────────────────
