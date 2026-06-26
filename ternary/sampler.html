@@ -94,6 +94,8 @@ html,body{
     <button class="chip" data-s="3" style="--c:#f57e20" onclick="setSample(3)">CLAR<span>bass clarinet</span></button>
     <button class="chip" data-s="4" style="--c:#80d020" onclick="setSample(4)">FLUTE<span>flute vib</span></button>
     <button class="chip" data-s="5" style="--c:#a060f0" onclick="setSample(5)">VSUS<span>vibe sustain</span></button>
+    <button class="chip" data-s="6" style="--c:#20d0e0" onclick="setSample(6)">DAMP<span>vibe dampen</span></button>
+    <button class="chip" data-s="7" style="--c:#e0d020" onclick="setSample(7)">SHRT<span>vibe short</span></button>
   </div>
 </div>
 
@@ -218,8 +220,40 @@ const SAMPLE_MAP = {
     88:'samples/Vibraphone.sustain.ff.E6.stereo.wav',
     89:'samples/Vibraphone.sustain.ff.F6.stereo.wav'
   },
+  // vibraphone dampen · ff — 12 notes (no loop — note decays naturally)
+  vib_damp: {
+    48:'samples/Vibraphone.dampen.ff.C3.stereo.wav',
+    52:'samples/Vibraphone.dampen.ff.E3.stereo.wav',
+    56:'samples/Vibraphone.dampen.ff.Ab3.stereo.wav',
+    60:'samples/Vibraphone.dampen.ff.C4.stereo.wav',
+    64:'samples/Vibraphone.dampen.ff.E4.stereo.wav',
+    68:'samples/Vibraphone.dampen.ff.Ab4.stereo.wav',
+    72:'samples/Vibraphone.dampen.ff.C5.stereo.wav',
+    76:'samples/Vibraphone.dampen.ff.E5.stereo.wav',
+    80:'samples/Vibraphone.dampen.ff.Ab5.stereo.wav',
+    84:'samples/Vibraphone.dampen.ff.C6.stereo.wav',
+    88:'samples/Vibraphone.dampen.ff.E6.stereo.wav',
+    89:'samples/Vibraphone.dampen.ff.F6.stereo.wav'
+  },
+  // vibraphone short sustain · ff — 12 notes (no loop — note decays naturally)
+  vib_shrt: {
+    48:'samples/Vibraphone.shortsustain.ff.C3.stereo.wav',
+    52:'samples/Vibraphone.shortsustain.ff.E3.stereo.wav',
+    56:'samples/Vibraphone.shortsustain.ff.Ab3.stereo.wav',
+    60:'samples/Vibraphone.shortsustain.ff.C4.stereo.wav',
+    64:'samples/Vibraphone.shortsustain.ff.E4.stereo.wav',
+    68:'samples/Vibraphone.shortsustain.ff.Ab4.stereo.wav',
+    72:'samples/Vibraphone.shortsustain.ff.C5.stereo.wav',
+    76:'samples/Vibraphone.shortsustain.ff.E5.stereo.wav',
+    80:'samples/Vibraphone.shortsustain.ff.Ab5.stereo.wav',
+    84:'samples/Vibraphone.shortsustain.ff.C6.stereo.wav',
+    88:'samples/Vibraphone.shortsustain.ff.E6.stereo.wav',
+    89:'samples/Vibraphone.shortsustain.ff.F6.stereo.wav'
+  },
 };
-const TIMBRE = ['sepal','petal','lip','bass_cl','flute','vib'];
+const TIMBRE = ['sepal','petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt'];
+// timbres whose samples decay naturally — looping would repeat silence
+const TIMBRE_NOLOOP = new Set(['vib_damp','vib_shrt']);
 const KNOB_COLOR = {
   warp:'#f04880', echo:'#00e090', tone:'#ffaa20', decay:'#8060e0', vol:'#c0c0ff'
 };
@@ -370,10 +404,12 @@ function noteOn(midi) {
   v.gain.connect(_fx.filt);
 
   v.src = _ctx.createBufferSource();
-  v.src.buffer    = buf;
-  v.src.loop      = true;
-  v.src.loopStart = loopS;
-  v.src.loopEnd   = Math.max(loopS + 0.1, loopE);
+  v.src.buffer = buf;
+  v.src.loop   = !TIMBRE_NOLOOP.has(TIMBRE[_sample]);
+  if (v.src.loop) {
+    v.src.loopStart = loopS;
+    v.src.loopEnd   = Math.max(loopS + 0.1, loopE);
+  }
   v.src.playbackRate.value = rate;
 
   // Warp LFO

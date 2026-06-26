@@ -1,1 +1,8 @@
 node_modules/
+# Iowa EMS AIFF source files (large, not needed for web)
+ternary/samples/Bass Clarinet/
+ternary/samples/Double bass/
+ternary/samples/FLute/
+ternary/samples/Trumpet/
+ternary/samples/Vibraphone/
+ternary/samples/Violin PIzzicatto/
