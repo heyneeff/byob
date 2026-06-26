@@ -364,14 +364,14 @@ const TIMBRE_NOLOOP = new Set(['vib_damp','vib_shrt']);
 
 // ── Arp data ──────────────────────────────────────────────────────────────────
 const CHORD_MAP = {
-  PPP:{ sym:'☷', name:'Earth',    col:'#00e090', ivs:[0,4,7]     },
-  NNN:{ sym:'☰', name:'Heaven',   col:'#e8d840', ivs:[0,4,7,11]  },
-  NNP:{ sym:'☱', name:'Lake',     col:'#50c0e8', ivs:[0,4,7,9]   },
-  NPN:{ sym:'☲', name:'Fire',     col:'#e85030', ivs:[0,4,7,10]  },
-  PNP:{ sym:'☵', name:'Water',    col:'#3060e0', ivs:[0,3,7,10]  },
-  PNN:{ sym:'☴', name:'Wind',     col:'#50d870', ivs:[0,5,7,12]  },
-  NPP:{ sym:'☳', name:'Thunder',  col:'#9050e8', ivs:[0,3,6,10]  },
-  PPN:{ sym:'☶', name:'Mountain', col:'#8090a0', ivs:[0,3,6,9]   },
+  PPP:{ sym:'☷', name:'Major',    col:'#00e090', ivs:[0,4,7]     },
+  NNN:{ sym:'☰', name:'Maj 7',    col:'#e8d840', ivs:[0,4,7,11]  },
+  NNP:{ sym:'☱', name:'Maj 6',    col:'#50c0e8', ivs:[0,4,7,9]   },
+  NPN:{ sym:'☲', name:'Dom 7',    col:'#e85030', ivs:[0,4,7,10]  },
+  PNP:{ sym:'☵', name:'Min 7',    col:'#3060e0', ivs:[0,3,7,10]  },
+  PNN:{ sym:'☴', name:'Sus 4',    col:'#50d870', ivs:[0,5,7,12]  },
+  NPP:{ sym:'☳', name:'½ Dim 7',  col:'#9050e8', ivs:[0,3,6,10]  },
+  PPN:{ sym:'☶', name:'Dim 7',    col:'#8090a0', ivs:[0,3,6,9]   },
 };
 // 9-step × 3-form ternary arp patterns (trit: 1=high 0=mid −1=low, rst=rest mask)
 const ARP_PAT = {
@@ -911,7 +911,8 @@ hexCv.addEventListener('mousedown', e => {
   const midi = hexMidi(hex.q, hex.r);
   setArpRoot(midi);
   _mouseV = noteOn(midi); _mouseMidi = midi;
-  _pressedMidi.add(midi); drawHex();
+  if (_mouseV) _pressedMidi.add(midi);
+  drawHex();
 });
 hexCv.addEventListener('mousemove', e => {
   if (!_mouseV) return;
@@ -921,7 +922,8 @@ hexCv.addEventListener('mousemove', e => {
   if (midi !== _mouseMidi) {
     noteOff(_mouseV); _pressedMidi.delete(_mouseMidi);
     _mouseV = noteOn(midi); _mouseMidi = midi;
-    _pressedMidi.add(midi); drawHex();
+    if (_mouseV) _pressedMidi.add(midi);
+    drawHex();
   }
 });
 ['mouseup','mouseleave'].forEach(ev => hexCv.addEventListener(ev, () => {
