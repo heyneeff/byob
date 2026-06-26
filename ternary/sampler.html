@@ -129,13 +129,15 @@ html,body{
 <script>
 'use strict';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
-const SAMPLE_ROOT = { [-1]: 57, [0]: 57, [1]: 69 }; // A3, A3, A4 (MIDI)
-const SAMPLE_URL  = {
-  [-1]: 'samples/sepal.wav',
-  [ 0]: 'samples/petal.wav',
-  [ 1]: 'samples/lip.wav',
+// ── Sample map — add more pitch entries as you download them ──────────────────
+// Structure: timbre → { midiRoot: 'url' }
+// Add e.g. { 57:'samples/sepal_A3.wav', 64:'samples/sepal_E4.wav' } for multi-pitch
+const SAMPLE_MAP = {
+  sepal: { 57: 'samples/sepal.wav' },  // cello ff · A3
+  petal: { 57: 'samples/petal.wav' },  // cello mf · A3
+  lip:   { 69: 'samples/lip.wav'   },  // violin pp · A4
 };
+const TIMBRE = ['sepal','petal','lip']; // index: _sample+1 → name
 const KNOB_COLOR = {
   warp:'#f04880', echo:'#00e090', tone:'#ffaa20', decay:'#8060e0', vol:'#c0c0ff'
 };
@@ -161,7 +163,9 @@ const INTERVAL_STYLE = {
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let _ctx = null, _bufs = {}, _sample = -1;
+let _ctx = null, _sample = -1;
+const _bufs   = {};   // `${timbre}_${midiRoot}` → AudioBuffer
+const _onsets = {};   // same key → onset time in seconds
 const _fx = {};
 const _voices = [];
 const NUM_VOICES = 8;
@@ -216,15 +220,43 @@ function initAudio() {
   for (let i = 0; i < NUM_VOICES; i++) _voices.push({ src: null, gain: null, lfo: null, lfoG: null, busy: false, midi: -1 });
 }
 
+// Finds the first frame where the RMS of a 40ms window exceeds threshold
+function detectOnset(buf, threshold = 0.012) {
+  const ch  = buf.getChannelData(0);
+  const win = Math.floor(buf.sampleRate * 0.04);
+  for (let i = 0; i < ch.length - win; i += Math.floor(win / 3)) {
+    let rms = 0;
+    for (let j = 0; j < win; j++) rms += ch[i + j] * ch[i + j];
+    if (Math.sqrt(rms / win) > threshold) return Math.max(0, i / buf.sampleRate - 0.03);
+  }
+  return 0;
+}
+
+// Find nearest root MIDI note for the current timbre
+function nearestRoot(midi) {
+  const name = TIMBRE[_sample + 1];
+  const map  = SAMPLE_MAP[name] ?? {};
+  let best = null, bestD = Infinity;
+  for (const k of Object.keys(map)) {
+    const d = Math.abs(parseInt(k) - midi);
+    if (d < bestD) { bestD = d; best = parseInt(k); }
+  }
+  return best;
+}
+
 async function loadSamples() {
   if (!_ctx) return;
-  await Promise.all(Object.entries(SAMPLE_URL).map(async ([t, url]) => {
-    if (_bufs[t]) return;
+  const name = TIMBRE[_sample + 1];
+  const map  = SAMPLE_MAP[name] ?? {};
+  await Promise.all(Object.entries(map).map(async ([rootMidi, url]) => {
+    const key = `${name}_${rootMidi}`;
+    if (_bufs[key]) return;
     try {
-      const ab = await (await fetch(url)).arrayBuffer();
-      // Use callback form — Safari doesn't return a Promise from decodeAudioData
-      _bufs[t] = await new Promise((res, rej) => _ctx.decodeAudioData(ab, res, rej));
-      console.log('[sampler] loaded', t, url);
+      const ab  = await (await fetch(url)).arrayBuffer();
+      const buf = await new Promise((res, rej) => _ctx.decodeAudioData(ab, res, rej));
+      _bufs[key]   = buf;
+      _onsets[key] = detectOnset(buf);
+      console.log('[sampler]', key, 'onset:', _onsets[key].toFixed(2) + 's  dur:', buf.duration.toFixed(1) + 's');
     } catch(e) { console.warn('[sampler] failed', url, e.message); }
   }));
 }
@@ -233,28 +265,33 @@ async function loadSamples() {
 let _voiceRR = 0;
 
 function noteOn(midi) {
-  const buf = _bufs[_sample];
-  if (!buf || !_ctx) return null;
+  if (!_ctx) return null;
+  const rootMidi = nearestRoot(midi);
+  const key      = `${TIMBRE[_sample + 1]}_${rootMidi}`;
+  const buf      = _bufs[key];
+  if (!buf) return null;
 
   // Find idle voice or steal oldest
   let v = _voices.find(x => !x.busy);
   if (!v) { v = _voices[_voiceRR % NUM_VOICES]; killVoice(v); }
   _voiceRR++;
 
-  const root = SAMPLE_ROOT[_sample] ?? 57;
-  const rate = Math.pow(2, (midi - root) / 12);
-  const now  = _ctx.currentTime;
+  const onset = _onsets[key] ?? 0;
+  const loopS = Math.min(onset + 0.25, buf.duration * 0.3);
+  const loopE = Math.min(onset + 2.2,  buf.duration - 0.05);
+  const rate  = Math.pow(2, (midi - rootMidi) / 12);
+  const now   = _ctx.currentTime;
 
   v.gain = _ctx.createGain();
   v.gain.gain.setValueAtTime(0, now);
-  v.gain.gain.linearRampToValueAtTime(0.82, now + 0.014);
+  v.gain.gain.linearRampToValueAtTime(0.82, now + 0.018);
   v.gain.connect(_fx.filt);
 
   v.src = _ctx.createBufferSource();
   v.src.buffer    = buf;
   v.src.loop      = true;
-  v.src.loopStart = 0.38;
-  v.src.loopEnd   = Math.min(1.05, buf.duration - 0.02);
+  v.src.loopStart = loopS;
+  v.src.loopEnd   = Math.max(loopS + 0.1, loopE);
   v.src.playbackRate.value = rate;
 
   // Warp LFO
@@ -269,7 +306,7 @@ function noteOn(midi) {
   }
 
   v.src.connect(v.gain);
-  v.src.start(now, 0.38);
+  v.src.start(now, onset);  // start at detected note onset
   v.busy = true; v.midi = midi;
   return v;
 }
