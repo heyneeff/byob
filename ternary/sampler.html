@@ -207,6 +207,14 @@ select.arp-sel:focus{border-color:#303060;}
   </div>
   <div class="arp-ctrl-row">
     <div class="arp-grp">
+      <span class="arp-lbl">SCALE</span>
+      <select class="arp-sel" id="arp-scale-sel" onchange="setScaleKey(this.value)"></select>
+    </div>
+    <div class="arp-grp" id="arp-deg-grp" style="display:none">
+      <span class="arp-lbl">DEGREE</span>
+      <select class="arp-sel" id="arp-deg-sel" onchange="setScaleDeg(+this.value)"></select>
+    </div>
+    <div class="arp-grp">
       <span class="arp-lbl">CHORD</span>
       <select class="arp-sel" id="arp-chord-sel" onchange="setArpChord(this.value)"></select>
     </div>
@@ -372,6 +380,22 @@ const CHORD_MAP = {
   PNN:{ sym:'☴', name:'Sus 4',    col:'#50d870', ivs:[0,5,7,12]  },
   NPP:{ sym:'☳', name:'½ Dim 7',  col:'#9050e8', ivs:[0,3,6,10]  },
   PPN:{ sym:'☶', name:'Dim 7',    col:'#8090a0', ivs:[0,3,6,9]   },
+};
+const SCALE_MAP = {
+  none:      { name:'— free —',   ivs:null },
+  major:     { name:'Major',      ivs:[0,2,4,5,7,9,11] },
+  natMinor:  { name:'Nat Minor',  ivs:[0,2,3,5,7,8,10] },
+  dorian:    { name:'Dorian',     ivs:[0,2,3,5,7,9,10] },
+  phrygian:  { name:'Phrygian',   ivs:[0,1,3,5,7,8,10] },
+  lydian:    { name:'Lydian',     ivs:[0,2,4,6,7,9,11] },
+  mixolydian:{ name:'Mixo',       ivs:[0,2,4,5,7,9,10] },
+  locrian:   { name:'Locrian',    ivs:[0,1,3,5,6,8,10] },
+  harmMinor: { name:'Harm Min',   ivs:[0,2,3,5,7,8,11] },
+  pentMaj:   { name:'Penta Maj',  ivs:[0,2,4,7,9] },
+  pentMin:   { name:'Penta Min',  ivs:[0,3,5,7,10] },
+  blues:     { name:'Blues',      ivs:[0,3,5,6,7,10] },
+  wholeTone: { name:'Whole Tone', ivs:[0,2,4,6,8,10] },
+  chromatic: { name:'Chromatic',  ivs:[0,1,2,3,4,5,6,7,8,9,10,11] },
 };
 // 9-step × 3-form ternary arp patterns (trit: 1=high 0=mid −1=low, rst=rest mask)
 const ARP_PAT = {
@@ -742,21 +766,30 @@ function sizeHex() {
 }
 
 function hexStyle(midi) {
-  if (_arpRunning || _arpFlashMidi >= 0) {
-    const pc     = midi % 12;
-    const rootPc = _arpRoot % 12;
-    const ivs    = CHORD_MAP[_arpChord].ivs;
+  const scale    = SCALE_MAP[_scaleKey];
+  const hasScale = scale?.ivs != null;
+  const pc       = midi % 12;
+
+  if (_arpRunning || _arpFlashMidi >= 0 || hasScale) {
+    const rootPc  = _arpRoot % 12;
+    const basePc  = _scaleBase % 12;
+    const ivs     = CHORD_MAP[_arpChord].ivs;
+    const inScale = !hasScale || scale.ivs.some(iv => (basePc + iv) % 12 === pc);
     const isFlash = _arpFlashMidi >= 0 && pc === _arpFlashMidi % 12;
     const isRoot  = pc === rootPc;
     const isChord = ivs.some(iv => (rootPc + iv) % 12 === pc);
+    const isBase  = hasScale && pc === basePc && basePc !== rootPc;
     const isAcc   = [0,1,0,1,0,0,1,0,1,0,1,0][pc];
-    if (isFlash) return {bg:'#002e22',border:'#00ffb8',text:'#00ffb8',glow:22};
-    if (isRoot)  return {bg:'#001e14',border:'#00e090',text:'#00e090',glow:16};
-    if (isChord) return {bg:'#091c16',border:'#005040',text:'#009070',glow:0};
-    if (isAcc)   return {bg:'#060610',border:'#0c0c1e',text:'#1c1c3a',glow:0};
-    return              {bg:'#08081a',border:'#12122a',text:'#26264e',glow:0};
+    if (isFlash)            return {bg:'#002e22',border:'#00ffb8',text:'#00ffb8',glow:22};
+    if (isRoot)             return {bg:'#001e14',border:'#00e090',text:'#00e090',glow:16};
+    if (isChord && inScale) return {bg:'#091c16',border:'#005040',text:'#009070',glow:0};
+    if (isBase)             return {bg:'#0c0c22',border:'#303480',text:'#5060c8',glow:8};
+    if (inScale && hasScale)return {bg:'#080c1a',border:'#1a2040',text:'#2e3660',glow:0};
+    if (hasScale)           return {bg:'#060610',border:'#0a0a18',text:'#14142a',glow:0};
+    if (isAcc)              return {bg:'#060610',border:'#0c0c1e',text:'#1c1c3a',glow:0};
+    return                         {bg:'#08081a',border:'#12122a',text:'#26264e',glow:0};
   }
-  // Free-play: Lumatone interval coloring from A
+  // Free-play, no scale: Lumatone interval coloring from A
   const interval = ((midi - 57) % 12 + 12) % 12;
   return INTERVAL_STYLE[interval] ?? INTERVAL_STYLE[6];
 }
@@ -980,12 +1013,21 @@ let _arpForm       = 0;
 let _arpTimer      = null;
 let _arpNextFireMs = 0;
 let _arpFlashMidi  = -1;
+let _scaleKey      = 'none';
+let _scaleDeg      = 0;
+let _scaleBase     = 60;
 
 const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 function arpBpm()    { return Math.round(60 + knobs.bpm * 140); }
 function arpStepMs() { return 60000 / arpBpm() / 3; }
 
 function arpTritShift(t) { return t === 1 ? -1 : t + 1; }
+
+function computeArpRoot() {
+  const scale  = SCALE_MAP[_scaleKey];
+  const offset = (scale?.ivs && _scaleDeg > 0) ? scale.ivs[_scaleDeg % scale.ivs.length] : 0;
+  return _scaleBase + offset + _arpOct * 12;
+}
 
 function arpStepMidi(step, form) {
   const pat = ARP_PAT[_arpStyle] ?? ARP_PAT.UP;
@@ -994,7 +1036,7 @@ function arpStepMidi(step, form) {
   if (form >= 2) trit = arpTritShift(trit);
   const ivs   = CHORD_MAP[_arpChord].ivs;
   const ivIdx = Math.min(trit === 1 ? 0 : trit === 0 ? 1 : 2, ivs.length - 1);
-  return _arpRoot + ivs[ivIdx] + _arpOct * 12;
+  return _arpRoot + ivs[ivIdx];
 }
 
 function arpTick() {
@@ -1018,6 +1060,7 @@ function arpTick() {
   if (++_arpStep >= 9) { _arpStep = 0; _arpForm = (_arpForm + 1) % 3; }
 
   _arpNextFireMs += sMs;
+  if (_arpNextFireMs < Date.now() - sMs * 2) _arpNextFireMs = Date.now();
   _arpTimer = setTimeout(arpTick, Math.max(0, _arpNextFireMs - Date.now()));
 }
 
@@ -1051,10 +1094,12 @@ function toggleArp() {
 }
 
 function setArpRoot(midi) {
-  _arpRoot = midi;
-  const el = document.getElementById('arp-root-disp');
-  if (el) el.textContent = NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
-  if (_arpRunning) drawHex();
+  _scaleBase = midi;
+  _arpRoot   = computeArpRoot();
+  const el   = document.getElementById('arp-root-disp');
+  if (el) el.textContent = NOTE_NAMES[_arpRoot % 12] + (Math.floor(_arpRoot / 12) - 1);
+  updateDegreeSelect();
+  if (_arpRunning || _scaleKey !== 'none') drawHex();
 }
 
 function setArpChord(key) {
@@ -1063,7 +1108,49 @@ function setArpChord(key) {
 }
 
 function shiftArpOct(d) {
-  _arpOct = Math.max(-2, Math.min(2, _arpOct + d));
+  _arpOct  = Math.max(-2, Math.min(2, _arpOct + d));
+  _arpRoot = computeArpRoot();
+  const el = document.getElementById('arp-root-disp');
+  if (el) el.textContent = NOTE_NAMES[_arpRoot % 12] + (Math.floor(_arpRoot / 12) - 1);
+}
+
+function setScaleKey(key) {
+  _scaleKey = key;
+  const scale = SCALE_MAP[key];
+  if (scale?.ivs) _scaleDeg = Math.min(_scaleDeg, scale.ivs.length - 1);
+  else _scaleDeg = 0;
+  _arpRoot = computeArpRoot();
+  const el = document.getElementById('arp-root-disp');
+  if (el) el.textContent = NOTE_NAMES[_arpRoot % 12] + (Math.floor(_arpRoot / 12) - 1);
+  updateDegreeSelect();
+  drawHex();
+}
+
+function setScaleDeg(deg) {
+  _scaleDeg = deg;
+  _arpRoot  = computeArpRoot();
+  const el  = document.getElementById('arp-root-disp');
+  if (el) el.textContent = NOTE_NAMES[_arpRoot % 12] + (Math.floor(_arpRoot / 12) - 1);
+  drawHex();
+}
+
+function updateDegreeSelect() {
+  const scale = SCALE_MAP[_scaleKey];
+  const grp   = document.getElementById('arp-deg-grp');
+  const sel   = document.getElementById('arp-deg-sel');
+  if (!scale?.ivs) { if (grp) grp.style.display = 'none'; return; }
+  if (grp) grp.style.display = '';
+  if (!sel) return;
+  sel.innerHTML = '';
+  const basePc = _scaleBase % 12;
+  const ROMAN  = ['I','II','III','IV','V','VI','VII','VIII'];
+  scale.ivs.forEach((iv, i) => {
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = `${ROMAN[i]} – ${NOTE_NAMES[(basePc + iv) % 12]}`;
+    sel.appendChild(o);
+  });
+  sel.value = Math.min(_scaleDeg, scale.ivs.length - 1);
 }
 
 function initArpUI() {
@@ -1092,6 +1179,13 @@ function initArpUI() {
     o.value = key; o.textContent = PAT_LABELS[key] ?? key; pSel.appendChild(o);
   });
   pSel.value = _arpStyle;
+  // Scale select
+  const scaleSel = document.getElementById('arp-scale-sel');
+  Object.entries(SCALE_MAP).forEach(([key, s]) => {
+    const o = document.createElement('option');
+    o.value = key; o.textContent = s.name; scaleSel.appendChild(o);
+  });
+  scaleSel.value = _scaleKey;
   setArpRoot(_arpRoot);
 }
 
