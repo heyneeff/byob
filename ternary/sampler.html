@@ -62,8 +62,64 @@ html,body{
 .kw .kv{font-size:7px;font-family:'DM Mono',monospace;color:#4848a0;min-width:36px;text-align:center;height:10px;}
 
 /* ── Hex wrap — fills remaining space ── */
-#hex-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px 8px 8px;}
+#hex-wrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px 8px 6px;}
 #hex-cv{display:block;touch-action:none;}
+
+/* ── ARP section ── */
+.arp-section{flex-shrink:0;border-top:1px solid #0e0e22;}
+.arp-steps-row{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 12px 4px;border-bottom:1px solid #0e0e1e;background:#020210;
+}
+.arp-dots{display:flex;gap:3px;align-items:center;flex:1;}
+.arp-dot{
+  width:9px;height:9px;border-radius:50%;
+  border:1.5px solid #1a1a30;background:#08081a;
+  flex-shrink:0;transition:background .05s,box-shadow .05s;
+}
+.arp-dot.on{background:#00e090;border-color:#00e090;box-shadow:0 0 5px rgba(0,224,144,.6);}
+.arp-dot.nxt{background:#081e16;border-color:#00e090;}
+.arp-form-lbl{font-size:7px;font-family:'DM Mono',monospace;color:#282850;flex-shrink:0;letter-spacing:.1em;}
+.arp-play-btn{
+  padding:4px 10px 3px;border-radius:3px;
+  border:1.5px solid #141430;background:#08081a;
+  color:#303060;font:700 10px 'Barlow Condensed',system-ui;
+  letter-spacing:.1em;cursor:pointer;flex-shrink:0;transition:all .1s;
+}
+.arp-play-btn.on{
+  border-color:#00e090;color:#00e090;
+  background:color-mix(in srgb,#00e090 10%,#08081a);
+  box-shadow:0 0 8px rgba(0,224,144,.2);
+}
+.arp-play-btn:active{transform:scale(.93);}
+.arp-ctrl-row{
+  display:flex;align-items:flex-end;gap:clamp(8px,2.5vw,20px);
+  padding:5px 12px 7px;background:#020210;
+  overflow-x:auto;scrollbar-width:none;
+}
+.arp-ctrl-row::-webkit-scrollbar{display:none;}
+.arp-grp{display:flex;flex-direction:column;gap:2px;flex-shrink:0;}
+.arp-lbl{font-size:7.5px;font-weight:700;letter-spacing:.18em;color:#303060;}
+select.arp-sel{
+  appearance:none;-webkit-appearance:none;
+  background:#08081a;border:1.5px solid #141430;
+  color:#606090;font:700 9px 'Barlow Condensed',system-ui;
+  letter-spacing:.06em;padding:4px 20px 3px 7px;border-radius:3px;
+  cursor:pointer;outline:none;min-width:108px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='7' height='4'%3E%3Cpath d='M0 0l3.5 4 3.5-4z' fill='%23303060'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 5px center;
+}
+select.arp-sel:focus{border-color:#303060;}
+.arp-root-ctrl{display:flex;align-items:center;gap:3px;margin-top:2px;}
+.arp-root-disp{font-size:13px;font-weight:700;color:#7070b0;min-width:30px;text-align:center;letter-spacing:.04em;}
+.arp-oct-btn{
+  width:19px;height:19px;border-radius:3px;
+  border:1.5px solid #141430;background:#08081a;
+  color:#383870;font-size:13px;line-height:1;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:color .1s;user-select:none;
+}
+.arp-oct-btn:active{color:#00e090;}
 
 /* ── Unlock overlay ── */
 #unlock{
@@ -141,6 +197,41 @@ html,body{
 
 <!-- Hex keyboard -->
 <div id="hex-wrap"><canvas id="hex-cv"></canvas></div>
+
+<!-- ARP section -->
+<div class="arp-section">
+  <div class="arp-steps-row">
+    <div class="arp-dots" id="arp-dots"></div>
+    <span class="arp-form-lbl" id="arp-form-lbl">○  ○  ○</span>
+    <button class="arp-play-btn" id="arp-play-btn" onclick="toggleArp()">▶ ARP</button>
+  </div>
+  <div class="arp-ctrl-row">
+    <div class="arp-grp">
+      <span class="arp-lbl">CHORD</span>
+      <select class="arp-sel" id="arp-chord-sel" onchange="setArpChord(this.value)"></select>
+    </div>
+    <div class="arp-grp">
+      <span class="arp-lbl">PATTERN</span>
+      <select class="arp-sel" id="arp-pat-sel" onchange="_arpStyle=this.value"></select>
+    </div>
+    <div class="kw" data-k="bpm">
+      <canvas width="40" height="40"></canvas>
+      <div class="kl">BPM</div><div class="kv">120</div>
+    </div>
+    <div class="kw" data-k="gate">
+      <canvas width="40" height="40"></canvas>
+      <div class="kl">GATE</div><div class="kv">50%</div>
+    </div>
+    <div class="arp-grp">
+      <span class="arp-lbl">ROOT</span>
+      <div class="arp-root-ctrl">
+        <button class="arp-oct-btn" onclick="shiftArpOct(-1)">−</button>
+        <span class="arp-root-disp" id="arp-root-disp">C4</span>
+        <button class="arp-oct-btn" onclick="shiftArpOct(+1)">+</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -270,11 +361,42 @@ const SAMPLE_MAP = {
 const TIMBRE = ['sepal','petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt'];
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['vib_damp','vib_shrt']);
+
+// ── Arp data ──────────────────────────────────────────────────────────────────
+const CHORD_MAP = {
+  PPP:{ sym:'☷', name:'Earth',    col:'#00e090', ivs:[0,4,7]     },
+  NNN:{ sym:'☰', name:'Heaven',   col:'#e8d840', ivs:[0,4,7,11]  },
+  NNP:{ sym:'☱', name:'Lake',     col:'#50c0e8', ivs:[0,4,7,9]   },
+  NPN:{ sym:'☲', name:'Fire',     col:'#e85030', ivs:[0,4,7,10]  },
+  PNP:{ sym:'☵', name:'Water',    col:'#3060e0', ivs:[0,3,7,10]  },
+  PNN:{ sym:'☴', name:'Wind',     col:'#50d870', ivs:[0,5,7,12]  },
+  NPP:{ sym:'☳', name:'Thunder',  col:'#9050e8', ivs:[0,3,6,10]  },
+  PPN:{ sym:'☶', name:'Mountain', col:'#8090a0', ivs:[0,3,6,9]   },
+};
+// 9-step × 3-form ternary arp patterns (trit: 1=high 0=mid −1=low, rst=rest mask)
+const ARP_PAT = {
+  UP:      {seq:[1,0,-1, 1,0,-1, 0,1,-1], rst:[1,1,1, 1,1,1, 1,1,1]},
+  DOWN:    {seq:[-1,0,1,-1,0,1, 0,-1,1],  rst:[1,1,1, 1,1,1, 1,1,1]},
+  BOUNCE:  {seq:[1,-1,0, 1,-1,0,-1,1,0],  rst:[1,1,1, 1,1,1, 1,1,1]},
+  FOLD:    {seq:[1,0,-1,-1,0,1, 0,1,-1],  rst:[1,1,1, 1,1,1, 1,1,1]},
+  SKIP:    {seq:[1,-1,1, 0,-1,0,-1,1,0],  rst:[1,0,1, 1,0,1, 1,0,1]},
+  PULSE:   {seq:[1,1,-1, 1,1,0, 1,-1,0],  rst:[1,1,1, 1,0,1, 1,1,0]},
+  CLAVE:   {seq:[1,-1,0, 1,-1,0, 1,0,-1], rst:[1,1,0, 1,0,1, 1,0,1]},
+  EUCLID:  {seq:[1,0,-1, 1,0,-1, 0,1,-1], rst:[1,0,1, 1,0,1, 0,1,0]},
+  STUTTER: {seq:[1,1,0,-1,-1,0, 1,-1,1],  rst:[1,0,1, 1,0,1, 1,1,0]},
+  OFFBEAT: {seq:[1,0,-1, 0,1,-1, 1,0,-1], rst:[0,1,1, 1,0,1, 1,1,0]},
+  PENDULUM:{seq:[-1,0,1, 0,-1,0, 1,-1,0], rst:[1,1,1, 1,1,1, 1,1,1]},
+  CONVERGE:{seq:[-1,1,0,-1,1,0, 0,-1,1],  rst:[1,1,1, 1,1,1, 1,1,1]},
+  LOCK:    {seq:[1,0,1,-1,0,-1, 1,-1,0],  rst:[1,1,0, 1,1,0, 1,0,1]},
+  GHOST:   {seq:[1,0,-1, 1,0,-1, 0,1,-1], rst:[1,0,0, 0,1,0, 0,0,1]},
+  SPIRAL:  {seq:[-1,0,1,-1,0,1, 1,-1,0],  rst:[1,1,1, 1,0,1, 1,1,1]},
+};
 const KNOB_COLOR = {
   atk:'#40e0ff', dec:'#ff6040', sus:'#40ff80', rel:'#c060ff',
-  warp:'#f04880', echo:'#00e090', tone:'#ffaa20', vol:'#c0c0ff'
+  warp:'#f04880', echo:'#00e090', tone:'#ffaa20', vol:'#c0c0ff',
+  bpm:'#ff80a0', gate:'#8090ff',
 };
-const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, tone:.5, vol:.75 };
+const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, tone:.5, vol:.75, bpm:.43, gate:.5 };
 
 // Wicki-Hayden: right=+2st, up-right=+7st
 const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 48; // C3 base — A3 sits comfortably in the middle
@@ -536,6 +658,8 @@ function knobDisplay(key, val) {
     case 'echo': return Math.round(val * 100) + '%';
     case 'tone': { const f = 200 * Math.pow(50, val); return f >= 1000 ? (f/1000).toFixed(1)+'k' : Math.round(f)+'Hz'; }
     case 'vol':  return Math.round(val * 100) + '%';
+    case 'bpm':  return Math.round(60 + val * 140) + ' bpm';
+    case 'gate': return Math.round(5 + val * 95) + '%';
   }
 }
 
@@ -551,19 +675,19 @@ function applyKnob(key) {
 }
 
 function refreshKnobs() {
-  document.querySelectorAll('#knob-row .kw').forEach(wrap => {
+  document.querySelectorAll('.kw').forEach(wrap => {
     const key = wrap.dataset.k;
-    const cv  = wrap.querySelector('canvas');
-    const vd  = wrap.querySelector('.kv');
-    drawKnob(cv, key, knobs[key]);
-    vd.textContent = knobDisplay(key, knobs[key]);
+    if (!key || knobs[key] == null) return;
+    drawKnob(wrap.querySelector('canvas'), key, knobs[key]);
+    const vd = wrap.querySelector('.kv');
+    if (vd) vd.textContent = knobDisplay(key, knobs[key]);
   });
 }
 
-// Knob drag interaction
-document.getElementById('knob-row').addEventListener('pointerdown', e => {
+// Knob drag interaction — document-level so arp knobs work too
+document.addEventListener('pointerdown', e => {
   const wrap = e.target.closest('.kw');
-  if (!wrap) return;
+  if (!wrap || wrap.dataset.k == null) return;
   e.target.setPointerCapture?.(e.pointerId);
   _dragging = { key: wrap.dataset.k, startY: e.clientY, startVal: knobs[wrap.dataset.k], wrap };
   e.preventDefault();
@@ -618,7 +742,22 @@ function sizeHex() {
 }
 
 function hexStyle(midi) {
-  const interval = ((midi - 57) % 12 + 12) % 12; // relative to A
+  if (_arpRunning || _arpFlashMidi >= 0) {
+    const pc     = midi % 12;
+    const rootPc = _arpRoot % 12;
+    const ivs    = CHORD_MAP[_arpChord].ivs;
+    const isFlash = _arpFlashMidi >= 0 && pc === _arpFlashMidi % 12;
+    const isRoot  = pc === rootPc;
+    const isChord = ivs.some(iv => (rootPc + iv) % 12 === pc);
+    const isAcc   = [0,1,0,1,0,0,1,0,1,0,1,0][pc];
+    if (isFlash) return {bg:'#002e22',border:'#00ffb8',text:'#00ffb8',glow:22};
+    if (isRoot)  return {bg:'#001e14',border:'#00e090',text:'#00e090',glow:16};
+    if (isChord) return {bg:'#091c16',border:'#005040',text:'#009070',glow:0};
+    if (isAcc)   return {bg:'#060610',border:'#0c0c1e',text:'#1c1c3a',glow:0};
+    return              {bg:'#08081a',border:'#12122a',text:'#26264e',glow:0};
+  }
+  // Free-play: Lumatone interval coloring from A
+  const interval = ((midi - 57) % 12 + 12) % 12;
   return INTERVAL_STYLE[interval] ?? INTERVAL_STYLE[6];
 }
 
@@ -705,6 +844,7 @@ hexCv.addEventListener('touchstart', e => {
     const hex = hitHex(p.x, p.y);
     if (!hex) continue;
     const midi = hexMidi(hex.q, hex.r);
+    setArpRoot(midi);
     const v    = noteOn(midi);
     if (v) {
       _active.set(t.identifier, { ...hex, midi, v });
@@ -769,6 +909,7 @@ hexCv.addEventListener('mousedown', e => {
   const hex = hitHex(e.offsetX * (hexCv.width / hexCv.clientWidth), e.offsetY * (hexCv.height / hexCv.clientHeight));
   if (!hex) return;
   const midi = hexMidi(hex.q, hex.r);
+  setArpRoot(midi);
   _mouseV = noteOn(midi); _mouseMidi = midi;
   _pressedMidi.add(midi); drawHex();
 });
@@ -812,6 +953,7 @@ document.addEventListener('keydown', e => {
   if (_keyVoices[e.code]) return;
   if (!_ctx) return;
   const midi = hexMidi(qr.q, qr.r);
+  setArpRoot(midi);
   const v = noteOn(midi);
   if (v) { _keyVoices[e.code] = { v, midi }; _pressedMidi.add(midi); drawHex(); }
 });
@@ -824,6 +966,132 @@ document.addEventListener('keyup', e => {
   delete _keyVoices[e.code];
   drawHex();
 });
+
+// ── Arpeggiator ───────────────────────────────────────────────────────────────
+let _arpRunning    = false;
+let _arpRoot       = 60;
+let _arpChord      = 'PPP';
+let _arpStyle      = 'UP';
+let _arpOct        = 0;
+let _arpStep       = 0;
+let _arpForm       = 0;
+let _arpTimer      = null;
+let _arpNextFireMs = 0;
+let _arpFlashMidi  = -1;
+
+const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
+function arpBpm()    { return Math.round(60 + knobs.bpm * 140); }
+function arpStepMs() { return 60000 / arpBpm() / 3; }
+
+function arpTritShift(t) { return t === 1 ? -1 : t + 1; }
+
+function arpStepMidi(step, form) {
+  const pat = ARP_PAT[_arpStyle] ?? ARP_PAT.UP;
+  let trit  = pat.seq[step];
+  if (form >= 1) trit = arpTritShift(trit);
+  if (form >= 2) trit = arpTritShift(trit);
+  const ivs   = CHORD_MAP[_arpChord].ivs;
+  const ivIdx = Math.min(trit === 1 ? 0 : trit === 0 ? 1 : 2, ivs.length - 1);
+  return _arpRoot + ivs[ivIdx] + _arpOct * 12;
+}
+
+function arpTick() {
+  if (!_arpRunning) return;
+  const pat = ARP_PAT[_arpStyle] ?? ARP_PAT.UP;
+  const sMs = arpStepMs();
+
+  if (pat.rst[_arpStep] && _ctx) {
+    const midi = arpStepMidi(_arpStep, _arpForm);
+    const v    = noteOn(midi);
+    if (v) {
+      const gateMs = sMs * (0.05 + knobs.gate * 0.95);
+      setTimeout(() => noteOff(v), Math.max(gateMs, 20));
+    }
+    _arpFlashMidi = midi;
+    drawHex();
+    setTimeout(() => { _arpFlashMidi = -1; drawHex(); }, 80);
+  }
+
+  updateArpDots();
+  if (++_arpStep >= 9) { _arpStep = 0; _arpForm = (_arpForm + 1) % 3; }
+
+  _arpNextFireMs += sMs;
+  _arpTimer = setTimeout(arpTick, Math.max(0, _arpNextFireMs - Date.now()));
+}
+
+function updateArpDots() {
+  const prev = (_arpStep + 8) % 9;
+  document.querySelectorAll('.arp-dot').forEach((d, i) => {
+    d.classList.toggle('on',  _arpRunning && i === prev);
+    d.classList.toggle('nxt', _arpRunning && i === _arpStep);
+  });
+  const FORMS = ['○  ○  ○', '●  ○  ○', '●  ●  ○'];
+  document.getElementById('arp-form-lbl').textContent =
+    _arpRunning ? FORMS[_arpForm] : '○  ○  ○';
+}
+
+function toggleArp() {
+  if (_arpRunning) {
+    _arpRunning = false;
+    clearTimeout(_arpTimer); _arpTimer = null;
+    _arpFlashMidi = -1; _arpStep = 0; _arpForm = 0;
+    document.getElementById('arp-play-btn').className = 'arp-play-btn';
+    document.getElementById('arp-play-btn').textContent = '▶ ARP';
+  } else {
+    if (!_ctx) return;
+    _arpRunning = true; _arpStep = 0; _arpForm = 0;
+    _arpNextFireMs = Date.now();
+    document.getElementById('arp-play-btn').className = 'arp-play-btn on';
+    document.getElementById('arp-play-btn').textContent = '■ ARP';
+    arpTick();
+  }
+  drawHex(); updateArpDots();
+}
+
+function setArpRoot(midi) {
+  _arpRoot = midi;
+  const el = document.getElementById('arp-root-disp');
+  if (el) el.textContent = NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+  if (_arpRunning) drawHex();
+}
+
+function setArpChord(key) {
+  _arpChord = key;
+  if (_arpRunning) drawHex();
+}
+
+function shiftArpOct(d) {
+  _arpOct = Math.max(-2, Math.min(2, _arpOct + d));
+}
+
+function initArpUI() {
+  // 9 step dots
+  const dotsEl = document.getElementById('arp-dots');
+  for (let i = 0; i < 9; i++) {
+    const d = document.createElement('div'); d.className = 'arp-dot'; dotsEl.appendChild(d);
+  }
+  // Chord select
+  const cSel = document.getElementById('arp-chord-sel');
+  Object.entries(CHORD_MAP).forEach(([key, c]) => {
+    const o = document.createElement('option');
+    o.value = key; o.textContent = `${c.sym} ${c.name}`; cSel.appendChild(o);
+  });
+  cSel.value = _arpChord;
+  // Pattern select
+  const pSel = document.getElementById('arp-pat-sel');
+  const PAT_LABELS = {
+    UP:'↑ UP', DOWN:'↓ DOWN', BOUNCE:'↕ BOUNCE', FOLD:'↕↑ FOLD',
+    SKIP:'· SKIP', PULSE:'● PULSE', CLAVE:'3+2 CLAVE', EUCLID:'5/9 EUCLID',
+    STUTTER:'× STUTTER', OFFBEAT:'⇢ OFFBEAT', PENDULUM:'~ PENDULUM',
+    CONVERGE:'⟩⟨ CONVERGE', LOCK:'⌛ LOCK', GHOST:'· GHOST', SPIRAL:'↗ SPIRAL',
+  };
+  Object.keys(ARP_PAT).forEach(key => {
+    const o = document.createElement('option');
+    o.value = key; o.textContent = PAT_LABELS[key] ?? key; pSel.appendChild(o);
+  });
+  pSel.value = _arpStyle;
+  setArpRoot(_arpRoot);
+}
 
 // ── Unlock / init ─────────────────────────────────────────────────────────────
 async function unlock() {
@@ -846,6 +1114,7 @@ function layout() {
 
 window.addEventListener('resize', layout);
 window.addEventListener('orientationchange', () => setTimeout(layout, 150));
+initArpUI();
 layout();
 setSample(0);
 </script>
