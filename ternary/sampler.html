@@ -757,6 +757,41 @@ hexCv.addEventListener('mousemove', e => {
   if (_mouseV) { noteOff(_mouseV); _pressedMidi.delete(_mouseMidi); _mouseV = null; drawHex(); }
 }));
 
+// ── Keyboard mapping (Wicki-Hayden, 4 rows × 10 columns) ─────────────────────
+// Z row = r=0 (C3…), A row = r=1 (G3…), Q row = r=2 (D4…), digit row = r=3 (A4…)
+const KEY_QR = {
+  'KeyZ':{q:0,r:0},'KeyX':{q:1,r:0},'KeyC':{q:2,r:0},'KeyV':{q:3,r:0},'KeyB':{q:4,r:0},
+  'KeyN':{q:5,r:0},'KeyM':{q:6,r:0},'Comma':{q:7,r:0},'Period':{q:8,r:0},'Slash':{q:9,r:0},
+  'KeyA':{q:0,r:1},'KeyS':{q:1,r:1},'KeyD':{q:2,r:1},'KeyF':{q:3,r:1},'KeyG':{q:4,r:1},
+  'KeyH':{q:5,r:1},'KeyJ':{q:6,r:1},'KeyK':{q:7,r:1},'KeyL':{q:8,r:1},'Semicolon':{q:9,r:1},
+  'KeyQ':{q:0,r:2},'KeyW':{q:1,r:2},'KeyE':{q:2,r:2},'KeyR':{q:3,r:2},'KeyT':{q:4,r:2},
+  'KeyY':{q:5,r:2},'KeyU':{q:6,r:2},'KeyI':{q:7,r:2},'KeyO':{q:8,r:2},'KeyP':{q:9,r:2},
+  'Digit1':{q:0,r:3},'Digit2':{q:1,r:3},'Digit3':{q:2,r:3},'Digit4':{q:3,r:3},'Digit5':{q:4,r:3},
+  'Digit6':{q:5,r:3},'Digit7':{q:6,r:3},'Digit8':{q:7,r:3},'Digit9':{q:8,r:3},'Digit0':{q:9,r:3},
+};
+const _keyVoices = {};
+
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  const qr = KEY_QR[e.code];
+  if (!qr) return;
+  e.preventDefault();
+  if (_keyVoices[e.code]) return;
+  if (!_ctx) return;
+  const midi = hexMidi(qr.q, qr.r);
+  const v = noteOn(midi);
+  if (v) { _keyVoices[e.code] = { v, midi }; _pressedMidi.add(midi); drawHex(); }
+});
+
+document.addEventListener('keyup', e => {
+  const entry = _keyVoices[e.code];
+  if (!entry) return;
+  noteOff(entry.v);
+  _pressedMidi.delete(entry.midi);
+  delete _keyVoices[e.code];
+  drawHex();
+});
+
 // ── Unlock / init ─────────────────────────────────────────────────────────────
 async function unlock() {
   const tap = document.querySelector('#unlock .u-tap');
