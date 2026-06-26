@@ -142,7 +142,7 @@ const KNOB_COLOR = {
 const KNOB_DEFAULT = { warp:0, echo:0, tone:.5, decay:.25, vol:.75 };
 
 // Wicki-Hayden: right=+2st, up-right=+7st
-const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 36; // C2 base
+const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 48; // C3 base — A3 sits comfortably in the middle
 
 // Lumatone-style interval colors from A (root = interval 0)
 const INTERVAL_STYLE = {
@@ -217,11 +217,13 @@ function initAudio() {
 }
 
 async function loadSamples() {
+  if (!_ctx) return;
   await Promise.all(Object.entries(SAMPLE_URL).map(async ([t, url]) => {
     if (_bufs[t]) return;
     try {
       const ab = await (await fetch(url)).arrayBuffer();
-      _bufs[t] = await _ctx.decodeAudioData(ab);
+      // Use callback form — Safari doesn't return a Promise from decodeAudioData
+      _bufs[t] = await new Promise((res, rej) => _ctx.decodeAudioData(ab, res, rej));
       console.log('[sampler] loaded', t, url);
     } catch(e) { console.warn('[sampler] failed', url, e.message); }
   }));
@@ -301,7 +303,7 @@ function setSample(t) {
   _active.clear();
   _pressedMidi.clear();
   drawHex();
-  loadSamples(); // ensure loaded
+  if (_ctx) loadSamples(); // ensure all timbres are decoded
 }
 
 // ── Knob system ───────────────────────────────────────────────────────────────
@@ -416,18 +418,21 @@ function hexCenter(q, r) {
 
 function sizeHex() {
   const wrap  = document.getElementById('hex-wrap');
-  const W     = wrap.clientWidth  - 16;
+  const W     = wrap.clientWidth  - 8;
   const H     = wrap.clientHeight - 8;
   _hexCols    = Math.max(6, Math.min(14, Math.floor(W / 42)));
-  _hexRows    = Math.max(4, Math.min(7,  Math.floor(H / 48)));
+  _hexRows    = Math.max(3, Math.min(6,  Math.floor(H / 52)));
   _hexR       = Math.min(
     W / (Math.sqrt(3) * (_hexCols + (_hexRows - 1) / 2 + .5)),
     H / (1.5 * _hexRows + .5)
   );
   hexCv.width  = Math.ceil(W);
   hexCv.height = Math.ceil(H);
-  _hexOX = _hexR * Math.sqrt(3) * .5;
-  _hexOY = hexCv.height - _hexR * .75;
+  // Center keyboard both axes
+  const kbW = _hexR * Math.sqrt(3) * (_hexCols + (_hexRows - 1) / 2);
+  _hexOX = (hexCv.width - kbW) / 2 + _hexR * Math.sqrt(3) / 2;
+  // _hexOY = y-center of bottom row (r=0); derived from centering total kbH
+  _hexOY = hexCv.height / 2 + _hexR * 0.75 * (_hexRows - 1);
 }
 
 function hexStyle(midi) {
@@ -473,9 +478,9 @@ function drawHex() {
       hexCtx.lineWidth   = pressed ? 2 : 1.5;
       hexCtx.stroke();
 
-      // Note label
+      // Note label (MIDI pitch class 0 = C)
       const pc   = midi % 12;
-      const NOTE = ['A','A♯','B','C','C♯','D','D♯','E','F','F♯','G','G♯'];
+      const NOTE = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
       const oct  = Math.floor(midi / 12) - 1;
       hexCtx.textAlign = 'center'; hexCtx.textBaseline = 'middle';
       hexCtx.font      = `700 ${Math.round(_hexR * 0.42)}px 'Barlow Condensed',system-ui`;
@@ -602,11 +607,13 @@ hexCv.addEventListener('mousemove', e => {
 
 // ── Unlock / init ─────────────────────────────────────────────────────────────
 async function unlock() {
-  document.getElementById('unlock').style.display = 'none';
+  const tap = document.querySelector('#unlock .u-tap');
+  if (tap) tap.textContent = 'LOADING...';
   initAudio();
   if (_ctx.state === 'suspended') await _ctx.resume();
   applyKnob('tone'); applyKnob('vol');
   await loadSamples();
+  document.getElementById('unlock').style.display = 'none';
   console.log('[sampler] ready — playing through', _ctx.destination.channelCount, 'ch');
 }
 
