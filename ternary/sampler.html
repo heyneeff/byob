@@ -92,6 +92,16 @@ html,body{
   box-shadow:0 0 8px rgba(0,224,144,.2);
 }
 .arp-play-btn:active{transform:scale(.93);}
+.seq-chip{
+  padding:3px 7px 2px;border-radius:3px;
+  border:1.5px solid #141430;background:#08081a;
+  font:700 9px 'Barlow Condensed',system-ui;
+  letter-spacing:.05em;color:#303060;
+  cursor:pointer;flex-shrink:0;
+  transition:background .05s,border-color .05s,color .05s;
+}
+.seq-chip.on{background:#001e14;border-color:#00e090;color:#00e090;box-shadow:0 0 6px rgba(0,224,144,.4);}
+.seq-chip:active{transform:scale(.9);}
 .arp-ctrl-row{
   display:flex;align-items:flex-end;gap:clamp(8px,2.5vw,20px);
   padding:5px 12px 7px;background:#020210;
@@ -209,7 +219,10 @@ select.arp-sel:focus{border-color:#303060;}
 <div class="arp-section">
   <div class="arp-steps-row">
     <div class="arp-dots" id="arp-dots"></div>
+    <div class="arp-dots" id="seq-chips" style="display:none"></div>
     <span class="arp-form-lbl" id="arp-form-lbl">○  ○  ○</span>
+    <button class="arp-play-btn" id="seq-mode-btn" onclick="toggleSeqMode()">SEQ</button>
+    <button class="arp-play-btn" id="seq-clear-btn" onclick="seqClear()" style="display:none">CLR</button>
     <button class="arp-play-btn" id="arp-play-btn" onclick="toggleArp()">▶ ARP</button>
   </div>
   <div class="arp-ctrl-row">
@@ -366,7 +379,7 @@ const SAMPLE_MAP = {
 };
 const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt'];
 // timbres whose samples decay naturally — looping would repeat silence
-const TIMBRE_NOLOOP = new Set(['vib_damp','vib_shrt']);
+const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt']);
 
 // ── Arp data ──────────────────────────────────────────────────────────────────
 const CHORD_MAP = {
@@ -925,6 +938,7 @@ hexCv.addEventListener('touchstart', e => {
       _active.set(t.identifier, { ...hex, midi, v });
       _pressedMidi.add(midi);
     }
+    if (_seqMode && !_arpRunning) seqAddNote(midi);
   }
   drawHex();
 }, { passive: false });
@@ -987,6 +1001,7 @@ hexCv.addEventListener('mousedown', e => {
   setArpRoot(midi);
   _mouseV = noteOn(midi); _mouseMidi = midi;
   if (_mouseV) _pressedMidi.add(midi);
+  if (_seqMode && !_arpRunning) seqAddNote(midi);
   drawHex();
 });
 hexCv.addEventListener('mousemove', e => {
@@ -1024,6 +1039,12 @@ document.addEventListener('keydown', e => {
   // [ ] cycle through instrument chips
   if (e.code === 'BracketLeft')  { e.preventDefault(); setSample((_sample + TIMBRE.length - 1) % TIMBRE.length); return; }
   if (e.code === 'BracketRight') { e.preventDefault(); setSample((_sample + 1) % TIMBRE.length); return; }
+  // Backspace removes last seq note
+  if (e.code === 'Backspace' && _seqMode && !_arpRunning) {
+    e.preventDefault();
+    if (_seqNotes.length > 0) { _seqNotes.pop(); renderSeqChips(); updateArpDots(); }
+    return;
+  }
   const qr = KEY_QR[e.code];
   if (!qr) return;
   e.preventDefault();
@@ -1033,6 +1054,7 @@ document.addEventListener('keydown', e => {
   setArpRoot(midi);
   const v = noteOn(midi);
   if (v) { _keyVoices[e.code] = { v, midi }; _pressedMidi.add(midi); drawHex(); }
+  if (_seqMode && !_arpRunning) seqAddNote(midi);
 });
 
 document.addEventListener('keyup', e => {
@@ -1055,6 +1077,10 @@ let _arpForm       = 0;
 let _arpTimer      = null;
 let _arpNextFireMs = 0;
 let _arpFlashMidi  = -1;
+let _seqMode       = false;
+let _seqNotes      = [];
+let _seqStep       = 0;
+let _seqFlashIdx   = -1;
 let _scaleKey      = 'none';
 let _scaleDeg      = 0;
 let _scaleBase     = 60;
@@ -1088,6 +1114,36 @@ function arpStepMidi(step, form) {
 
 function arpTick() {
   if (!_arpRunning) return;
+
+  if (_seqMode) {
+    const stepMs = arpSwingMs(_seqStep);
+    if (_seqNotes.length > 0 && _ctx) {
+      const seqIdx  = _seqStep % _seqNotes.length;
+      const midi    = _seqNotes[seqIdx];
+      const v       = noteOn(midi);
+      if (v) {
+        const gateMs = stepMs * (0.05 + knobs.gate * 0.95);
+        setTimeout(() => noteOff(v), Math.max(gateMs, 20));
+      }
+      const prev    = _seqFlashIdx;
+      _seqFlashIdx  = seqIdx;
+      _arpFlashMidi = midi;
+      updateSeqFlash(prev, seqIdx);
+      drawHex();
+      setTimeout(() => {
+        updateSeqFlash(_seqFlashIdx, -1);
+        _seqFlashIdx = -1; _arpFlashMidi = -1;
+        drawHex();
+      }, 80);
+      _seqStep++;
+      updateArpDots();
+    }
+    _arpNextFireMs += stepMs;
+    if (_arpNextFireMs < Date.now() - stepMs * 2) _arpNextFireMs = Date.now();
+    _arpTimer = setTimeout(arpTick, Math.max(0, _arpNextFireMs - Date.now()));
+    return;
+  }
+
   const pat    = ARP_PAT[_arpStyle] ?? ARP_PAT.UP;
   const stepMs = arpSwingMs(_arpStep);
 
@@ -1112,14 +1168,79 @@ function arpTick() {
 }
 
 function updateArpDots() {
+  const lbl = document.getElementById('arp-form-lbl');
+  if (_seqMode) {
+    if (!lbl) return;
+    if (_seqNotes.length === 0) { lbl.textContent = ''; return; }
+    const cur = _seqFlashIdx >= 0 ? _seqFlashIdx + 1 : (_seqStep % _seqNotes.length) + 1;
+    lbl.textContent = _arpRunning
+      ? `${cur} / ${_seqNotes.length}`
+      : `${_seqNotes.length} step${_seqNotes.length !== 1 ? 's' : ''}`;
+    return;
+  }
   const prev = (_arpStep + 8) % 9;
   document.querySelectorAll('.arp-dot').forEach((d, i) => {
     d.classList.toggle('on',  _arpRunning && i === prev);
     d.classList.toggle('nxt', _arpRunning && i === _arpStep);
   });
   const FORMS = ['○  ○  ○', '●  ○  ○', '●  ●  ○'];
-  document.getElementById('arp-form-lbl').textContent =
-    _arpRunning ? FORMS[_arpForm] : '○  ○  ○';
+  if (lbl) lbl.textContent = _arpRunning ? FORMS[_arpForm] : '○  ○  ○';
+}
+
+function toggleSeqMode() {
+  _seqMode = !_seqMode;
+  _seqStep = 0; _seqFlashIdx = -1;
+  document.getElementById('seq-mode-btn').className = _seqMode ? 'arp-play-btn on' : 'arp-play-btn';
+  document.getElementById('arp-dots').style.display  = _seqMode ? 'none' : '';
+  document.getElementById('seq-chips').style.display = _seqMode ? '' : 'none';
+  renderSeqChips();
+  updateArpDots();
+  drawHex();
+}
+
+function seqAddNote(midi) {
+  _seqNotes.push(midi);
+  renderSeqChips();
+  updateArpDots();
+}
+
+function seqClear() {
+  _seqNotes = []; _seqStep = 0; _seqFlashIdx = -1;
+  renderSeqChips();
+  updateArpDots();
+}
+
+function renderSeqChips() {
+  const el = document.getElementById('seq-chips');
+  if (!el) return;
+  el.innerHTML = '';
+  const clr = document.getElementById('seq-clear-btn');
+  if (clr) clr.style.display = (_seqMode && _seqNotes.length > 0) ? '' : 'none';
+  if (_seqNotes.length === 0) {
+    const hint = document.createElement('span');
+    hint.style.cssText = 'font-size:9px;color:#1a1a34;letter-spacing:.08em;align-self:center;';
+    hint.textContent = 'tap notes to build sequence';
+    el.appendChild(hint);
+    return;
+  }
+  _seqNotes.forEach((midi, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'seq-chip' + (i === _seqFlashIdx ? ' on' : '');
+    chip.textContent = NOTE_NAMES[midi % 12] + (Math.floor(midi / 12) - 1);
+    chip.addEventListener('click', () => {
+      _seqNotes.splice(i, 1);
+      if (_seqStep >= _seqNotes.length) _seqStep = 0;
+      renderSeqChips(); updateArpDots();
+    });
+    el.appendChild(chip);
+  });
+}
+
+function updateSeqFlash(fromIdx, toIdx) {
+  const chips = document.getElementById('seq-chips')?.querySelectorAll('.seq-chip');
+  if (!chips) return;
+  if (fromIdx >= 0 && chips[fromIdx]) chips[fromIdx].classList.remove('on');
+  if (toIdx   >= 0 && chips[toIdx])   chips[toIdx].classList.add('on');
 }
 
 function toggleArp() {
@@ -1127,11 +1248,13 @@ function toggleArp() {
     _arpRunning = false;
     clearTimeout(_arpTimer); _arpTimer = null;
     _arpFlashMidi = -1; _arpStep = 0; _arpForm = 0;
+    if (_seqMode) { _seqFlashIdx = -1; renderSeqChips(); }
     document.getElementById('arp-play-btn').className = 'arp-play-btn';
     document.getElementById('arp-play-btn').textContent = '▶ ARP';
   } else {
     if (!_ctx) return;
     _arpRunning = true; _arpStep = 0; _arpForm = 0;
+    if (_seqMode) { _seqStep = 0; _seqFlashIdx = -1; renderSeqChips(); }
     _arpNextFireMs = Date.now();
     document.getElementById('arp-play-btn').className = 'arp-play-btn on';
     document.getElementById('arp-play-btn').textContent = '■ ARP';
@@ -1216,6 +1339,8 @@ function savePreset() {
         arpStyle: _arpStyle,
         scaleKey: _scaleKey,
         scaleDeg: _scaleDeg,
+        seqMode:  _seqMode,
+        seqNotes: [..._seqNotes],
       }));
     } catch(e) {}
   }, 400);
@@ -1232,6 +1357,8 @@ function loadPreset() {
     if (d.arpStyle && ARP_PAT[d.arpStyle])   _arpStyle = d.arpStyle;
     if (d.scaleKey && SCALE_MAP[d.scaleKey]) _scaleKey = d.scaleKey;
     if (d.scaleDeg != null) _scaleDeg = d.scaleDeg;
+    if (d.seqMode  != null) _seqMode  = d.seqMode;
+    if (Array.isArray(d.seqNotes)) _seqNotes = d.seqNotes;
   } catch(e) {}
 }
 
@@ -1269,6 +1396,13 @@ function initArpUI() {
   });
   scaleSel.value = _scaleKey;
   setArpRoot(_arpRoot);
+  if (_seqMode) {
+    document.getElementById('seq-mode-btn').className = 'arp-play-btn on';
+    document.getElementById('arp-dots').style.display  = 'none';
+    document.getElementById('seq-chips').style.display = '';
+    renderSeqChips();
+  }
+  updateArpDots();
 }
 
 // ── Unlock / init ─────────────────────────────────────────────────────────────
