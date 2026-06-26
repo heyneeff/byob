@@ -320,6 +320,6 @@
     }
   })();
 
-  window._terOrchid = { start, stop, toggle, ROLE_NAME, ROLE_COLOR };
+  window._terOrchid = { start, stop, toggle, forceTick: tick, ROLE_NAME, ROLE_COLOR };
   console.log('[orchid] Iowa tape warp machine — sepal · petal · lip · bloom@45s');
 })();

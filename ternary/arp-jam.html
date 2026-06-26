@@ -93,6 +93,15 @@ input[type=range]::-webkit-slider-thumb{
 .play-btn:active{transform:scale(.96);}
 .pad-btn{background:var(--card);border:1.5px solid var(--rim);color:#9060c0;}
 .pad-btn.on{background:#1a0a2e;border-color:#9060c0;color:#c090ff;box-shadow:0 0 16px rgba(144,96,192,.25);}
+.orchid-btn{background:var(--card);border:1.5px solid var(--rim);color:#f04880;}
+.orchid-btn.on{background:#1a0015;border-color:#f04880;color:#ff60a0;box-shadow:0 0 16px rgba(240,72,128,.25);}
+.role-row{display:flex;gap:4px;margin-bottom:8px;}
+.role-btn{flex:1;padding:8px 4px 6px;border-radius:6px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;text-align:center;transition:all .1s;user-select:none;}
+.role-btn .rb-name{display:block;font-size:10px;font-weight:700;letter-spacing:.1em;color:#6060a0;}
+.role-btn .rb-sub {display:block;font-size:7px;color:var(--muted);margin-top:2px;font-family:var(--mono);letter-spacing:.04em;}
+.role-btn.active .rb-name{color:#f04880;}
+.role-btn.active{border-color:#f04880;background:#1a0015;}
+.role-btn:active{transform:scale(.95);}
 </style>
 </head>
 <body>
@@ -190,20 +199,58 @@ input[type=range]::-webkit-slider-thumb{
   </div>
 </div>
 
+<!-- ORCHID — Iowa strings -->
+<div class="section">
+  <div class="lbl">Orchid — Iowa strings</div>
+  <div class="role-row">
+    <button class="role-btn" id="role-sepal" onclick="setOrchidRole(-1)">
+      <span class="rb-name">SEPAL</span><span class="rb-sub">cello ff · A3</span>
+    </button>
+    <button class="role-btn active" id="role-petal" onclick="setOrchidRole(0)">
+      <span class="rb-name">PETAL</span><span class="rb-sub">cello mf · A3</span>
+    </button>
+    <button class="role-btn" id="role-lip" onclick="setOrchidRole(1)">
+      <span class="rb-name">LIP</span><span class="rb-sub">violin pp · A4</span>
+    </button>
+  </div>
+  <div class="sl-row">
+    <span class="sl-lbl">Warp</span>
+    <input type="range" id="sl-warp" min="0" max="200" value="0" style="--pct:0%" oninput="onWarp(this)"/>
+    <span class="sl-val" id="vl-warp">0ms</span>
+  </div>
+  <div class="sl-meta"><span>locked</span><span>heavy flutter</span></div>
+</div>
+
 <!-- Play row -->
 <div class="play-row">
   <button class="play-btn off" id="arp-btn" onclick="toggleArp()">▶ ARP</button>
   <button class="play-btn pad-btn off" id="pad-btn" onclick="togglePad()">♩ PAD</button>
+  <button class="play-btn orchid-btn off" id="orchid-btn" onclick="toggleOrchid()">🌸 ORCHID</button>
 </div>
 
 <script src="arp.js?v=3"></script>
 <script src="pad.js?v=3"></script>
+<script src="orchid.js?v=1"></script>
 <script>
 // ── Standalone stubs ──────────────────────────────────────────────────────────
 window.syncedNow  = () => Date.now();
 window._masterBPM = null;
 const _refMs = Date.now() - (Date.now() % (27 * 500));
 window._terGetZone = () => ({ playback_started_at: new Date(_refMs).toISOString() });
+
+// Orchid stubs — role and lag driven by UI controls in standalone mode
+window.listenerId = 'jam_' + Math.random().toString(36).slice(2, 8);
+window.db = null;  // no peer channel in standalone — orchid skips subscription gracefully
+
+let _orchidTrit  = 0;    // Z = petal default
+let _orchidLagMs = 0;
+
+window._terLayer = {
+  history: () => [{
+    trit:  _orchidTrit === 1 ? 'P' : _orchidTrit === -1 ? 'N' : 'Z',
+    lagMs: _orchidLagMs,
+  }],
+};
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 const NOTE_NAMES    = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
@@ -573,6 +620,41 @@ function animateSteps() {
     }
   }
   requestAnimationFrame(animateSteps);
+}
+
+// ── ORCHID ────────────────────────────────────────────────────────────────────
+let _orchidRunning = false;
+
+function toggleOrchid() {
+  _orchidRunning = !_orchidRunning;
+  const btn = document.getElementById('orchid-btn');
+  if (_orchidRunning) {
+    window._terOrchid?.start();
+    btn.className = 'play-btn orchid-btn on';
+    btn.textContent = '■ ORCHID';
+  } else {
+    window._terOrchid?.stop();
+    btn.className = 'play-btn orchid-btn off';
+    btn.textContent = '🌸 ORCHID';
+  }
+}
+
+const ROLE_IDS = { [-1]: 'sepal', [0]: 'petal', [1]: 'lip' };
+
+function setOrchidRole(trit) {
+  _orchidTrit = trit;
+  document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`role-${ROLE_IDS[trit]}`)?.classList.add('active');
+  // Immediate role switch if running — no waiting for next 5s tick
+  if (_orchidRunning) window._terOrchid?.forceTick?.();
+}
+
+function onWarp(el) {
+  _orchidLagMs = +el.value;
+  document.getElementById('vl-warp').textContent = _orchidLagMs + 'ms';
+  el.style.setProperty('--pct', pct(+el.value, 0, 200));
+  // Update warp live if orchid is running
+  if (_orchidRunning) window._terOrchid?.forceTick?.();
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
