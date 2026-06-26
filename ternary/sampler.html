@@ -48,11 +48,14 @@ html,body{
 /* ── Knob row — OP-1: encoder bank across the top ── */
 .knob-row{
   display:flex;justify-content:center;align-items:flex-end;
-  gap:clamp(10px,3.5vw,36px);
+  gap:clamp(8px,2.8vw,30px);
   padding:6px 16px 8px;
   border-bottom:1px solid #0e0e22;
   flex-shrink:0;background:#020210;
+  overflow-x:auto;scrollbar-width:none;
 }
+.knob-row::-webkit-scrollbar{display:none;}
+.knob-sep{width:1px;height:32px;background:#141430;align-self:center;flex-shrink:0;}
 .kw{display:flex;flex-direction:column;align-items:center;gap:2px;touch-action:none;}
 .kw canvas{cursor:ns-resize;display:block;touch-action:none;}
 .kw .kl{font-size:7.5px;font-weight:700;letter-spacing:.18em;color:#303060;margin-top:3px;}
@@ -101,24 +104,37 @@ html,body{
 
 <!-- Knob row -->
 <div class="knob-row" id="knob-row">
+  <div class="kw" data-k="atk">
+    <canvas width="48" height="48"></canvas>
+    <div class="kl">ATK</div><div class="kv">13ms</div>
+  </div>
+  <div class="kw" data-k="dec">
+    <canvas width="48" height="48"></canvas>
+    <div class="kl">DEC</div><div class="kv">209ms</div>
+  </div>
+  <div class="kw" data-k="sus">
+    <canvas width="48" height="48"></canvas>
+    <div class="kl">SUS</div><div class="kv">85%</div>
+  </div>
+  <div class="kw" data-k="rel">
+    <canvas width="48" height="48"></canvas>
+    <div class="kl">REL</div><div class="kv">1.3s</div>
+  </div>
+  <div class="knob-sep"></div>
   <div class="kw" data-k="warp">
-    <canvas width="52" height="52"></canvas>
+    <canvas width="48" height="48"></canvas>
     <div class="kl">WARP</div><div class="kv">0%</div>
   </div>
   <div class="kw" data-k="echo">
-    <canvas width="52" height="52"></canvas>
+    <canvas width="48" height="48"></canvas>
     <div class="kl">ECHO</div><div class="kv">0%</div>
   </div>
   <div class="kw" data-k="tone">
-    <canvas width="52" height="52"></canvas>
+    <canvas width="48" height="48"></canvas>
     <div class="kl">TONE</div><div class="kv">3.0k</div>
   </div>
-  <div class="kw" data-k="decay">
-    <canvas width="52" height="52"></canvas>
-    <div class="kl">DECAY</div><div class="kv">1.0s</div>
-  </div>
   <div class="kw" data-k="vol">
-    <canvas width="52" height="52"></canvas>
+    <canvas width="48" height="48"></canvas>
     <div class="kl">VOL</div><div class="kv">75%</div>
   </div>
 </div>
@@ -255,9 +271,10 @@ const TIMBRE = ['sepal','petal','lip','bass_cl','flute','vib','vib_damp','vib_sh
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['vib_damp','vib_shrt']);
 const KNOB_COLOR = {
-  warp:'#f04880', echo:'#00e090', tone:'#ffaa20', decay:'#8060e0', vol:'#c0c0ff'
+  atk:'#40e0ff', dec:'#ff6040', sus:'#40ff80', rel:'#c060ff',
+  warp:'#f04880', echo:'#00e090', tone:'#ffaa20', vol:'#c0c0ff'
 };
-const KNOB_DEFAULT = { warp:0, echo:0, tone:.5, decay:.25, vol:.75 };
+const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, tone:.5, vol:.75 };
 
 // Wicki-Hayden: right=+2st, up-right=+7st
 const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 48; // C3 base — A3 sits comfortably in the middle
@@ -398,9 +415,15 @@ function noteOn(midi) {
   const rate  = Math.pow(2, (midi - rootMidi) / 12);
   const now   = _ctx.currentTime;
 
+  const peak = 0.82;
+  const atk  = 0.003 + knobs.atk * 1.997;
+  const dec  = 0.01  + knobs.dec * 1.99;
+  const sus  = knobs.sus * peak;
+
   v.gain = _ctx.createGain();
   v.gain.gain.setValueAtTime(0, now);
-  v.gain.gain.linearRampToValueAtTime(0.82, now + 0.018);
+  v.gain.gain.linearRampToValueAtTime(peak, now + atk);
+  v.gain.gain.setTargetAtTime(Math.max(sus, 0.001), now + atk, dec * 0.35);
   v.gain.connect(_fx.filt);
 
   v.src = _ctx.createBufferSource();
@@ -431,13 +454,16 @@ function noteOn(midi) {
 
 function noteOff(v) {
   if (!v || !v.busy || !_ctx) return;
-  const decayS = 0.1 + knobs.decay * 3.9;
-  const now    = _ctx.currentTime;
-  v.gain?.gain.setTargetAtTime(0.0001, now, decayS * 0.28);
-  const stopAt = now + decayS * 1.4;
+  const rel  = 0.01 + knobs.rel * 4.99;
+  const now  = _ctx.currentTime;
+  const cur  = Math.max(v.gain.gain.value, 0.001);
+  v.gain.gain.cancelScheduledValues(now);
+  v.gain.gain.setValueAtTime(cur, now);
+  v.gain.gain.exponentialRampToValueAtTime(0.0001, now + rel);
+  const stopAt = now + rel + 0.05;
   try { v.src?.stop(stopAt); } catch(e) {}
   try { v.lfo?.stop(stopAt); } catch(e) {}
-  setTimeout(() => { v.busy = false; v.src = null; v.gain = null; v.lfo = null; v.lfoG = null; }, (decayS * 1400) + 100);
+  setTimeout(() => { v.busy=false; v.src=null; v.gain=null; v.lfo=null; v.lfoG=null; }, (rel + 0.1) * 1000);
 }
 
 function killVoice(v) {
@@ -499,13 +525,17 @@ function drawKnob(canvas, key, val) {
   c.fillStyle = '#101020'; c.fill();
 }
 
+function fmtSecs(s) { return s < 1 ? Math.round(s * 1000) + 'ms' : s.toFixed(1) + 's'; }
 function knobDisplay(key, val) {
   switch(key) {
-    case 'warp':  return Math.round(val * 100) + '%';
-    case 'echo':  return Math.round(val * 100) + '%';
+    case 'atk':  return fmtSecs(0.003 + val * 1.997);
+    case 'dec':  return fmtSecs(0.01  + val * 1.99);
+    case 'sus':  return Math.round(val * 100) + '%';
+    case 'rel':  return fmtSecs(0.01  + val * 4.99);
+    case 'warp': return Math.round(val * 100) + '%';
+    case 'echo': return Math.round(val * 100) + '%';
     case 'tone': { const f = 200 * Math.pow(50, val); return f >= 1000 ? (f/1000).toFixed(1)+'k' : Math.round(f)+'Hz'; }
-    case 'decay': return (0.1 + val * 3.9).toFixed(1) + 's';
-    case 'vol':   return Math.round(val * 100) + '%';
+    case 'vol':  return Math.round(val * 100) + '%';
   }
 }
 
@@ -773,6 +803,9 @@ const _keyVoices = {};
 
 document.addEventListener('keydown', e => {
   if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+  // [ ] cycle through instrument chips
+  if (e.code === 'BracketLeft')  { e.preventDefault(); setSample((_sample + TIMBRE.length - 1) % TIMBRE.length); return; }
+  if (e.code === 'BracketRight') { e.preventDefault(); setSample((_sample + 1) % TIMBRE.length); return; }
   const qr = KEY_QR[e.code];
   if (!qr) return;
   e.preventDefault();
