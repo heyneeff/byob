@@ -147,14 +147,13 @@ select.arp-sel:focus{border-color:#303060;}
   <span class="logo">◈ SAMPLER</span>
   <div class="hdr-div"></div>
   <div class="chips">
-    <button class="chip active" data-s="0" style="--c:#4080c0" onclick="setSample(0)">BASS<span>dbl bass arco</span></button>
-    <button class="chip" data-s="1" style="--c:#00e090" onclick="setSample(1)">VIBE<span>vibraphone bow</span></button>
-    <button class="chip" data-s="2" style="--c:#f04880" onclick="setSample(2)">PIZZ<span>violin pizz</span></button>
-    <button class="chip" data-s="3" style="--c:#f57e20" onclick="setSample(3)">CLAR<span>bass clarinet</span></button>
-    <button class="chip" data-s="4" style="--c:#80d020" onclick="setSample(4)">FLUTE<span>flute vib</span></button>
-    <button class="chip" data-s="5" style="--c:#a060f0" onclick="setSample(5)">VSUS<span>vibe sustain</span></button>
-    <button class="chip" data-s="6" style="--c:#20d0e0" onclick="setSample(6)">DAMP<span>vibe dampen</span></button>
-    <button class="chip" data-s="7" style="--c:#e0d020" onclick="setSample(7)">SHRT<span>vibe short</span></button>
+    <button class="chip active" data-s="0" style="--c:#00e090" onclick="setSample(0)">VIBE<span>vibraphone bow</span></button>
+    <button class="chip" data-s="1" style="--c:#f04880" onclick="setSample(1)">PIZZ<span>violin pizz</span></button>
+    <button class="chip" data-s="2" style="--c:#f57e20" onclick="setSample(2)">CLAR<span>bass clarinet</span></button>
+    <button class="chip" data-s="3" style="--c:#80d020" onclick="setSample(3)">FLUTE<span>flute vib</span></button>
+    <button class="chip" data-s="4" style="--c:#a060f0" onclick="setSample(4)">VSUS<span>vibe sustain</span></button>
+    <button class="chip" data-s="5" style="--c:#20d0e0" onclick="setSample(5)">DAMP<span>vibe dampen</span></button>
+    <button class="chip" data-s="6" style="--c:#e0d020" onclick="setSample(6)">SHRT<span>vibe short</span></button>
   </div>
 </div>
 
@@ -184,6 +183,14 @@ select.arp-sel:focus{border-color:#303060;}
   <div class="kw" data-k="echo">
     <canvas width="48" height="48"></canvas>
     <div class="kl">ECHO</div><div class="kv">0%</div>
+  </div>
+  <div class="kw" data-k="drive">
+    <canvas width="48" height="48"></canvas>
+    <div class="kl">DRIVE</div><div class="kv">0%</div>
+  </div>
+  <div class="kw" data-k="rev">
+    <canvas width="48" height="48"></canvas>
+    <div class="kl">REV</div><div class="kv">0%</div>
   </div>
   <div class="kw" data-k="tone">
     <canvas width="48" height="48"></canvas>
@@ -220,7 +227,7 @@ select.arp-sel:focus{border-color:#303060;}
     </div>
     <div class="arp-grp">
       <span class="arp-lbl">PATTERN</span>
-      <select class="arp-sel" id="arp-pat-sel" onchange="_arpStyle=this.value"></select>
+      <select class="arp-sel" id="arp-pat-sel" onchange="_arpStyle=this.value;savePreset()"></select>
     </div>
     <div class="kw" data-k="bpm">
       <canvas width="40" height="40"></canvas>
@@ -246,19 +253,6 @@ select.arp-sel:focus{border-color:#303060;}
 
 // ── Sample map — Iowa EMS + full libraries ────────────────────────────────────
 const SAMPLE_MAP = {
-  // double bass arco · ff — 10 notes
-  sepal: {
-    24:'samples/Bass.arco.ff.sulC.C1.stereo.wav',
-    38:'samples/Bass.arco.ff.sulD.D2.stereo.wav',
-    42:'samples/Bass.arco.ff.sulD.Gb2.stereo.wav',
-    46:'samples/Bass.arco.ff.sulG.Bb2.stereo.wav',
-    50:'samples/Bass.arco.ff.sulG.D3.stereo.wav',
-    54:'samples/Bass.arco.ff.sulG.Gb3.stereo.wav',
-    58:'samples/Bass.arco.ff.sulG.Bb3.stereo.wav',
-    62:'samples/Bass.arco.ff.sulG.D4.stereo.wav',
-    66:'samples/Bass.arco.ff.sulG.Gb4.stereo.wav',
-    67:'samples/Bass.arco.ff.sulG.G4.stereo.wav'
-  },
   // vibraphone bow — 12 notes
   petal: {
     48:'samples/Vibraphone.bow.C3.stereo.wav',
@@ -366,7 +360,7 @@ const SAMPLE_MAP = {
     89:'samples/Vibraphone.shortsustain.ff.F6.stereo.wav'
   },
 };
-const TIMBRE = ['sepal','petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt'];
+const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt'];
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['vib_damp','vib_shrt']);
 
@@ -417,10 +411,11 @@ const ARP_PAT = {
 };
 const KNOB_COLOR = {
   atk:'#40e0ff', dec:'#ff6040', sus:'#40ff80', rel:'#c060ff',
-  warp:'#f04880', echo:'#00e090', tone:'#ffaa20', vol:'#c0c0ff',
+  warp:'#f04880', echo:'#00e090', drive:'#ff8c00', rev:'#9070e8',
+  tone:'#ffaa20', vol:'#c0c0ff',
   bpm:'#ff80a0', gate:'#8090ff',
 };
-const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, tone:.5, vol:.75, bpm:.43, gate:.5 };
+const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, drive:0, rev:0, tone:.5, vol:.75, bpm:.43, gate:.5 };
 
 // Wicki-Hayden: right=+2st, up-right=+7st
 const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 48; // C3 base — A3 sits comfortably in the middle
@@ -457,6 +452,30 @@ let _dragging = null; // { key, startY, startVal, wrap }
 let _hexR = 28, _hexOX = 0, _hexOY = 0, _hexCols = 8, _hexRows = 5;
 const _pressedMidi = new Set();
 
+// ── Audio helpers ─────────────────────────────────────────────────────────────
+function makeDriveCurve(amount) {
+  const n = 256, curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2 / (n - 1)) - 1;
+    if (amount < 0.005) { curve[i] = x; continue; }
+    const k = amount * 60;
+    curve[i] = Math.tanh(x * k) / Math.tanh(k);
+  }
+  return curve;
+}
+
+function makeRevIR(ctx, dur = 2.8, decay = 3.2) {
+  const sr = ctx.sampleRate, len = Math.floor(sr * dur);
+  const ir = ctx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+    }
+  }
+  return ir;
+}
+
 // ── Audio init ────────────────────────────────────────────────────────────────
 function initAudio() {
   if (_ctx) return;
@@ -473,11 +492,21 @@ function initAudio() {
   _fx.panL = _ctx.createStereoPanner(); _fx.panL.pan.value = -0.6;
   _fx.panR = _ctx.createStereoPanner(); _fx.panR.pan.value =  0.6;
 
+  // Drive — soft saturation (DRIVE knob)
+  _fx.drive = _ctx.createWaveShaper();
+  _fx.drive.oversample = '4x';
+  _fx.drive.curve = makeDriveCurve(0);
+
   // Echo (ECHO knob)
   _fx.echoDly = _ctx.createDelay(2.0); _fx.echoDly.delayTime.value = 0.375;
   _fx.echoFbk = _ctx.createGain();     _fx.echoFbk.gain.value = 0;
   _fx.echoWet = _ctx.createGain();     _fx.echoWet.gain.value = 0;
   _fx.echoDry = _ctx.createGain();     _fx.echoDry.gain.value = 1;
+
+  // Reverb — convolution with synthetic plate IR (REV knob)
+  _fx.reverb = _ctx.createConvolver();
+  _fx.reverb.buffer = makeRevIR(_ctx);
+  _fx.revWet = _ctx.createGain(); _fx.revWet.gain.value = 0;
 
   // Limiter + master (VOL knob)
   _fx.limit = _ctx.createDynamicsCompressor();
@@ -486,13 +515,16 @@ function initAudio() {
   _fx.master = _ctx.createGain(); _fx.master.gain.value = knobs.vol;
 
   // Wire:
-  // filt → echoDry ─────────────────────────→ limit → master → dest
-  // filt → echoDly → echoWet ──────────────↗
-  //         echoDly ← echoFbk ← echoDly (feedback)
-  _fx.filt.connect(_fx.echoDry);   _fx.echoDry.connect(_fx.limit);
-  _fx.filt.connect(_fx.echoDly);
+  // voices → filt → drive → echoDry ──→ limit → master → dest
+  //                       → echoDly → echoWet ↗
+  //                       → reverb → revWet  ↗
+  //          echoDly ← echoFbk ← echoDly (feedback)
+  _fx.filt.connect(_fx.drive);
+  _fx.drive.connect(_fx.echoDry);  _fx.echoDry.connect(_fx.limit);
+  _fx.drive.connect(_fx.echoDly);
   _fx.echoDly.connect(_fx.echoFbk); _fx.echoFbk.connect(_fx.echoDly);
   _fx.echoDly.connect(_fx.echoWet); _fx.echoWet.connect(_fx.limit);
+  _fx.drive.connect(_fx.reverb);   _fx.reverb.connect(_fx.revWet); _fx.revWet.connect(_fx.limit);
   _fx.limit.connect(_fx.master);   _fx.master.connect(_ctx.destination);
 
   // Init voice pool
@@ -628,6 +660,7 @@ function setSample(idx) {
   _voices.forEach(v => killVoice(v));
   _active.clear(); _pressedMidi.clear(); drawHex();
   if (_ctx) loadSamples();
+  savePreset();
 }
 
 // ── Knob system ───────────────────────────────────────────────────────────────
@@ -678,8 +711,10 @@ function knobDisplay(key, val) {
     case 'dec':  return fmtSecs(0.01  + val * 1.99);
     case 'sus':  return Math.round(val * 100) + '%';
     case 'rel':  return fmtSecs(0.01  + val * 4.99);
-    case 'warp': return Math.round(val * 100) + '%';
-    case 'echo': return Math.round(val * 100) + '%';
+    case 'warp':  return Math.round(val * 100) + '%';
+    case 'echo':  return Math.round(val * 100) + '%';
+    case 'drive': return Math.round(val * 100) + '%';
+    case 'rev':   return Math.round(val * 100) + '%';
     case 'tone': { const f = 200 * Math.pow(50, val); return f >= 1000 ? (f/1000).toFixed(1)+'k' : Math.round(f)+'Hz'; }
     case 'vol':  return Math.round(val * 100) + '%';
     case 'bpm':  return Math.round(60 + val * 140) + ' bpm';
@@ -695,6 +730,8 @@ function applyKnob(key) {
     _fx.echoWet.gain.setTargetAtTime(v * 0.75, now, .05);
     _fx.echoFbk.gain.setTargetAtTime(v * 0.55, now, .05);
   }
+  if (key === 'drive') _fx.drive.curve = makeDriveCurve(v);
+  if (key === 'rev')   _fx.revWet.gain.setTargetAtTime(v * 0.85, now, .05);
   if (key === 'vol')   _fx.master.gain.setTargetAtTime(v, now, .05);
 }
 
@@ -730,7 +767,7 @@ document.addEventListener('pointermove', e => {
   if (_ctx) applyKnob(key);
 });
 
-document.addEventListener('pointerup',    () => { _dragging = null; });
+document.addEventListener('pointerup',    () => { if (_dragging) savePreset(); _dragging = null; });
 document.addEventListener('pointercancel',() => { _dragging = null; });
 
 // ── Hex keyboard ──────────────────────────────────────────────────────────────
@@ -1105,6 +1142,7 @@ function setArpRoot(midi) {
 function setArpChord(key) {
   _arpChord = key;
   if (_arpRunning) drawHex();
+  savePreset();
 }
 
 function shiftArpOct(d) {
@@ -1124,6 +1162,7 @@ function setScaleKey(key) {
   if (el) el.textContent = NOTE_NAMES[_arpRoot % 12] + (Math.floor(_arpRoot / 12) - 1);
   updateDegreeSelect();
   drawHex();
+  savePreset();
 }
 
 function setScaleDeg(deg) {
@@ -1132,6 +1171,7 @@ function setScaleDeg(deg) {
   const el  = document.getElementById('arp-root-disp');
   if (el) el.textContent = NOTE_NAMES[_arpRoot % 12] + (Math.floor(_arpRoot / 12) - 1);
   drawHex();
+  savePreset();
 }
 
 function updateDegreeSelect() {
@@ -1151,6 +1191,38 @@ function updateDegreeSelect() {
     sel.appendChild(o);
   });
   sel.value = Math.min(_scaleDeg, scale.ivs.length - 1);
+}
+
+// ── Preset save / load (localStorage) ────────────────────────────────────────
+let _saveTimer = null;
+function savePreset() {
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(() => {
+    try {
+      localStorage.setItem('byob_sampler_v3', JSON.stringify({
+        knobs:    { ...knobs },
+        sample:   _sample,
+        arpChord: _arpChord,
+        arpStyle: _arpStyle,
+        scaleKey: _scaleKey,
+        scaleDeg: _scaleDeg,
+      }));
+    } catch(e) {}
+  }, 400);
+}
+
+function loadPreset() {
+  try {
+    const raw = localStorage.getItem('byob_sampler_v3');
+    if (!raw) return;
+    const d = JSON.parse(raw);
+    if (d.knobs)    Object.assign(knobs, d.knobs);
+    if (d.sample != null) _sample = Math.max(0, Math.min(TIMBRE.length - 1, d.sample));
+    if (d.arpChord && CHORD_MAP[d.arpChord]) _arpChord = d.arpChord;
+    if (d.arpStyle && ARP_PAT[d.arpStyle])   _arpStyle = d.arpStyle;
+    if (d.scaleKey && SCALE_MAP[d.scaleKey]) _scaleKey = d.scaleKey;
+    if (d.scaleDeg != null) _scaleDeg = d.scaleDeg;
+  } catch(e) {}
 }
 
 function initArpUI() {
@@ -1195,7 +1267,7 @@ async function unlock() {
   if (tap) tap.textContent = 'LOADING...';
   initAudio();
   if (_ctx.state === 'suspended') await _ctx.resume();
-  applyKnob('tone'); applyKnob('vol');
+  applyKnob('tone'); applyKnob('vol'); applyKnob('drive'); applyKnob('rev');
   await loadSamples();
   document.getElementById('unlock').style.display = 'none';
   console.log('[sampler] ready — playing through', _ctx.destination.channelCount, 'ch');
@@ -1210,9 +1282,10 @@ function layout() {
 
 window.addEventListener('resize', layout);
 window.addEventListener('orientationchange', () => setTimeout(layout, 150));
+loadPreset();
 initArpUI();
 layout();
-setSample(0);
+setSample(_sample);
 </script>
 </body>
 </html>
