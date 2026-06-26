@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<title>◈ BYOB SAMPLER</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{
+  height:100%;width:100%;
+  background:#010108;
+  color:#b0b0d0;
+  font-family:'Barlow Condensed',system-ui,sans-serif;
+  overflow:hidden;touch-action:none;
+  user-select:none;-webkit-user-select:none;
+  display:flex;flex-direction:column;
+}
+
+/* ── Header ── */
+.hdr{
+  display:flex;align-items:center;gap:10px;
+  padding:7px 14px 5px;
+  border-bottom:1px solid #0e0e22;
+  flex-shrink:0;
+}
+.logo{font-size:14px;font-weight:900;letter-spacing:.15em;color:#00e090;}
+.hdr-div{width:1px;height:16px;background:#141430;flex-shrink:0;}
+
+/* Sample chips — OP-1 style: small colored tabs */
+.chips{display:flex;gap:5px;flex:1;}
+.chip{
+  padding:4px 12px 3px;border-radius:3px;
+  border:1.5px solid #141430;background:#08081a;
+  cursor:pointer;font-size:10px;font-weight:700;letter-spacing:.1em;
+  color:#303060;transition:all .1s;flex-shrink:0;
+}
+.chip span{display:block;font-size:6.5px;font-family:'DM Mono',monospace;
+  font-weight:300;letter-spacing:.04em;opacity:.6;margin-top:1px;}
+.chip.active{
+  border-color:var(--c);color:var(--c);
+  background:color-mix(in srgb,var(--c) 10%,#08081a);
+  box-shadow:0 0 10px color-mix(in srgb,var(--c) 25%,transparent);
+}
+.chip:active{transform:scale(.93);}
+
+/* ── Knob row — OP-1: encoder bank across the top ── */
+.knob-row{
+  display:flex;justify-content:center;align-items:flex-end;
+  gap:clamp(10px,3.5vw,36px);
+  padding:6px 16px 8px;
+  border-bottom:1px solid #0e0e22;
+  flex-shrink:0;background:#020210;
+}
+.kw{display:flex;flex-direction:column;align-items:center;gap:2px;touch-action:none;}
+.kw canvas{cursor:ns-resize;display:block;touch-action:none;}
+.kw .kl{font-size:7.5px;font-weight:700;letter-spacing:.18em;color:#303060;margin-top:3px;}
+.kw .kv{font-size:7px;font-family:'DM Mono',monospace;color:#4848a0;min-width:36px;text-align:center;height:10px;}
+
+/* ── Hex wrap — fills remaining space ── */
+#hex-wrap{flex:1;display:flex;align-items:center;justify-content:center;overflow:hidden;padding:6px 8px 8px;}
+#hex-cv{display:block;touch-action:none;}
+
+/* ── Unlock overlay ── */
+#unlock{
+  position:fixed;inset:0;background:rgba(1,1,8,.92);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+  z-index:100;cursor:pointer;
+}
+#unlock .u-logo{font-size:22px;font-weight:900;letter-spacing:.15em;color:#00e090;}
+#unlock .u-hint{font-size:12px;color:#303060;letter-spacing:.12em;}
+#unlock .u-tap{font-size:14px;font-weight:700;letter-spacing:.2em;color:#4040a0;
+  border:1.5px solid #1a1a40;padding:10px 28px;border-radius:4px;margin-top:4px;}
+</style>
+</head>
+<body>
+
+<!-- Unlock overlay — required for AudioContext on mobile -->
+<div id="unlock" onclick="unlock()">
+  <div class="u-logo">◈ BYOB SAMPLER</div>
+  <div class="u-hint">Iowa Electronic Music Studios · string tape machine</div>
+  <div class="u-tap">TAP TO BEGIN</div>
+</div>
+
+<!-- Header -->
+<div class="hdr">
+  <span class="logo">◈ SAMPLER</span>
+  <div class="hdr-div"></div>
+  <div class="chips">
+    <button class="chip active" id="chip--1" style="--c:#40c4f0" onclick="setSample(-1)">
+      SEPAL<span>cello ff · A3</span>
+    </button>
+    <button class="chip" id="chip-0" style="--c:#f57e20" onclick="setSample(0)">
+      PETAL<span>cello mf · A3</span>
+    </button>
+    <button class="chip" id="chip-1" style="--c:#f04880" onclick="setSample(1)">
+      LIP<span>violin pp · A4</span>
+    </button>
+  </div>
+</div>
+
+<!-- Knob row -->
+<div class="knob-row" id="knob-row">
+  <div class="kw" data-k="warp">
+    <canvas width="52" height="52"></canvas>
+    <div class="kl">WARP</div><div class="kv">0%</div>
+  </div>
+  <div class="kw" data-k="echo">
+    <canvas width="52" height="52"></canvas>
+    <div class="kl">ECHO</div><div class="kv">0%</div>
+  </div>
+  <div class="kw" data-k="tone">
+    <canvas width="52" height="52"></canvas>
+    <div class="kl">TONE</div><div class="kv">3.0k</div>
+  </div>
+  <div class="kw" data-k="decay">
+    <canvas width="52" height="52"></canvas>
+    <div class="kl">DECAY</div><div class="kv">1.0s</div>
+  </div>
+  <div class="kw" data-k="vol">
+    <canvas width="52" height="52"></canvas>
+    <div class="kl">VOL</div><div class="kv">75%</div>
+  </div>
+</div>
+
+<!-- Hex keyboard -->
+<div id="hex-wrap"><canvas id="hex-cv"></canvas></div>
+
+<script>
+'use strict';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const SAMPLE_ROOT = { [-1]: 57, [0]: 57, [1]: 69 }; // A3, A3, A4 (MIDI)
+const SAMPLE_URL  = {
+  [-1]: 'samples/sepal.wav',
+  [ 0]: 'samples/petal.wav',
+  [ 1]: 'samples/lip.wav',
+};
+const KNOB_COLOR = {
+  warp:'#f04880', echo:'#00e090', tone:'#ffaa20', decay:'#8060e0', vol:'#c0c0ff'
+};
+const KNOB_DEFAULT = { warp:0, echo:0, tone:.5, decay:.25, vol:.75 };
+
+// Wicki-Hayden: right=+2st, up-right=+7st
+const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 36; // C2 base
+
+// Lumatone-style interval colors from A (root = interval 0)
+const INTERVAL_STYLE = {
+  0: { bg:'#001e14', border:'#00e090', text:'#00e090', glow:22 }, // A  root
+  7: { bg:'#1a0e00', border:'#ffaa20', text:'#ffaa20', glow:12 }, // E  P5
+  4: { bg:'#1a000e', border:'#f04880', text:'#f04880', glow:10 }, // C# M3
+  9: { bg:'#100e00', border:'#c09010', text:'#c09010', glow:0  }, // F# M6
+  5: { bg:'#0c0020', border:'#7050d0', text:'#7050d0', glow:0  }, // D  P4
+  2: { bg:'#081020', border:'#3060b0', text:'#3060b0', glow:0  }, // B  M2
+ 11: { bg:'#100820', border:'#806090', text:'#806090', glow:0  }, // G# M7
+  3: { bg:'#0a0018', border:'#5040a0', text:'#5040a0', glow:0  }, // C  m3
+ 10: { bg:'#080818', border:'#404090', text:'#404090', glow:0  }, // G  m7
+  6: { bg:'#060616', border:'#282860', text:'#282860', glow:0  }, // D# TT
+  1: { bg:'#060614', border:'#222250', text:'#222250', glow:0  }, // A# m2
+  8: { bg:'#060612', border:'#1c1c48', text:'#1c1c48', glow:0  }, // F  m6
+};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let _ctx = null, _bufs = {}, _sample = -1;
+const _fx = {};
+const _voices = [];
+const NUM_VOICES = 8;
+const _active = new Map(); // touchId → voice
+
+const knobs = { ...KNOB_DEFAULT };
+let _dragging = null; // { key, startY, startVal, wrap }
+
+// Hex canvas geometry
+let _hexR = 28, _hexOX = 0, _hexOY = 0, _hexCols = 8, _hexRows = 5;
+const _pressedMidi = new Set();
+
+// ── Audio init ────────────────────────────────────────────────────────────────
+function initAudio() {
+  if (_ctx) return;
+  _ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
+
+  // Filter (TONE knob)
+  _fx.filt = _ctx.createBiquadFilter();
+  _fx.filt.type = 'lowpass';
+  _fx.filt.frequency.value = 3000;
+  _fx.filt.Q.value = 0.7;
+
+  // Stereo widener (subtle haas ~8ms)
+  _fx.dlyL = _ctx.createDelay(0.02); _fx.dlyL.delayTime.value = 0.008;
+  _fx.panL = _ctx.createStereoPanner(); _fx.panL.pan.value = -0.6;
+  _fx.panR = _ctx.createStereoPanner(); _fx.panR.pan.value =  0.6;
+
+  // Echo (ECHO knob)
+  _fx.echoDly = _ctx.createDelay(2.0); _fx.echoDly.delayTime.value = 0.375;
+  _fx.echoFbk = _ctx.createGain();     _fx.echoFbk.gain.value = 0;
+  _fx.echoWet = _ctx.createGain();     _fx.echoWet.gain.value = 0;
+  _fx.echoDry = _ctx.createGain();     _fx.echoDry.gain.value = 1;
+
+  // Limiter + master (VOL knob)
+  _fx.limit = _ctx.createDynamicsCompressor();
+  _fx.limit.threshold.value = -4; _fx.limit.ratio.value = 8;
+  _fx.limit.attack.value = 0.003; _fx.limit.release.value = 0.15;
+  _fx.master = _ctx.createGain(); _fx.master.gain.value = knobs.vol;
+
+  // Wire:
+  // filt → echoDry ─────────────────────────→ limit → master → dest
+  // filt → echoDly → echoWet ──────────────↗
+  //         echoDly ← echoFbk ← echoDly (feedback)
+  _fx.filt.connect(_fx.echoDry);   _fx.echoDry.connect(_fx.limit);
+  _fx.filt.connect(_fx.echoDly);
+  _fx.echoDly.connect(_fx.echoFbk); _fx.echoFbk.connect(_fx.echoDly);
+  _fx.echoDly.connect(_fx.echoWet); _fx.echoWet.connect(_fx.limit);
+  _fx.limit.connect(_fx.master);   _fx.master.connect(_ctx.destination);
+
+  // Init voice pool
+  for (let i = 0; i < NUM_VOICES; i++) _voices.push({ src: null, gain: null, lfo: null, lfoG: null, busy: false, midi: -1 });
+}
+
+async function loadSamples() {
+  await Promise.all(Object.entries(SAMPLE_URL).map(async ([t, url]) => {
+    if (_bufs[t]) return;
+    try {
+      const ab = await (await fetch(url)).arrayBuffer();
+      _bufs[t] = await _ctx.decodeAudioData(ab);
+      console.log('[sampler] loaded', t, url);
+    } catch(e) { console.warn('[sampler] failed', url, e.message); }
+  }));
+}
+
+// ── Voice management ──────────────────────────────────────────────────────────
+let _voiceRR = 0;
+
+function noteOn(midi) {
+  const buf = _bufs[_sample];
+  if (!buf || !_ctx) return null;
+
+  // Find idle voice or steal oldest
+  let v = _voices.find(x => !x.busy);
+  if (!v) { v = _voices[_voiceRR % NUM_VOICES]; killVoice(v); }
+  _voiceRR++;
+
+  const root = SAMPLE_ROOT[_sample] ?? 57;
+  const rate = Math.pow(2, (midi - root) / 12);
+  const now  = _ctx.currentTime;
+
+  v.gain = _ctx.createGain();
+  v.gain.gain.setValueAtTime(0, now);
+  v.gain.gain.linearRampToValueAtTime(0.82, now + 0.014);
+  v.gain.connect(_fx.filt);
+
+  v.src = _ctx.createBufferSource();
+  v.src.buffer    = buf;
+  v.src.loop      = true;
+  v.src.loopStart = 0.38;
+  v.src.loopEnd   = Math.min(1.05, buf.duration - 0.02);
+  v.src.playbackRate.value = rate;
+
+  // Warp LFO
+  if (knobs.warp > 0.008) {
+    const depth = knobs.warp * 0.08;
+    const rate2  = 0.2 + knobs.warp * 0.6;
+    v.lfoG = _ctx.createGain(); v.lfoG.gain.value = depth;
+    v.lfo  = _ctx.createOscillator(); v.lfo.type = 'sine';
+    v.lfo.frequency.value = rate2;
+    v.lfo.connect(v.lfoG); v.lfoG.connect(v.src.playbackRate);
+    v.lfo.start(now);
+  }
+
+  v.src.connect(v.gain);
+  v.src.start(now, 0.38);
+  v.busy = true; v.midi = midi;
+  return v;
+}
+
+function noteOff(v) {
+  if (!v || !v.busy || !_ctx) return;
+  const decayS = 0.1 + knobs.decay * 3.9;
+  const now    = _ctx.currentTime;
+  v.gain?.gain.setTargetAtTime(0.0001, now, decayS * 0.28);
+  const stopAt = now + decayS * 1.4;
+  try { v.src?.stop(stopAt); } catch(e) {}
+  try { v.lfo?.stop(stopAt); } catch(e) {}
+  setTimeout(() => { v.busy = false; v.src = null; v.gain = null; v.lfo = null; v.lfoG = null; }, (decayS * 1400) + 100);
+}
+
+function killVoice(v) {
+  if (!v || !_ctx) return;
+  const now = _ctx.currentTime;
+  try { v.gain?.gain.setTargetAtTime(0, now, 0.01); v.src?.stop(now + 0.05); } catch(e) {}
+  try { v.lfo?.stop(); } catch(e) {}
+  v.busy = false; v.src = null; v.gain = null; v.lfo = null; v.lfoG = null;
+}
+
+// ── Sample switching ──────────────────────────────────────────────────────────
+function setSample(t) {
+  _sample = t;
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+  document.getElementById('chip-' + t)?.classList.add('active');
+  // Kill all voices immediately — new timbre
+  _voices.forEach(v => killVoice(v));
+  _active.clear();
+  _pressedMidi.clear();
+  drawHex();
+  loadSamples(); // ensure loaded
+}
+
+// ── Knob system ───────────────────────────────────────────────────────────────
+function drawKnob(canvas, key, val) {
+  const W  = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2, r = W / 2 - 4;
+  const c  = canvas.getContext('2d');
+  c.clearRect(0, 0, W, H);
+
+  // Body — dark with subtle 3-D highlight
+  const grad = c.createRadialGradient(cx - r * .28, cy - r * .28, 0, cx, cy, r);
+  grad.addColorStop(0, '#222238'); grad.addColorStop(1, '#070712');
+  c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2);
+  c.fillStyle = grad; c.fill();
+
+  // Outer groove
+  c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2);
+  c.strokeStyle = '#141428'; c.lineWidth = 1; c.stroke();
+
+  // Track arc (7 o'clock → 5 o'clock, 270°)
+  const S0 = 0.75 * Math.PI, SPAN = 1.5 * Math.PI;
+  c.beginPath(); c.arc(cx, cy, r - 5, S0, S0 + SPAN);
+  c.strokeStyle = '#0e0e1e'; c.lineWidth = 3.5; c.lineCap = 'round'; c.stroke();
+
+  // Value arc
+  if (val > 0.004) {
+    c.beginPath(); c.arc(cx, cy, r - 5, S0, S0 + SPAN * val);
+    c.strokeStyle = KNOB_COLOR[key]; c.lineWidth = 3.5; c.lineCap = 'round';
+    c.shadowColor = KNOB_COLOR[key]; c.shadowBlur = 6;
+    c.stroke(); c.shadowBlur = 0;
+  }
+
+  // Indicator dot on knob body
+  const ang = S0 + SPAN * val;
+  const ix = cx + (r - 10) * Math.cos(ang), iy = cy + (r - 10) * Math.sin(ang);
+  c.beginPath(); c.arc(ix, iy, 2.5, 0, Math.PI * 2);
+  c.fillStyle = val > 0.004 ? KNOB_COLOR[key] : '#282840'; c.fill();
+
+  // Center pip
+  c.beginPath(); c.arc(cx, cy, 3.5, 0, Math.PI * 2);
+  c.fillStyle = '#101020'; c.fill();
+}
+
+function knobDisplay(key, val) {
+  switch(key) {
+    case 'warp':  return Math.round(val * 100) + '%';
+    case 'echo':  return Math.round(val * 100) + '%';
+    case 'tone': { const f = 200 * Math.pow(50, val); return f >= 1000 ? (f/1000).toFixed(1)+'k' : Math.round(f)+'Hz'; }
+    case 'decay': return (0.1 + val * 3.9).toFixed(1) + 's';
+    case 'vol':   return Math.round(val * 100) + '%';
+  }
+}
+
+function applyKnob(key) {
+  if (!_fx.filt) return;
+  const v = knobs[key], now = _ctx.currentTime;
+  if (key === 'tone')  _fx.filt.frequency.setTargetAtTime(200 * Math.pow(50, v), now, .05);
+  if (key === 'echo') {
+    _fx.echoWet.gain.setTargetAtTime(v * 0.75, now, .05);
+    _fx.echoFbk.gain.setTargetAtTime(v * 0.55, now, .05);
+  }
+  if (key === 'vol')   _fx.master.gain.setTargetAtTime(v, now, .05);
+}
+
+function refreshKnobs() {
+  document.querySelectorAll('#knob-row .kw').forEach(wrap => {
+    const key = wrap.dataset.k;
+    const cv  = wrap.querySelector('canvas');
+    const vd  = wrap.querySelector('.kv');
+    drawKnob(cv, key, knobs[key]);
+    vd.textContent = knobDisplay(key, knobs[key]);
+  });
+}
+
+// Knob drag interaction
+document.getElementById('knob-row').addEventListener('pointerdown', e => {
+  const wrap = e.target.closest('.kw');
+  if (!wrap) return;
+  e.target.setPointerCapture?.(e.pointerId);
+  _dragging = { key: wrap.dataset.k, startY: e.clientY, startVal: knobs[wrap.dataset.k], wrap };
+  e.preventDefault();
+}, { passive: false });
+
+document.addEventListener('pointermove', e => {
+  if (!_dragging) return;
+  const { key, startY, startVal } = _dragging;
+  const dy  = startY - e.clientY; // drag up = increase
+  const val = Math.max(0, Math.min(1, startVal + dy / 140));
+  knobs[key] = val;
+  const cv = _dragging.wrap.querySelector('canvas');
+  const vd = _dragging.wrap.querySelector('.kv');
+  drawKnob(cv, key, val);
+  vd.textContent = knobDisplay(key, val);
+  if (_ctx) applyKnob(key);
+});
+
+document.addEventListener('pointerup',    () => { _dragging = null; });
+document.addEventListener('pointercancel',() => { _dragging = null; });
+
+// ── Hex keyboard ──────────────────────────────────────────────────────────────
+const hexCv  = document.getElementById('hex-cv');
+const hexCtx = hexCv.getContext('2d');
+
+function hexMidi(q, r) { return HEX_BASE + q * HEX_DQ + r * HEX_DR; }
+
+function hexCenter(q, r) {
+  return {
+    x: _hexOX + _hexR * Math.sqrt(3) * (q + r / 2),
+    y: _hexOY - _hexR * 1.5 * r,
+  };
+}
+
+function sizeHex() {
+  const wrap  = document.getElementById('hex-wrap');
+  const W     = wrap.clientWidth  - 16;
+  const H     = wrap.clientHeight - 8;
+  _hexCols    = Math.max(6, Math.min(14, Math.floor(W / 42)));
+  _hexRows    = Math.max(4, Math.min(7,  Math.floor(H / 48)));
+  _hexR       = Math.min(
+    W / (Math.sqrt(3) * (_hexCols + (_hexRows - 1) / 2 + .5)),
+    H / (1.5 * _hexRows + .5)
+  );
+  hexCv.width  = Math.ceil(W);
+  hexCv.height = Math.ceil(H);
+  _hexOX = _hexR * Math.sqrt(3) * .5;
+  _hexOY = hexCv.height - _hexR * .75;
+}
+
+function hexStyle(midi) {
+  const interval = ((midi - 57) % 12 + 12) % 12; // relative to A
+  return INTERVAL_STYLE[interval] ?? INTERVAL_STYLE[6];
+}
+
+function drawHex() {
+  const W = hexCv.width, H = hexCv.height;
+  hexCtx.clearRect(0, 0, W, H);
+  hexCtx.fillStyle = '#010108'; hexCtx.fillRect(0, 0, W, H);
+
+  for (let r = 0; r < _hexRows; r++) {
+    for (let q = 0; q < _hexCols; q++) {
+      const midi    = hexMidi(q, r);
+      const { x, y } = hexCenter(q, r);
+      const st      = hexStyle(midi);
+      const pressed = _pressedMidi.has(midi);
+      const hR      = _hexR - 2;
+
+      // Hex path
+      hexCtx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI / 3 * i - Math.PI / 6;
+        const px = x + hR * Math.cos(a), py = y + hR * Math.sin(a);
+        i ? hexCtx.lineTo(px, py) : hexCtx.moveTo(px, py);
+      }
+      hexCtx.closePath();
+
+      // Fill
+      if (pressed) {
+        hexCtx.fillStyle = '#ffffff18';
+        hexCtx.shadowColor = '#ffffff'; hexCtx.shadowBlur = 28;
+      } else {
+        hexCtx.fillStyle = st.bg;
+        hexCtx.shadowBlur = 0;
+        if (st.glow) { hexCtx.shadowColor = st.border; hexCtx.shadowBlur = st.glow; }
+      }
+      hexCtx.fill(); hexCtx.shadowBlur = 0;
+
+      // Border
+      hexCtx.strokeStyle = pressed ? '#ffffff' : st.border;
+      hexCtx.lineWidth   = pressed ? 2 : 1.5;
+      hexCtx.stroke();
+
+      // Note label
+      const pc   = midi % 12;
+      const NOTE = ['A','A♯','B','C','C♯','D','D♯','E','F','F♯','G','G♯'];
+      const oct  = Math.floor(midi / 12) - 1;
+      hexCtx.textAlign = 'center'; hexCtx.textBaseline = 'middle';
+      hexCtx.font      = `700 ${Math.round(_hexR * 0.42)}px 'Barlow Condensed',system-ui`;
+      hexCtx.fillStyle = pressed ? '#ffffff' : st.text;
+      hexCtx.fillText(NOTE[pc], x, y - _hexR * 0.1);
+      hexCtx.globalAlpha = .55;
+      hexCtx.font        = `${Math.round(_hexR * 0.25)}px 'DM Mono',monospace`;
+      hexCtx.fillText(oct, x, y + _hexR * .36);
+      hexCtx.globalAlpha = 1;
+    }
+  }
+}
+
+// ── Hit detection ─────────────────────────────────────────────────────────────
+function hitHex(cx, cy) {
+  let best = null, bestD = Infinity;
+  for (let r = 0; r < _hexRows; r++) {
+    for (let q = 0; q < _hexCols; q++) {
+      const { x, y } = hexCenter(q, r);
+      const d = Math.hypot(cx - x, cy - y);
+      if (d < bestD) { bestD = d; best = { q, r }; }
+    }
+  }
+  return bestD <= _hexR ? best : null;
+}
+
+function cvXY(touch) {
+  const rect = hexCv.getBoundingClientRect();
+  return {
+    x: (touch.clientX - rect.left) * (hexCv.width  / rect.width),
+    y: (touch.clientY - rect.top)  * (hexCv.height / rect.height),
+  };
+}
+
+// ── Touch handling ────────────────────────────────────────────────────────────
+hexCv.addEventListener('touchstart', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const p   = cvXY(t);
+    const hex = hitHex(p.x, p.y);
+    if (!hex) continue;
+    const midi = hexMidi(hex.q, hex.r);
+    const v    = noteOn(midi);
+    if (v) {
+      _active.set(t.identifier, { ...hex, midi, v });
+      _pressedMidi.add(midi);
+    }
+  }
+  drawHex();
+}, { passive: false });
+
+hexCv.addEventListener('touchmove', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const prev = _active.get(t.identifier);
+    if (!prev) continue;
+    const p   = cvXY(t);
+    const hex = hitHex(p.x, p.y);
+    if (!hex) continue;
+    const midi = hexMidi(hex.q, hex.r);
+    if (midi !== prev.midi) {
+      // Legato slide to new note
+      noteOff(prev.v);
+      _pressedMidi.delete(prev.midi);
+      const v = noteOn(midi);
+      if (v) {
+        _active.set(t.identifier, { ...hex, midi, v });
+        _pressedMidi.add(midi);
+      }
+    }
+  }
+  drawHex();
+}, { passive: false });
+
+hexCv.addEventListener('touchend', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const prev = _active.get(t.identifier);
+    if (prev) {
+      noteOff(prev.v);
+      _pressedMidi.delete(prev.midi);
+      _active.delete(t.identifier);
+    }
+  }
+  drawHex();
+}, { passive: false });
+
+hexCv.addEventListener('touchcancel', e => {
+  e.preventDefault();
+  for (const t of e.changedTouches) {
+    const prev = _active.get(t.identifier);
+    if (prev) {
+      killVoice(prev.v);
+      _pressedMidi.delete(prev.midi);
+      _active.delete(t.identifier);
+    }
+  }
+  drawHex();
+}, { passive: false });
+
+// Mouse support (desktop / monitors)
+let _mouseV = null, _mouseMidi = -1;
+hexCv.addEventListener('mousedown', e => {
+  const hex = hitHex(e.offsetX * (hexCv.width / hexCv.clientWidth), e.offsetY * (hexCv.height / hexCv.clientHeight));
+  if (!hex) return;
+  const midi = hexMidi(hex.q, hex.r);
+  _mouseV = noteOn(midi); _mouseMidi = midi;
+  _pressedMidi.add(midi); drawHex();
+});
+hexCv.addEventListener('mousemove', e => {
+  if (!_mouseV) return;
+  const hex = hitHex(e.offsetX * (hexCv.width / hexCv.clientWidth), e.offsetY * (hexCv.height / hexCv.clientHeight));
+  if (!hex) return;
+  const midi = hexMidi(hex.q, hex.r);
+  if (midi !== _mouseMidi) {
+    noteOff(_mouseV); _pressedMidi.delete(_mouseMidi);
+    _mouseV = noteOn(midi); _mouseMidi = midi;
+    _pressedMidi.add(midi); drawHex();
+  }
+});
+['mouseup','mouseleave'].forEach(ev => hexCv.addEventListener(ev, () => {
+  if (_mouseV) { noteOff(_mouseV); _pressedMidi.delete(_mouseMidi); _mouseV = null; drawHex(); }
+}));
+
+// ── Unlock / init ─────────────────────────────────────────────────────────────
+async function unlock() {
+  document.getElementById('unlock').style.display = 'none';
+  initAudio();
+  if (_ctx.state === 'suspended') await _ctx.resume();
+  applyKnob('tone'); applyKnob('vol');
+  await loadSamples();
+  console.log('[sampler] ready — playing through', _ctx.destination.channelCount, 'ch');
+}
+
+// ── Layout ────────────────────────────────────────────────────────────────────
+function layout() {
+  sizeHex();
+  refreshKnobs();
+  drawHex();
+}
+
+window.addEventListener('resize', layout);
+window.addEventListener('orientationchange', () => setTimeout(layout, 150));
+layout();
+setSample(-1);
+</script>
+</body>
+</html>
