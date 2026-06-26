@@ -28,7 +28,8 @@ html,body{
 .hdr-div{width:1px;height:16px;background:#141430;flex-shrink:0;}
 
 /* Sample chips — OP-1 style: small colored tabs */
-.chips{display:flex;gap:5px;flex:1;}
+.chips{display:flex;gap:5px;flex:1;overflow-x:auto;scrollbar-width:none;}
+.chips::-webkit-scrollbar{display:none;}
 .chip{
   padding:4px 12px 3px;border-radius:3px;
   border:1.5px solid #141430;background:#08081a;
@@ -87,15 +88,12 @@ html,body{
   <span class="logo">◈ SAMPLER</span>
   <div class="hdr-div"></div>
   <div class="chips">
-    <button class="chip active" id="chip--1" style="--c:#40c4f0" onclick="setSample(-1)">
-      SEPAL<span>cello ff · A3</span>
-    </button>
-    <button class="chip" id="chip-0" style="--c:#f57e20" onclick="setSample(0)">
-      PETAL<span>cello mf · A3</span>
-    </button>
-    <button class="chip" id="chip-1" style="--c:#f04880" onclick="setSample(1)">
-      LIP<span>violin pp · A4</span>
-    </button>
+    <button class="chip active" data-s="0" style="--c:#4080c0" onclick="setSample(0)">BASS<span>dbl bass arco</span></button>
+    <button class="chip" data-s="1" style="--c:#00e090" onclick="setSample(1)">VIBE<span>vibraphone bow</span></button>
+    <button class="chip" data-s="2" style="--c:#f04880" onclick="setSample(2)">PIZZ<span>violin pizz</span></button>
+    <button class="chip" data-s="3" style="--c:#f57e20" onclick="setSample(3)">CLAR<span>bass clarinet</span></button>
+    <button class="chip" data-s="4" style="--c:#80d020" onclick="setSample(4)">FLUTE<span>flute vib</span></button>
+    <button class="chip" data-s="5" style="--c:#a060f0" onclick="setSample(5)">VSUS<span>vibe sustain</span></button>
   </div>
 </div>
 
@@ -129,15 +127,99 @@ html,body{
 <script>
 'use strict';
 
-// ── Sample map — add more pitch entries as you download them ──────────────────
-// Structure: timbre → { midiRoot: 'url' }
-// Add e.g. { 57:'samples/sepal_A3.wav', 64:'samples/sepal_E4.wav' } for multi-pitch
+// ── Sample map — Iowa EMS + full libraries ────────────────────────────────────
 const SAMPLE_MAP = {
-  sepal: { 57: 'samples/sepal.wav' },  // cello ff · A3
-  petal: { 57: 'samples/petal.wav' },  // cello mf · A3
-  lip:   { 69: 'samples/lip.wav'   },  // violin pp · A4
+  // double bass arco · ff — 10 notes
+  sepal: {
+    24:'samples/Bass.arco.ff.sulC.C1.stereo.wav',
+    38:'samples/Bass.arco.ff.sulD.D2.stereo.wav',
+    42:'samples/Bass.arco.ff.sulD.Gb2.stereo.wav',
+    46:'samples/Bass.arco.ff.sulG.Bb2.stereo.wav',
+    50:'samples/Bass.arco.ff.sulG.D3.stereo.wav',
+    54:'samples/Bass.arco.ff.sulG.Gb3.stereo.wav',
+    58:'samples/Bass.arco.ff.sulG.Bb3.stereo.wav',
+    62:'samples/Bass.arco.ff.sulG.D4.stereo.wav',
+    66:'samples/Bass.arco.ff.sulG.Gb4.stereo.wav',
+    67:'samples/Bass.arco.ff.sulG.G4.stereo.wav'
+  },
+  // vibraphone bow — 12 notes
+  petal: {
+    48:'samples/Vibraphone.bow.C3.stereo.wav',
+    52:'samples/Vibraphone.bow.E3.stereo.wav',
+    56:'samples/Vibraphone.bow.Ab3.stereo.wav',
+    60:'samples/Vibraphone.bow.C4.stereo.wav',
+    64:'samples/Vibraphone.bow.E4.stereo.wav',
+    68:'samples/Vibraphone.bow.Ab4.stereo.wav',
+    72:'samples/Vibraphone.bow.C5.stereo.wav',
+    76:'samples/Vibraphone.bow.E5.stereo.wav',
+    80:'samples/Vibraphone.bow.Ab5.stereo.wav',
+    84:'samples/Vibraphone.bow.C6.stereo.wav',
+    88:'samples/Vibraphone.bow.E6.stereo.wav',
+    89:'samples/Vibraphone.bow.F6.stereo.wav'
+  },
+  // violin pizz · ff — 13 notes
+  lip: {
+    55:'samples/Violin.pizz.ff.sulG.G3.stereo.wav',
+    59:'samples/Violin.pizz.ff.sulG.B3.stereo.wav',
+    63:'samples/Violin.pizz.ff.sulG.Eb4.stereo.wav',
+    67:'samples/Violin.pizz.ff.sulG.G4.stereo.wav',
+    71:'samples/Violin.pizz.ff.sulG.B4.stereo.wav',
+    75:'samples/Violin.pizz.ff.sulG.Eb5.stereo.wav',
+    79:'samples/Violin.pizz.ff.sulE.G5.stereo.wav',
+    83:'samples/Violin.pizz.ff.sulE.B5.stereo.wav',
+    87:'samples/Violin.pizz.ff.sulE.Eb6.stereo.wav',
+    91:'samples/Violin.pizz.ff.sulE.G6.stereo.wav',
+    95:'samples/Violin.pizz.ff.sulE.B6.stereo.wav',
+    99:'samples/Violin.pizz.ff.sulE.Eb7.stereo.wav',
+    100:'samples/Violin.pizz.ff.sulE.E7.stereo.wav'
+  },
+  // bass clarinet · ff — 13 notes
+  bass_cl: {
+    37:'samples/BassClarinet.ff.Db2.stereo.wav',
+    41:'samples/BassClarinet.ff.F2.stereo.wav',
+    45:'samples/BassClarinet.ff.A2.stereo.wav',
+    49:'samples/BassClarinet.ff.Db3.stereo.wav',
+    53:'samples/BassClarinet.ff.F3.stereo.wav',
+    57:'samples/BassClarinet.ff.A3.stereo.wav',
+    61:'samples/BassClarinet.ff.Db4.stereo.wav',
+    65:'samples/BassClarinet.ff.F4.stereo.wav',
+    69:'samples/BassClarinet.ff.A4.stereo.wav',
+    73:'samples/BassClarinet.ff.Db5.stereo.wav',
+    77:'samples/BassClarinet.ff.F5.stereo.wav',
+    81:'samples/BassClarinet.ff.A5.stereo.wav',
+    82:'samples/BassClarinet.ff.Bb5.stereo.wav'
+  },
+  // flute vib · ff — 11 notes
+  flute: {
+    59:'samples/Flute.vib.ff.B3.stereo.wav',
+    63:'samples/Flute.vib.ff.Eb4.stereo.wav',
+    67:'samples/Flute.vib.ff.G4.stereo.wav',
+    71:'samples/Flute.vib.ff.B4.stereo.wav',
+    75:'samples/Flute.vib.ff.Eb5.stereo.wav',
+    79:'samples/Flute.vib.ff.G5.stereo.wav',
+    83:'samples/Flute.vib.ff.B5.stereo.wav',
+    87:'samples/Flute.vib.ff.Eb6.stereo.wav',
+    91:'samples/Flute.vib.ff.G6.stereo.wav',
+    95:'samples/Flute.vib.ff.B6.stereo.wav',
+    97:'samples/Flute.vib.ff.Db7.stereo.wav'
+  },
+  // vibraphone sustain · ff — 12 notes
+  vib: {
+    48:'samples/Vibraphone.sustain.ff.C3.stereo.wav',
+    52:'samples/Vibraphone.sustain.ff.E3.stereo.wav',
+    56:'samples/Vibraphone.sustain.ff.Ab3.stereo.wav',
+    60:'samples/Vibraphone.sustain.ff.C4.stereo.wav',
+    64:'samples/Vibraphone.sustain.ff.E4.stereo.wav',
+    68:'samples/Vibraphone.sustain.ff.Ab4.stereo.wav',
+    72:'samples/Vibraphone.sustain.ff.C5.stereo.wav',
+    76:'samples/Vibraphone.sustain.ff.E5.stereo.wav',
+    80:'samples/Vibraphone.sustain.ff.Ab5.stereo.wav',
+    84:'samples/Vibraphone.sustain.ff.C6.stereo.wav',
+    88:'samples/Vibraphone.sustain.ff.E6.stereo.wav',
+    89:'samples/Vibraphone.sustain.ff.F6.stereo.wav'
+  },
 };
-const TIMBRE = ['sepal','petal','lip']; // index: _sample+1 → name
+const TIMBRE = ['sepal','petal','lip','bass_cl','flute','vib'];
 const KNOB_COLOR = {
   warp:'#f04880', echo:'#00e090', tone:'#ffaa20', decay:'#8060e0', vol:'#c0c0ff'
 };
@@ -163,7 +245,7 @@ const INTERVAL_STYLE = {
 };
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let _ctx = null, _sample = -1;
+let _ctx = null, _sample = 0;
 const _bufs   = {};   // `${timbre}_${midiRoot}` → AudioBuffer
 const _onsets = {};   // same key → onset time in seconds
 const _fx = {};
@@ -234,7 +316,7 @@ function detectOnset(buf, threshold = 0.012) {
 
 // Find nearest root MIDI note for the current timbre
 function nearestRoot(midi) {
-  const name = TIMBRE[_sample + 1];
+  const name = TIMBRE[_sample];
   const map  = SAMPLE_MAP[name] ?? {};
   let best = null, bestD = Infinity;
   for (const k of Object.keys(map)) {
@@ -246,7 +328,7 @@ function nearestRoot(midi) {
 
 async function loadSamples() {
   if (!_ctx) return;
-  const name = TIMBRE[_sample + 1];
+  const name = TIMBRE[_sample];
   const map  = SAMPLE_MAP[name] ?? {};
   await Promise.all(Object.entries(map).map(async ([rootMidi, url]) => {
     const key = `${name}_${rootMidi}`;
@@ -267,7 +349,7 @@ let _voiceRR = 0;
 function noteOn(midi) {
   if (!_ctx) return null;
   const rootMidi = nearestRoot(midi);
-  const key      = `${TIMBRE[_sample + 1]}_${rootMidi}`;
+  const key      = `${TIMBRE[_sample]}_${rootMidi}`;
   const buf      = _bufs[key];
   if (!buf) return null;
 
@@ -331,16 +413,13 @@ function killVoice(v) {
 }
 
 // ── Sample switching ──────────────────────────────────────────────────────────
-function setSample(t) {
-  _sample = t;
+function setSample(idx) {
+  _sample = idx;
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  document.getElementById('chip-' + t)?.classList.add('active');
-  // Kill all voices immediately — new timbre
+  document.querySelector(`.chip[data-s="${idx}"]`)?.classList.add('active');
   _voices.forEach(v => killVoice(v));
-  _active.clear();
-  _pressedMidi.clear();
-  drawHex();
-  if (_ctx) loadSamples(); // ensure all timbres are decoded
+  _active.clear(); _pressedMidi.clear(); drawHex();
+  if (_ctx) loadSamples();
 }
 
 // ── Knob system ───────────────────────────────────────────────────────────────
@@ -664,7 +743,7 @@ function layout() {
 window.addEventListener('resize', layout);
 window.addEventListener('orientationchange', () => setTimeout(layout, 150));
 layout();
-setSample(-1);
+setSample(0);
 </script>
 </body>
 </html>
