@@ -809,16 +809,23 @@ function noteOn(midi) {
 
 function noteOff(v) {
   if (!v || !v.busy || !_ctx) return;
+  // Capture node refs now — the voice slot may be stolen+reassigned before the timeout fires.
+  // Using captured refs for the ramp/stop, and only clearing the slot if it still owns them.
+  const src  = v.src;
+  const gain = v.gain;
+  const lfo  = v.lfo;
   const rel  = 0.01 + knobs.rel * 4.99;
   const now  = _ctx.currentTime;
-  const cur  = Math.max(v.gain.gain.value, 0.001);
-  v.gain.gain.cancelScheduledValues(now);
-  v.gain.gain.setValueAtTime(cur, now);
-  v.gain.gain.exponentialRampToValueAtTime(0.0001, now + rel);
+  const cur  = Math.max(gain.gain.value, 0.001);
+  gain.gain.cancelScheduledValues(now);
+  gain.gain.setValueAtTime(cur, now);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + rel);
   const stopAt = now + rel + 0.05;
-  try { v.src?.stop(stopAt); } catch(e) {}
-  try { v.lfo?.stop(stopAt); } catch(e) {}
-  setTimeout(() => { v.busy=false; v.src=null; v.gain=null; v.lfo=null; v.lfoG=null; }, (rel + 0.1) * 1000);
+  try { src?.stop(stopAt); } catch(e) {}
+  try { lfo?.stop(stopAt); } catch(e) {}
+  setTimeout(() => {
+    if (v.src === src) { v.busy=false; v.src=null; v.gain=null; v.lfo=null; v.lfoG=null; }
+  }, (rel + 0.1) * 1000);
 }
 
 function killVoice(v) {
@@ -1286,8 +1293,9 @@ function arpTick() {
       const midi    = _seqNotes[seqIdx];
       const v       = noteOn(midi);
       if (v) {
+        const src    = v.src;
         const gateMs = stepMs * (0.05 + knobs.gate * 0.95);
-        setTimeout(() => noteOff(v), Math.max(gateMs, 20));
+        setTimeout(() => { if (v.src === src) noteOff(v); }, Math.max(gateMs, 20));
       }
       const prev    = _seqFlashIdx;
       _seqFlashIdx  = seqIdx;
@@ -1315,8 +1323,9 @@ function arpTick() {
     const midi = arpStepMidi(_arpStep, _arpForm);
     const v    = noteOn(midi);
     if (v) {
+      const src    = v.src;
       const gateMs = stepMs * (0.05 + knobs.gate * 0.95);
-      setTimeout(() => noteOff(v), Math.max(gateMs, 20));
+      setTimeout(() => { if (v.src === src) noteOff(v); }, Math.max(gateMs, 20));
     }
     _arpFlashMidi = midi;
     drawHex();
