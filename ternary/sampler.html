@@ -131,6 +131,32 @@ select.arp-sel:focus{border-color:#303060;}
 }
 .arp-oct-btn:active{color:#00e090;}
 
+/* ── Chord pad ── */
+.chord-pad-row{
+  display:flex;align-items:center;justify-content:center;
+  gap:4px;padding:5px 12px 4px;
+  background:#020210;border-bottom:1px solid #0e0e22;
+  overflow-x:auto;scrollbar-width:none;flex-shrink:0;
+}
+.chord-pad-row::-webkit-scrollbar{display:none;}
+.chord-pad{
+  width:52px;height:44px;padding:0;border:none;cursor:pointer;
+  background:var(--c,#303060);
+  clip-path:polygon(25% 0%,75% 0%,100% 50%,75% 100%,25% 100%,0% 50%);
+  flex-shrink:0;position:relative;transition:filter .12s;touch-action:none;
+}
+.chord-pad-inner{
+  position:absolute;inset:2px 3px;background:#07071a;
+  clip-path:polygon(25% 0%,75% 0%,100% 50%,75% 100%,25% 100%,0% 50%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:1px;pointer-events:none;
+}
+.chord-pad.on{filter:drop-shadow(0 0 7px var(--c,#303060));}
+.chord-pad.on .chord-pad-inner{background:color-mix(in srgb,var(--c) 18%,#07071a);}
+.chord-pad:active{filter:brightness(1.3);}
+.chord-sym{font-size:14px;color:var(--c,#303060);line-height:1;}
+.chord-name{font-size:6px;font-weight:700;letter-spacing:.06em;color:var(--c,#303060);opacity:.75;text-transform:uppercase;}
+
 /* ── Unlock overlay ── */
 #unlock{
   position:fixed;inset:0;background:rgba(1,1,8,.92);
@@ -164,6 +190,7 @@ select.arp-sel:focus{border-color:#303060;}
     <button class="chip" data-s="4" style="--c:#a060f0" onclick="setSample(4)">VSUS<span>vibe sustain</span></button>
     <button class="chip" data-s="5" style="--c:#20d0e0" onclick="setSample(5)">DAMP<span>vibe dampen</span></button>
     <button class="chip" data-s="6" style="--c:#e0d020" onclick="setSample(6)">SHRT<span>vibe short</span></button>
+    <button class="chip" data-s="7" style="--c:#e04040" onclick="setSample(7)">TRPT<span>trumpet vib</span></button>
   </div>
 </div>
 
@@ -215,6 +242,42 @@ select.arp-sel:focus{border-color:#303060;}
 <!-- Hex keyboard -->
 <div id="hex-wrap"><canvas id="hex-cv"></canvas></div>
 
+<!-- Chord pad -->
+<div class="chord-pad-row">
+  <button class="chord-pad on" style="--c:#00e090" data-chord="PPP"
+    onpointerdown="chordPadDown('PPP')" onpointerup="chordPadUp('PPP')">
+    <div class="chord-pad-inner"><span class="chord-sym">☷</span><span class="chord-name">Major</span></div>
+  </button>
+  <button class="chord-pad" style="--c:#e8d840" data-chord="NNN"
+    onpointerdown="chordPadDown('NNN')" onpointerup="chordPadUp('NNN')">
+    <div class="chord-pad-inner"><span class="chord-sym">☰</span><span class="chord-name">Maj 7</span></div>
+  </button>
+  <button class="chord-pad" style="--c:#50c0e8" data-chord="NNP"
+    onpointerdown="chordPadDown('NNP')" onpointerup="chordPadUp('NNP')">
+    <div class="chord-pad-inner"><span class="chord-sym">☱</span><span class="chord-name">Maj 6</span></div>
+  </button>
+  <button class="chord-pad" style="--c:#e85030" data-chord="NPN"
+    onpointerdown="chordPadDown('NPN')" onpointerup="chordPadUp('NPN')">
+    <div class="chord-pad-inner"><span class="chord-sym">☲</span><span class="chord-name">Dom 7</span></div>
+  </button>
+  <button class="chord-pad" style="--c:#3060e0" data-chord="PNP"
+    onpointerdown="chordPadDown('PNP')" onpointerup="chordPadUp('PNP')">
+    <div class="chord-pad-inner"><span class="chord-sym">☵</span><span class="chord-name">Min 7</span></div>
+  </button>
+  <button class="chord-pad" style="--c:#50d870" data-chord="PNN"
+    onpointerdown="chordPadDown('PNN')" onpointerup="chordPadUp('PNN')">
+    <div class="chord-pad-inner"><span class="chord-sym">☴</span><span class="chord-name">Sus 4</span></div>
+  </button>
+  <button class="chord-pad" style="--c:#9050e8" data-chord="NPP"
+    onpointerdown="chordPadDown('NPP')" onpointerup="chordPadUp('NPP')">
+    <div class="chord-pad-inner"><span class="chord-sym">☳</span><span class="chord-name">½ Dim</span></div>
+  </button>
+  <button class="chord-pad" style="--c:#8090a0" data-chord="PPN"
+    onpointerdown="chordPadDown('PPN')" onpointerup="chordPadUp('PPN')">
+    <div class="chord-pad-inner"><span class="chord-sym">☶</span><span class="chord-name">Dim 7</span></div>
+  </button>
+</div>
+
 <!-- ARP section -->
 <div class="arp-section">
   <div class="arp-steps-row">
@@ -228,7 +291,10 @@ select.arp-sel:focus{border-color:#303060;}
   <div class="arp-ctrl-row">
     <div class="arp-grp">
       <span class="arp-lbl">SCALE</span>
-      <select class="arp-sel" id="arp-scale-sel" onchange="setScaleKey(this.value)"></select>
+      <div style="display:flex;gap:4px;align-items:center;">
+        <select class="arp-sel" id="arp-scale-sel" onchange="setScaleKey(this.value)" style="min-width:88px"></select>
+        <button class="arp-play-btn" id="scale-lock-btn" onclick="toggleScaleLock()" title="Lock scale root so notes don't shift it">LOCK</button>
+      </div>
     </div>
     <div class="arp-grp" id="arp-deg-grp" style="display:none">
       <span class="arp-lbl">DEGREE</span>
@@ -261,6 +327,60 @@ select.arp-sel:focus{border-color:#303060;}
         <span class="arp-root-disp" id="arp-root-disp">C4</span>
         <button class="arp-oct-btn" onclick="shiftArpOct(+1)">+</button>
       </div>
+    </div>
+  </div>
+  <!-- MOD row — LFO automation -->
+  <div class="arp-ctrl-row" style="border-top:1px solid #0a0a1e;">
+    <div class="arp-grp">
+      <span class="arp-lbl">LFO 1</span>
+      <button class="arp-play-btn" id="lfo1-btn" onclick="toggleLfo(0)">ON</button>
+    </div>
+    <div class="arp-grp">
+      <span class="arp-lbl">TARGET</span>
+      <select class="arp-sel" id="lfo1-tgt" onchange="setLfoTarget(0,this.value)" style="min-width:68px"></select>
+    </div>
+    <div class="arp-grp">
+      <span class="arp-lbl">SHAPE</span>
+      <select class="arp-sel" id="lfo1-shp" onchange="setLfoShape(0,this.value)" style="min-width:76px">
+        <option value="sine">∿ SINE</option>
+        <option value="tri">△ TRI</option>
+        <option value="sqr">⊓ SQR</option>
+        <option value="rnd">↯ S&amp;H</option>
+      </select>
+    </div>
+    <div class="kw" data-k="lfo1rate">
+      <canvas width="40" height="40"></canvas>
+      <div class="kl">RATE</div><div class="kv">0.25Hz</div>
+    </div>
+    <div class="kw" data-k="lfo1depth">
+      <canvas width="40" height="40"></canvas>
+      <div class="kl">DEPTH</div><div class="kv">50%</div>
+    </div>
+    <div class="knob-sep"></div>
+    <div class="arp-grp">
+      <span class="arp-lbl">LFO 2</span>
+      <button class="arp-play-btn" id="lfo2-btn" onclick="toggleLfo(1)">ON</button>
+    </div>
+    <div class="arp-grp">
+      <span class="arp-lbl">TARGET</span>
+      <select class="arp-sel" id="lfo2-tgt" onchange="setLfoTarget(1,this.value)" style="min-width:68px"></select>
+    </div>
+    <div class="arp-grp">
+      <span class="arp-lbl">SHAPE</span>
+      <select class="arp-sel" id="lfo2-shp" onchange="setLfoShape(1,this.value)" style="min-width:76px">
+        <option value="sine">∿ SINE</option>
+        <option value="tri">△ TRI</option>
+        <option value="sqr">⊓ SQR</option>
+        <option value="rnd">↯ S&amp;H</option>
+      </select>
+    </div>
+    <div class="kw" data-k="lfo2rate">
+      <canvas width="40" height="40"></canvas>
+      <div class="kl">RATE</div><div class="kv">0.45Hz</div>
+    </div>
+    <div class="kw" data-k="lfo2depth">
+      <canvas width="40" height="40"></canvas>
+      <div class="kl">DEPTH</div><div class="kv">30%</div>
     </div>
   </div>
 </div>
@@ -376,8 +496,46 @@ const SAMPLE_MAP = {
     88:'samples/Vibraphone.shortsustain.ff.E6.stereo.wav',
     89:'samples/Vibraphone.shortsustain.ff.F6.stereo.wav'
   },
+  // trumpet vibrato · ff — 35 notes, every semitone E3–D6
+  trumpet: {
+    52:'samples/Trumpet.vib.ff.E3.stereo.wav',
+    53:'samples/Trumpet.vib.ff.F3.stereo.wav',
+    54:'samples/Trumpet.vib.ff.Gb3.stereo.wav',
+    55:'samples/Trumpet.vib.ff.G3.stereo.wav',
+    56:'samples/Trumpet.vib.ff.Ab3.stereo.wav',
+    57:'samples/Trumpet.vib.ff.A3.stereo.wav',
+    58:'samples/Trumpet.vib.ff.Bb3.stereo.wav',
+    59:'samples/Trumpet.vib.ff.B3.stereo.wav',
+    60:'samples/Trumpet.vib.ff.C4.stereo.wav',
+    61:'samples/Trumpet.vib.ff.Db4.stereo.wav',
+    62:'samples/Trumpet.vib.ff.D4.stereo.wav',
+    63:'samples/Trumpet.vib.ff.Eb4.stereo.wav',
+    64:'samples/Trumpet.vib.ff.E4.stereo.wav',
+    65:'samples/Trumpet.vib.ff.F4.stereo.wav',
+    66:'samples/Trumpet.vib.ff.Gb4.stereo.wav',
+    67:'samples/Trumpet.vib.ff.G4.stereo.wav',
+    68:'samples/Trumpet.vib.ff.Ab4.stereo.wav',
+    69:'samples/Trumpet.vib.ff.A4.stereo.wav',
+    70:'samples/Trumpet.vib.ff.Bb4.stereo.wav',
+    71:'samples/Trumpet.vib.ff.B4.stereo.wav',
+    72:'samples/Trumpet.vib.ff.C5.stereo.wav',
+    73:'samples/Trumpet.vib.ff.Db5.stereo.wav',
+    74:'samples/Trumpet.vib.ff.D5.stereo.wav',
+    75:'samples/Trumpet.vib.ff.Eb5.stereo.wav',
+    76:'samples/Trumpet.vib.ff.E5.stereo.wav',
+    77:'samples/Trumpet.vib.ff.F5.stereo.wav',
+    78:'samples/Trumpet.vib.ff.Gb5.stereo.wav',
+    79:'samples/Trumpet.vib.ff.G5.stereo.wav',
+    80:'samples/Trumpet.vib.ff.Ab5.stereo.wav',
+    81:'samples/Trumpet.vib.ff.A5.stereo.wav',
+    82:'samples/Trumpet.vib.ff.Bb5.stereo.wav',
+    83:'samples/Trumpet.vib.ff.B5.stereo.wav',
+    84:'samples/Trumpet.vib.ff.C6.stereo.wav',
+    85:'samples/Trumpet.vib.ff.Db6.stereo.wav',
+    86:'samples/Trumpet.vib.ff.D6.stereo.wav',
+  },
 };
-const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt'];
+const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet'];
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt']);
 
@@ -431,8 +589,10 @@ const KNOB_COLOR = {
   warp:'#f04880', echo:'#00e090', drive:'#ff8c00', rev:'#9070e8',
   tone:'#ffaa20', vol:'#c0c0ff',
   bpm:'#ff80a0', swing:'#e8c030', gate:'#8090ff',
+  lfo1rate:'#40ffe0', lfo1depth:'#40ffe0',
+  lfo2rate:'#e040ff', lfo2depth:'#e040ff',
 };
-const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, drive:0, rev:0, tone:.5, vol:.75, bpm:.43, swing:0, gate:.5 };
+const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, drive:0, rev:0, tone:.5, vol:.75, bpm:.43, swing:0, gate:.5, lfo1rate:.05, lfo1depth:.5, lfo2rate:.1, lfo2depth:.3 };
 
 // Wicki-Hayden: right=+2st, up-right=+7st
 const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 48; // C3 base — A3 sits comfortably in the middle
@@ -737,6 +897,8 @@ function knobDisplay(key, val) {
     case 'bpm':   return Math.round(60 + val * 140) + ' bpm';
     case 'swing': return Math.round(50 + val * 25) + '%';
     case 'gate':  return Math.round(5 + val * 95) + '%';
+    case 'lfo1rate': case 'lfo2rate': { const hz = 0.05 + val * 3.95; return hz < 1 ? hz.toFixed(2)+'Hz' : hz.toFixed(1)+'Hz'; }
+    case 'lfo1depth': case 'lfo2depth': return Math.round(val * 100) + '%';
   }
 }
 
@@ -1084,6 +1246,8 @@ let _seqFlashIdx   = -1;
 let _scaleKey      = 'none';
 let _scaleDeg      = 0;
 let _scaleBase     = 60;
+let _scaleLocked   = false;
+let _chordHeld     = null; // active one-touch chord key, or null
 
 const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 function arpBpm()    { return Math.round(60 + knobs.bpm * 140); }
@@ -1264,12 +1428,37 @@ function toggleArp() {
 }
 
 function setArpRoot(midi) {
+  if (_scaleLocked) return;
   _scaleBase = midi;
   _arpRoot   = computeArpRoot();
   const el   = document.getElementById('arp-root-disp');
   if (el) el.textContent = NOTE_NAMES[_arpRoot % 12] + (Math.floor(_arpRoot / 12) - 1);
   updateDegreeSelect();
   if (_arpRunning || _scaleKey !== 'none') drawHex();
+}
+
+function toggleScaleLock() {
+  _scaleLocked = !_scaleLocked;
+  const btn = document.getElementById('scale-lock-btn');
+  if (btn) btn.className = _scaleLocked ? 'arp-play-btn on' : 'arp-play-btn';
+  savePreset();
+}
+
+// ── One-touch chord pad ───────────────────────────────────────────────────────
+function chordPadDown(key) {
+  _chordHeld = key;
+  _arpChord  = key;
+  const sel  = document.getElementById('arp-chord-sel');
+  if (sel) sel.value = key;
+  document.querySelectorAll('.chord-pad').forEach(b => {
+    b.classList.toggle('on', b.dataset.chord === key);
+  });
+  if (_arpRunning) drawHex();
+  savePreset();
+}
+
+function chordPadUp(key) {
+  if (_chordHeld === key) _chordHeld = null;
 }
 
 function setArpChord(key) {
@@ -1333,14 +1522,16 @@ function savePreset() {
   _saveTimer = setTimeout(() => {
     try {
       localStorage.setItem('byob_sampler_v3', JSON.stringify({
-        knobs:    { ...knobs },
-        sample:   _sample,
-        arpChord: _arpChord,
-        arpStyle: _arpStyle,
-        scaleKey: _scaleKey,
-        scaleDeg: _scaleDeg,
-        seqMode:  _seqMode,
-        seqNotes: [..._seqNotes],
+        knobs:       { ...knobs },
+        sample:      _sample,
+        arpChord:    _arpChord,
+        arpStyle:    _arpStyle,
+        scaleKey:    _scaleKey,
+        scaleDeg:    _scaleDeg,
+        scaleLocked: _scaleLocked,
+        seqMode:     _seqMode,
+        seqNotes:    [..._seqNotes],
+        lfos: _lfos.map(l => ({ on: l.on, target: l.target, shape: l.shape })),
       }));
     } catch(e) {}
   }, 400);
@@ -1356,11 +1547,104 @@ function loadPreset() {
     if (d.arpChord && CHORD_MAP[d.arpChord]) _arpChord = d.arpChord;
     if (d.arpStyle && ARP_PAT[d.arpStyle])   _arpStyle = d.arpStyle;
     if (d.scaleKey && SCALE_MAP[d.scaleKey]) _scaleKey = d.scaleKey;
-    if (d.scaleDeg != null) _scaleDeg = d.scaleDeg;
-    if (d.seqMode  != null) _seqMode  = d.seqMode;
+    if (d.scaleDeg   != null) _scaleDeg   = d.scaleDeg;
+    if (d.scaleLocked != null) _scaleLocked = d.scaleLocked;
+    if (d.seqMode    != null) _seqMode    = d.seqMode;
     if (Array.isArray(d.seqNotes)) _seqNotes = d.seqNotes;
+    if (Array.isArray(d.lfos)) {
+      d.lfos.forEach((saved, i) => {
+        if (!_lfos[i]) return;
+        if (saved.target && LFO_TARGETS.some(([k]) => k === saved.target)) _lfos[i].target = saved.target;
+        if (saved.shape)  _lfos[i].shape  = saved.shape;
+        if (saved.on)     _lfos[i].on     = true; // restart after UI init
+      });
+    }
   } catch(e) {}
 }
+
+// ── LFO automation ────────────────────────────────────────────────────────────
+const LFO_TARGETS = [
+  ['warp','WARP'],['tone','TONE'],['echo','ECHO'],['rev','REV'],['drive','DRIVE'],['vol','VOL'],
+];
+const _lfos = [
+  { on:false, target:'warp', shape:'sine', baseVal:0, phase:0, _rnd:0, _lastBeat:-1 },
+  { on:false, target:'tone', shape:'sine', baseVal:0, phase:0, _rnd:0, _lastBeat:-1 },
+];
+let _lfoRafId = null, _lfoLastT = 0;
+
+function lfoOsc(lfo, i) {
+  switch (lfo.shape) {
+    case 'sine': return Math.sin(lfo.phase);
+    case 'tri':  return (2 / Math.PI) * Math.asin(Math.sin(lfo.phase));
+    case 'sqr':  return Math.sin(lfo.phase) >= 0 ? 1 : -1;
+    case 'rnd': {
+      const beat = Math.floor(lfo.phase / (Math.PI * 2));
+      if (beat !== lfo._lastBeat) { lfo._rnd = Math.random() * 2 - 1; lfo._lastBeat = beat; }
+      return lfo._rnd;
+    }
+    default: return 0;
+  }
+}
+
+function lfoFrame(t) {
+  if (!_lfoRafId) return;
+  _lfoRafId = requestAnimationFrame(lfoFrame);
+  const dt = Math.min((t - _lfoLastT) / 1000, 0.1);
+  _lfoLastT = t;
+  _lfos.forEach((lfo, i) => {
+    if (!lfo.on) return;
+    const hz  = 0.05 + knobs[`lfo${i+1}rate`] * 3.95;
+    lfo.phase += hz * dt * Math.PI * 2;
+    const depth  = knobs[`lfo${i+1}depth`];
+    const modVal = Math.max(0, Math.min(1, lfo.baseVal + lfoOsc(lfo, i) * depth));
+    knobs[lfo.target] = modVal;
+    if (_ctx) applyKnob(lfo.target);
+    const wrap = document.querySelector(`.kw[data-k="${lfo.target}"]`);
+    if (wrap) {
+      drawKnob(wrap.querySelector('canvas'), lfo.target, modVal);
+      const vd = wrap.querySelector('.kv');
+      if (vd) vd.textContent = knobDisplay(lfo.target, modVal);
+    }
+  });
+}
+
+function startLfoRaf() {
+  if (_lfoRafId) return;
+  _lfoLastT = performance.now();
+  _lfoRafId = requestAnimationFrame(lfoFrame);
+}
+function stopLfoRafIfIdle() {
+  if (_lfos.some(l => l.on)) return;
+  if (_lfoRafId) { cancelAnimationFrame(_lfoRafId); _lfoRafId = null; }
+}
+
+function toggleLfo(idx) {
+  const lfo = _lfos[idx];
+  lfo.on = !lfo.on;
+  if (lfo.on) {
+    lfo.baseVal   = knobs[lfo.target];
+    lfo.phase     = 0;
+    lfo._lastBeat = -1;
+    startLfoRaf();
+  } else {
+    knobs[lfo.target] = lfo.baseVal;
+    if (_ctx) applyKnob(lfo.target);
+    refreshKnobs();
+    stopLfoRafIfIdle();
+  }
+  const btn = document.getElementById(`lfo${idx+1}-btn`);
+  if (btn) btn.className = lfo.on ? 'arp-play-btn on' : 'arp-play-btn';
+}
+
+function setLfoTarget(idx, target) {
+  const lfo = _lfos[idx];
+  if (lfo.on) { knobs[lfo.target] = lfo.baseVal; if (_ctx) applyKnob(lfo.target); refreshKnobs(); }
+  lfo.target  = target;
+  lfo.baseVal = knobs[target];
+  lfo.phase   = 0;
+}
+
+function setLfoShape(idx, shape) { _lfos[idx].shape = shape; }
 
 function initArpUI() {
   // 9 step dots
@@ -1402,6 +1686,37 @@ function initArpUI() {
     document.getElementById('seq-chips').style.display = '';
     renderSeqChips();
   }
+  // Scale lock
+  if (_scaleLocked) {
+    const lb = document.getElementById('scale-lock-btn');
+    if (lb) lb.className = 'arp-play-btn on';
+  }
+  // Chord pad active state
+  document.querySelectorAll('.chord-pad').forEach(b => {
+    b.classList.toggle('on', b.dataset.chord === _arpChord);
+  });
+  // LFO selects
+  [0, 1].forEach(i => {
+    const tgtSel = document.getElementById(`lfo${i+1}-tgt`);
+    const shpSel = document.getElementById(`lfo${i+1}-shp`);
+    if (tgtSel) {
+      LFO_TARGETS.forEach(([val, label]) => {
+        const o = document.createElement('option');
+        o.value = val; o.textContent = label; tgtSel.appendChild(o);
+      });
+      tgtSel.value = _lfos[i].target;
+    }
+    if (shpSel) shpSel.value = _lfos[i].shape;
+    // Restart any LFO that was saved as on
+    if (_lfos[i].on) {
+      _lfos[i].baseVal   = knobs[_lfos[i].target];
+      _lfos[i].phase     = 0;
+      _lfos[i]._lastBeat = -1;
+      const btn = document.getElementById(`lfo${i+1}-btn`);
+      if (btn) btn.className = 'arp-play-btn on';
+      startLfoRaf();
+    }
+  });
   updateArpDots();
 }
 
