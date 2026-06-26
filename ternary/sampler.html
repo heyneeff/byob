@@ -233,6 +233,10 @@ select.arp-sel:focus{border-color:#303060;}
       <canvas width="40" height="40"></canvas>
       <div class="kl">BPM</div><div class="kv">120</div>
     </div>
+    <div class="kw" data-k="swing">
+      <canvas width="40" height="40"></canvas>
+      <div class="kl">SWING</div><div class="kv">50%</div>
+    </div>
     <div class="kw" data-k="gate">
       <canvas width="40" height="40"></canvas>
       <div class="kl">GATE</div><div class="kv">50%</div>
@@ -413,9 +417,9 @@ const KNOB_COLOR = {
   atk:'#40e0ff', dec:'#ff6040', sus:'#40ff80', rel:'#c060ff',
   warp:'#f04880', echo:'#00e090', drive:'#ff8c00', rev:'#9070e8',
   tone:'#ffaa20', vol:'#c0c0ff',
-  bpm:'#ff80a0', gate:'#8090ff',
+  bpm:'#ff80a0', swing:'#e8c030', gate:'#8090ff',
 };
-const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, drive:0, rev:0, tone:.5, vol:.75, bpm:.43, gate:.5 };
+const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, drive:0, rev:0, tone:.5, vol:.75, bpm:.43, swing:0, gate:.5 };
 
 // Wicki-Hayden: right=+2st, up-right=+7st
 const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 48; // C3 base — A3 sits comfortably in the middle
@@ -717,8 +721,9 @@ function knobDisplay(key, val) {
     case 'rev':   return Math.round(val * 100) + '%';
     case 'tone': { const f = 200 * Math.pow(50, val); return f >= 1000 ? (f/1000).toFixed(1)+'k' : Math.round(f)+'Hz'; }
     case 'vol':  return Math.round(val * 100) + '%';
-    case 'bpm':  return Math.round(60 + val * 140) + ' bpm';
-    case 'gate': return Math.round(5 + val * 95) + '%';
+    case 'bpm':   return Math.round(60 + val * 140) + ' bpm';
+    case 'swing': return Math.round(50 + val * 25) + '%';
+    case 'gate':  return Math.round(5 + val * 95) + '%';
   }
 }
 
@@ -1057,6 +1062,11 @@ let _scaleBase     = 60;
 const NOTE_NAMES = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
 function arpBpm()    { return Math.round(60 + knobs.bpm * 140); }
 function arpStepMs() { return 60000 / arpBpm() / 3; }
+function arpSwingMs(step) {
+  const sMs = arpStepMs();
+  const sw  = knobs.swing * 0.5;
+  return step % 2 === 0 ? sMs * (1 + sw) : sMs * (1 - sw);
+}
 
 function arpTritShift(t) { return t === 1 ? -1 : t + 1; }
 
@@ -1078,14 +1088,14 @@ function arpStepMidi(step, form) {
 
 function arpTick() {
   if (!_arpRunning) return;
-  const pat = ARP_PAT[_arpStyle] ?? ARP_PAT.UP;
-  const sMs = arpStepMs();
+  const pat    = ARP_PAT[_arpStyle] ?? ARP_PAT.UP;
+  const stepMs = arpSwingMs(_arpStep);
 
   if (pat.rst[_arpStep] && _ctx) {
     const midi = arpStepMidi(_arpStep, _arpForm);
     const v    = noteOn(midi);
     if (v) {
-      const gateMs = sMs * (0.05 + knobs.gate * 0.95);
+      const gateMs = stepMs * (0.05 + knobs.gate * 0.95);
       setTimeout(() => noteOff(v), Math.max(gateMs, 20));
     }
     _arpFlashMidi = midi;
@@ -1096,8 +1106,8 @@ function arpTick() {
   updateArpDots();
   if (++_arpStep >= 9) { _arpStep = 0; _arpForm = (_arpForm + 1) % 3; }
 
-  _arpNextFireMs += sMs;
-  if (_arpNextFireMs < Date.now() - sMs * 2) _arpNextFireMs = Date.now();
+  _arpNextFireMs += stepMs;
+  if (_arpNextFireMs < Date.now() - stepMs * 2) _arpNextFireMs = Date.now();
   _arpTimer = setTimeout(arpTick, Math.max(0, _arpNextFireMs - Date.now()));
 }
 
