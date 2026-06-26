@@ -242,42 +242,6 @@ select.arp-sel:focus{border-color:#303060;}
 <!-- Hex keyboard -->
 <div id="hex-wrap"><canvas id="hex-cv"></canvas></div>
 
-<!-- Chord pad -->
-<div class="chord-pad-row">
-  <button class="chord-pad on" style="--c:#00e090" data-chord="PPP"
-    onpointerdown="chordPadDown('PPP')" onpointerup="chordPadUp('PPP')">
-    <div class="chord-pad-inner"><span class="chord-sym">☷</span><span class="chord-name">Major</span></div>
-  </button>
-  <button class="chord-pad" style="--c:#e8d840" data-chord="NNN"
-    onpointerdown="chordPadDown('NNN')" onpointerup="chordPadUp('NNN')">
-    <div class="chord-pad-inner"><span class="chord-sym">☰</span><span class="chord-name">Maj 7</span></div>
-  </button>
-  <button class="chord-pad" style="--c:#50c0e8" data-chord="NNP"
-    onpointerdown="chordPadDown('NNP')" onpointerup="chordPadUp('NNP')">
-    <div class="chord-pad-inner"><span class="chord-sym">☱</span><span class="chord-name">Maj 6</span></div>
-  </button>
-  <button class="chord-pad" style="--c:#e85030" data-chord="NPN"
-    onpointerdown="chordPadDown('NPN')" onpointerup="chordPadUp('NPN')">
-    <div class="chord-pad-inner"><span class="chord-sym">☲</span><span class="chord-name">Dom 7</span></div>
-  </button>
-  <button class="chord-pad" style="--c:#3060e0" data-chord="PNP"
-    onpointerdown="chordPadDown('PNP')" onpointerup="chordPadUp('PNP')">
-    <div class="chord-pad-inner"><span class="chord-sym">☵</span><span class="chord-name">Min 7</span></div>
-  </button>
-  <button class="chord-pad" style="--c:#50d870" data-chord="PNN"
-    onpointerdown="chordPadDown('PNN')" onpointerup="chordPadUp('PNN')">
-    <div class="chord-pad-inner"><span class="chord-sym">☴</span><span class="chord-name">Sus 4</span></div>
-  </button>
-  <button class="chord-pad" style="--c:#9050e8" data-chord="NPP"
-    onpointerdown="chordPadDown('NPP')" onpointerup="chordPadUp('NPP')">
-    <div class="chord-pad-inner"><span class="chord-sym">☳</span><span class="chord-name">½ Dim</span></div>
-  </button>
-  <button class="chord-pad" style="--c:#8090a0" data-chord="PPN"
-    onpointerdown="chordPadDown('PPN')" onpointerup="chordPadUp('PPN')">
-    <div class="chord-pad-inner"><span class="chord-sym">☶</span><span class="chord-name">Dim 7</span></div>
-  </button>
-</div>
-
 <!-- ARP section -->
 <div class="arp-section">
   <div class="arp-steps-row">
@@ -296,10 +260,7 @@ select.arp-sel:focus{border-color:#303060;}
   <div class="arp-ctrl-row">
     <div class="arp-grp">
       <span class="arp-lbl">SCALE</span>
-      <div style="display:flex;gap:4px;align-items:center;">
-        <select class="arp-sel" id="arp-scale-sel" onchange="setScaleKey(this.value)" style="min-width:88px"></select>
-        <button class="arp-play-btn" id="scale-lock-btn" onclick="toggleScaleLock()" title="Lock scale root so notes don't shift it">LOCK</button>
-      </div>
+      <select class="arp-sel" id="arp-scale-sel" onchange="setScaleKey(this.value)" style="min-width:88px"></select>
     </div>
     <div class="arp-grp" id="arp-deg-grp" style="display:none">
       <span class="arp-lbl">DEGREE</span>
@@ -555,6 +516,7 @@ const CHORD_MAP = {
   NPP:{ sym:'☳', name:'½ Dim 7',  col:'#9050e8', ivs:[0,3,6,10]  },
   PPN:{ sym:'☶', name:'Dim 7',    col:'#8090a0', ivs:[0,3,6,9]   },
 };
+const CHORD_KEYS = Object.keys(CHORD_MAP); // insertion order: PPP NNN NNP NPN | PNP PNN NPP PPN
 const SCALE_MAP = {
   none:      { name:'— free —',   ivs:null },
   major:     { name:'Major',      ivs:[0,2,4,5,7,9,11] },
@@ -984,17 +946,19 @@ function sizeHex() {
   _hexRows    = _hexRowPin != null
     ? _hexRowPin
     : Math.max(3, Math.min(9, Math.floor(H / 52)));
+  // Reserve 2 ctrl columns (chord pads) left of keyboard; 1 extra row below (r=-1) for LOCK/PANIC
+  const CTRL  = 2;
+  const span  = _hexCols + CTRL + (_hexRows - 1) / 2;
   _hexR       = Math.min(
-    W / (Math.sqrt(3) * (_hexCols + (_hexRows - 1) / 2 + .5)),
-    H / (1.5 * _hexRows + .5)
+    W / (Math.sqrt(3) * (span + 0.5)),
+    H / (1.5 * _hexRows + 3)
   );
   hexCv.width  = Math.ceil(W);
   hexCv.height = Math.ceil(H);
-  // Center keyboard both axes
-  const kbW = _hexR * Math.sqrt(3) * (_hexCols + (_hexRows - 1) / 2);
-  _hexOX = (hexCv.width - kbW) / 2 + _hexR * Math.sqrt(3) / 2;
-  // _hexOY = y-center of bottom row (r=0); derived from centering total kbH
-  _hexOY = hexCv.height / 2 + _hexR * 0.75 * (_hexRows - 1);
+  // _hexOX: keyboard starts at q=0; ctrl cols at q=-2,-1 extend left
+  _hexOX = (hexCv.width - _hexR * Math.sqrt(3) * span) / 2 + _hexR * Math.sqrt(3) * 2.5;
+  // _hexOY: center content including r=-1 ctrl row below keyboard
+  _hexOY = hexCv.height / 2 + _hexR * 0.75 * (_hexRows - 1.5);
   const el = document.getElementById('hex-rows-disp');
   if (el) el.textContent = _hexRows + 'R';
 }
@@ -1035,11 +999,44 @@ function hexStyle(midi) {
   return INTERVAL_STYLE[interval] ?? INTERVAL_STYLE[6];
 }
 
+// Draw a single control hex (chord pad, LOCK, or PANIC) at canvas position (x,y)
+function drawCtrlHex(x, y, sym, name, color, active) {
+  if (x + _hexR < 0 || x - _hexR > hexCv.width ||
+      y + _hexR < 0 || y - _hexR > hexCv.height) return;
+  const hR = _hexR - 5; // slightly smaller than keyboard → visual gap
+  hexCtx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 3 * i - Math.PI / 6;
+    i ? hexCtx.lineTo(x + hR * Math.cos(a), y + hR * Math.sin(a))
+      : hexCtx.moveTo(x + hR * Math.cos(a), y + hR * Math.sin(a));
+  }
+  hexCtx.closePath();
+  if (active) { hexCtx.shadowColor = color; hexCtx.shadowBlur = 14; }
+  hexCtx.globalAlpha = active ? 0.14 : 1;
+  hexCtx.fillStyle   = active ? color : '#0c0818';
+  hexCtx.fill();
+  hexCtx.globalAlpha = 1; hexCtx.shadowBlur = 0;
+  hexCtx.strokeStyle = active ? color : '#1a1030';
+  hexCtx.lineWidth   = active ? 1.8 : 1;
+  hexCtx.stroke();
+  hexCtx.textAlign = 'center'; hexCtx.textBaseline = 'middle';
+  hexCtx.fillStyle = active ? color : '#2e1e48';
+  hexCtx.font = `700 ${Math.round(_hexR * 0.38)}px 'Barlow Condensed',system-ui`;
+  hexCtx.fillText(sym, x, name ? y - _hexR * 0.12 : y);
+  if (name) {
+    hexCtx.globalAlpha = active ? 0.8 : 0.45;
+    hexCtx.font = `600 ${Math.round(_hexR * 0.22)}px 'Barlow Condensed',system-ui`;
+    hexCtx.fillText(name.toUpperCase(), x, y + _hexR * 0.38);
+    hexCtx.globalAlpha = 1;
+  }
+}
+
 function drawHex() {
   const W = hexCv.width, H = hexCv.height;
   hexCtx.clearRect(0, 0, W, H);
   hexCtx.fillStyle = '#010108'; hexCtx.fillRect(0, 0, W, H);
 
+  // ── Keyboard notes ────────────────────────────────────────────────────────
   for (let r = 0; r < _hexRows; r++) {
     for (let q = 0; q < _hexCols; q++) {
       const midi    = hexMidi(q, r);
@@ -1048,7 +1045,6 @@ function drawHex() {
       const pressed = _pressedMidi.has(midi);
       const hR      = _hexR - 2;
 
-      // Hex path
       hexCtx.beginPath();
       for (let i = 0; i < 6; i++) {
         const a = Math.PI / 3 * i - Math.PI / 6;
@@ -1057,7 +1053,6 @@ function drawHex() {
       }
       hexCtx.closePath();
 
-      // Fill
       if (pressed) {
         hexCtx.fillStyle = '#ffffff18';
         hexCtx.shadowColor = '#ffffff'; hexCtx.shadowBlur = 28;
@@ -1067,13 +1062,10 @@ function drawHex() {
         if (st.glow) { hexCtx.shadowColor = st.border; hexCtx.shadowBlur = st.glow; }
       }
       hexCtx.fill(); hexCtx.shadowBlur = 0;
-
-      // Border
       hexCtx.strokeStyle = pressed ? '#ffffff' : st.border;
       hexCtx.lineWidth   = pressed ? 2 : 1.5;
       hexCtx.stroke();
 
-      // Note label (MIDI pitch class 0 = C)
       const pc   = midi % 12;
       const NOTE = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
       const oct  = Math.floor(midi / 12) - 1;
@@ -1087,6 +1079,22 @@ function drawHex() {
       hexCtx.globalAlpha = 1;
     }
   }
+
+  // ── Control hexes (chord pads + LOCK + PANIC) at q=-2, q=-1 ─────────────
+  // 8 chord pads: q=-2 → idx 0-3, q=-1 → idx 4-7, rows 0..3
+  CHORD_KEYS.forEach((key, idx) => {
+    const col = idx < 4 ? -2 : -1;
+    const row = idx % 4;
+    const { x, y } = hexCenter(col, row);
+    const ch = CHORD_MAP[key];
+    drawCtrlHex(x, y, ch.sym, ch.name, ch.col, key === _arpChord);
+  });
+  // LOCK at q=-2, r=-1 (below chord col A)
+  { const { x, y } = hexCenter(-2, -1);
+    drawCtrlHex(x, y, 'LOCK', null, '#00e090', _scaleLocked); }
+  // PANIC at q=-1, r=-1 (below chord col B) — persistent dim red
+  { const { x, y } = hexCenter(-1, -1);
+    drawCtrlHex(x, y, 'STOP', null, '#802020', true); }
 }
 
 // ── Hit detection ─────────────────────────────────────────────────────────────
@@ -1102,6 +1110,20 @@ function hitHex(cx, cy) {
   return bestD <= _hexR ? best : null;
 }
 
+// Returns {type, key} if (px,py) hits a control hex, else null
+function hitControlHex(px, py) {
+  const hitR = _hexR * 0.86; // matches ctrl hex drawn size (_hexR - 5 ≈ 0.86*_hexR for typical sizes)
+  for (let i = 0; i < 8; i++) {
+    const { x, y } = hexCenter(i < 4 ? -2 : -1, i % 4);
+    if (Math.hypot(px - x, py - y) <= hitR) return { type: 'chord', key: CHORD_KEYS[i] };
+  }
+  { const { x, y } = hexCenter(-2, -1);
+    if (Math.hypot(px - x, py - y) <= hitR) return { type: 'lock' }; }
+  { const { x, y } = hexCenter(-1, -1);
+    if (Math.hypot(px - x, py - y) <= hitR) return { type: 'panic' }; }
+  return null;
+}
+
 function cvXY(touch) {
   const rect = hexCv.getBoundingClientRect();
   return {
@@ -1114,7 +1136,14 @@ function cvXY(touch) {
 hexCv.addEventListener('touchstart', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
-    const p   = cvXY(t);
+    const p    = cvXY(t);
+    const ctrl = hitControlHex(p.x, p.y);
+    if (ctrl) {
+      if (ctrl.type === 'chord') chordPadDown(ctrl.key);
+      else if (ctrl.type === 'lock') toggleScaleLock();
+      else if (ctrl.type === 'panic') panicStop();
+      continue;
+    }
     const hex = hitHex(p.x, p.y);
     if (!hex) continue;
     const midi = hexMidi(hex.q, hex.r);
@@ -1181,7 +1210,16 @@ hexCv.addEventListener('touchcancel', e => {
 // Mouse support (desktop / monitors)
 let _mouseV = null, _mouseMidi = -1;
 hexCv.addEventListener('mousedown', e => {
-  const hex = hitHex(e.offsetX * (hexCv.width / hexCv.clientWidth), e.offsetY * (hexCv.height / hexCv.clientHeight));
+  const px = e.offsetX * (hexCv.width / hexCv.clientWidth);
+  const py = e.offsetY * (hexCv.height / hexCv.clientHeight);
+  const ctrl = hitControlHex(px, py);
+  if (ctrl) {
+    if (ctrl.type === 'chord') chordPadDown(ctrl.key);
+    else if (ctrl.type === 'lock') toggleScaleLock();
+    else if (ctrl.type === 'panic') panicStop();
+    return;
+  }
+  const hex = hitHex(px, py);
   if (!hex) return;
   const midi = hexMidi(hex.q, hex.r);
   setArpRoot(midi);
@@ -1465,26 +1503,34 @@ function setArpRoot(midi) {
 
 function toggleScaleLock() {
   _scaleLocked = !_scaleLocked;
-  const btn = document.getElementById('scale-lock-btn');
-  if (btn) btn.className = _scaleLocked ? 'arp-play-btn on' : 'arp-play-btn';
+  drawHex();
   savePreset();
 }
 
 // ── One-touch chord pad ───────────────────────────────────────────────────────
 function chordPadDown(key) {
-  _chordHeld = key;
-  _arpChord  = key;
-  const sel  = document.getElementById('arp-chord-sel');
+  _arpChord = key;
+  const sel = document.getElementById('arp-chord-sel');
   if (sel) sel.value = key;
-  document.querySelectorAll('.chord-pad').forEach(b => {
-    b.classList.toggle('on', b.dataset.chord === key);
-  });
-  if (_arpRunning) drawHex();
+  drawHex();
   savePreset();
 }
 
-function chordPadUp(key) {
-  if (_chordHeld === key) _chordHeld = null;
+// ── Panic / hard stop ─────────────────────────────────────────────────────────
+function panicStop() {
+  _voices.forEach(v => killVoice(v));
+  _active.clear(); _pressedMidi.clear();
+  Object.keys(_keyVoices).forEach(k => delete _keyVoices[k]);
+  if (_arpRunning) {
+    _arpRunning = false;
+    clearTimeout(_arpTimer); _arpTimer = null;
+    _arpFlashMidi = -1; _arpStep = 0; _arpForm = 0;
+    if (_seqMode) { _seqFlashIdx = -1; renderSeqChips(); }
+    const btn = document.getElementById('arp-play-btn');
+    if (btn) { btn.className = 'arp-play-btn'; btn.textContent = '▶ ARP'; }
+  }
+  if (_ctx) _ctx.suspend().then(() => _ctx.resume());
+  drawHex(); updateArpDots();
 }
 
 function setArpChord(key) {
@@ -1714,15 +1760,6 @@ function initArpUI() {
     document.getElementById('seq-chips').style.display = '';
     renderSeqChips();
   }
-  // Scale lock
-  if (_scaleLocked) {
-    const lb = document.getElementById('scale-lock-btn');
-    if (lb) lb.className = 'arp-play-btn on';
-  }
-  // Chord pad active state
-  document.querySelectorAll('.chord-pad').forEach(b => {
-    b.classList.toggle('on', b.dataset.chord === _arpChord);
-  });
   // LFO selects
   [0, 1].forEach(i => {
     const tgtSel = document.getElementById(`lfo${i+1}-tgt`);
