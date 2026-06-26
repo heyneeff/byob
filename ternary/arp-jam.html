@@ -55,6 +55,8 @@ body{display:flex;flex-direction:column;}
 
 /* ── Style buttons ── */
 .g5{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;}
+.g6{display:grid;grid-template-columns:repeat(6,1fr);gap:4px;}
 .style-btn{padding:7px 3px 5px;border-radius:6px;border:1.5px solid var(--rim);background:var(--card);cursor:pointer;transition:all .1s;user-select:none;text-align:center;font-size:11px;font-weight:700;letter-spacing:.05em;color:#7070a0;}
 .style-btn.active{border-color:var(--teal);color:var(--teal);background:color-mix(in srgb,var(--teal) 8%,var(--card));}
 .style-btn:active{transform:scale(.95);}
@@ -151,6 +153,42 @@ input[type=range]::-webkit-slider-thumb{
   <div class="g5" id="style-grid"></div>
 </div>
 
+<!-- Oscillator -->
+<div class="section">
+  <div class="lbl">Oscillator</div>
+  <div class="g4" style="margin-bottom:6px;">
+    <button class="style-btn active" id="ot-sawtooth" onclick="setOscTypeUI('sawtooth')">SAW<span class="style-sub">analog</span></button>
+    <button class="style-btn" id="ot-square"   onclick="setOscTypeUI('square')">SQR<span class="style-sub">hollow</span></button>
+    <button class="style-btn" id="ot-sine"     onclick="setOscTypeUI('sine')">SIN<span class="style-sub">pure</span></button>
+    <button class="style-btn" id="ot-triangle" onclick="setOscTypeUI('triangle')">TRI<span class="style-sub">soft</span></button>
+  </div>
+  <div class="sl-row"><span class="sl-lbl">Sub</span><input type="range" id="sl-sub" min="0" max="100" value="15" style="--pct:15%" oninput="onOsc()"/><span class="sl-val" id="vl-sub">15%</span></div>
+</div>
+
+<!-- FM -->
+<div class="section">
+  <div class="lbl">FM Synthesis</div>
+  <div class="sl-row"><span class="sl-lbl">Depth</span><input type="range" id="sl-fmd" min="0" max="2000" value="0" style="--pct:0%" oninput="onFm()"/><span class="sl-val" id="vl-fmd">0 Hz</span></div>
+  <div class="sl-meta" style="margin-bottom:5px;"><span>off</span><span>heavy FM</span></div>
+  <div class="g6">
+    <button class="oct-btn" id="fmr-025" onclick="setFmRatioUI(0.25)">¼</button>
+    <button class="oct-btn" id="fmr-05"  onclick="setFmRatioUI(0.5)">½</button>
+    <button class="oct-btn active" id="fmr-1" onclick="setFmRatioUI(1)">1×</button>
+    <button class="oct-btn" id="fmr-2"   onclick="setFmRatioUI(2)">2×</button>
+    <button class="oct-btn" id="fmr-3"   onclick="setFmRatioUI(3)">3×</button>
+    <button class="oct-btn" id="fmr-5"   onclick="setFmRatioUI(5)">5×</button>
+  </div>
+  <div class="sl-meta"><span>Ratio (modulator : carrier)</span></div>
+</div>
+
+<!-- Filter -->
+<div class="section">
+  <div class="lbl">Filter · 4-pole ladder</div>
+  <div class="sl-row"><span class="sl-lbl">Cutoff</span><input type="range" id="sl-flt" min="0" max="100" value="63" style="--pct:63%" oninput="onFilter()"/><span class="sl-val" id="vl-flt">2.4k</span></div>
+  <div class="sl-row"><span class="sl-lbl">Res</span><input type="range" id="sl-res" min="0" max="400" value="50" style="--pct:12.5%" oninput="onFilter()"/><span class="sl-val" id="vl-res">0.50</span></div>
+  <div class="sl-row"><span class="sl-lbl">Env</span><input type="range" id="sl-fenv" min="0" max="100" value="60" style="--pct:60%" oninput="onFilter()"/><span class="sl-val" id="vl-fenv">60%</span></div>
+</div>
+
 <!-- Envelope -->
 <div class="section">
   <div class="lbl">Envelope</div>
@@ -159,6 +197,15 @@ input[type=range]::-webkit-slider-thumb{
   <div class="sl-row"><span class="sl-lbl">S</span><input type="range" id="sl-s" min="0" max="100" value="58" style="--pct:58%" oninput="onEnv()"/><span class="sl-val" id="vl-s">58%</span></div>
   <div class="sl-row"><span class="sl-lbl">R</span><input type="range" id="sl-r" min="10" max="1500" value="90" oninput="onEnv()"/><span class="sl-val" id="vl-r">90ms</span></div>
   <div class="sl-row"><span class="sl-lbl">Gate</span><input type="range" id="sl-gate" min="10" max="200" value="82" style="--pct:37%" oninput="onEnv()"/><span class="sl-val" id="vl-gate">82%</span></div>
+</div>
+
+<!-- EQ -->
+<div class="section">
+  <div class="lbl">EQ</div>
+  <div class="sl-row"><span class="sl-lbl">Low</span><input type="range" id="sl-eql" min="-12" max="12" value="0" style="--pct:50%" oninput="onEq()"/><span class="sl-val" id="vl-eql">0 dB</span></div>
+  <div class="sl-row"><span class="sl-lbl">Mid</span><input type="range" id="sl-eqm" min="-12" max="12" value="0" style="--pct:50%" oninput="onEq()"/><span class="sl-val" id="vl-eqm">0 dB</span></div>
+  <div class="sl-row"><span class="sl-lbl">High</span><input type="range" id="sl-eqh" min="-12" max="12" value="0" style="--pct:50%" oninput="onEq()"/><span class="sl-val" id="vl-eqh">0 dB</span></div>
+  <div class="sl-meta"><span>200 Hz shelf</span><span>1 kHz peak</span><span>6 kHz shelf</span></div>
 </div>
 
 <!-- Reverb -->
@@ -490,6 +537,72 @@ function buildStyles() {
   });
 }
 
+// ── Oscillator ────────────────────────────────────────────────────────────────
+function setOscTypeUI(type) {
+  window._terArp?.setOscType(type);
+  document.querySelectorAll('[id^=ot-]').forEach(b => b.classList.remove('active'));
+  document.getElementById(`ot-${type}`)?.classList.add('active');
+}
+
+function onOsc() {
+  const sub = +document.getElementById('sl-sub').value / 100;
+  window._terArp?.setSubLevel(sub);
+  document.getElementById('vl-sub').textContent = Math.round(sub * 100) + '%';
+  const el = document.getElementById('sl-sub');
+  el.style.setProperty('--pct', pct(+el.value, +el.min, +el.max));
+}
+
+// ── FM ────────────────────────────────────────────────────────────────────────
+const FM_RATIO_IDS = { 0.25:'025', 0.5:'05', 1:'1', 2:'2', 3:'3', 5:'5' };
+
+function setFmRatioUI(ratio) {
+  window._terArp?.setFm({ ratio });
+  document.querySelectorAll('[id^=fmr-]').forEach(b => b.classList.remove('active'));
+  document.getElementById(`fmr-${FM_RATIO_IDS[ratio]}`)?.classList.add('active');
+}
+
+function onFm() {
+  const depth = +document.getElementById('sl-fmd').value;
+  window._terArp?.setFm({ depth });
+  document.getElementById('vl-fmd').textContent = depth + ' Hz';
+  const el = document.getElementById('sl-fmd');
+  el.style.setProperty('--pct', pct(+el.value, +el.min, +el.max));
+}
+
+// ── Filter ────────────────────────────────────────────────────────────────────
+function sliderToHz(v) { return Math.round(80 * Math.pow(225, v / 100)); }
+
+function onFilter() {
+  const hz     = sliderToHz(+document.getElementById('sl-flt').value);
+  const res    = +document.getElementById('sl-res').value / 100;
+  const envAmt = +document.getElementById('sl-fenv').value / 100;
+  window._terArp?.setFilter({ cutoff: hz, res, envAmt });
+  document.getElementById('vl-flt').textContent  = hz >= 1000 ? (hz/1000).toFixed(1)+'k' : hz+' Hz';
+  document.getElementById('vl-res').textContent  = res.toFixed(2);
+  document.getElementById('vl-fenv').textContent = Math.round(envAmt * 100) + '%';
+  ['flt','res','fenv'].forEach(k => {
+    const el = document.getElementById(`sl-${k}`);
+    el.style.setProperty('--pct', pct(+el.value, +el.min, +el.max));
+  });
+}
+
+// ── EQ ────────────────────────────────────────────────────────────────────────
+function fmtDb(v) { return (v >= 0 ? '+' : '') + v + ' dB'; }
+
+function onEq() {
+  const low  = +document.getElementById('sl-eql').value;
+  const mid  = +document.getElementById('sl-eqm').value;
+  const high = +document.getElementById('sl-eqh').value;
+  window._terArp?.setEq({ low, mid, high });
+  document.getElementById('vl-eql').textContent = fmtDb(low);
+  document.getElementById('vl-eqm').textContent = fmtDb(mid);
+  document.getElementById('vl-eqh').textContent = fmtDb(high);
+  ['eql','eqm','eqh'].forEach(k => {
+    const el = document.getElementById(`sl-${k}`);
+    el.style.setProperty('--pct', pct(+el.value, +el.min, +el.max));
+  });
+}
+
 // ── Reverb ────────────────────────────────────────────────────────────────────
 function onReverb(el) {
   const v = +el.value / 100;
@@ -518,7 +631,8 @@ function onEnv() {
     el.style.setProperty('--pct', pct(+el.value, +el.min, +el.max));
   });
   document.getElementById('sl-s').style.setProperty('--pct', pct(s * 100, 0, 100));
-  document.getElementById('sl-gate').style.setProperty('--pct', pct(gate * 100, 0.1, 2.0));
+  const gateEl = document.getElementById('sl-gate');
+  gateEl.style.setProperty('--pct', pct(+gateEl.value, +gateEl.min, +gateEl.max));
 }
 
 // ── Pad ───────────────────────────────────────────────────────────────────────
@@ -662,6 +776,10 @@ buildStyles();
 buildTrigramRow();
 applyBpm();
 onEnv();
+onOsc();
+onFm();
+onFilter();
+onEq();
 onPad();
 initHexKeyboard();
 selectRoot(60);
