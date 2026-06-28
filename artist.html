@@ -1259,8 +1259,16 @@ async function handleDJAuth(){
     const {data,error}=djIsSignUp
       ? await db.auth.signUp({email,password})
       : await db.auth.signInWithPassword({email,password});
-    if(error){errEl.textContent=error.message;errEl.style.display='block';document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';return;}
+    if(error){errEl.textContent=error.message||error.code||('Auth error'+(error.status?' ('+error.status+')':''));errEl.style.display='block';document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';return;}
     currentUser=data.user||data.session?.user;
+    if(!currentUser){
+      errEl.textContent='Check your email to confirm your account, then sign in.';
+      errEl.style.color='var(--teal)';
+      errEl.style.display='block';
+      document.getElementById('dj-auth-btn').textContent=djIsSignUp?'Sign Up':'Sign In';
+      return;
+    }
+    errEl.style.color='';
     document.getElementById('dj-auth').style.display='none';
     document.getElementById('dj-app').style.display='block';
     window._mapInited=false;  // lazy-init on setup panel
