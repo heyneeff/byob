@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BYOB · Spatial Controller</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:      #0a0a0f;
+  --panel:   #10101a;
+  --card:    #14141f;
+  --border:  #1e1e2e;
+  --teal:    #00d4aa;
+  --orange:  #ff6b35;
+  --pink:    #ff3d7f;
+  --purple:  #7c3aed;
+  --blue:    #3b82f6;
+  --muted:   #3a3a4a;
+  --dim:     #555;
+  --text:    #ddd;
+  --small:   11px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'SF Mono', 'Fira Mono', monospace;
+  font-size: 12px;
+  height: 100vh;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 44px 1fr;
+  grid-template-columns: 1fr 260px;
+  gap: 1px;
+  background-color: var(--border);
+}
+
+/* ── Header ──────────────────────────────────────────────────── */
+header {
+  grid-column: 1 / -1;
+  background: var(--panel);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.logo { color: var(--teal); font-weight: bold; font-size: 14px; letter-spacing: 3px; }
+
+.pill {
+  display: flex; align-items: center; gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: var(--small);
+  color: var(--dim);
+}
+.dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--muted); flex-shrink: 0;
+  transition: background .3s;
+}
+.dot.ok     { background: var(--teal); box-shadow: 0 0 5px var(--teal); }
+.dot.active { background: var(--orange); box-shadow: 0 0 5px var(--orange); animation: blink .9s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+#bpm-val { font-size: 20px; font-weight: bold; color: var(--orange); min-width: 58px; }
+#beat-val { color: var(--dim); font-size: var(--small); min-width: 52px; }
+
+.zone-row { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+
+select, input[type=text], input[type=number] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: var(--small);
+  outline: none;
+}
+select:focus, input:focus { border-color: var(--teal); }
+
+/* ── Radar ───────────────────────────────────────────────────── */
+#radar-wrap {
+  background: var(--panel);
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+#radar { border-radius: 50%; }
+#phone-count {
+  position: absolute; top: 10px; left: 14px;
+  color: var(--teal); font-size: var(--small);
+}
+#started-lbl {
+  position: absolute; bottom: 10px; left: 14px;
+  color: var(--dim); font-size: 10px;
+}
+
+/* ── Right panel ─────────────────────────────────────────────── */
+#controls {
+  background: var(--panel);
+  display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden;
+}
+
+.sec {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sec-title {
+  text-transform: uppercase; font-size: 9px; letter-spacing: 1.5px;
+  color: var(--dim); margin-bottom: 8px;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--text);
+  font-family: inherit; font-size: var(--small);
+  cursor: pointer; transition: all .12s; white-space: nowrap;
+}
+.btn:hover  { border-color: var(--teal); color: var(--teal); }
+.btn.go     { background: var(--teal); color: #000; border-color: var(--teal); font-weight: bold; }
+.btn.go:hover { background: #00ffcc; }
+.btn.danger { border-color: var(--pink); color: var(--pink); }
+.btn.danger:hover { background: var(--pink); color: #000; }
+.btn.on     { background: var(--purple); border-color: var(--purple); color: #fff; }
+.btn.stop   { border-color: var(--dim); color: var(--dim); }
+.btn.stop:hover { border-color: var(--pink); color: var(--pink); }
+.btn-row    { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* ── Mode grid ───────────────────────────────────────────────── */
+.mode-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+}
+.mode-btn { padding: 6px 4px; font-size: 10px; }
+
+/* ── Params ──────────────────────────────────────────────────── */
+.pr {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 6px;
+}
+.pr label { color: var(--dim); font-size: 10px; min-width: 56px; }
+input[type=range] { flex: 1; accent-color: var(--teal); height: 3px; }
+.pv { min-width: 34px; text-align: right; color: var(--orange); font-size: 10px; }
+
+/* dir toggle */
+.dir-btn {
+  width: 28px; height: 22px;
+  border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--text);
+  font-size: 14px; cursor: pointer; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+.dir-btn:hover { border-color: var(--teal); color: var(--teal); }
+
+/* inline number input */
+input.num {
+  width: 52px; text-align: center; color: var(--orange);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 3px 4px; font-size: var(--small);
+}
+
+/* ── Slot rows ───────────────────────────────────────────────── */
+.slot-row {
+  display: flex; align-items: center; gap: 6px;
+  padding: 4px 0; border-bottom: 1px solid var(--border);
+}
+.slot-row:last-child { border-bottom: none; }
+.slot-label {
+  width: 20px; text-align: center; font-weight: bold;
+  font-size: 11px; flex-shrink: 0;
+}
+.slot-vol { flex: 1; }
+.slot-vol-val { min-width: 30px; text-align: right; color: var(--orange); font-size: 10px; }
+.fx-btn {
+  width: 24px; height: 20px; border: 1px solid var(--border);
+  border-radius: 3px; background: transparent; color: var(--dim);
+  font-size: 11px; cursor: pointer; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.fx-btn.on { background: var(--purple); border-color: var(--purple); color: #fff; }
+.fx-btn:hover { border-color: var(--teal); }
+
+/* ── Tap tempo ───────────────────────────────────────────────── */
+#tap-btn {
+  width: 100%; padding: 8px;
+  border: 1px solid var(--orange); border-radius: 4px;
+  background: transparent; color: var(--orange);
+  font-family: inherit; font-size: 13px; font-weight: bold;
+  cursor: pointer; letter-spacing: .08em;
+  transition: background .1s;
+}
+#tap-btn:active { background: rgba(255,107,53,.15); }
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────── -->
+<header>
+  <span class="logo">BYOB</span>
+
+  <div class="pill">
+    <div class="dot" id="ws-dot"></div>
+    <span id="ws-lbl">bridge</span>
+  </div>
+
+  <div class="pill">
+    <div class="dot" id="link-dot"></div>
+    <span>Link</span>
+  </div>
+
+  <span id="bpm-val">—</span>
+  <span id="beat-val">— / 16</span>
+
+  <div class="zone-row">
+    <select id="zone-select" onchange="onZoneSelect(this.value)" style="width:160px">
+      <option value="">— pick zone —</option>
+    </select>
+    <button class="btn" onclick="loadZones()">↻</button>
+  </div>
+</header>
+
+<!-- ── Radar ──────────────────────────────────────────────── -->
+<div id="radar-wrap">
+  <div id="phone-count">0 phones</div>
+  <canvas id="radar"></canvas>
+  <div id="started-lbl">not anchored</div>
+</div>
+
+<!-- ── Controls ───────────────────────────────────────────── -->
+<div id="controls">
+
+  <!-- Transport -->
+  <div class="sec">
+    <div class="sec-title">Transport</div>
+    <div class="btn-row">
+      <button class="btn go" style="font-size:14px;padding:6px 14px" onclick="doPlay()">▶ PLAY</button>
+      <button class="btn danger" onclick="doHardSync()">⚡ RE-SYNC</button>
+    </div>
+  </div>
+
+  <!-- Tap tempo (override Link) -->
+  <div class="sec">
+    <div class="sec-title">Tap Tempo <span style="color:var(--dim);font-size:9px">(overrides Link)</span></div>
+    <button id="tap-btn" onclick="tap()">TAP</button>
+    <div class="pr">
+      <label>BPM</label>
+      <input class="num" id="manual-bpm" type="number" min="40" max="240" placeholder="—" oninput="setManualBpm(this.value)">
+      <button class="btn stop" onclick="clearBpm()">✕</button>
+    </div>
+  </div>
+
+  <!-- Spatial modes -->
+  <div class="sec">
+    <div class="sec-title">Spatial Mode</div>
+    <div class="mode-grid">
+      <button class="btn mode-btn" id="m-single"   onclick="fireMode('single')">⬤ Single</button>
+      <button class="btn mode-btn" id="m-cluster"  onclick="fireMode('cluster')">◉ Cluster</button>
+      <button class="btn mode-btn" id="m-ring"     onclick="fireMode('ring')">◎ Ring</button>
+      <button class="btn mode-btn" id="m-sweep"    onclick="fireMode('sweep')">↻ Sweep</button>
+      <button class="btn mode-btn" id="m-scatter"  onclick="fireMode('scatter')">∷ Scatter</button>
+      <button class="btn mode-btn" id="m-movement" onclick="fireMode('movement')">〜 Move</button>
+    </div>
+  </div>
+
+  <!-- Cluster params -->
+  <div class="sec mode-params" id="p-cluster" style="display:none">
+    <div class="sec-title">Cluster</div>
+    <div class="pr">
+      <label>Groups (k)</label>
+      <input type="range" id="cluster-k" min="2" max="6" value="3" oninput="syncLabel('cluster-k','cluster-k-v')">
+      <span class="pv" id="cluster-k-v">3</span>
+    </div>
+    <div style="margin-top:6px" class="btn-row">
+      <button class="btn go" onclick="applyCluster()">Apply</button>
+      <button class="btn stop" onclick="stopMode('cluster')">■ Stop</button>
+    </div>
+  </div>
+
+  <!-- Ring params -->
+  <div class="sec mode-params" id="p-ring" style="display:none">
+    <div class="sec-title">Ring</div>
+    <div class="pr">
+      <label>Rings</label>
+      <input type="range" id="ring-n" min="2" max="5" value="3" oninput="syncLabel('ring-n','ring-n-v')">
+      <span class="pv" id="ring-n-v">3</span>
+    </div>
+    <div style="margin-top:6px" class="btn-row">
+      <button class="btn go" onclick="applyRing()">Apply</button>
+      <button class="btn stop" onclick="stopMode('ring')">■ Stop</button>
+    </div>
+  </div>
+
+  <!-- Sweep params -->
+  <div class="sec mode-params" id="p-sweep" style="display:none">
+    <div class="sec-title">Sweep</div>
+    <div class="pr">
+      <label>Speed (rpm)</label>
+      <input type="range" id="sw-rpm" min="1" max="60" value="10" oninput="syncLabel('sw-rpm','sw-rpm-v')">
+      <span class="pv" id="sw-rpm-v">10</span>
+    </div>
+    <div class="pr">
+      <label>Offset</label>
+      <input type="range" id="sw-off" min="0" max="2000" step="50" value="200" oninput="syncLabelMs('sw-off','sw-off-v')">
+      <span class="pv" id="sw-off-v">200ms</span>
+    </div>
+    <div class="pr">
+      <label>Direction</label>
+      <button class="dir-btn" id="sw-dir" onclick="toggleSweepDir()" title="Toggle CW/CCW">↻</button>
+      <span class="pv" id="sw-dir-v" style="color:var(--dim)">CW</span>
+    </div>
+    <div style="margin-top:6px" class="btn-row">
+      <button class="btn go"   onclick="startSweep()">Start</button>
+      <button class="btn stop" onclick="stopSweep()">■ Stop</button>
+    </div>
+  </div>
+
+  <!-- Scatter params -->
+  <div class="sec mode-params" id="p-scatter" style="display:none">
+    <div class="sec-title">Scatter</div>
+    <div class="pr">
+      <label>Max offset</label>
+      <input type="range" id="sc-ms" min="0" max="20000" step="500" value="2000" oninput="syncLabelS('sc-ms','sc-ms-v')">
+      <span class="pv" id="sc-ms-v">2.0s</span>
+    </div>
+    <div class="pr">
+      <label>Voices</label>
+      <select id="sc-voices">
+        <option value="2">2</option><option value="3">3</option>
+        <option value="4" selected>4</option><option value="6">6</option><option value="8">8</option>
+      </select>
+    </div>
+    <div style="margin-top:6px">
+      <button class="btn go" onclick="fireScatter()">Fire scatter</button>
+    </div>
+  </div>
+
+  <!-- Movement params -->
+  <div class="sec mode-params" id="p-movement" style="display:none">
+    <div class="sec-title">Movement</div>
+    <div class="pr">
+      <label>Pattern</label>
+      <select id="mv-pattern">
+        <option value="wave">Wave</option>
+        <option value="pulse">Pulse</option>
+        <option value="orbit">Orbit</option>
+        <option value="swing">Swing</option>
+      </select>
+    </div>
+    <div class="pr">
+      <label>Interval</label>
+      <input type="range" id="mv-int" min="500" max="16000" step="500" value="4000" oninput="syncLabelS('mv-int','mv-int-v')">
+      <span class="pv" id="mv-int-v">4.0s</span>
+    </div>
+    <div style="margin-top:6px" class="btn-row">
+      <button class="btn go"   onclick="startMovement()">Start</button>
+      <button class="btn stop" onclick="stopMovement()">■ Stop</button>
+    </div>
+  </div>
+
+  <!-- Slot volumes + FX -->
+  <div class="sec">
+    <div class="sec-title">Slot Volumes + FX <span style="color:var(--dim);font-size:9px">🌊=pulse</span></div>
+    <div id="slot-rows">
+      <div style="color:var(--dim);font-size:10px;padding:4px 0">Select a spatial mode to see slots</div>
+    </div>
+    <div style="margin-top:8px">
+      <button class="btn" style="width:100%;font-size:10px" onclick="addSlot()">+ Add slot</button>
+    </div>
+  </div>
+
+  <!-- Live Stems -->
+  <div class="sec">
+    <div class="sec-title">Live Stems <span style="color:var(--dim);font-size:9px">via Livekit</span></div>
+
+    <div class="pr" style="margin-top:0">
+      <label>Audio in</label>
+      <select id="audio-device" style="flex:1">
+        <option value="">— scan devices —</option>
+      </select>
+      <button class="btn" onclick="scanDevices()">↻</button>
+    </div>
+
+    <div class="pr">
+      <label>Stems</label>
+      <input type="range" id="stem-count" min="1" max="8" value="4" oninput="syncLabel('stem-count','stem-count-v')">
+      <span class="pv" id="stem-count-v">4</span>
+    </div>
+
+    <div style="margin-top:4px;font-size:10px;color:var(--dim);line-height:1.5">
+      Route Ableton tracks → Blackhole channels 1/2, 3/4, 5/6…
+    </div>
+
+    <div style="margin-top:8px" class="btn-row">
+      <button class="btn go" id="btn-go-live" onclick="startStems()">🔴 GO LIVE</button>
+      <button class="btn stop" onclick="stopStems()">■ Stop</button>
+    </div>
+
+    <div id="stems-status" style="margin-top:6px;font-size:10px;color:var(--dim);min-height:16px"></div>
+  </div>
+
+  <!-- Rally point -->
+  <div class="sec">
+    <div class="sec-title">Rally Point</div>
+    <div class="pr" style="margin-top:0">
+      <label>Label</label>
+      <input type="text" id="rally-label" placeholder="Meet here" style="flex:1">
+    </div>
+    <div class="pr">
+      <label>Lat</label>
+      <input class="num" type="number" id="rally-lat" placeholder="0.000" step="0.0001" style="width:80px;flex:none">
+      <label style="margin-left:4px">Lng</label>
+      <input class="num" type="number" id="rally-lng" placeholder="0.000" step="0.0001" style="width:80px;flex:none">
+    </div>
+    <div style="margin-top:6px" class="btn-row">
+      <button class="btn go" onclick="fireRally()">📍 Send rally</button>
+      <button class="btn" onclick="useMyLocation()">Use GPS</button>
+    </div>
+  </div>
+
+</div><!-- /controls -->
+
+<script>
+// ── WebSocket ─────────────────────────────────────────────────
+const WS = `ws://${location.hostname}:3001`;
+let ws, wsOk = false;
+
+function connect() {
+  ws = new WebSocket(WS);
+  ws.onopen = () => {
+    wsOk = true;
+    setDot('ws-dot','ok'); setText('ws-lbl','bridge');
+    send({ type: 'get_zones' });
+    log('Bridge connected','ok');
+  };
+  ws.onmessage = e => handle(JSON.parse(e.data));
+  ws.onclose = () => {
+    wsOk = false;
+    setDot('ws-dot',''); setText('ws-lbl','reconnecting…');
+    setTimeout(connect, 2000);
+  };
+}
+
+function send(obj) { if (wsOk) ws.send(JSON.stringify(obj)); }
+
+// ── State ─────────────────────────────────────────────────────
+let _phones      = {};   // deviceId → {bearing, dist, slot, ...}
+let _slots       = ['C'];
+let _slotVolumes = {};
+let _slotFx      = {};
+let _mode        = 'single';
+let _bpm         = 120;
+let _beat        = 0;
+let _sweepDir    = 1;   // 1=CW, -1=CCW
+let _tapTimes    = [];
+
+// ── Bridge message handler ────────────────────────────────────
+function handle(msg) {
+  if (msg.type === 'state') {
+    _bpm = msg.bpm; _beat = msg.beat;
+    _slotVolumes = msg.slotVolumes || {};
+    _slotFx      = msg.slotFx || {};
+    updateBpmDisplay();
+    if (msg.zoneId) setZoneDisplay(msg.zoneId);
+    if (msg.playback_started_at) setAnchorLabel(msg.playback_started_at);
+  }
+  if (msg.type === 'link_state' || msg.type === 'beat_tick') {
+    _bpm = msg.bpm; _beat = msg.beat;
+    updateBpmDisplay();
+    if (msg.playback_started_at) setAnchorLabel(msg.playback_started_at);
+    setDot('link-dot', 'ok');
+  }
+  if (msg.type === 'zones') {
+    populateZones(msg.zones);
+  }
+  if (msg.type === 'zone_loaded') {
+    log(`Zone loaded: ${msg.zoneId}`, 'ok');
+    if (msg.playback_started_at) setAnchorLabel(msg.playback_started_at);
+  }
+  if (msg.type === 'presence') {
+    const p = msg.payload;
+    if (p?.deviceId) {
+      _phones[p.deviceId] = p;
+      drawRadar();
+      document.getElementById('phone-count').textContent = Object.keys(_phones).length + ' phones';
+    }
+  }
+  if (msg.type === 'channel_status') {
+    if (msg.channel === 'sync') {
+      log(`Sync channel: ${msg.status}`, msg.status === 'SUBSCRIBED' ? 'ok' : 'dim');
+    }
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────
+function setDot(id, cls) {
+  const d = document.getElementById(id);
+  d.className = 'dot' + (cls ? ' ' + cls : '');
+}
+function setText(id, val) { document.getElementById(id).textContent = val; }
+
+function updateBpmDisplay() {
+  document.getElementById('bpm-val').textContent = _bpm.toFixed(1);
+  const bar = Math.floor(_beat) % 16 + 1;
+  document.getElementById('beat-val').textContent = bar + ' / 16';
+}
+
+function setAnchorLabel(iso) {
+  document.getElementById('started-lbl').textContent =
+    'anchored ' + new Date(iso).toLocaleTimeString();
+  setDot('link-dot','active');
+}
+
+function setZoneDisplay(id) {
+  const sel = document.getElementById('zone-select');
+  if (sel) sel.value = id;
+}
+
+// ── Zone picker ───────────────────────────────────────────────
+function loadZones() { send({ type: 'get_zones' }); }
+
+function populateZones(zones) {
+  const sel = document.getElementById('zone-select');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— pick zone —</option>';
+  zones.forEach(z => {
+    const opt = document.createElement('option');
+    opt.value = z.id;
+    opt.textContent = z.name + (z.track_name ? ' · ' + z.track_name : '');
+    sel.appendChild(opt);
+  });
+  if (cur) sel.value = cur;
+  log(`${zones.length} active zones loaded`, 'dim');
+}
+
+function onZoneSelect(id) {
+  if (!id) return;
+  send({ type: 'set_zone', zoneId: id });
+  log(`Connecting to zone ${id}…`, 'dim');
+}
+
+// ── Transport ─────────────────────────────────────────────────
+function doPlay()     { send({ type: 'play' }); log('▶ Play → anchored to Link','ok'); }
+function doHardSync() { send({ type: 'hard_sync' }); log('⚡ Hard sync','dim'); }
+
+// ── Tap tempo ─────────────────────────────────────────────────
+function tap() {
+  const now = Date.now();
+  _tapTimes = _tapTimes.filter(t => now - t < 3000).concat(now);
+  if (_tapTimes.length < 2) { log('Tap more…','dim'); return; }
+  const gaps = [];
+  for (let i = 1; i < _tapTimes.length; i++) gaps.push(_tapTimes[i] - _tapTimes[i-1]);
+  const avg = gaps.reduce((a,b)=>a+b,0)/gaps.length;
+  const bpm = Math.round(60000 / avg * 10) / 10;
+  document.getElementById('manual-bpm').value = bpm;
+  setManualBpm(bpm);
+}
+
+function setManualBpm(v) {
+  const bpm = parseFloat(v);
+  if (!bpm || bpm < 40 || bpm > 240) return;
+  _bpm = bpm;
+  updateBpmDisplay();
+  send({ type: 'spatial_config', payload: { master_bpm: bpm } });
+  log(`BPM → ${bpm}`, 'ok');
+}
+
+function clearBpm() {
+  document.getElementById('manual-bpm').value = '';
+  log('BPM override cleared — following Link', 'dim');
+}
+
+// ── Modes ─────────────────────────────────────────────────────
+function fireMode(mode) {
+  _mode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('on'));
+  const btn = document.getElementById('m-' + mode);
+  if (btn) btn.classList.add('on');
+
+  document.querySelectorAll('.mode-params').forEach(el => el.style.display = 'none');
+  const params = document.getElementById('p-' + mode);
+  if (params) params.style.display = '';
+
+  if (mode === 'single') {
+    send({ type: 'single' });
+    _slots = ['C'];
+    renderSlots();
+    log('Mode: Single', 'ok');
+  } else if (mode === 'cluster') {
+    _slots = slotList(parseInt(document.getElementById('cluster-k').value));
+    renderSlots();
+  } else if (mode === 'ring') {
+    _slots = slotList(parseInt(document.getElementById('ring-n').value));
+    renderSlots();
+  } else if (mode === 'scatter' || mode === 'sweep' || mode === 'movement') {
+    // params shown, user fires manually
+  }
+}
+
+function applyCluster() {
+  const k = parseInt(document.getElementById('cluster-k').value);
+  _slots = slotList(k);
+  renderSlots();
+  send({ type: 'cluster', phones: Object.values(_phones), slots: _slots, k, zoneTracks: {} });
+  log(`Cluster k=${k}`, 'ok');
+}
+
+function applyRing() {
+  const n = parseInt(document.getElementById('ring-n').value);
+  _slots = slotList(n);
+  renderSlots();
+  send({ type: 'ring', phones: Object.values(_phones), slots: _slots, zoneTracks: {} });
+  log(`Ring n=${n}`, 'ok');
+}
+
+function stopMode(mode) {
+  send({ type: 'single' });
+  log(`${mode} stopped → single`, 'dim');
+}
+
+function fireScatter() {
+  const maxMs = parseInt(document.getElementById('sc-ms').value);
+  const voices = parseInt(document.getElementById('sc-voices').value);
+  send({ type: 'scatter', maxMs, voices });
+  log(`Scatter ${(maxMs/1000).toFixed(1)}s / ${voices} voices`, 'ok');
+}
+
+let _sweepDirCW = true;
+function toggleSweepDir() {
+  _sweepDirCW = !_sweepDirCW;
+  document.getElementById('sw-dir').textContent = _sweepDirCW ? '↻' : '↺';
+  document.getElementById('sw-dir-v').textContent = _sweepDirCW ? 'CW' : 'CCW';
+}
+
+function startSweep() {
+  const rpm    = parseFloat(document.getElementById('sw-rpm').value);
+  const offset = parseInt(document.getElementById('sw-off').value);
+  send({ type: 'sweep_start', payload: { rpm, offsetMs: offset, dir: _sweepDirCW ? 1 : -1 } });
+  document.getElementById('m-sweep').classList.add('on');
+  log(`Sweep ${rpm}rpm ${_sweepDirCW ? 'CW' : 'CCW'} offset ${offset}ms`, 'ok');
+}
+
+function stopSweep() {
+  send({ type: 'sweep_stop' });
+  document.getElementById('m-sweep').classList.remove('on');
+  log('Sweep stopped', 'dim');
+}
+
+function startMovement() {
+  const pattern    = document.getElementById('mv-pattern').value;
+  const intervalMs = parseInt(document.getElementById('mv-int').value);
+  send({ type: 'movement', pattern, intervalMs, phones: Object.keys(_phones), slots: _slots });
+  document.getElementById('m-movement').classList.add('on');
+  log(`Movement: ${pattern} every ${(intervalMs/1000).toFixed(1)}s`, 'ok');
+}
+
+function stopMovement() {
+  send({ type: 'movement_stop' });
+  document.getElementById('m-movement').classList.remove('on');
+  log('Movement stopped', 'dim');
+}
+
+// ── Slots ─────────────────────────────────────────────────────
+const SLOT_COLORS = {
+  C: '#00d4aa', '1': '#ff6b35', '2': '#7c3aed',
+  '3': '#ff3d7f', '4': '#3b82f6', '5': '#f59e0b',
+  '6': '#34d399', '7': '#c084fc', '8': '#fb923c',
+};
+
+function slotList(n) {
+  const s = ['C'];
+  for (let i = 1; i < n; i++) s.push(String(i));
+  return s;
+}
+
+function addSlot() {
+  const next = String(_slots.filter(s => s !== 'C').length + 1);
+  if (!_slots.includes(next)) _slots.push(next);
+  renderSlots();
+}
+
+function renderSlots() {
+  const el = document.getElementById('slot-rows');
+  el.innerHTML = '';
+  _slots.forEach(slot => {
+    const vol = _slotVolumes[slot] ?? 1;
+    const fxOn = !!_slotFx[slot];
+    const color = SLOT_COLORS[slot] || '#888';
+    const row = document.createElement('div');
+    row.className = 'slot-row';
+    row.innerHTML = `
+      <span class="slot-label" style="color:${color}">${slot}</span>
+      <input type="range" class="slot-vol" min="0" max="1" step="0.01" value="${vol}"
+             oninput="setVol('${slot}',this.value)">
+      <span class="slot-vol-val" id="sv-${slot}">${pct(vol)}</span>
+      <button class="fx-btn ${fxOn ? 'on' : ''}" id="fx-${slot}"
+              onclick="toggleFx('${slot}')" title="Pulse FX">🌊</button>`;
+    el.appendChild(row);
+  });
+}
+
+function setVol(slot, v) {
+  _slotVolumes[slot] = parseFloat(v);
+  document.getElementById('sv-' + slot).textContent = pct(v);
+  send({ type: 'slot_volume', slot, value: parseFloat(v) });
+}
+
+function toggleFx(slot) {
+  const wasOn = !!_slotFx[slot];
+  if (wasOn) delete _slotFx[slot]; else _slotFx[slot] = { type: 'pulse' };
+  document.getElementById('fx-' + slot)?.classList.toggle('on', !wasOn);
+  send({ type: 'slot_fx', slot, enabled: !wasOn });
+  log(`${slot} FX ${wasOn ? 'off' : 'on'}`, 'dim');
+}
+
+function pct(v) { return Math.round(parseFloat(v) * 100) + '%'; }
+
+// ── Rally ─────────────────────────────────────────────────────
+function fireRally() {
+  const lat   = parseFloat(document.getElementById('rally-lat').value);
+  const lng   = parseFloat(document.getElementById('rally-lng').value);
+  const label = document.getElementById('rally-label').value.trim();
+  if (isNaN(lat) || isNaN(lng)) { log('Enter lat/lng for rally point','err'); return; }
+  send({ type: 'rally', lat, lng, label });
+  log(`📍 Rally sent: ${label || '(no label)'}`, 'ok');
+}
+
+function useMyLocation() {
+  navigator.geolocation.getCurrentPosition(pos => {
+    document.getElementById('rally-lat').value = pos.coords.latitude.toFixed(6);
+    document.getElementById('rally-lng').value = pos.coords.longitude.toFixed(6);
+    log('GPS location loaded', 'ok');
+  }, () => log('GPS unavailable', 'err'));
+}
+
+// ── Radar ─────────────────────────────────────────────────────
+const canvas = document.getElementById('radar');
+const ctx    = canvas.getContext('2d');
+
+function drawRadar() {
+  const W = canvas.width, H = canvas.height, cx = W/2, cy = H/2, R = W/2 - 16;
+  ctx.clearRect(0,0,W,H);
+
+  // Rings
+  [.33,.66,1].forEach(r => {
+    ctx.strokeStyle = '#0d2a2a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(cx,cy,R*r,0,Math.PI*2); ctx.stroke();
+  });
+  // Cross
+  ctx.beginPath();
+  ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R);
+  ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy);
+  ctx.strokeStyle = '#0d2a2a'; ctx.stroke();
+
+  // Phones
+  const phones = Object.values(_phones);
+  const maxDist = Math.max(...phones.map(p => p.dist||0), 1);
+  phones.forEach(p => {
+    const ang = ((p.bearing||0) - 90) * Math.PI / 180;
+    const r   = (p.dist||0) / maxDist * R * 0.9;
+    const x   = cx + Math.cos(ang) * r;
+    const y   = cy + Math.sin(ang) * r;
+    const col = SLOT_COLORS[p.slot] || '#666';
+    ctx.beginPath(); ctx.arc(x,y,3.5,0,Math.PI*2);
+    ctx.fillStyle = col; ctx.fill();
+  });
+
+  // DJ center
+  ctx.beginPath(); ctx.arc(cx,cy,5,0,Math.PI*2);
+  ctx.fillStyle = '#fff'; ctx.fill();
+}
+
+function resizeRadar() {
+  const el = document.getElementById('radar-wrap');
+  const s  = Math.min(el.clientWidth, el.clientHeight) - 28;
+  canvas.width = s; canvas.height = s;
+  drawRadar();
+}
+window.addEventListener('resize', resizeRadar);
+resizeRadar();
+
+// ── Param label helpers ───────────────────────────────────────
+function syncLabel(inp, out) {
+  document.getElementById(out).textContent = document.getElementById(inp).value;
+}
+function syncLabelMs(inp, out) {
+  document.getElementById(out).textContent = document.getElementById(inp).value + 'ms';
+}
+function syncLabelS(inp, out) {
+  document.getElementById(out).textContent = (document.getElementById(inp).value/1000).toFixed(1) + 's';
+}
+
+// ── Log (console only) ────────────────────────────────────────
+function log(msg, cls='dim') { console.log(`[${cls}] ${msg}`); }
+
+// ── Live Stems ────────────────────────────────────────────────
+function scanDevices() {
+  send({ type: 'get_audio_devices' });
+  log('Scanning audio devices…', 'dim');
+}
+
+function startStems() {
+  const deviceIndex = parseInt(document.getElementById('audio-device').value);
+  const slotCount   = parseInt(document.getElementById('stem-count').value);
+  if (isNaN(deviceIndex)) { stemsStatus('Pick an audio device first', true); return; }
+  send({ type: 'start_stems', deviceIndex, slotCount });
+  stemsStatus('Starting…');
+  document.getElementById('btn-go-live').classList.add('on');
+}
+
+function stopStems() {
+  send({ type: 'stop_stems' });
+  document.getElementById('btn-go-live').classList.remove('on');
+  stemsStatus('Stopped');
+}
+
+function stemsStatus(msg, isErr = false) {
+  const el = document.getElementById('stems-status');
+  el.textContent = msg;
+  el.style.color = isErr ? 'var(--pink)' : 'var(--teal)';
+}
+
+// Handle stems-related bridge messages (add to handle())
+const _origHandle = handle;
+function handle(msg) {
+  _origHandle(msg);
+  if (msg.type === 'audio_devices') {
+    const sel = document.getElementById('audio-device');
+    sel.innerHTML = '<option value="">— pick device —</option>';
+    msg.devices.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.id;
+      opt.textContent = d.name + ` (${d.maxInputChannels}ch)`;
+      if (d.id === msg.blackholeIndex) opt.textContent = '🎛 ' + opt.textContent;
+      sel.appendChild(opt);
+    });
+    if (msg.blackholeIndex !== null) sel.value = msg.blackholeIndex;
+    log(`${msg.devices.length} audio inputs found`, 'ok');
+  }
+  if (msg.type === 'stems_status') {
+    stemsStatus(msg.text, msg.isErr);
+    log(msg.text, msg.isErr ? 'err' : 'dim');
+  }
+  if (msg.type === 'stems_live') {
+    stemsStatus(`🔴 LIVE — ${msg.slotCount} stems broadcasting`);
+    document.getElementById('btn-go-live').classList.add('on');
+    log(`Stems live: ${msg.slotCount} channels`, 'ok');
+  }
+}
+
+// ── Boot ──────────────────────────────────────────────────────
+connect();
+renderSlots();
+</script>
+</body>
+</html>

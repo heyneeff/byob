@@ -10,6 +10,7 @@
 <title>BYOB</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700;900&family=Roboto+Condensed:wght@700;900&family=Barlow+Condensed:wght@700;900&display=swap" rel="stylesheet"/>
 <script src="ternary/layer.js?v=14"></script>
 <script src="ternary/arp.js?v=1"></script>
@@ -2465,6 +2466,75 @@ async function handleOffer(sdp) {
 }
 
 // ════════════════════════════════════════════════════════════
+// LIVEKIT STEM STREAMING
+//
+// When current_track_url === 'livekit-live', phones subscribe to
+// their assigned stem track from the Livekit SFU instead of loading
+// a file. The sync engine is bypassed in this mode — network latency
+// is compensated by _deviceLatencyMs (same calibration as BT).
+//
+// livekit_config arrives via spatial_config broadcast:
+//   { livekit_url, livekit_room, livekit_token, current_track_url }
+// ════════════════════════════════════════════════════════════
+
+let _livekitRoom = null;
+
+async function joinLivekitStem(config, slot) {
+  if (_livekitRoom) {
+    try { await _livekitRoom.disconnect(); } catch(_) {}
+    _livekitRoom = null;
+  }
+
+  // Livekit browser SDK loaded from CDN (see <head> script tag)
+  if (!window.LivekitClient) {
+    console.warn('[livekit] SDK not loaded');
+    return;
+  }
+
+  const { LivekitClient: LK } = window;
+  const room = new LK.Room();
+  _livekitRoom = room;
+
+  const trackName = `stem-${slot || 'C'}`;
+
+  room.on(LK.RoomEvent.TrackSubscribed, (track, publication) => {
+    if (publication.trackName !== trackName) return;
+    if (track.kind !== LK.Track.Kind.Audio) return;
+
+    // Attach to the main audio element — same element the sync engine watches
+    audio.pause();
+    audio.src = '';
+    audio.srcObject = track.mediaStream ?? new MediaStream([track.mediaStreamTrack]);
+    audio.play().catch(() => {});
+    _webAudioPlaying = true;
+
+    // Update now-playing bar
+    document.getElementById('npb-track').textContent = '🔴 LIVE';
+    document.querySelector('.now-playing-bar')?.classList.add('active');
+  });
+
+  room.on(LK.RoomEvent.Disconnected, () => {
+    console.log('[livekit] disconnected');
+    _livekitRoom = null;
+  });
+
+  try {
+    await room.connect(config.livekit_url, config.livekit_token);
+    console.log(`[livekit] connected, waiting for ${trackName}`);
+  } catch (err) {
+    console.error('[livekit] connect failed:', err.message);
+  }
+}
+
+function leaveLivekitStem() {
+  if (_livekitRoom) {
+    _livekitRoom.disconnect();
+    _livekitRoom = null;
+  }
+  audio.srcObject = null;
+}
+
+// ════════════════════════════════════════════════════════════
 // BOOM MENU — logout, DJ link
 // ════════════════════════════════════════════════════════════
 function onBoomClick() { document.getElementById('boom-menu').classList.toggle('open'); }
@@ -3850,7 +3920,13 @@ async function activateZone(z) {
     }
 
 
-  if (z.current_track_url === 'webrtc-live') {
+  if (z.current_track_url === 'livekit-live' && window._livekitConfig) {
+    const mySlot = window._spatialConfig ? getSpatialSlot(window._spatialConfig) : 'C';
+    document.getElementById('track-name').textContent = z.track_name || '🔴 LIVE';
+    document.getElementById('music-artist').textContent = z.track_name || 'Live Stream';
+    await joinLivekitStem(window._livekitConfig, mySlot);
+    showToast('Connecting to live stems… 🎛️');
+  } else if (z.current_track_url === 'webrtc-live') {
     document.getElementById('track-name').textContent = z.track_name || '🔴 LIVE';
     document.getElementById('music-artist').textContent = z.track_name || 'Live Stream';
     await joinWebRTCStream(z.id);
@@ -4018,7 +4094,22 @@ function buildSyncChannel(zoneId) {
   // Spatial/DJ-tool broadcast handlers — all logic lives in
   // spatial-routing.js (see CLAUDE.md invariants: spatial code must stay
   // separate from this sync-engine block).
-  .on('broadcast', { event: 'spatial_config' }, ({ payload }) => window.SpatialRouting?.onSpatialConfig(payload))
+  .on('broadcast', { event: 'spatial_config' }, ({ payload }) => {
+    // Cache Livekit config if broadcast contains it
+    if (payload.livekit_url && payload.livekit_token) {
+      window._livekitConfig = { livekit_url: payload.livekit_url, livekit_room: payload.livekit_room, livekit_token: payload.livekit_token };
+      // If we're already in-zone, switch to live stems
+      if (activeZone && payload.current_track_url === 'livekit-live') {
+        const mySlot = window._spatialConfig ? getSpatialSlot(window._spatialConfig) : 'C';
+        joinLivekitStem(window._livekitConfig, mySlot);
+      }
+    }
+    if (payload.livekit_url === null) {
+      leaveLivekitStem();
+      window._livekitConfig = null;
+    }
+    window.SpatialRouting?.onSpatialConfig(payload);
+  })
   .on('broadcast', { event: 'sweep_start' }, ({ payload }) => window.SpatialRouting?.onSweepStart(payload))
   .on('broadcast', { event: 'sweep_stop' }, () => window.SpatialRouting?.onSweepStop())
   .on('broadcast', { event: 'scatter' }, ({ payload }) => window.SpatialRouting?.onScatter(payload))

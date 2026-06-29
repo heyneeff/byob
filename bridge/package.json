@@ -1,0 +1,19 @@
+{
+  "name": "byob-bridge",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Ableton Link → BYOB sync bridge + Livekit stem broadcaster",
+  "main": "bridge.mjs",
+  "scripts": {
+    "start": "node bridge.mjs",
+    "capture": "node bridge.mjs --capture"
+  },
+  "dependencies": {
+    "@ktamas77/abletonlink": "^1.2.3",
+    "@livekit/rtc-node": "^0.12.0",
+    "livekit-server-sdk": "^2.8.0",
+    "@supabase/supabase-js": "^2.108.2",
+    "naudiodon": "^2.0.5",
+    "ws": "^8.18.0"
+  }
+}
