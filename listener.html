@@ -652,7 +652,7 @@ audio{display:none;}
 @keyframes ssDot{0%,100%{opacity:1}50%{opacity:.15}}
 
  /* ── SYNC DEBUG HUD ── */
-#hud-btn{display:none!important;}
+#hud-btn{position:fixed;bottom:80px;right:16px;z-index:9000;background:rgba(0,0,0,.7);border:1px solid #333;border-radius:50%;width:40px;height:40px;font-size:18px;cursor:pointer;}
 #hud{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.92);display:none;flex-direction:column;padding:20px;font-family:'Roboto Mono',monospace;font-size:12px;color:#0f0;overflow-y:auto;}
 #hud.open{display:flex;}
 #hud-rows{flex:1;display:flex;flex-direction:column;gap:4px;}
