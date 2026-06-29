@@ -74,6 +74,7 @@
   let _calState      = 0;  // diagnostic: 0=never tried, 1=already done, 2=no fn, 3=no floor, 4=correction<5, 5=fired
   let _lastFloor     = null;
   let _lastCalTs     = 0;    // timestamp of last correction — enforces minimum settle gap
+  let _capHits       = 0;    // consecutive corrections swallowed by deviceLatencyMs cap
   const _history     = [];
 
   // ── BURST MODE ────────────────────────────────────────────────────────────
@@ -163,6 +164,7 @@
     const std      = Math.sqrt(variance);
     if (std > 40)             return null; // settled samples still too noisy
     if (Math.abs(mean) < 30)  return null; // already converged
+    if (Math.abs(mean) > 200) return null; // stall contamination (real floors < 200ms)
     if (Math.abs(mean) > 500) return null; // wrapLag artifact
     return mean;
   }
@@ -181,12 +183,18 @@
     if (Math.abs(correction) < 8)                         { _calState = 4; return; }
     const actualDelta = window._terAdjustLatency(correction); // updates _deviceLatencyMs + localStorage
     _calApplied = true;
-    if (Math.abs(actualDelta ?? correction) >= 5) _calCount++; // only count if cap didn't swallow it
-    _lastCalTs = Date.now();
+    if (Math.abs(actualDelta ?? correction) >= 5) {
+      _calCount++;
+      _capHits = 0;
+      _lastCalTs = Date.now();
+      _driftHistory = [];
+      _consecutiveN = 0;
+    } else {
+      // Cap swallowed the correction — don't reset timer, count failures
+      _capHits++;
+      if (_capHits >= 3) _calCount = 4; // give up — cap will never allow this device
+    }
     _calState = 5;
-    // Reset so next cycle measures fresh drift against the new calibration
-    _driftHistory = [];
-    _consecutiveN = 0;
     console.log(`[ternary] auto-cal #${_calCount}: floor ${Math.round(floor)}ms → adjust ${correction}ms`);
     try {
       const ch = _debugChannel || window._debugChannel;
