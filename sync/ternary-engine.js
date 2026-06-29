@@ -113,8 +113,8 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     _trit = lagToTrit(abs);
     _prevLag = lagMs;
 
-    const PROP_GAIN = 0.0002;           // rate change per ms of drift
-    const MAX_WARP  = 0.025;            // 2.5% — imperceptible ceiling
+    const PROP_GAIN = 0.00025;          // rate change per ms of drift — tuning step 1 (was 0.0002)
+    const MAX_WARP  = 0.040;            // 4.0% — tuning step 2 (was 0.025)
     const dir = lagMs > 0 ? 1 : -1;
     const warpPct = Math.min(abs * PROP_GAIN, MAX_WARP);
     transport.playbackRate = getBaseRate() * (1 + dir * warpPct);
