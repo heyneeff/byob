@@ -113,7 +113,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     _trit = lagToTrit(abs);
     _prevLag = lagMs;
 
-    const PROP_GAIN = 0.00025;          // rate change per ms of drift — tuning step 1 (was 0.0002)
+    const PROP_GAIN = 0.00040;          // rate change per ms of drift — tuning step 3 (was 0.00025, oracle 8.1.5→24)
     const MAX_WARP  = 0.040;            // 4.0% — tuning step 2 (was 0.025)
     const dir = lagMs > 0 ? 1 : -1;
     const warpPct = Math.min(abs * PROP_GAIN, MAX_WARP);

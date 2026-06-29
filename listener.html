@@ -5486,6 +5486,7 @@ function buildHUDRows() {
     : null;
 
   const rows = [
+    ['listener ID',      listenerId.slice(0,6) + ' (' + listenerId + ')'],
     ['syncedNow()',       now],
     ['playback_started', activeZone?.playback_started_at ?? '—'],
     ['wall elapsed',     elapsed !== null ? elapsed.toFixed(3)+'s' : '—'],
