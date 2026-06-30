@@ -178,3 +178,45 @@ recurrence of the spin bug to confirm the escalation actually fires and
 clears it (rare/intermittent bug — may take a while to observe in the wild).
 
 ---
+
+## Step 6 — 2026-06-29/30 (Goal 3, data-driven: compounding stall detector)
+
+**Problem:** Class C devices (rt9jjg, h7fuax) never held CONVERGED, even
+after step 4's nudge tier. Originally assumed this was because their stall
+*cadence* was simply faster than Class B. Measured actual stall episode
+intervals from sync/monitor-logs/2026-06-29_18-50.csv (live-monitor.mjs ran
+the whole session) to test that assumption before designing anything:
+
+- cionsr (Class B, converges fine): stalls rare, median 241s apart, 0% under 5s.
+- rt9jjg (Class C, stuck): dominant cluster ~8-9s — same as Class B — but a
+  secondary cluster at ~3-4s, present in 41/309 episodes.
+- h7fuax (Class C, stuck): same pattern — dominant ~8-10s, secondary ~3-4s.
+
+**Conclusion:** the 8-9s baseline cadence is not the problem (the engine
+already handles that fine — that's what Class B effectively is). The actual
+cause is the secondary ~3-4s cluster: a second stall lands while the engine
+is still mid-correction from the first (correction recheck timer is 2600ms),
+compounding the gap before it can close. cionsr almost never does this;
+rt9jjg/h7fuax do it constantly. This reframed Goal 3 from "predict the next
+stall" (broad, speculative) to "detect when a stall compounds an active
+correction" (narrow, measured).
+
+**Oracle:** 14.1.2→30 (Great Possession→The Clinging/Fire). Confirmed:
+proceed with confidence (line 2, "a big wagon for loading... no blame" — the
+data-driven diagnosis is adequate grounds to act). But Fire's own line 2
+("Yellow light, supreme good fortune") cautions toward a *moderate*,
+centered escalation — not a maximal one.
+
+**Change:** Added `isCompounding` detection in `requestCorrection()`: true
+when the engine was still `_state === 'warping'` from a previous correction
+AND the new drift is larger than the previous tick's drift (a genuinely new
+stall landed, not just settling). When true, uses COMPOUND_GAIN = 0.00060
+(50% stronger than PROP_GAIN's 0.00040, not more — moderate per the oracle)
+instead of treating it as a fresh independent correction.
+**File:** sync/ternary-engine.js — requestCorrection()
+
+**Status:** implemented, not yet observed live. Needs push + live monitoring
+to confirm rt9jjg/h7fuax-class devices can now hold CONVERGED through the
+3-4s compounding stall pattern, without overcorrecting on isolated stalls.
+
+---

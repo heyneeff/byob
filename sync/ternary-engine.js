@@ -111,18 +111,28 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     // At 100ms: 2%. At 250ms+: capped at 2.5%. Gentle enough to be inaudible,
     // strong enough to overcome BT stalls. Oracle 27.4→21, 53 unchanging.
     const prevTrit = _trit;
+    const wasWarping = _state === 'warping';
+    const prevAbsLag = Math.abs(_prevLag);
     _trit = lagToTrit(abs);
     _prevLag = lagMs;
 
-    const PROP_GAIN = 0.00040;          // rate change per ms of drift — tuning step 3 (was 0.00025, oracle 8.1.5→24)
-    const NUDGE_GAIN = 0.00010;         // gentle first-touch gain right after P — tuning step 4, oracle 2.1.6→27 + 14.1.3→64
+    const PROP_GAIN    = 0.00040;       // rate change per ms of drift — tuning step 3 (was 0.00025, oracle 8.1.5→24)
+    const NUDGE_GAIN   = 0.00010;       // gentle first-touch gain right after P — tuning step 4, oracle 2.1.6→27 + 14.1.3→64
+    const COMPOUND_GAIN = 0.00060;      // a second stall landing mid-correction — tuning step 6, oracle 14.1.2→30
     const MAX_WARP  = 0.040;            // 4.0% — tuning step 2 (was 0.025)
     const dir = lagMs > 0 ? 1 : -1;
+    // Compounding stall: a new, larger drift arrived while still actively
+    // warping from a previous correction (the back-to-back 3-4s stall
+    // pattern that the 8-9s baseline cadence doesn't trigger — measured from
+    // live data, see TUNING_LOG step 6). Escalate moderately rather than
+    // treating it as a fresh independent correction, which was too weak to
+    // close a compounded gap before the next stall landed.
+    const isCompounding = wasWarping && abs > prevAbsLag;
     // Nudge tier: if the device was just converged, give it one gentle tick to
     // settle on its own before applying full proportional force. If it's still
     // off next tick, prevTrit will no longer be P and the gain escalates back
     // to PROP_GAIN automatically — no separate state machine needed.
-    const gain = prevTrit === P ? NUDGE_GAIN : PROP_GAIN;
+    const gain = prevTrit === P ? NUDGE_GAIN : isCompounding ? COMPOUND_GAIN : PROP_GAIN;
     const warpPct = Math.min(abs * gain, MAX_WARP);
     transport.playbackRate = getBaseRate() * (1 + dir * warpPct);
     _state = 'warping';
