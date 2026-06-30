@@ -56,3 +56,59 @@ Leaves MAX_WARP unchanged — doesn't apply at 82ms drift.
 **Status:** applied. Awaiting CSV from next session.
 
 ---
+
+## Step 2 — 2026-06-29 (live session)
+
+**Change:** MAX_WARP 0.025 → 0.040 (4.0%)
+**Oracle:** 12.1.6→17
+**Reasoning:** During the first live 4-device test, observed multiple devices with
+larger BT stalls (~150-380ms, "Class C/cascading" hardware) where PROP_GAIN alone
+hit the MAX_WARP cap before closing the gap in time. Raised the ceiling so heavier
+stalls get more correcting force per tick.
+
+**Commit:** 9ab1df4
+
+---
+
+## Step 3 — 2026-06-29 (live session, "stop the leapfrog")
+
+**Problem identified live:** BT stall firing period ≈ engine convergence time on
+several devices, so they were knocked out of P(converged) almost as soon as they
+arrived — a "lockstep leapfrog" where devices never held sync for more than one tick.
+
+**Change:** PROP_GAIN 0.00025 → 0.00040
+**Oracle:** 8.1.5→24
+**File:** sync/ternary-engine.js line 116
+**Reasoning:** Needed to close ~80ms Class B stalls in ~2 ticks (≈3s), faster than
+the observed ~6s stall period, so a device can re-stabilize at P before the next
+stall lands instead of perpetually chasing it.
+
+**Auto-cal fix (same step):** layer.js `detectFloor()` was misfiring on Class C
+devices (z5km0a-class, 270-380ms stalls) — it kept "detecting" a floor and applying
+corrections that the 1200ms deviceLatencyMs cap silently swallowed, looping every 60s
+with zero effect. Added a >200ms floor guard (real floors are <200ms; anything higher
+is stall contamination) and a `_capHits` counter that gives up after 3 swallowed
+corrections instead of retrying forever.
+
+**Commits:** 01514bc (engine), d93b5ae (layer.js fix), 94c55fe (listener.html HUD button)
+
+**Live result (confirmed after push landed on origin/main):**
+  - `cionsr` (Class B, ~80-95ms stalls): held CONVERGED (C-state, <10ms drift) for
+    3+ consecutive ticks (~90s+) — the leapfrog is broken for this device class.
+    Still occasionally knocked out by larger seek/resync events (-300ms range jumps),
+    which are a separate phenomenon from BT stalls.
+  - `v7mgrc` (Class C, ~90-250ms repeating stalls): still stuck DIVERGING around
+    400-470ms, NOT improving. Stalls are landing faster/larger than even the new
+    gain can close. This device needs a different lever — likely MAX_WARP isn't
+    high enough yet, or auto-cal deviceLatencyMs correction isn't engaging for it.
+
+**Oracle on next step (17→16, lines 1,5 — Following→Enthusiasm):** Hold current
+change, gather more data before adjusting again. The change made was correct
+(line 1: "the standard changed rightly"); trust it and observe rather than
+reaching for another lever immediately (line 5 + Enthusiasm: confidence through
+alignment, not force). v7mgrc needs more observation cycles before its specific
+fix is clear.
+
+**Status:** holding. Continuing to monitor v7mgrc and other Class C devices.
+
+---
