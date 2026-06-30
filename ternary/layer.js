@@ -254,7 +254,10 @@
     // Track network convergence for burst exit
     const peers = Object.values(_peerTrits).map(p => p.trit);
     const consensus = peers.length ? tcons(_trit, ...peers) : _trit;
-    if (consensus === P) { _consecutiveP++; } else { _consecutiveP = 0; }
+    // ANCHORING tracks own stability, not room consensus (oracle 3.2.4.6→10).
+    // A device at 0ms should reach ANCHORING even when a Class C peer is cycling N-state.
+    // Consensus still governs burst exit and broadcast — own trit governs the role threshold.
+    if (_trit === P) { _consecutiveP++; } else { _consecutiveP = 0; }
 
     if (abs >= BIN_THRESHOLD) {
       _snapCount++;
