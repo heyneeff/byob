@@ -242,6 +242,19 @@ function driftToTrit(driftMs) {
   return 'P';
 }
 
+// Derive a rough octonary role from trit + drift if layer.js hasn't sent terOctoState yet
+function inferOctoState(p) {
+  if (p.terOctoState != null) return p.terOctoState;
+  const abs = Math.abs(parseFloat(p.driftMs));
+  if (isNaN(abs)) return 5; // LISTENING
+  if (abs >= 300) return 7; // REACHING
+  const t = p.terTrit || driftToTrit(p.driftMs);
+  if (t === 'N') return 4; // PUSHING
+  if (t === 'Z') return 2; // PULLING
+  if (t === 'P') return 1; // HOLDING
+  return 5; // LISTENING
+}
+
 // ── Tab switcher ──────────────────────────────────────────────────────────
 function switchTab(tab) {
   _activeTab = tab;
@@ -353,15 +366,16 @@ function drawRolesChart() {
     const y = i * rowH + 2;
     const h = rowH - 2;
     const pts = roleHist[id];
-    // draw colored segments
+    // draw colored segments — first segment extends back to x=0 (role unknown before first
+    // observation, but current role is the best estimate for the whole unseen past window)
     for (let j = 0; j < pts.length; j++) {
       const p = pts[j];
       const next = pts[j+1];
-      const x1 = Math.max(0, W * (1 - (now - p.ts) / WINDOW_MS));
-      const x2 = next ? W * (1 - (now - next.ts) / WINDOW_MS) : W;
-      if (x2 < 0) continue;
+      const x1 = j === 0 ? 0 : Math.max(0, W * (1 - (now - p.ts) / WINDOW_MS));
+      const x2 = next ? Math.max(0, W * (1 - (now - next.ts) / WINDOW_MS)) : W;
+      if (x2 <= x1) continue;
       ctx.fillStyle = OCTO_COLORS[p.v] + '99';
-      ctx.fillRect(x1, y, Math.max(1, x2 - x1), h);
+      ctx.fillRect(x1, y, x2 - x1, h);
     }
     // label
     const last = pts[pts.length-1];
@@ -453,7 +467,7 @@ function updateOverview() {
 
   // Octonary bar + legend
   const oc = new Array(8).fill(0);
-  sync.forEach(d => { if (d.terOctoState != null) oc[d.terOctoState]++; });
+  sync.forEach(d => { oc[inferOctoState(d)]++; });
   const ot = oc.reduce((a,v) => a+v, 0) || 1;
   document.getElementById('octo-bar-wrap').innerHTML = oc.map((c,i) =>
     c ? `<div style="flex:${c};background:${OCTO_COLORS[i]};"></div>` : ''
@@ -497,7 +511,7 @@ function renderSyncCard(d, age) {
     <div class="badges">
       ${trit ? `<span class="badge badge-${trit}">${trit} ${TRIT_LABEL[trit]}</span>` : ''}
       ${d.terBurst ? `<span class="badge badge-burst">⚡ BURST ${d.terBurstSnaps||0}</span>` : ''}
-      ${octoB(d.terOctoState, d.terOctoName)}
+      ${octoB(inferOctoState(d), d.terOctoName)}
       ${d.terGlobalDisruption ? `<span class="badge" style="color:var(--red);border:1px solid #ef3c2340">DISRUPTION</span>` : ''}
     </div>
     ${r('drift',       dm != null && !isNaN(dm) ? dm.toFixed(0)+'ms' : '—', dc)}
@@ -571,7 +585,7 @@ db.channel('byob_debug')
     pushHist(driftHist,  p.deviceId, p.driftMs);
     pushHist(warpHist,   p.deviceId, ((parseFloat(p.playbackRate)||1) - 1) * 100);
     pushHist(calHist,    p.deviceId, p.deviceLatencyMs);
-    pushRoleHist(p.deviceId, p.terOctoState);
+    pushRoleHist(p.deviceId, inferOctoState(p));
     if (_recording) recordRow('sync', p);
     render(); drawCharts();
   })
