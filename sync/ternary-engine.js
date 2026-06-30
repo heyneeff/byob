@@ -50,12 +50,13 @@ function lagToTrit(absMs) {
 
 // ── Engine ────────────────────────────────────────────────────────────────────
 export function createTernaryEngine({ transport, timers, clock, getContext, getBaseRate }) {
-  let _trit      = Z;
-  let _prevLag   = 0;
-  let _warpTimer = null;
-  let _driftGen  = 0;
-  let _state     = 'idle'; // 'idle' | 'warping' | 'seeking'
-  let _peers     = {};     // { id → { trit, lagMs, ts } }
+  let _trit                = Z;
+  let _prevLag             = 0;
+  let _warpTimer           = null;
+  let _driftGen            = 0;
+  let _state               = 'idle'; // 'idle' | 'warping' | 'seeking'
+  let _peers               = {};     // { id → { trit, lagMs, ts } }
+  let _disruptionHoldUntil = 0;      // epoch ms — block all correction until this time
 
   // ── Compute lag ─────────────────────────────────────────────────────────────
   function computeLagMs() {
@@ -99,7 +100,21 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
 
     const abs = Math.abs(lagMs);
 
-    // Beyond warp reach — seek.
+    // Disruption hold (oracle 41 — Decrease, unchanging): when ≥50% of peers are
+    // PUSHING/REACHING, it's a room-wide cascade. Seeking or warping here just adds
+    // to the resonant oscillation. Pause all correction for 2s; re-engage with
+    // PROP_GAIN only once the room settles.
+    if (window._terLayer?.isGlobalDisruption?.()) {
+      _disruptionHoldUntil = timers.now() + 2000;
+      settleToIdle();
+      return;
+    }
+    if (timers.now() < _disruptionHoldUntil) {
+      settleToIdle();
+      return;
+    }
+
+    // Beyond warp reach — muted seek with volume ramp.
     if (abs >= TH_SEEK) {
       cancelDriftCorrection();
       seekPreservingBT(transport.currentTime + lagMs / 1000);
@@ -123,6 +138,15 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     const MAX_WARP  = 0.015;            // 1.5% — tuning step 7, oracle 49.3.6→25 (was 0.040)
     const dir = lagMs > 0 ? 1 : -1;
     const isCompounding = wasWarping && abs > prevAbsLag;
+
+    // seekSilent: compounding drift in 300–500ms range (oracle 48.3→29 — The Well).
+    // BT buffer absorbs a small position jump silently; no mute ramp needed.
+    // Only fires when drift is actively worsening — stable large drift gets warp.
+    if (abs >= 300 && isCompounding) {
+      seekSilent(transport.currentTime + lagMs / 1000);
+      return;
+    }
+
     // Four tiers, one role each (oracle 37 — The Family):
     //   sub-10ms: micro-hold — pull home gently, completely inaudible (~0.2% at 10ms)
     //   post-P:   nudge — one gentle tick before escalating to full gain
