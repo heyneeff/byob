@@ -110,13 +110,20 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     // with drift — no hard cutoffs, no micro-correction tier. At 5ms: 0.1%.
     // At 100ms: 2%. At 250ms+: capped at 2.5%. Gentle enough to be inaudible,
     // strong enough to overcome BT stalls. Oracle 27.4→21, 53 unchanging.
+    const prevTrit = _trit;
     _trit = lagToTrit(abs);
     _prevLag = lagMs;
 
     const PROP_GAIN = 0.00040;          // rate change per ms of drift — tuning step 3 (was 0.00025, oracle 8.1.5→24)
+    const NUDGE_GAIN = 0.00010;         // gentle first-touch gain right after P — tuning step 4, oracle 2.1.6→27 + 14.1.3→64
     const MAX_WARP  = 0.040;            // 4.0% — tuning step 2 (was 0.025)
     const dir = lagMs > 0 ? 1 : -1;
-    const warpPct = Math.min(abs * PROP_GAIN, MAX_WARP);
+    // Nudge tier: if the device was just converged, give it one gentle tick to
+    // settle on its own before applying full proportional force. If it's still
+    // off next tick, prevTrit will no longer be P and the gain escalates back
+    // to PROP_GAIN automatically — no separate state machine needed.
+    const gain = prevTrit === P ? NUDGE_GAIN : PROP_GAIN;
+    const warpPct = Math.min(abs * gain, MAX_WARP);
     transport.playbackRate = getBaseRate() * (1 + dir * warpPct);
     _state = 'warping';
 

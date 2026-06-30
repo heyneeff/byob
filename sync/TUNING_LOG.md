@@ -112,3 +112,36 @@ fix is clear.
 **Status:** holding. Continuing to monitor v7mgrc and other Class C devices.
 
 ---
+
+## Step 4 — 2026-06-29 (live session, "smooth the wrinkles / nudge once synced")
+
+**Problem:** With the leapfrog broken, devices now reliably reach CONVERGED — but
+small re-drifts right after convergence were getting the same full-strength
+proportional correction as a fresh large drift, causing audible cutting in/out
+(overshoot/oscillation right at the point of tightest sync, where it's most
+noticeable).
+
+**Oracle (on continuing at all):** 2.1.6→27 (Receptive→Nourishment). Confirmed:
+continue, but the next move should be gentler/sustaining, not another blanket
+gain increase. Line 6 (dragons fighting) warned specifically against
+over-correcting at the point of near-convergence — exactly this symptom.
+
+**Oracle (on the nudge-tier design):** 14.1.3→64 (Great Possession→Before
+Completion). Confirmed the shape: give one gentle tick of correction right
+after P-state, but it must properly escalate back to full strength if that's
+not enough (line 3 — a half-measure that never escalates is "not equal to the
+task"). 64 cautions to verify carefully since we're close to a good stable
+state and it's easy to introduce a new defect here.
+
+**Change:** Added NUDGE_GAIN = 0.00010 in `requestCorrection()`. When the
+previous trit state was P (just converged), use NUDGE_GAIN for that single
+correction tick instead of PROP_GAIN. If still off next tick, prevTrit is no
+longer P, so it automatically escalates to full PROP_GAIN — no extra state
+machine needed, the existing per-tick trit tracking does this for free.
+**File:** sync/ternary-engine.js — requestCorrection()
+
+**Status:** implemented, not yet observed live. Needs push + live monitoring
+to confirm the cut-in/cut-out wrinkle is smoothed without reintroducing the
+leapfrog (i.e. confirm escalation actually kicks in when needed).
+
+---
