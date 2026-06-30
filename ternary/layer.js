@@ -257,7 +257,9 @@
     // ANCHORING tracks own stability, not room consensus (oracle 3.2.4.6→10).
     // A device at 0ms should reach ANCHORING even when a Class C peer is cycling N-state.
     // Consensus still governs burst exit and broadcast — own trit governs the role threshold.
-    if (_trit === P) { _consecutiveP++; } else { _consecutiveP = 0; }
+    if (_trit === P) { _consecutiveP++; }
+    else if (_trit === N) { _consecutiveP = 0; }
+    // Z: hold the count — oscillating near the boundary is not diverging
 
     if (abs >= BIN_THRESHOLD) {
       _snapCount++;
