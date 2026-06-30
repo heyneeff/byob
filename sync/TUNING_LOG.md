@@ -220,3 +220,32 @@ to confirm rt9jjg/h7fuax-class devices can now hold CONVERGED through the
 3-4s compounding stall pattern, without overcorrecting on isolated stalls.
 
 ---
+
+## Step 7 — 2026-06-30 (sound quality: cuts + warp audibility)
+
+**Problems:** Two distinct audio quality issues heard live:
+1. Cuts every 4-6s — `playing` handler firing `seekPreservingBT` (full mute/ramp) on
+   every BT buffer refill at 100ms threshold. BT speakers fire `playing` on refill
+   constantly; any drift ≥100ms = a mute cycle = audible cut.
+2. Heavy pitch-sweep warping sounds — MAX_WARP at 4% = ~68 cents (~1 semitone) for
+   up to 2600ms per correction cycle. Very audible in music.
+
+**Oracle A (playing handler):** 57.2.3→20 (Gentle→Contemplation).
+Line 3: "Repeated penetration — humiliation." The constant seekPreservingBT on every
+refill is the humiliation. Line 2: work through subtle/indirect means.
+→ Contemplation: watch, don't constantly intervene. Let warp handle small drift.
+
+**Oracle B (MAX_WARP):** 49.3.6→25 (Revolution→Innocence).
+Line 3: evidence has accumulated (cascades, cuts, pitch sweeps) — commit now.
+Line 6: change like a panther — decisive, complete, not superficial.
+→ Innocence: natural and unforced. Don't fight with brute-rate correction.
+
+**Changes:**
+- `listener.html`: playing handler threshold 100ms → **300ms** (stops firing on routine
+  BT refills; only fires for genuine large stalls — matches May 13 principle)
+- `sync/ternary-engine.js`: MAX_WARP 0.040 → **0.015** (1.5%, ~26 cents — closes 80ms
+  Class B stall in ~6 ticks/9s, within the 8-9s stall period; audibly cleaner)
+
+**Status:** implemented, not yet observed live. Push and monitor.
+
+---

@@ -119,7 +119,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     const PROP_GAIN    = 0.00040;       // rate change per ms of drift — tuning step 3 (was 0.00025, oracle 8.1.5→24)
     const NUDGE_GAIN   = 0.00010;       // gentle first-touch gain right after P — tuning step 4, oracle 2.1.6→27 + 14.1.3→64
     const COMPOUND_GAIN = 0.00060;      // a second stall landing mid-correction — tuning step 6, oracle 14.1.2→30
-    const MAX_WARP  = 0.040;            // 4.0% — tuning step 2 (was 0.025)
+    const MAX_WARP  = 0.015;            // 1.5% — tuning step 7, oracle 49.3.6→25 (was 0.040)
     const dir = lagMs > 0 ? 1 : -1;
     // Compounding stall: a new, larger drift arrived while still actively
     // warping from a previous correction (the back-to-back 3-4s stall

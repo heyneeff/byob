@@ -2265,7 +2265,7 @@ audio.addEventListener('playing', () => {
   // 10-second warp recovery to a 300ms silent snap. Threshold 100ms catches stalls
   // without firing on tiny jitter. seekPreservingBT (mute/ramp) reserved for severe drift.
   const _reAnchorLag = Math.abs(window.SyncEngine?.computeLagMs?.() ?? 0);
-  if (_reAnchorLag < 100) return;
+  if (_reAnchorLag < 300) return;
   _reAnchorInFlight = true;
   window._snapCount = (window._snapCount || 0) + 1;
   cancelDriftCorrection();
