@@ -2237,8 +2237,8 @@ function fastDriftCorrect() {
         window._snapFailCount = 0;
       }
     }, 200);
-  } else if (_absLag >= 15) {
-    requestCorrection(lagMs); // warp for 15–250ms drift
+  } else if (_absLag >= 5) {
+    requestCorrection(lagMs); // warp for 5–500ms drift (micro-nudge holds sub-10ms, step 8)
   }
 }
 audio.addEventListener('timeupdate', () => {

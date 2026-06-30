@@ -249,3 +249,25 @@ Line 6: change like a panther — decisive, complete, not superficial.
 **Status:** implemented, not yet observed live. Push and monitor.
 
 ---
+
+## Step 8 — 2026-06-30 (micro-nudge: hold devices at home once converged)
+
+**Problem:** Below 15ms the engine was completely silent. A device at 12ms drift sat
+there indefinitely — nothing fired. Once a device reached P-state (<10ms), it could
+wander to 14ms and stay there forever.
+
+**Oracle:** 37.1.3.4→12 (The Family→Standstill).
+Line 1: establish firm rules from the foundation — fire early, even at tiny drift.
+Line 3: firm but not harsh — gentle enough to be inaudible, strong enough to hold.
+Line 4: "She is the treasure of the house" — the centering force is the most valuable.
+→ Standstill: devices reach stillness and hold it. The goal state.
+
+**Changes:**
+- `listener.html`: fastDriftCorrect threshold 15ms → **5ms** (below 5ms = clock jitter)
+- `sync/ternary-engine.js`: added MICRO_GAIN = 0.00020 — fires when abs < TH_P (< 10ms).
+  At 8ms: 0.16% warp = ~2.4ms closed per 1500ms tick — inaudible, closes in ~4 ticks.
+  Four tiers now: MICRO (sub-10ms) → NUDGE (post-P) → COMPOUND (stacking stalls) → PROP (normal)
+
+**Status:** implemented, not yet observed live. Push and monitor.
+
+---
