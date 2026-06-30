@@ -145,3 +145,36 @@ to confirm the cut-in/cut-out wrinkle is smoothed without reintroducing the
 leapfrog (i.e. confirm escalation actually kicks in when needed).
 
 ---
+
+## Step 5 — 2026-06-29 (live session, "spinning the same 500ms loop")
+
+**Problem:** User confirmed an audible, known bug — the same short clip
+(roughly 500ms) repeating/spinning in place for several seconds. Root cause
+matches a comment already in the code (listener.html fastDriftCorrect): on
+some BT routes, `audio.currentTime = x` silently no-ops while playing — the
+seek "completes" in JS but the BT pipe doesn't actually move. Drift balloons
+past 500ms again next tick, triggers another seek to nearly the same target,
+repeat — audible as a spin/stutter. Diagnostics for this already existed
+(`_lastSeekIntendedMs`/`_lastSeekMeasuredMs`) but nothing acted on them.
+
+**Oracle:** 16.3.5→31 (Enthusiasm→Influence). Confirmed: act now, don't
+hesitate (line 3) — but treat this as a chronic condition to manage on an
+ongoing basis, not a single permanent cure (line 5, "persistently ill, does
+not die"). Influence (the resulting hexagram) pointed at a sensing/responsive
+fix rather than brute-force suppression — wait and observe whether the seek
+actually landed before deciding to act again.
+
+**Change:** In listener.html's snap path, after the 200ms post-seek
+measurement, compare measuredJumpMs to intendedJumpMs. If the seek clearly
+didn't land (measured < 30% of intended) on a real snap-magnitude correction,
+increment `_snapFailCount`. After 3 consecutive no-lands, call
+`_hardReloadTrack()` — the same escalation path already used elsewhere in
+this file for the BT pause/resume loop — instead of endlessly re-issuing
+identical seeks. Resets to 0 on any seek that actually lands.
+**File:** listener.html — fastDriftCorrect()'s snap branch
+
+**Status:** implemented, not yet observed live. Needs push + a real
+recurrence of the spin bug to confirm the escalation actually fires and
+clears it (rare/intermittent bug — may take a while to observe in the wild).
+
+---

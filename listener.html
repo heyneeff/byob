@@ -2220,6 +2220,22 @@ function fastDriftCorrect() {
       const measuredJumpMs = window.SyncEngine.wrapLag((audio.currentTime - preSeekTime) * 1000, audio.duration * 1000);
       window._lastSeekIntendedMs = Math.round(intendedJumpMs);
       window._lastSeekMeasuredMs = Math.round(measuredJumpMs);
+      // A seek that silently no-ops while playing (BT route ignores
+      // currentTime=x) re-triggers the same snap next tick, snapping to
+      // nearly the same target again — audible as a short clip spinning in
+      // place. Track consecutive no-lands; after 3, the BT pipe needs a
+      // hard reset, not another identical seek. Oracle 16.3.5->31, "manage
+      // as a chronic condition, sense before forcing."
+      if (Math.abs(intendedJumpMs) >= DRIFT_SNAP_THRESHOLD_MS &&
+          Math.abs(measuredJumpMs) < Math.abs(intendedJumpMs) * 0.3) {
+        window._snapFailCount = (window._snapFailCount || 0) + 1;
+        if (window._snapFailCount >= 3) {
+          window._snapFailCount = 0;
+          _hardReloadTrack();
+        }
+      } else {
+        window._snapFailCount = 0;
+      }
     }, 200);
   } else if (_absLag >= 15) {
     requestCorrection(lagMs); // warp for 15–250ms drift
