@@ -301,3 +301,28 @@ Line 4: "She is the treasure of the house" — the centering force is the most v
 **Status:** implemented, not yet observed live. Push and monitor.
 
 ---
+
+## Observatory — 2026-06-30 (ternary/overlay.html full rebuild)
+
+Complete rewrite of the debug dashboard into a multi-panel monitoring observatory.
+
+**New panels (tab-switched):**
+- **DRIFT chart** (primary): per-device drift over 180s window, ±200ms, P/Z/N lines at ±10ms/±50ms
+- **WARP RATE chart**: (playbackRate − 1)×100 per device — correction magnitude. ±2% range.
+  Flat 0% = engine idle. Spikes show when/how hard each device is correcting.
+- **OCTO ROLES timeline**: Gantt-style colored strips per device — role transitions over 180s.
+  Each of the 8 roles has its own color (teal=ANCHORING → red=REACHING).
+- **AUTO-CAL chart**: deviceLatencyMs per device over 180s. Step-jumps = auto-cal fired.
+
+**Room overview bar (always visible):**
+- Drift spread (ms) — max−min across playing devices
+- Ternary N/Z/P bar with counts
+- Octonary 8-role stacked bar with count labels
+- Global disruption indicator: CLEAR / ⚠ ACTIVE
+
+**Enhanced device cards:**
+- Trit badge + octonary role badge with oracle role colors
+- Full field set: drift, warp%, BT latency, drift state, floor, cal state, consec N,
+  peers, consensus, snaps, stalls, seek (intended vs measured), readyState, visibility
+
+---

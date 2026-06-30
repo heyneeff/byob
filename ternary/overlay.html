@@ -3,84 +3,182 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>BYOB — Sync + Ternary</title>
+<title>BYOB — Sync Observatory</title>
 <style>
-:root{--teal:#00cc99;--orange:#f57e20;--red:#ef3c23;--cyan:#40c4f0;}
+:root {
+  --teal:#00cc99; --orange:#f57e20; --red:#ef3c23; --cyan:#40c4f0;
+  --purple:#ce93d8; --yellow:#fff176; --gray:#607080; --bg:#020408; --card:#080e14;
+  /* octonary role colors */
+  --octo-0:#00cc99; --octo-1:#4db88e; --octo-2:#f57e20; --octo-3:#ce93d8;
+  --octo-4:#40c4f0; --octo-5:#607080; --octo-6:#fff176; --octo-7:#ef3c23;
+}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:#000;color:#0f0;font-family:monospace;font-size:12px;padding:16px;}
-h1{font-size:14px;color:var(--teal);letter-spacing:.2em;text-transform:uppercase;margin-bottom:12px;}
-#status{font-size:11px;color:#555;margin-bottom:12px;}
-#diff{display:none;margin-bottom:12px;padding:10px;border:1px solid var(--teal);border-radius:6px;}
-#diff-label{font-size:10px;color:var(--teal);margin-bottom:4px;letter-spacing:.1em;text-transform:uppercase;}
-#diff-val{font-size:20px;font-weight:bold;}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
-.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:6px;padding:10px;}
-/* Ternary trit border tint */
-.card.ter-P{border-left:3px solid #00cc9980;}
-.card.ter-Z{border-left:3px solid #f57e2080;}
-.card.ter-N{border-left:3px solid #40c4f080;}
-.card-hdr{display:flex;justify-content:space-between;margin-bottom:6px;}
-.dev-id{color:var(--orange);font-weight:bold;}
-.dev-age{color:#444;font-size:10px;}
-.row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:2px 0;}
-.k{color:#555;}.v{color:#0f0;text-align:right;}
-.warn{color:var(--orange);}.bad{color:var(--red);}
-.trit-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-weight:bold;font-size:11px;letter-spacing:2px;margin-left:6px;}
-.trit-P{background:#00cc9920;color:var(--teal);}
-.trit-Z{background:#f57e2020;color:var(--orange);}
-.trit-N{background:#40c4f020;color:var(--cyan);}
-/* Ternary aggregate bar */
-#ter-agg{margin-bottom:12px;padding:10px;border:1px solid #1a3a3a;border-radius:6px;display:none;}
-#ter-agg-title{font-size:10px;color:var(--teal);letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px;}
-#ter-bar{display:flex;height:14px;border-radius:3px;overflow:hidden;margin-bottom:6px;}
-#ter-labels{display:flex;gap:20px;font-size:10px;}
-#rec-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
-#rec-toolbar button{background:#0a0a0a;border:1px solid #333;color:#0f0;font-family:monospace;font-size:11px;padding:6px 10px;border-radius:4px;cursor:pointer;}
-#rec-toolbar button:hover{border-color:var(--teal);}
+body{background:var(--bg);color:#8ab;font-family:monospace;font-size:12px;min-height:100vh;}
+
+/* ── header ── */
+#hdr{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid #0e1a22;flex-wrap:wrap;}
+#hdr h1{font-size:13px;color:var(--teal);letter-spacing:.25em;text-transform:uppercase;white-space:nowrap;}
+#status{font-size:10px;color:#444;flex:1;min-width:120px;}
+#rec-toolbar{display:flex;gap:6px;align-items:center;flex-shrink:0;}
+#rec-toolbar button{background:var(--card);border:1px solid #1a2a36;color:#8ab;font-family:monospace;font-size:10px;padding:4px 8px;border-radius:3px;cursor:pointer;}
+#rec-toolbar button:hover{border-color:var(--teal);color:var(--teal);}
 #rec-btn.active{border-color:var(--red);color:var(--red);}
-#rec-count{color:#555;font-size:10px;}
-#drift-chart-wrap{margin-bottom:12px;background:#050505;border:1px solid #1a1a1a;border-radius:6px;padding:8px;}
-#drift-chart-title{font-size:10px;color:var(--teal);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
-#drift-chart{display:block;width:100%;height:140px;}
-#drift-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:10px;}
-.legend-item{display:flex;align-items:center;gap:4px;}
-.legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+#rec-count{color:#444;font-size:10px;}
+
+/* ── overview row ── */
+#overview{display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;padding:10px 16px;border-bottom:1px solid #0e1a22;}
+.ov-panel{background:var(--card);border:1px solid #0e1a22;border-radius:5px;padding:8px 10px;}
+.ov-title{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#446;margin-bottom:6px;}
+#spread-val{font-size:26px;font-weight:bold;color:var(--teal);line-height:1;}
+#spread-sub{font-size:10px;color:#446;margin-top:2px;}
+#trit-bar-wrap{height:10px;border-radius:2px;overflow:hidden;display:flex;margin-bottom:5px;}
+#trit-counts{display:flex;gap:12px;font-size:10px;}
+#octo-bar-wrap{height:10px;border-radius:2px;overflow:hidden;display:flex;margin-bottom:5px;}
+#octo-legend{display:flex;flex-wrap:wrap;gap:6px;font-size:9px;}
+.octo-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:2px;vertical-align:middle;}
+#disruption-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:90px;transition:border-color .3s;}
+#disruption-panel.active{border-color:var(--red)!important;}
+#disruption-label{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#446;margin-bottom:4px;}
+#disruption-val{font-size:18px;font-weight:bold;color:#1a3a3a;transition:color .3s;}
+#disruption-panel.active #disruption-val{color:var(--red);}
+
+/* ── charts ── */
+#charts{padding:10px 16px 0;}
+#chart-tabs{display:flex;gap:4px;margin-bottom:8px;}
+.chart-tab{background:var(--card);border:1px solid #0e1a22;color:#446;font-family:monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:3px;cursor:pointer;}
+.chart-tab.active{border-color:var(--teal);color:var(--teal);}
+.chart-panel{display:none;background:var(--card);border:1px solid #0e1a22;border-radius:5px;padding:8px;}
+.chart-panel.active{display:block;}
+.chart-title{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#446;margin-bottom:6px;}
+canvas.chart{display:block;width:100%;height:160px;}
+#drift-legend,#warp-legend,#cal-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px;font-size:9px;}
+.legend-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block;}
+
+/* role timeline rows */
+#roles-canvas{display:block;width:100%;height:160px;}
+
+/* ── device grid ── */
+#devices{padding:10px 16px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;}
+.card{background:var(--card);border:1px solid #0e1a22;border-radius:5px;padding:8px;}
+.card.trit-P{border-left:3px solid var(--teal);}
+.card.trit-Z{border-left:3px solid var(--orange);}
+.card.trit-N{border-left:3px solid var(--cyan);}
+.card-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
+.dev-id{color:var(--orange);font-weight:bold;font-size:11px;}
+.dev-meta{color:#335;font-size:9px;text-align:right;}
+.badges{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;}
+.badge{display:inline-block;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:bold;letter-spacing:1px;}
+.badge-P{background:#00cc9918;color:var(--teal);border:1px solid #00cc9940;}
+.badge-Z{background:#f57e2018;color:var(--orange);border:1px solid #f57e2040;}
+.badge-N{background:#40c4f018;color:var(--cyan);border:1px solid #40c4f040;}
+.badge-burst{background:#fff17618;color:var(--yellow);border:1px solid #fff17640;}
+.badge-octo{border:1px solid currentColor;opacity:.85;}
+.row{display:flex;justify-content:space-between;border-bottom:1px solid #0a1218;padding:2px 0;}
+.k{color:#335;}.v{color:#8ab;text-align:right;}
+.warn{color:var(--orange);}.bad{color:var(--red);}.good{color:var(--teal);}
+
+/* ── events ── */
+#events-section{padding:8px 16px 16px;}
+#events-title{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#335;margin-bottom:6px;cursor:pointer;}
+#events-list{display:none;}
+#events-list.open{display:block;}
+.ev-row{display:flex;gap:8px;font-size:10px;padding:2px 0;border-bottom:1px solid #0a1218;}
+.ev-ts{color:#335;flex-shrink:0;width:50px;}.ev-dev{color:var(--orange);width:80px;flex-shrink:0;}
+.ev-kind{color:var(--teal);width:90px;flex-shrink:0;}.ev-detail{color:#8ab;}
 </style>
 </head>
 <body>
-<h1>📡 BYOB Sync Dashboard + Ternary Layer</h1>
-<div id="status">Connecting…</div>
-<div id="rec-toolbar">
-  <button id="rec-btn" onclick="toggleRecord()">⏺ Record</button>
-  <button onclick="exportCSV()">⬇ Export CSV</button>
-  <span id="rec-count">0 rows</span>
-</div>
 
-<!-- Ternary aggregate — hidden until devices with trit data arrive -->
-<div id="ter-agg">
-  <div id="ter-agg-title">ternary sync state — all playing devices</div>
-  <div id="ter-bar"></div>
-  <div id="ter-labels">
-    <span style="color:var(--cyan)">N diverging: <b id="tc-n">0</b></span>
-    <span style="color:var(--orange)">Z negotiating: <b id="tc-z">0</b></span>
-    <span style="color:var(--teal)">P converged: <b id="tc-p">0</b></span>
-    <span style="color:#555">threshold: 50ms snap / 10ms micro</span>
+<!-- header -->
+<div id="hdr">
+  <h1>⬡ BYOB Sync Observatory</h1>
+  <div id="status">Connecting…</div>
+  <div id="rec-toolbar">
+    <button id="rec-btn" onclick="toggleRecord()">⏺ Record</button>
+    <button onclick="exportCSV()">⬇ CSV</button>
+    <span id="rec-count">0 rows</span>
   </div>
 </div>
 
-<div id="drift-chart-wrap">
-  <div id="drift-chart-title">live drift — all devices</div>
-  <canvas id="drift-chart"></canvas>
-  <div id="drift-legend"></div>
+<!-- overview -->
+<div id="overview">
+  <!-- spread -->
+  <div class="ov-panel">
+    <div class="ov-title">room drift spread</div>
+    <div id="spread-val">—</div>
+    <div id="spread-sub">— devices playing</div>
+  </div>
+
+  <!-- ternary -->
+  <div class="ov-panel">
+    <div class="ov-title">ternary state</div>
+    <div id="trit-bar-wrap"></div>
+    <div id="trit-counts">
+      <span style="color:var(--cyan)">N <b id="tc-n">0</b></span>
+      <span style="color:var(--orange)">Z <b id="tc-z">0</b></span>
+      <span style="color:var(--teal)">P <b id="tc-p">0</b></span>
+    </div>
+  </div>
+
+  <!-- octonary -->
+  <div class="ov-panel">
+    <div class="ov-title">octonary roles</div>
+    <div id="octo-bar-wrap"></div>
+    <div id="octo-legend"></div>
+  </div>
+
+  <!-- disruption -->
+  <div class="ov-panel" id="disruption-panel">
+    <div id="disruption-label">global disruption</div>
+    <div id="disruption-val">CLEAR</div>
+  </div>
 </div>
-<div id="diff">
-  <div id="diff-label">position delta between devices</div>
-  <div id="diff-val">—</div>
+
+<!-- charts -->
+<div id="charts">
+  <div id="chart-tabs">
+    <button class="chart-tab active" onclick="switchTab('drift')">Drift</button>
+    <button class="chart-tab" onclick="switchTab('warp')">Warp Rate</button>
+    <button class="chart-tab" onclick="switchTab('roles')">Octo Roles</button>
+    <button class="chart-tab" onclick="switchTab('cal')">Auto-Cal</button>
+  </div>
+
+  <div class="chart-panel active" id="tab-drift">
+    <div class="chart-title">live drift — all devices (ms, ±200ms window)</div>
+    <canvas class="chart" id="drift-canvas" height="160"></canvas>
+    <div id="drift-legend"></div>
+  </div>
+
+  <div class="chart-panel" id="tab-warp">
+    <div class="chart-title">warp rate — playbackRate deviation from 1.0 (%)</div>
+    <canvas class="chart" id="warp-canvas" height="160"></canvas>
+    <div id="warp-legend"></div>
+  </div>
+
+  <div class="chart-panel" id="tab-roles">
+    <div class="chart-title">octonary role timeline — per device</div>
+    <canvas class="chart" id="roles-canvas" height="160"></canvas>
+    <div id="roles-legend" style="margin-top:5px;display:flex;flex-wrap:wrap;gap:8px;font-size:9px;"></div>
+  </div>
+
+  <div class="chart-panel" id="tab-cal">
+    <div class="chart-title">auto-cal convergence — deviceLatencyMs per device</div>
+    <canvas class="chart" id="cal-canvas" height="160"></canvas>
+    <div id="cal-legend"></div>
+  </div>
 </div>
-<div id="events" class="card" style="display:none;margin-bottom:12px;">
-  <div class="card-hdr"><span class="dev-id">↻ resync events</span></div>
+
+<!-- device cards -->
+<div id="devices">
+  <div class="grid" id="grid"></div>
 </div>
-<div class="grid" id="grid"></div>
+
+<!-- events -->
+<div id="events-section">
+  <div id="events-title" onclick="toggleEvents()">▶ sync events (0)</div>
+  <div id="events-list"></div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -90,164 +188,418 @@ const db = createClient(
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY'
 );
 
-const devs    = {};
-const _events = [];
+// ── Constants ──────────────────────────────────────────────────────────────
+const TRIT_COLOR  = { P:'#00cc99', Z:'#f57e20', N:'#40c4f0' };
+const TRIT_LABEL  = { P:'CONVERGED', Z:'NEGOTIATING', N:'DIVERGING' };
+const TER_SNAP_MS = 50;
 
-// ── TERNARY ───────────────────────────────────────────────
-// Derive trit from live driftMs — no dependency on layer.js being deployed
-const TER_SNAP_MS  = 50;   // vs binary's 150ms
-const TER_MICRO_MS = 10;   // vs binary's 15ms
-const TRIT_COLOR   = { P: '#00cc99', Z: '#f57e20', N: '#40c4f0' };
-const TRIT_LABEL   = { P: 'CONVERGED', Z: 'NEGOTIATING', N: 'DIVERGING' };
+const OCTO_NAMES  = ['ANCHORING','HOLDING','PULLING','FOLLOWING','PUSHING','LISTENING','RESETTING','REACHING'];
+const OCTO_COLORS = ['#00cc99','#4db88e','#f57e20','#ce93d8','#40c4f0','#607080','#fff176','#ef3c23'];
 
-function driftToTrit(driftMs) {
-  if (driftMs == null || isNaN(parseFloat(driftMs))) return null;
-  const abs = Math.abs(parseFloat(driftMs));
-  if (abs >= TER_SNAP_MS)  return 'N';
-  if (abs >= TER_MICRO_MS) return 'Z';
-  return 'P';
-}
+const CHART_COLORS = ['#00cc99','#f57e20','#ef3c23','#4fc3f7','#ce93d8','#fff176','#a5d6a7','#ff8a65','#80cbc4','#ffcc80'];
+const WINDOW_MS    = 180000; // 3 minutes
 
-// ── Drift chart (identical to debug.html) ────────────────
-const CHART_COLORS = ['#00cc99','#f57e20','#ef3c23','#4fc3f7','#ce93d8','#fff176','#a5d6a7','#ff8a65'];
-const CHART_WINDOW_MS = 180000;
-const CHART_Y_RANGE   = 200;
-const driftHistory    = {};
-const devColorMap     = {};
-let   _colorIdx       = 0;
+// ── State ──────────────────────────────────────────────────────────────────
+const devs       = {};
+const events     = [];
+const devColorMap = {};
+let   colorIdx   = 0;
+const driftHist  = {};  // id → [{ts, v}]
+const warpHist   = {};  // id → [{ts, v}]  (playbackRate - 1)*100
+const calHist    = {};  // id → [{ts, v}]  deviceLatencyMs
+const roleHist   = {};  // id → [{ts, role}]
+let   _activeTab = 'drift';
 
 function devColor(id) {
-  if (!devColorMap[id]) devColorMap[id] = CHART_COLORS[_colorIdx++ % CHART_COLORS.length];
+  if (!devColorMap[id]) devColorMap[id] = CHART_COLORS[colorIdx++ % CHART_COLORS.length];
   return devColorMap[id];
 }
 
-function pushDriftHistory(deviceId, driftMs) {
-  if (!driftHistory[deviceId]) driftHistory[deviceId] = [];
-  const h = driftHistory[deviceId];
-  h.push({ ts: Date.now(), driftMs: parseFloat(driftMs) });
-  const cutoff = Date.now() - CHART_WINDOW_MS - 5000;
+function pushHist(store, id, val) {
+  if (val == null || isNaN(parseFloat(val))) return;
+  if (!store[id]) store[id] = [];
+  store[id].push({ ts: Date.now(), v: parseFloat(val) });
+  const cutoff = Date.now() - WINDOW_MS - 5000;
+  while (store[id].length && store[id][0].ts < cutoff) store[id].shift();
+}
+
+function pushRoleHist(id, octoState) {
+  if (octoState == null) return;
+  if (!roleHist[id]) roleHist[id] = [];
+  const h = roleHist[id];
+  if (!h.length || h[h.length-1].v !== octoState)
+    h.push({ ts: Date.now(), v: octoState });
+  const cutoff = Date.now() - WINDOW_MS - 5000;
   while (h.length && h[0].ts < cutoff) h.shift();
 }
 
-function drawDriftChart() {
-  const canvas = document.getElementById('drift-chart');
-  if (!canvas) return;
-  canvas.width  = canvas.offsetWidth  || 800;
-  canvas.height = canvas.offsetHeight || 140;
-  const W = canvas.width, H = canvas.height;
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, W, H);
-  ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H);
+// ── Trit ──────────────────────────────────────────────────────────────────
+function driftToTrit(driftMs) {
+  const abs = Math.abs(parseFloat(driftMs));
+  if (isNaN(abs)) return null;
+  if (abs >= TER_SNAP_MS) return 'N';
+  if (abs >= 10) return 'Z';
+  return 'P';
+}
 
-  // Grid lines
-  ctx.font = '9px monospace';
-  [-150,-100,-50,50,100,150].forEach(ms => {
-    const y = H/2 - (ms / CHART_Y_RANGE) * (H/2 - 6);
-    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+// ── Tab switcher ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+  _activeTab = tab;
+  document.querySelectorAll('.chart-tab').forEach((b,i) =>
+    b.classList.toggle('active', ['drift','warp','roles','cal'][i] === tab));
+  document.querySelectorAll('.chart-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  drawCharts();
+}
+
+// ── Chart drawing ─────────────────────────────────────────────────────────
+function prepCanvas(id) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  c.width  = c.offsetWidth  || 800;
+  c.height = c.offsetHeight || 160;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#020408'; ctx.fillRect(0, 0, c.width, c.height);
+  return { c, ctx, W: c.width, H: c.height };
+}
+
+function drawGrid(ctx, W, H, lines, yRange, yZero, color='#0e1a22') {
+  ctx.font = '8px monospace'; ctx.fillStyle = '#223';
+  lines.forEach(v => {
+    const y = H/2 - (v / yRange) * (H/2 - 6) + yZero;
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([]);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = '#333'; ctx.fillText(ms + 'ms', 3, y - 2);
+    ctx.fillText(v + (yRange > 10 ? 'ms' : '%'), 3, y - 2);
   });
+}
 
-  // Ternary snap threshold (±50ms) — dashed cyan
-  ctx.strokeStyle = '#40c4f033'; ctx.lineWidth = 1; ctx.setLineDash([2, 4]);
-  [-TER_SNAP_MS, TER_SNAP_MS].forEach(ms => {
-    const y = H/2 - (ms / CHART_Y_RANGE) * (H/2 - 6);
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-    ctx.fillStyle = '#40c4f055'; ctx.font = '8px monospace';
-    ctx.fillText('ter snap ' + ms + 'ms', 3, y - 2);
+function drawLine(ctx, W, H, points, color, yRange, yZero=0, labelSuffix='ms') {
+  if (points.length < 2) return;
+  const now = Date.now();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+  ctx.beginPath(); let started = false;
+  points.forEach(p => {
+    const x = W * (1 - (now - p.ts) / WINDOW_MS);
+    if (x < 0) return;
+    const clamped = Math.max(-yRange, Math.min(yRange, p.v));
+    const y = H/2 - (clamped / yRange) * (H/2 - 6) + yZero;
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  // dot + label at right edge
+  const last = points[points.length-1];
+  const lx = W * (1 - (now - last.ts) / WINDOW_MS);
+  if (lx >= 0) {
+    const clamped = Math.max(-yRange, Math.min(yRange, last.v));
+    const ly = H/2 - (clamped / yRange) * (H/2 - 6) + yZero;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI*2); ctx.fill();
+    ctx.font = '9px monospace';
+    ctx.fillText(last.v.toFixed(0) + labelSuffix, Math.max(4, lx - 36), ly - 6);
+  }
+}
+
+function drawDriftChart() {
+  const g = prepCanvas('drift-canvas'); if (!g) return;
+  const { ctx, W, H } = g;
+  // threshold lines
+  ctx.strokeStyle = '#40c4f022'; ctx.setLineDash([2,4]);
+  [-TER_SNAP_MS, TER_SNAP_MS, -10, 10].forEach(ms => {
+    const y = H/2 - (ms / 200) * (H/2 - 6);
+    ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
   });
   ctx.setLineDash([]);
-
-  // Zero line
-  ctx.strokeStyle = '#00cc9944'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
+  drawGrid(ctx, W, H, [-150,-100,-50,50,100,150], 200, 0);
+  // zero line
+  ctx.strokeStyle = '#00cc9933'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
   ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = '#00cc9988'; ctx.font = '9px monospace';
-  ctx.fillText('0ms', 3, H/2 - 2);
-
-  const now = Date.now();
-  const deviceIds = Object.keys(driftHistory).filter(id => driftHistory[id].length >= 2);
-
-  deviceIds.forEach(id => {
-    const points = driftHistory[id];
-    const color  = devColor(id);
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
-    ctx.beginPath(); let started = false;
-    points.forEach(p => {
-      const x = W * (1 - (now - p.ts) / CHART_WINDOW_MS);
-      if (x < 0) return;
-      const clamped = Math.max(-CHART_Y_RANGE, Math.min(CHART_Y_RANGE, p.driftMs));
-      const y = H/2 - (clamped / CHART_Y_RANGE) * (H/2 - 6);
-      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
-    });
-    ctx.stroke();
-    const last = points[points.length - 1];
-    const lx   = W * (1 - (now - last.ts) / CHART_WINDOW_MS);
-    if (lx >= 0) {
-      const clamped = Math.max(-CHART_Y_RANGE, Math.min(CHART_Y_RANGE, last.driftMs));
-      const ly = H/2 - (clamped / CHART_Y_RANGE) * (H/2 - 6);
-      ctx.fillStyle = color;
-      ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI*2); ctx.fill();
-      ctx.fillStyle = color; ctx.font = '9px monospace';
-      ctx.fillText(id.slice(-5) + ' ' + Math.round(last.driftMs) + 'ms', Math.max(4, lx - 40), ly - 6);
-    }
-  });
-
+  const ids = Object.keys(driftHist).filter(id => driftHist[id].length >= 2);
+  ids.forEach(id => drawLine(ctx, W, H, driftHist[id], devColor(id), 200, 0, 'ms'));
   const legend = document.getElementById('drift-legend');
-  if (legend) legend.innerHTML = deviceIds.map(id =>
-    `<span class="legend-item"><span class="legend-dot" style="background:${devColor(id)}"></span><span style="color:${devColor(id)}">${id}</span></span>`
+  if (legend) legend.innerHTML = ids.map(id =>
+    `<span><span class="legend-dot" style="background:${devColor(id)};display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;"></span><span style="color:${devColor(id)}">${id}</span></span>`
   ).join('');
 }
 
-function renderEvents() {
-  const el = document.getElementById('events');
-  if (!_events.length) { el.style.display = 'none'; return; }
-  el.style.display = 'block';
-  el.innerHTML = '<div class="card-hdr"><span class="dev-id">↻ resync events</span></div>' +
-    _events.map(e =>
-      `<div class="row"><span class="k">${e.deviceId}</span><span class="v">${e.kind} · ${Math.round((Date.now()-e.at)/1000)}s ago</span></div>`
-    ).join('');
+function drawWarpChart() {
+  const g = prepCanvas('warp-canvas'); if (!g) return;
+  const { ctx, W, H } = g;
+  drawGrid(ctx, W, H, [-1.5,-1,-0.5,0.5,1,1.5], 2, 0);
+  ctx.strokeStyle = '#00cc9933'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  ctx.setLineDash([]);
+  const ids = Object.keys(warpHist).filter(id => warpHist[id].length >= 2);
+  ids.forEach(id => drawLine(ctx, W, H, warpHist[id], devColor(id), 2, 0, '%'));
+  const legend = document.getElementById('warp-legend');
+  if (legend) legend.innerHTML = ids.map(id =>
+    `<span><span class="legend-dot" style="background:${devColor(id)};display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;"></span><span style="color:${devColor(id)}">${id}</span></span>`
+  ).join('');
 }
 
-// ── Channels ──────────────────────────────────────────────
+function drawRolesChart() {
+  const g = prepCanvas('roles-canvas'); if (!g) return;
+  const { ctx, W, H } = g;
+  const ids = Object.keys(roleHist).filter(id => roleHist[id].length);
+  if (!ids.length) {
+    ctx.fillStyle = '#335'; ctx.font = '11px monospace';
+    ctx.fillText('waiting for octonary data…', 20, H/2);
+    return;
+  }
+  const rowH = Math.min(28, Math.floor((H - 4) / ids.length));
+  const now = Date.now();
+  ids.forEach((id, i) => {
+    const y = i * rowH + 2;
+    const h = rowH - 2;
+    const pts = roleHist[id];
+    // draw colored segments
+    for (let j = 0; j < pts.length; j++) {
+      const p = pts[j];
+      const next = pts[j+1];
+      const x1 = Math.max(0, W * (1 - (now - p.ts) / WINDOW_MS));
+      const x2 = next ? W * (1 - (now - next.ts) / WINDOW_MS) : W;
+      if (x2 < 0) continue;
+      ctx.fillStyle = OCTO_COLORS[p.v] + '99';
+      ctx.fillRect(x1, y, Math.max(1, x2 - x1), h);
+    }
+    // label
+    const last = pts[pts.length-1];
+    ctx.fillStyle = OCTO_COLORS[last.v];
+    ctx.font = '8px monospace';
+    ctx.fillText(id.slice(-6) + ' ' + OCTO_NAMES[last.v], 4, y + h - 3);
+  });
+  // legend
+  const legend = document.getElementById('roles-legend');
+  if (legend) legend.innerHTML = OCTO_NAMES.map((name, i) =>
+    `<span><span class="legend-dot" style="background:${OCTO_COLORS[i]};display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;"></span><span style="color:${OCTO_COLORS[i]}">${i} ${name}</span></span>`
+  ).join('');
+}
+
+function drawCalChart() {
+  const g = prepCanvas('cal-canvas'); if (!g) return;
+  const { ctx, W, H } = g;
+  drawGrid(ctx, W, H, [200,400,600,800,1000,1200], 1200, H/2 - 4);
+  // bottom baseline
+  ctx.strokeStyle = '#00cc9933'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  const bot = H - 6;
+  ctx.beginPath(); ctx.moveTo(0, bot); ctx.lineTo(W, bot); ctx.stroke();
+  ctx.setLineDash([]);
+  const ids = Object.keys(calHist).filter(id => calHist[id].length >= 2);
+  const now = Date.now();
+  ids.forEach(id => {
+    const pts = calHist[id];
+    const color = devColor(id);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+    ctx.beginPath(); let started = false;
+    pts.forEach(p => {
+      const x = W * (1 - (now - p.ts) / WINDOW_MS);
+      if (x < 0) return;
+      const y = bot - (Math.min(1200, Math.max(0, p.v)) / 1200) * (bot - 10);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    const last = pts[pts.length-1];
+    const lx = W * (1 - (now - last.ts) / WINDOW_MS);
+    if (lx >= 0) {
+      const ly = bot - (Math.min(1200, Math.max(0, last.v)) / 1200) * (bot - 10);
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI*2); ctx.fill();
+      ctx.font = '9px monospace';
+      ctx.fillText(Math.round(last.v) + 'ms', Math.max(4, lx - 36), ly - 6);
+    }
+  });
+  const legend = document.getElementById('cal-legend');
+  if (legend) legend.innerHTML = ids.map(id =>
+    `<span><span class="legend-dot" style="background:${devColor(id)};display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;"></span><span style="color:${devColor(id)}">${id} BT=${calHist[id].slice(-1)[0]?.v?.toFixed(0) ?? '?'}ms</span></span>`
+  ).join('');
+}
+
+function drawCharts() {
+  if (_activeTab === 'drift')  drawDriftChart();
+  if (_activeTab === 'warp')   drawWarpChart();
+  if (_activeTab === 'roles')  drawRolesChart();
+  if (_activeTab === 'cal')    drawCalChart();
+}
+
+// ── Overview ──────────────────────────────────────────────────────────────
+function updateOverview() {
+  const all = Object.values(devs);
+  const sync = all.filter(d => d._kind === 'sync');
+
+  // Spread
+  const playing = sync.filter(d => d.playing && !d.paused && parseFloat(d.currentTime) > 0);
+  const drifts = playing.map(d => parseFloat(d.driftMs)).filter(v => !isNaN(v));
+  const spread = drifts.length >= 2 ? Math.max(...drifts) - Math.min(...drifts) : null;
+  const sv = document.getElementById('spread-val');
+  const ss = document.getElementById('spread-sub');
+  if (spread != null) {
+    sv.textContent = spread.toFixed(0) + 'ms';
+    sv.style.color = spread > 200 ? 'var(--red)' : spread > 50 ? 'var(--orange)' : 'var(--teal)';
+  } else { sv.textContent = '—'; sv.style.color = 'var(--teal)'; }
+  ss.textContent = playing.length + ' device' + (playing.length !== 1 ? 's' : '') + ' playing';
+
+  // Ternary bar
+  const tc = { N:0, Z:0, P:0 };
+  sync.forEach(d => { const t = d.terTrit || driftToTrit(d.driftMs); if (t) tc[t]++; });
+  const tt = sync.length || 1;
+  document.getElementById('tc-n').textContent = tc.N;
+  document.getElementById('tc-z').textContent = tc.Z;
+  document.getElementById('tc-p').textContent = tc.P;
+  document.getElementById('trit-bar-wrap').innerHTML =
+    (tc.N ? `<div style="flex:${tc.N};background:var(--cyan);"></div>` : '') +
+    (tc.Z ? `<div style="flex:${tc.Z};background:var(--orange);"></div>` : '') +
+    (tc.P ? `<div style="flex:${tc.P};background:var(--teal);"></div>` : '');
+
+  // Octonary bar + legend
+  const oc = new Array(8).fill(0);
+  sync.forEach(d => { if (d.terOctoState != null) oc[d.terOctoState]++; });
+  const ot = oc.reduce((a,v) => a+v, 0) || 1;
+  document.getElementById('octo-bar-wrap').innerHTML = oc.map((c,i) =>
+    c ? `<div style="flex:${c};background:${OCTO_COLORS[i]};"></div>` : ''
+  ).join('');
+  document.getElementById('octo-legend').innerHTML = oc.map((c,i) =>
+    c ? `<span><span class="octo-dot" style="background:${OCTO_COLORS[i]}"></span><span style="color:${OCTO_COLORS[i]}">${c} ${OCTO_NAMES[i].slice(0,5)}</span></span>` : ''
+  ).filter(Boolean).join('');
+
+  // Global disruption
+  const disrupted = sync.some(d => d.terGlobalDisruption);
+  const dp = document.getElementById('disruption-panel');
+  const dv = document.getElementById('disruption-val');
+  dp.classList.toggle('active', disrupted);
+  dv.textContent = disrupted ? '⚠ ACTIVE' : 'CLEAR';
+}
+
+// ── Device cards ──────────────────────────────────────────────────────────
+function r(key, val, cls='') {
+  return `<div class="row"><span class="k">${key}</span><span class="v ${cls}">${val ?? '—'}</span></div>`;
+}
+
+function octoB(state, name) {
+  if (state == null) return '';
+  return `<span class="badge badge-octo" style="color:${OCTO_COLORS[state]};border-color:${OCTO_COLORS[state]}40">${name || OCTO_NAMES[state]}</span>`;
+}
+
+function renderSyncCard(d, age) {
+  const trit = d.terTrit || driftToTrit(d.driftMs);
+  const dm = parseFloat(d.driftMs);
+  const dc = Math.abs(dm) > 200 ? 'bad' : Math.abs(dm) > 50 ? 'warn' : 'good';
+  const rate = parseFloat(d.playbackRate);
+  const warpPct = isNaN(rate) ? 0 : Math.abs(rate - 1) * 100;
+  return `<div class="card${trit?' trit-'+trit:''}">
+    <div class="card-hdr">
+      <div>
+        <div class="dev-id">${d.deviceId}</div>
+        <div style="font-size:9px;color:#335">${d.zone||'no zone'}</div>
+      </div>
+      <div class="dev-meta">${age}s ago<br>${d.build||'?'}</div>
+    </div>
+    <div class="badges">
+      ${trit ? `<span class="badge badge-${trit}">${trit} ${TRIT_LABEL[trit]}</span>` : ''}
+      ${d.terBurst ? `<span class="badge badge-burst">⚡ BURST ${d.terBurstSnaps||0}</span>` : ''}
+      ${octoB(d.terOctoState, d.terOctoName)}
+      ${d.terGlobalDisruption ? `<span class="badge" style="color:var(--red);border:1px solid #ef3c2340">DISRUPTION</span>` : ''}
+    </div>
+    ${r('drift',       dm != null && !isNaN(dm) ? dm.toFixed(0)+'ms' : '—', dc)}
+    ${r('warp rate',   isNaN(rate) ? '—' : (rate-1>=0?'+':'')+(rate-1)*100+'%', warpPct > 1.2 ? 'warn' : '')}
+    ${r('BT latency',  d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
+    ${r('drift state', (d.driftState||'—')+(d.driftPending?' ↺':''), d.driftState==='seeking'?'warn':d.driftState==='warping'?'':'')}
+    ${r('floor',       d.terLastFloor!=null ? d.terLastFloor+'ms' : '—', d.terLastFloor!=null&&Math.abs(d.terLastFloor)>30?'warn':'')}
+    ${r('cal state',   d.terCalState!=null ? ['never','done','no fn','no floor','tiny','fired'][d.terCalState]||d.terCalState : '—',
+        d.terCalState===5?'good':'')}
+    ${r('consec N',    d.terConsecN ?? '—', d.terConsecN>=8?'warn':'')}
+    ${r('peer count',  d.terPeerCount ?? '—')}
+    ${r('consensus',   d.terConsensus ? `${d.terConsensus}` : '—')}
+    ${r('snaps',       d.terSnapCount ?? d.snapCount ?? 0)}
+    ${r('stalls',      d.stallCount ?? 0, d.stallCount>0?'warn':'')}
+    ${r('seek landed', d.seekMeasuredMs!=null&&d.seekIntendedMs!=null ?
+        d.seekMeasuredMs+'ms / '+d.seekIntendedMs+'ms' : '—',
+        d.seekIntendedMs!=null&&d.seekMeasuredMs!=null&&
+        Math.abs(d.seekIntendedMs)>100&&Math.abs(d.seekMeasuredMs)<Math.abs(d.seekIntendedMs)*0.3?'bad':'')}
+    ${r('ready',       d.readyState??'—', d.readyState!=null&&d.readyState<3?'warn':'')}
+    ${r('visibility',  d.visibilityState||'—', d.visibilityState==='hidden'?'warn':'')}
+  </div>`;
+}
+
+function renderHealthCard(d, age) {
+  return `<div class="card">
+    <div class="card-hdr">
+      <div class="dev-id">📡 ${d.deviceId}</div>
+      <div class="dev-meta">${age}s ago</div>
+    </div>
+    ${r('zone',     d.zone||'—')}
+    ${r('status',   d.syncState||'—')}
+    ${r('presence', d.deviceLatencyMs ? '✓ broadcasting' : '✗ idle', d.deviceLatencyMs?'good':'warn')}
+  </div>`;
+}
+
+function render() {
+  const ids = Object.keys(devs);
+  document.getElementById('grid').innerHTML = ids.map(id => {
+    const d = devs[id]; const age = Math.round((Date.now()-d.lastSeen)/1000);
+    return d._kind === 'sync' ? renderSyncCard(d, age) : renderHealthCard(d, age);
+  }).join('');
+  updateOverview();
+}
+
+// ── Events ────────────────────────────────────────────────────────────────
+let _eventsOpen = false;
+function toggleEvents() { _eventsOpen = !_eventsOpen; renderEvents(); }
+function renderEvents() {
+  const el = document.getElementById('events-list');
+  el.classList.toggle('open', _eventsOpen);
+  document.getElementById('events-title').textContent =
+    (_eventsOpen ? '▼' : '▶') + ' sync events (' + events.length + ')';
+  if (!_eventsOpen) return;
+  el.innerHTML = events.slice(0, 40).map(e => {
+    const ago = Math.round((Date.now()-e.at)/1000);
+    return `<div class="ev-row">
+      <span class="ev-ts">${ago}s ago</span>
+      <span class="ev-dev">${(e.deviceId||'').slice(-8)}</span>
+      <span class="ev-kind">${e.kind||''}</span>
+      <span class="ev-detail">${e.floorMs!=null?'floor '+e.floorMs+'ms → ':''}`+
+      `${e.correctionMs!=null?'Δ'+e.correctionMs+'ms ':''}`+
+      `${e.note||''}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Channels ──────────────────────────────────────────────────────────────
 db.channel('byob_debug')
-  .on('broadcast', { event: 'hud_data' }, ({ payload }) => {
-    devs[payload.deviceId] = { ...payload, _kind: 'sync', lastSeen: Date.now() };
-    if (payload.driftMs != null && !isNaN(parseFloat(payload.driftMs)))
-      pushDriftHistory(payload.deviceId, payload.driftMs);
-    if (_recording) recordRow('sync', payload);
-    render(); drawDriftChart();
+  .on('broadcast', { event: 'hud_data' }, ({ payload: p }) => {
+    devs[p.deviceId] = { ...p, _kind: 'sync', lastSeen: Date.now() };
+    pushHist(driftHist,  p.deviceId, p.driftMs);
+    pushHist(warpHist,   p.deviceId, ((parseFloat(p.playbackRate)||1) - 1) * 100);
+    pushHist(calHist,    p.deviceId, p.deviceLatencyMs);
+    pushRoleHist(p.deviceId, p.terOctoState);
+    if (_recording) recordRow('sync', p);
+    render(); drawCharts();
   })
-  .on('broadcast', { event: 'listener_health' }, ({ payload }) => {
-    devs[payload.deviceId] = { ...payload, _kind: 'health', lastSeen: Date.now() };
-    if (_recording) recordRow('health', payload);
+  .on('broadcast', { event: 'listener_health' }, ({ payload: p }) => {
+    devs[p.deviceId] = { ...p, _kind: 'health', lastSeen: Date.now() };
+    if (_recording) recordRow('health', p);
     render();
   })
-  .on('broadcast', { event: 'sync_event' }, ({ payload }) => {
-    _events.unshift({ ...payload, at: Date.now() });
-    if (_events.length > 20) _events.length = 20;
-    if (_recording) recordRow('event', { ...payload, note: payload.kind });
+  .on('broadcast', { event: 'sync_event' }, ({ payload: p }) => {
+    events.unshift({ ...p, at: Date.now() });
+    if (events.length > 60) events.length = 60;
+    if (_recording) recordRow('event', p);
     renderEvents();
   })
   .subscribe(s => {
     document.getElementById('status').textContent =
-      s === 'SUBSCRIBED'
-        ? '● Listening — open a listener\'s HUD for full sync data; GPS/connection health streams automatically'
-        : s;
+      s === 'SUBSCRIBED' ? '● live — open a listener HUD to stream data' : s;
   });
 
-// ── Recording — same CSV as debug.html + ternary cols ────
+// ── Recording ─────────────────────────────────────────────────────────────
 let _recording = false, _records = [];
 const REC_COLS = [
-  'timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
-  'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
-  'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
-  'engineLagMs','snapCount','seekIntendedMs','seekMeasuredMs','note',
-  // ternary additions (computed locally from driftMs, or from layer.js if present)
-  'terTrit','terTritLabel','terSnapMs','terSnapCount','terTickCount','terBurst','terBurstSnaps','terConsensus','terPeerCount',
-  'terCalApplied','terCalState','terLastFloor','terConsecN',
+  'timestamp','kind','deviceId','zone','driftMs','deviceLatencyMs','playbackRate',
+  'driftState','driftPending','terTrit','terOctoState','terOctoName','terGlobalDisruption',
+  'terCalState','terLastFloor','terConsecN','terPeerCount','terConsensus',
+  'terSnapCount','terBurstSnaps','stallCount','snapCount','seekIntendedMs','seekMeasuredMs',
+  'readyState','visibilityState','currentTime','expectedPos','note',
 ];
-
 function toggleRecord() {
   _recording = !_recording;
   const btn = document.getElementById('rec-btn');
@@ -255,166 +607,34 @@ function toggleRecord() {
   btn.classList.toggle('active', _recording);
   if (_recording) { _records = []; document.getElementById('rec-count').textContent = '0 rows'; }
 }
-
 function recordRow(kind, p) {
   const row = { timestamp: new Date().toISOString(), kind };
   REC_COLS.slice(2).forEach(c => row[c] = p[c]);
-  // Compute ternary fields if not already present from layer.js
-  if (kind === 'sync' && row.terTrit == null && p.driftMs != null) {
-    const t = driftToTrit(p.driftMs);
-    row.terTrit      = t;
-    row.terTritLabel = t ? TRIT_LABEL[t] : null;
-    row.terSnapMs    = TER_SNAP_MS;
-  }
+  if (kind === 'sync' && row.terTrit == null && p.driftMs != null)
+    row.terTrit = driftToTrit(p.driftMs);
   _records.push(row);
   document.getElementById('rec-count').textContent = _records.length + ' rows';
 }
-
 function exportCSV() {
   if (!_records.length) return;
   const lines = [REC_COLS.join(',')];
-  _records.forEach(row => {
-    lines.push(REC_COLS.map(c => {
-      const v = row[c];
-      return v === undefined || v === null ? '' : String(v).replace(/,/g, ';');
-    }).join(','));
-  });
+  _records.forEach(row => lines.push(REC_COLS.map(c => {
+    const v = row[c]; return v == null ? '' : String(v).replace(/,/g,';');
+  }).join(',')));
   const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href = url;
-  a.download = 'byob-ternary-' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv';
-  a.click(); URL.revokeObjectURL(url);
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'byob-obs-' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+  a.click();
 }
 
-// ── Render ────────────────────────────────────────────────
-function render() {
-  const ids = Object.keys(devs);
-  document.getElementById('grid').innerHTML = ids.map(id => {
-    const d   = devs[id];
-    const age = Math.round((Date.now() - d.lastSeen) / 1000);
-    return d._kind === 'sync' ? renderSyncCard(d, age) : renderHealthCard(d, age);
-  }).join('');
-
-  // Drift spread
-  const playing = ids.filter(id => devs[id]._kind === 'sync').map(id => devs[id])
-    .filter(d => d.playing && !d.paused && parseFloat(d.currentTime) > 0 && !isNaN(parseFloat(d.elapsed)));
-  if (playing.length >= 2) {
-    const drifts = playing.map(d => parseFloat(d.driftMs)).filter(v => !isNaN(v));
-    const spread = drifts.length >= 2 ? Math.max(...drifts) - Math.min(...drifts) : NaN;
-    const e0  = Math.max(...playing.map(d => parseFloat(d.elapsed)));
-    const pos = playing.map(d => parseFloat(d.currentTime) + (e0 - parseFloat(d.elapsed)) * (parseFloat(d.playbackRate) || 1));
-    const delta = (Math.max(...pos) - Math.min(...pos)) * 1000;
-    const el = document.getElementById('diff-val');
-    el.textContent = (isNaN(spread) ? '—' : spread.toFixed(0) + 'ms drift spread') +
-      ' · ' + delta.toFixed(0) + 'ms raw (incl. intentional latency offsets)';
-    const worst = isNaN(spread) ? delta : spread;
-    el.style.color = worst > 500 ? '#ef3c23' : worst > 100 ? '#f57e20' : '#00cc99';
-    document.getElementById('diff-label').textContent =
-      'sync across ' + playing.length + ' playing device' + (playing.length > 1 ? 's' : '');
-    document.getElementById('diff').style.display = 'block';
-  }
-
-  // Ternary aggregate bar
-  const syncDevs = ids.map(id => devs[id]).filter(d => d._kind === 'sync');
-  const agg = document.getElementById('ter-agg');
-  if (syncDevs.length) {
-    agg.style.display = 'block';
-    const counts = { N: 0, Z: 0, P: 0 };
-    syncDevs.forEach(d => {
-      const t = d.terTrit || driftToTrit(d.driftMs);
-      if (t && counts[t] !== undefined) counts[t]++;
-    });
-    const total = syncDevs.length || 1;
-    document.getElementById('tc-n').textContent = counts.N;
-    document.getElementById('tc-z').textContent = counts.Z;
-    document.getElementById('tc-p').textContent = counts.P;
-    document.getElementById('ter-bar').innerHTML =
-      (counts.N ? `<div style="width:${counts.N/total*100}%;background:#40c4f0;"></div>` : '') +
-      (counts.Z ? `<div style="width:${counts.Z/total*100}%;background:#f57e20;"></div>` : '') +
-      (counts.P ? `<div style="width:${counts.P/total*100}%;background:#00cc99;"></div>` : '');
-  } else {
-    agg.style.display = 'none';
-  }
-}
-
-// ── Sync card — all debug.html fields + ternary row ──────
-function renderSyncCard(d, age) {
-  const dm  = parseFloat(d.driftMs);
-  const dc  = Math.abs(dm) > 500 ? 'bad' : Math.abs(dm) > 100 ? 'warn' : '';
-  // Ternary: prefer layer.js value, fall back to local derivation
-  const trit     = d.terTrit || driftToTrit(d.driftMs);
-  const tritLabel = trit ? TRIT_LABEL[trit] : null;
-  const tritColor = trit ? TRIT_COLOR[trit] : null;
-  const terClass  = trit ? 'ter-' + trit : '';
-
-  return `<div class="card ${terClass}">
-    <div class="card-hdr">
-      <span class="dev-id">🎧 ${d.deviceId}
-        <span style="color:${d.build==='listener'?'var(--teal)':'#888'};font-size:9px;">${d.build||'?'} · ${d.browser||'?'}</span>
-      </span>
-      <span class="dev-age">${age}s ago · ${d.zone||'no zone'}</span>
-    </div>
-    ${trit ? `<div class="row"><span class="k">TERNARY TRIT</span><span class="v" style="color:${tritColor}"><span class="trit-badge trit-${trit}">${trit}</span> ${tritLabel}${d.terBurst?' <span style="color:#fff176;font-size:10px">⚡ BURST</span>':''}</span></div>` : ''}
-    ${d.terBurst ? `<div class="row"><span class="k">burst snaps</span><span class="v" style="color:#fff176">${d.terBurstSnaps ?? 0} this burst</span></div>` : ''}
-    ${r('elapsed',      d.elapsed     ? d.elapsed+'s'     : '—')}
-    ${r('currentTime',  d.currentTime ? d.currentTime+'s' : '—')}
-    ${r('expectedPos',  d.expectedPos ? d.expectedPos+'s' : '—')}
-    ${r('DRIFT',        d.driftMs != null ? d.driftMs+'ms' : '—', dc)}
-    ${r('engineLag',    d.engineLagMs != null ? d.engineLagMs+'ms' : '—',
-        d.engineLagMs != null && Math.abs(d.engineLagMs - (parseFloat(d.driftMs)||0)) > 100 ? 'warn' : '')}
-    ${r('BT latency',   d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
-    ${r('outputLatency',d.outputLatencyMs != null ? d.outputLatencyMs+'ms' : 'n/a',
-        d.outputLatencyMs != null && Math.abs(d.outputLatencyMs - d.deviceLatencyMs) > 150 ? 'warn' : '')}
-    ${r('calOffset',    d.calOffset != null ? (d.calOffset>=0?'+':'')+d.calOffset+'ms' : '—', d.calOffset===0?'warn':'')}
-    ${r('syncState',    d.syncState || '—')}
-    ${r('rate',         d.playbackRate || '—', d.playbackRate && Math.abs(parseFloat(d.playbackRate)-1) > 0.012 ? 'warn' : '')}
-    ${r('driftState',   (d.driftState||'—') + (d.driftPending?' (pending)':''), d.driftState==='ducking'?'bad':d.driftState==='warping'?'warn':'')}
-    ${r('src',          d.src || '—')}
-    ${r('visibility',   d.visibilityState || '—', d.visibilityState==='hidden'?'warn':'')}
-    ${r('lastDriftChk', d.lastDriftCheckAgoMs != null ? d.lastDriftCheckAgoMs+'ms ago' : '—',
-        d.lastDriftCheckAgoMs != null && d.lastDriftCheckAgoMs > 10000 ? 'bad' :
-        d.lastDriftCheckAgoMs != null && d.lastDriftCheckAgoMs > 6000  ? 'warn' : '')}
-    ${r('readyState',   d.readyState ?? '—', d.readyState != null && d.readyState < 3 ? 'warn' : '')}
-    ${r('stalls',       d.stallCount ?? 0, d.stallCount > 0 ? 'warn' : '')}
-    ${r('muted',        d.isMuted ? 'yes' : 'no', d.isMuted ? 'warn' : '')}
-    ${r('snaps',        d.snapCount ?? 0)}
-    ${r('seek intend',  d.seekIntendedMs != null ? d.seekIntendedMs+'ms' : '—')}
-    ${r('seek landed',  d.seekMeasuredMs != null ? d.seekMeasuredMs+'ms' : '—',
-        d.seekIntendedMs != null && d.seekMeasuredMs != null &&
-        Math.abs(d.seekIntendedMs) > 100 && Math.abs(d.seekMeasuredMs) < Math.abs(d.seekIntendedMs) * 0.3 ? 'bad' : '')}
-    ${trit ? r('ter snap @', TER_SNAP_MS+'ms  (bin snap @150ms)') : ''}
-    ${d.terSnapCount != null ? r('ter snaps', d.terSnapCount) : ''}
-  </div>`;
-}
-
-// ── Health card (identical to debug.html) ─────────────────
-function renderHealthCard(d, age) {
-  const distM = parseFloat(d.driftMs);
-  const dc = isNaN(distM) ? '' : (distM > 300 ? 'bad' : distM > (d.zone !== 'none' ? 100 : 1e9) ? 'warn' : '');
-  return `<div class="card">
-    <div class="card-hdr">
-      <span class="dev-id">📡 ${d.deviceId} <span style="color:${d.build==='listener'?'var(--teal)':'#888'};font-size:9px;">${d.build||'?'} · ${d.browser||'?'}</span></span>
-      <span class="dev-age">${age}s ago · ${d.zone||'no zone'}</span>
-    </div>
-    ${r('dist to zone', !isNaN(distM) ? distM.toFixed(0)+'m' : '—', dc)}
-    ${r('GPS coords',   d.expectedPos || '—')}
-    ${r('bearing',      d.src || '—')}
-    ${r('presence',     d.deviceLatencyMs ? '✓ broadcasting' : '✗ idle', d.deviceLatencyMs ? '' : 'warn')}
-    ${r('status',       d.syncState || '—')}
-  </div>`;
-}
-
-function r(key, val, cls='') {
-  return `<div class="row"><span class="k">${key}</span><span class="v ${cls}">${val}</span></div>`;
-}
-
+// ── Housekeeping ──────────────────────────────────────────────────────────
 setInterval(() => {
   const now = Date.now();
   let changed = false;
   Object.keys(devs).forEach(id => { if (now - devs[id].lastSeen > 30000) { delete devs[id]; changed = true; } });
   if (changed) render();
-  drawDriftChart();
-}, 5000);
+  drawCharts();
+}, 3000);
 </script>
 </body>
 </html>
