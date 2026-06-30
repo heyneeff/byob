@@ -221,6 +221,36 @@ to confirm rt9jjg/h7fuax-class devices can now hold CONVERGED through the
 
 ---
 
+## Step 9 — 2026-06-30 (octonary participation layer — Phase 5)
+
+**Vision:** Two independent 1000-cast field readings + three personal casts all converged:
+- 57→61 appeared in both runs independently (gentle sampling → inner truth)
+- 31→45: individual interactions accumulate into collective organization
+- 60 unchanging (Limitation): synchronization requires boundaries
+- 17→45: nodes determine who to follow FIRST, then gather
+- Personal casts: 40.1→54 (secondary role), 11.2.3.5.6→42 (radial/bidirectional),
+  12.5→35 (ends standstill → rapid progress)
+
+**Eight roles:**
+  0 ANCHORING — P 5+ ticks, weight 2.0 (trusted anchor)
+  1 HOLDING   — recently settled in P, weight 1.5
+  2 PULLING   — Z-state, weight 1.0
+  3 FOLLOWING — Z-state, oriented toward anchor, weight 0.8
+  4 PUSHING   — N-state stall recovery, weight 0.5
+  5 LISTENING — post-seek settle, weight 0.3
+  6 RESETTING — auto-cal fired, weight 0.5
+  7 REACHING  — >300ms, excluded (weight 0.0)
+
+**Changes:**
+- `ternary/layer.js`: octonary state machine, weightedConsensus(), isGlobalDisruption(),
+  findAnchor(); octoState broadcast + stored per peer + in HUD payload. Phase 5.
+- `sync/ternary-engine.js`: suppress COMPOUND_GAIN during isGlobalDisruption() —
+  room-wide events (≥50% peers PUSHING/REACHING) don't warrant compound escalation
+
+**Status:** implemented, not yet observed live.
+
+---
+
 ## Step 7 — 2026-06-30 (sound quality: cuts + warp audibility)
 
 **Problems:** Two distinct audio quality issues heard live:

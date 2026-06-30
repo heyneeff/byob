@@ -44,6 +44,15 @@
   const TRIT_LABEL = { [-1]: 'DIVERGING', [0]: 'NEGOTIATING', [1]: 'CONVERGED' };
   const TRIT_COLOR = { [-1]: '#40c4f0', [0]: '#607080', [1]: '#f04880' };
 
+  // ── OCTONARY PARTICIPATION ROLES (oracle field readings 31→45, 17→45, 60 unchanging) ──
+  // Eight roles describe relationship topology, not timing state.
+  // Weights govern how much each peer's trit influences weighted consensus.
+  const OCTO = { ANCHORING:0, HOLDING:1, PULLING:2, FOLLOWING:3, PUSHING:4, LISTENING:5, RESETTING:6, REACHING:7 };
+  const OCTO_NAME   = ['ANCHORING','HOLDING','PULLING','FOLLOWING','PUSHING','LISTENING','RESETTING','REACHING'];
+  const OCTO_WEIGHT = [2.0, 1.5, 1.0, 0.8, 0.5, 0.3, 0.5, 0.0];
+  // ANCHORING peers are trusted anchors (2×). REACHING excluded (0). LISTENING barely counts (0.3).
+  // 60 — Limitation: without these bounds every node perturbs every other → noisy field.
+
   // ── THRESHOLDS ────────────────────────────────────────────────────────────
   const TER_SNAP_NORMAL = 50;   // normal mode snap threshold
   const TER_SNAP_BURST  = 20;   // burst mode snap threshold — very tight
@@ -76,6 +85,7 @@
   let _lastCalTs     = 0;    // timestamp of last correction — enforces minimum settle gap
   let _capHits       = 0;    // consecutive corrections swallowed by deviceLatencyMs cap
   const _history     = [];
+  let _octoState     = OCTO.LISTENING; // start conservative — observe before contributing
 
   // ── BURST MODE ────────────────────────────────────────────────────────────
   let _burstMode    = false;
@@ -282,8 +292,11 @@
     if (!isBurst) broadcastDebug(lagMs, snapThreshold, consensus);
     broadcastPeerTrit(lagMs);
 
+    _octoState = computeOctoState(lagMs);
+
     _history.push({ ts: Date.now(), lagMs: Math.round(lagMs),
-                    trit: TRIT_NAME[_trit], snapThreshold, burst: !!isBurst });
+                    trit: TRIT_NAME[_trit], snapThreshold, burst: !!isBurst,
+                    octo: OCTO_NAME[_octoState] });
     if (_history.length > 500) _history.shift();
   }
 
@@ -294,10 +307,54 @@
     return P;
   }
 
+  // ── OCTONARY STATE ────────────────────────────────────────────────────────
+  function findAnchor() {
+    const now = Date.now();
+    return Object.values(_peerTrits).find(p => now - p.ts < 20000 && p.octoState === OCTO.ANCHORING) || null;
+  }
+
+  function computeOctoState(lagMs) {
+    const abs = Math.abs(lagMs);
+    const driftState = window.SyncEngine?.getDriftState?.();
+    if (abs >= 300)                                           return OCTO.REACHING;
+    if (driftState === 'seeking')                             return OCTO.LISTENING;
+    if (_calState === 5 && Date.now() - _lastCalTs < 10000)  return OCTO.RESETTING;
+    if (_trit === N)                                          return OCTO.PUSHING;
+    if (_trit === Z) return findAnchor() ? OCTO.FOLLOWING : OCTO.PULLING;
+    if (_consecutiveP < 5)                                    return OCTO.HOLDING;
+    return OCTO.ANCHORING;
+  }
+
+  // Global disruption: if ≥50% of live peers are PUSHING or REACHING, it's a
+  // room-wide event (network hiccup, track change lag) — don't compound-escalate.
+  function isGlobalDisruption() {
+    const now = Date.now();
+    const live = Object.values(_peerTrits).filter(p => now - p.ts < 20000);
+    if (live.length < 2) return false;
+    const disrupted = live.filter(p => p.octoState === OCTO.PUSHING || p.octoState === OCTO.REACHING).length;
+    return disrupted >= Math.max(2, Math.ceil(live.length * 0.5));
+  }
+
+  // Weighted tcons: ANCHORING peers have 2× pull, REACHING excluded (weight 0).
+  // 17→45: follow first, then gather — highest-confidence peers lead consensus.
+  function weightedConsensus() {
+    const now = Date.now();
+    const live = Object.values(_peerTrits).filter(p => now - p.ts < 20000);
+    if (!live.length) return _trit;
+    let sum = _trit * 1.0, total = 1.0;
+    for (const p of live) {
+      const w = OCTO_WEIGHT[p.octoState ?? OCTO.PULLING];
+      sum += p.trit * w;
+      total += w;
+    }
+    const avg = sum / total;
+    return avg > 0.25 ? P : avg < -0.25 ? N : Z;
+  }
+
   // ── PEER ──────────────────────────────────────────────────────────────────
-  function receivePeerTrit(deviceId, trit, lagMs) {
+  function receivePeerTrit(deviceId, trit, lagMs, octoState) {
     if (trit == null || deviceId === myId()) return;
-    _peerTrits[deviceId] = { trit, lagMs: lagMs ?? null, ts: Date.now() };
+    _peerTrits[deviceId] = { trit, lagMs: lagMs ?? null, octoState: octoState ?? OCTO.PULLING, ts: Date.now() };
   }
 
   // Median of all peer lagMs values (excludes nulls, expires stale peers)
@@ -342,6 +399,9 @@
           terCalState:   _calState,
           terLastFloor:  _lastFloor !== null ? Math.round(_lastFloor) : null,
           terConsecN:    _consecutiveN,
+          terOctoState:  _octoState,
+          terOctoName:   OCTO_NAME[_octoState],
+          terGlobalDisruption: isGlobalDisruption(),
           playbackRate:  window._audio?.playbackRate ?? 1,
           driftState:    window._driftState ?? 'unknown',
           currentTime:   window._audio?.currentTime ?? null,
@@ -359,7 +419,7 @@
     try {
       _peerChannel.send({
         type: 'broadcast', event: 'trit',
-        payload: { deviceId: myId(), trit: _trit, lagMs: Math.round(lagMs), ts: Date.now() },
+        payload: { deviceId: myId(), trit: _trit, lagMs: Math.round(lagMs), octoState: _octoState, ts: Date.now() },
       });
     } catch (e) {}
   }
@@ -372,7 +432,7 @@
     _peerChannel = window.db.channel('byob_ternary')
       .on('broadcast', { event: 'trit' }, ({ payload }) => {
         if (payload?.deviceId && payload.deviceId !== myId()) {
-          receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs);
+          receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs, payload.octoState);
           // Feed peer data into the ternary engine for tcons() rate modulation
           window._terEngineReceivePeer?.(payload.deviceId, payload.trit, payload.lagMs);
           // Feed peer trits into arpeggiator for room consensus / voice harmony
@@ -385,8 +445,14 @@
     watchZoneForTrackChange();
 
     createBadge();
-    window._terLayer = { tick, enterBurst, exitBurst, isBurstMode: () => _burstMode, history: () => _history, exportCSV };
-    console.log('[ternary/layer] Phase 4 ready — burst mode on track start');
+    window._terLayer = {
+      tick, enterBurst, exitBurst, isBurstMode: () => _burstMode, history: () => _history, exportCSV,
+      getOctoState:       () => _octoState,
+      getOctoName:        () => OCTO_NAME[_octoState],
+      isGlobalDisruption,
+      weightedConsensus,
+    };
+    console.log('[ternary/layer] Phase 5 ready — octonary participation layer');
   }
 
   // ── WATCH FOR TRACK CHANGES (triggers burst) ──────────────────────────────

@@ -130,7 +130,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     //   normal:   proportional — standard correction
     const gain = abs < TH_P     ? MICRO_GAIN
                : prevTrit === P ? NUDGE_GAIN
-               : isCompounding  ? COMPOUND_GAIN
+               : isCompounding && !window._terLayer?.isGlobalDisruption?.() ? COMPOUND_GAIN
                : PROP_GAIN;
     const warpPct = Math.min(abs * gain, MAX_WARP);
     transport.playbackRate = getBaseRate() * (1 + dir * warpPct);
