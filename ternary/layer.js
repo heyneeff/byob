@@ -321,7 +321,10 @@
     if (_calState === 5 && Date.now() - _lastCalTs < 10000)  return OCTO.RESETTING;
     if (_trit === N)                                          return OCTO.PUSHING;
     if (_trit === Z) return findAnchor() ? OCTO.FOLLOWING : OCTO.PULLING;
-    if (_consecutiveP < 5)                                    return OCTO.HOLDING;
+    if (_consecutiveP < 5) {
+      if (_octoState === OCTO.ANCHORING && abs < 50) return OCTO.ANCHORING; // hysteresis — hold form through small drift
+      return OCTO.HOLDING;
+    }
     return OCTO.ANCHORING;
   }
 
