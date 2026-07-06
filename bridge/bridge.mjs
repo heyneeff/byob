@@ -184,10 +184,30 @@ function broadcastClusterAssign(assignments, zoneTracks = {}) {
 
 // ── Zone management ───────────────────────────────────────────
 async function fetchZones() {
-  const { data, error } = await db.from('zones').select('id,name,current_track_url,track_name,playback_started_at,zone_tracks,active').eq('active', true).order('created_at', { ascending: false }).limit(20);
+  // No .order('created_at') — if that column errors the query silently
+  // returned [] and the UI showed no zones even with an active zone live.
+  const { data, error } = await db.from('zones').select('id,name,current_track_url,track_name,playback_started_at,zone_tracks,active').eq('active', true).limit(20);
   if (error) { console.error('[zones]', error.message); return []; }
   return data || [];
 }
+
+// Auto-connect: if exactly one zone is active, select it without a click.
+async function autoSelectZone() {
+  if (_activeZoneId) return;
+  const zones = await fetchZones();
+  if (zones.length === 1) {
+    const z = zones[0];
+    _activeZoneId = z.id;
+    buildSyncChannel(z.id);
+    buildPresenceChannel(z.id);
+    if (z.playback_started_at) _playbackStartedAt = z.playback_started_at;
+    broadcastToUI({ type: 'zone_loaded', zoneId: z.id, ...z });
+    console.log(`[zones] auto-connected → "${z.name}" (${z.id})`);
+  } else if (zones.length) {
+    broadcastToUI({ type: 'zones', zones });
+  }
+}
+setInterval(autoSelectZone, 10_000);
 
 // ── Movement mode ─────────────────────────────────────────────
 function startMovement({ pattern = 'wave', intervalMs = 4000, phones = [], slots = [] }) {
@@ -472,6 +492,7 @@ http.listen(HTTP_PORT, async () => {
   await measureClockOffset();
   console.log('[link] Ableton Link enabled');
   console.log('[ready] Open http://localhost:3000\n');
+  autoSelectZone(); // connect to the active zone immediately, no click needed
 });
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
