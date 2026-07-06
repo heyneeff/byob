@@ -1423,6 +1423,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     if (!audio.duration) { _hardReloadTrack(); return; }
     window._hardReloadCount = 0; // track loaded successfully — reset retry counter
     seekToSync(startedAt, playAt, playFromS);
+    _launchGuardUntil = performance.now() + 6000; // hold corrections until anchor arrives
     // A scheduled start keeps _trackLoading true until it fires — the drift
     // corrector must not act while we hold silent on a future play_at.
     if (!window._scheduledStartPending) window._trackLoading = false;
@@ -2042,6 +2043,8 @@ function stopEverything() {
   clearTimeout(_zoneChannelRetryTimer); clearTimeout(_syncChannelRetryTimer);
   _pendingStream = null; _rtcUserHasTapped = false;
   clearInterval(_syncInterval); clearInterval(_driftInterval); clearInterval(_healthInterval);
+  _anchorPlaybackStartedAtMs = null;
+  _launchGuardUntil = 0;
   _webAudioPlaying = false;
   _isMuted = false;
   document.getElementById('npb-lock')?.classList.remove('show');
@@ -2193,6 +2196,7 @@ function fastDriftCorrect() {
   if (!audio.duration) return;
   if (audio.srcObject) return; // WebRTC live — no drift correct
   if (window._trackLoading) return; // new track's metadata not loaded yet — see loadTrack()
+  if (_launchGuardUntil && performance.now() < _launchGuardUntil) return; // waiting for anchor
   // Audio element paused while we expect playback (OS/BT suspended it
   // without firing 'stalled'/'waiting'/'suspend') — recover instead of
   // silently bailing every tick.
@@ -4136,6 +4140,7 @@ function buildSyncChannel(zoneId) {
     // Track change: load NOW, don't wait out resyncAt — buffering happens
     // silently inside the wait and the scheduled start fires at resyncAt.
     if (payload.track_url && audio.src !== payload.track_url) {
+      _anchorPlaybackStartedAtMs = null;
       loadTrack(payload.track_url, payload.track_name, payload.playback_started_at, payload.resyncAt, 0);
       showToast('Now playing: ' + (payload.track_name || 'new track'));
       return;
@@ -4202,6 +4207,12 @@ function buildSyncChannel(zoneId) {
   })
   .on('broadcast', { event: 'message' }, ({ payload }) => {
     if (payload?.text) boomSay(`📣 ${payload.text}`, 7000, true, 'devious');
+  })
+  .on('broadcast', { event: 'anchor' }, ({ payload }) => {
+    if (payload?.position != null && payload?.ts) {
+      _anchorPlaybackStartedAtMs = payload.ts - payload.position * 1000;
+      _launchGuardUntil = 0; // anchor received — corrections now have a clean reference
+    }
   })
   .on('broadcast', { event: 'stream_end' }, () => {
     // Direct signal from killStream — don't wait on the zones-table postgres
@@ -4962,6 +4973,8 @@ let _deviceLatencyMs = (() => {
   return stored;
 })();
 let _scatterOffsetMs = 0;
+let _anchorPlaybackStartedAtMs = null; // synthetic playback_started_at derived from DJ anchor broadcasts
+let _launchGuardUntil = 0; // suppress fastDriftCorrect until anchor arrives after track launch
 let _outputLatencySeeded = false;
 
 
@@ -6132,7 +6145,7 @@ const engine = createTernaryEngine({
   },
   clock: { syncedNow: () => syncedNow() },
   getContext: () => ({
-    playbackStartedAt: activeZone?.playback_started_at ? new Date(activeZone.playback_started_at).getTime() : null,
+    playbackStartedAt: _anchorPlaybackStartedAtMs ?? (activeZone?.playback_started_at ? new Date(activeZone.playback_started_at).getTime() : null),
     deviceLatencyMs: _deviceLatencyMs,
     scatterOffsetMs: _scatterOffsetMs,
   }),

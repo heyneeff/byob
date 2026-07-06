@@ -1666,6 +1666,7 @@ async function confirmZone(){
     renderJoinLink();
     if(window._djSyncChannel){window._djSyncChannel.unsubscribe();window._djSyncChannel=null;}
     window._djSyncChannel=db.channel('sync_'+data.id).subscribe();
+    _startAnchorBroadcast();
     window._currentZone={playback_started_at:data.playback_started_at};
     cancelZoneDraw();
     zoneCircles[data.id]=L.circle([data.lat,data.lng],{radius:data.radius_m,color:'#00cc99',fillColor:'#00cc99',fillOpacity:.07,weight:1.5}).addTo(leafletMap)
@@ -1753,6 +1754,7 @@ function restoreZone(z){
   // Reconnect sync channel
   if(window._djSyncChannel){window._djSyncChannel.unsubscribe();window._djSyncChannel=null;}
   window._djSyncChannel=db.channel('sync_'+z.id).subscribe();
+  _startAnchorBroadcast();
   window._currentZone={playback_started_at:z.playback_started_at};
   // Zone button
   const btn=document.getElementById('btn-create-zone');
@@ -2798,6 +2800,27 @@ async function triggerResync() {
 }
 
 let _killArmed = false, _killArmedTimer = null;
+let _anchorInterval = null;
+function _startAnchorBroadcast() {
+  if (_anchorInterval) clearInterval(_anchorInterval);
+  _anchorInterval = setInterval(() => {
+    if (!window._djSyncChannel || !activeZone || audio.paused || !audio.duration) return;
+    const startedAt = currentStartedAt();
+    if (startedAt) {
+      const elapsed = (serverNow() - new Date(startedAt).getTime()) / 1000;
+      const expectedPos = ((elapsed % audio.duration) + audio.duration) % audio.duration;
+      const rawDrift = (audio.currentTime - expectedPos) * 1000;
+      const half = audio.duration * 500;
+      let wrapped = rawDrift;
+      while (wrapped > half) wrapped -= audio.duration * 1000;
+      while (wrapped < -half) wrapped += audio.duration * 1000;
+      const djDrift = Math.abs(wrapped);
+      if (djDrift > 500) { triggerResync(); return; }
+    }
+    window._djSyncChannel.send({ type: 'broadcast', event: 'anchor',
+      payload: { position: audio.currentTime, ts: serverNow() } });
+  }, 5000);
+}
 async function killStream(){
   // Native confirm() dialogs can get permanently suppressed by the browser
   // ("Prevent this page from creating additional dialogs") after a user
@@ -2820,6 +2843,7 @@ async function killStream(){
   if(liveStream){liveStream.getTracks().forEach(t=>t.stop());liveStream=null;}
   stopWebRTCBroadcast();
   if(window._autoResyncInterval){clearInterval(window._autoResyncInterval);window._autoResyncInterval=null;}
+  if(_anchorInterval){clearInterval(_anchorInterval);_anchorInterval=null;}
   const btn=document.getElementById('btn-go-live');
   const btnLive=document.getElementById('btn-live');
   btn.classList.remove('active');btn.textContent='Go Live';
