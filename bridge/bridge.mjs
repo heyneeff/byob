@@ -47,6 +47,14 @@ let _movementIndex     = 0;
 const db   = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const link = new AbletonLink(120);
 link.enable(true);
+link.enableStartStopSync(true);
+
+// When Ableton (or any Link peer) changes tempo, push to UI
+link.setTempoCallback(bpm => {
+  _linkBpm = bpm;
+  broadcastToUI({ type: 'link_state', bpm, beat: _linkBeat, playback_started_at: _playbackStartedAt });
+  sendSpatialConfig({ master_bpm: bpm });
+});
 
 // ── Clock sync ────────────────────────────────────────────────
 async function measureClockOffset() {
@@ -95,6 +103,21 @@ setInterval(() => {
 function computeStartedAt(bpm, beat) {
   const msElapsed = (beat / bpm) * 60_000;
   return new Date(serverNow() - msElapsed).toISOString();
+}
+
+// Bar-quantized scheduled launch: the next Link bar boundary at least
+// MIN_LAUNCH_LEAD_MS away. Phones preload silently during the lead and all
+// enter together at play_at (listener.html _armScheduledStart).
+const MIN_LAUNCH_LEAD_MS = 2500;
+const BEATS_PER_BAR = 4;
+function computeLaunchAt() {
+  const bpm  = link.getTempo();
+  const beat = link.getBeat();
+  const msPerBeat = 60_000 / bpm;
+  let target = Math.ceil(beat / BEATS_PER_BAR) * BEATS_PER_BAR;
+  while ((target - beat) * msPerBeat < MIN_LAUNCH_LEAD_MS) target += BEATS_PER_BAR;
+  const playAt = serverNow() + (target - beat) * msPerBeat;
+  return { playAt, bpm, beat, leadMs: Math.round((target - beat) * msPerBeat) };
 }
 
 function reanchor(bpm, beat) {
@@ -239,15 +262,26 @@ async function handleUIMessage(msg, ws) {
     }
 
     case 'play': {
-      const state = { bpm: link.getTempo(), beat: link.getBeat() };
-      _playbackStartedAt = computeStartedAt(state.bpm, state.beat);
-      broadcastHardSync({ playback_started_at: _playbackStartedAt, track_url: msg.track_url, track_name: msg.track_name, resetOffsets: false });
+      // Scheduled synced entry: anchor to the next bar boundary ≥2.5s out.
+      // Phones preload muted during the lead and enter together at play_at.
+      const { playAt, bpm, beat, leadMs } = computeLaunchAt();
+      _playbackStartedAt = new Date(playAt).toISOString();
+      if (_syncChannel) {
+        _syncChannel.send({
+          type: 'broadcast', event: 'hard_sync',
+          payload: { resyncAt: playAt, playback_started_at: _playbackStartedAt,
+                     track_url: msg.track_url, track_name: msg.track_name, resetOffsets: false }
+        });
+      }
       // persist to zones table so phones that join later get the right anchor
       if (_activeZoneId) {
-        await db.from('zones').update({ playback_started_at: _playbackStartedAt }).eq('id', _activeZoneId);
+        await db.from('zones').update({
+          playback_started_at: _playbackStartedAt, play_at: playAt, play_from_s: 0,
+          ...(msg.track_url ? { current_track_url: msg.track_url, track_name: msg.track_name } : {}),
+        }).eq('id', _activeZoneId);
       }
-      broadcastToUI({ type: 'link_state', bpm: state.bpm, beat: state.beat, playback_started_at: _playbackStartedAt });
-      console.log(`[bridge] play → ${_playbackStartedAt}`);
+      broadcastToUI({ type: 'link_state', bpm, beat, playback_started_at: _playbackStartedAt, launch_in_ms: leadMs });
+      console.log(`[bridge] play → launches in ${leadMs}ms at ${_playbackStartedAt} (next bar @ ${bpm.toFixed(1)}bpm)`);
       break;
     }
 
@@ -390,6 +424,14 @@ async function handleUIMessage(msg, ws) {
     case 'rally': {
       if (!_syncChannel) break;
       _syncChannel.send({ type: 'broadcast', event: 'rally', payload: { lat: msg.lat, lng: msg.lng, label: msg.label } });
+      break;
+    }
+
+    case 'set_tempo': {
+      // Pushes tempo into Ableton Link — all peers (Ableton + phones) follow
+      link.setTempo(msg.bpm);
+      _linkBpm = msg.bpm;
+      broadcastToUI({ type: 'link_state', bpm: msg.bpm, beat: _linkBeat, playback_started_at: _playbackStartedAt });
       break;
     }
 

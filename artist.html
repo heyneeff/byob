@@ -1941,14 +1941,17 @@ async function playNext() {
     queueIdx++;
     renderQueue();
     const next = playlist[queueIdx];
+    // Scheduled synced entry: anchor playback_started_at AND play_at to the
+    // same future instant. Phones preload muted during the lead and enter
+    // together; the DJ's local monitor waits out the same lead.
+    const playAt = serverNow() + 2500;
     audio.src  = next.url;
     audio.loop = false;
-    audio.play().catch(() => {});
+    setTimeout(() => audio.play().catch(() => {}), Math.max(0, playAt - serverNow()));
     document.getElementById('track-name').textContent = next.title || '';
     showToast('Now playing: ' + next.title);
     if (activeZone?.id) {
-      const startedAt = new Date(serverNow()).toISOString();
-      const playAt = serverNow() + 1500;
+      const startedAt = new Date(playAt).toISOString();
       const { error: zErr } = await db.from('zones').update({
         current_track_url:   next.url,
         track_name:          next.title,
@@ -1962,11 +1965,12 @@ async function playNext() {
         activeZone = { ...activeZone, current_track_url: next.url, track_name: next.title, playback_started_at: startedAt, play_at: playAt, play_from_s: 0 };
         noteStartedAt(startedAt); // keep _currentZone in step for hard_sync/cluster_assign
         showToast('📡 Broadcasting: ' + next.title);
+        // Send immediately — phones use the full lead to preload silently.
         if (window._djSyncChannel) {
-          setTimeout(() => window._djSyncChannel.send({
+          window._djSyncChannel.send({
             type: 'broadcast', event: 'hard_sync',
-            payload: { resyncAt: serverNow()+1000, playback_started_at: startedAt, resetOffsets: false, track_url: next.url || next.public_url, track_name: next.title }
-          }), 1500);
+            payload: { resyncAt: playAt, playback_started_at: startedAt, resetOffsets: false, track_url: next.url || next.public_url, track_name: next.title }
+          });
         }
       }
     } else {
@@ -1994,11 +1998,11 @@ async function playNext() {
         : null;
 
       if (next) {
+        const playAt = serverNow() + 2500;
         audio.src  = next.public_url;
         audio.loop = false;
-        audio.play().catch(() => {});
-        const startedAt = new Date(serverNow()).toISOString();
-        const playAt = serverNow() + 1500;
+        setTimeout(() => audio.play().catch(() => {}), Math.max(0, playAt - serverNow()));
+        const startedAt = new Date(playAt).toISOString();
         await db.from('zones').update({
           current_track_url:   next.public_url,
           track_name:          next.title,
@@ -2008,10 +2012,10 @@ async function playNext() {
           active:              true
         }).eq('id', activeZone.id);
         if (window._djSyncChannel) {
-          setTimeout(() => window._djSyncChannel.send({
+          window._djSyncChannel.send({
             type: 'broadcast', event: 'hard_sync',
-            payload: { resyncAt: serverNow()+1000, playback_started_at: startedAt, resetOffsets: false }
-          }), 1600);
+            payload: { resyncAt: playAt, playback_started_at: startedAt, resetOffsets: false, track_url: next.public_url, track_name: next.title }
+          });
         }
         document.getElementById('track-name').textContent = next.title;
         showToast('Now playing: ' + next.title);
@@ -4087,7 +4091,11 @@ async function broadcastAllZones(allowEmpty,restart){
   // every listener to position 0 for the new arrangement. See
   // noteStartedAt/currentStartedAt: spatial reassignment changes WHICH stem,
   // not WHEN the set started.
-  const startedAt = restart ? new Date(serverNow()).toISOString() : (currentStartedAt() || new Date(serverNow()).toISOString());
+  // Scene fire (restart=true): schedule the entry — anchor to a future
+  // instant so all listeners preload muted and enter together (scheduled
+  // synced entry, see listener.html _armScheduledStart).
+  const playAt = restart ? serverNow() + 2500 : null;
+  const startedAt = restart ? new Date(playAt).toISOString() : (currentStartedAt() || new Date(serverNow()).toISOString());
   noteStartedAt(startedAt);
   const payload={};
   Object.entries(zoneTracks).forEach(([z,t])=>{payload[z]=t.url;});
@@ -4096,6 +4104,7 @@ async function broadcastAllZones(allowEmpty,restart){
   await db.from('zones').update({
     zone_tracks: payload,
     playback_started_at: startedAt,
+    ...(restart ? { play_at: playAt, play_from_s: 0 } : {}),
     active: true
   }).eq('id', activeZone.id);
 
@@ -4115,6 +4124,7 @@ async function broadcastAllZones(allowEmpty,restart){
       payload:{
         zone_tracks: payload,
         playback_started_at: startedAt,
+        ...(playAt ? { play_at: playAt, play_from_s: 0 } : {}),
         voices: parseInt(document.getElementById('scatter-voices')?.value||4),
         zone_lat: activeZone.lat,
         zone_lng: activeZone.lng,

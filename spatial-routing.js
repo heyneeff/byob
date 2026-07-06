@@ -218,7 +218,9 @@ function onSpatialConfig(payload) {
   startFxLoop();
   const trackUrl = payload.zone_tracks?.[mySlot] || payload.zone_tracks?.['C'];
   if (trackUrl && trackUrl !== audio.src) {
-    loadTrack(trackUrl, 'Zone ' + mySlot, payload.playback_started_at);
+    // Pass play_at/play_from_s through — a scene fire carries a scheduled
+    // entry instant and loadTrack's seekToSync holds silent until it.
+    loadTrack(trackUrl, 'Zone ' + mySlot, payload.playback_started_at, payload.play_at, payload.play_from_s);
     showToast('🔊 Slot ' + mySlot);
   } else if (trackUrl && trackUrl === audio.src) {
     // Don't call applyBpmWarp here — it writes audio.playbackRate directly,
@@ -239,7 +241,18 @@ function onSpatialConfig(payload) {
     const newStart = payload.playback_started_at ? new Date(payload.playback_started_at).getTime() : null;
     const curStart = activeZone?.playback_started_at ? new Date(activeZone.playback_started_at).getTime() : null;
     if (newStart && audio.duration && (!curStart || Math.abs(newStart - curStart) > 250)) {
-      if (activeZone) activeZone.playback_started_at = payload.playback_started_at;
+      if (activeZone) { activeZone.playback_started_at = payload.playback_started_at; if (payload.play_at) activeZone.play_at = payload.play_at; }
+      const schedWaitMs = payload.play_at ? payload.play_at - syncedNow() : 0;
+      if (schedWaitMs > 250) {
+        // Scheduled scene restart, same stem: hold on the current audio and
+        // snap to the new reference exactly at play_at (+ this device's BT
+        // latency, matching listener.html _armScheduledStart timing).
+        setTimeout(() => {
+          if (!audio.duration) return;
+          cancelDriftCorrection();
+          seekPreservingBT(Math.max(0, ((payload.play_from_s || 0) + window.SyncEngine.SEEK_STAB_S) % audio.duration));
+        }, schedWaitMs + _deviceLatencyMs);
+      } else {
       cancelDriftCorrection();
       const elapsed = (syncedNow() - newStart) / 1000;
       seekPreservingBT(window.SyncEngine.expectedPosition({
@@ -247,6 +260,7 @@ function onSpatialConfig(payload) {
         deviceLatencyMs: _deviceLatencyMs, scatterOffsetMs: _scatterOffsetMs,
         warpRate: getBpmWarpRate(),
       }));
+      }
     }
   } else if (!audio.paused) {
     // No track for this slot AND no Center fallback (DJ stopped the

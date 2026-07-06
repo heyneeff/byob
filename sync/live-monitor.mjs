@@ -17,6 +17,11 @@ const REPORT_INTERVAL_MS  = 30_000;   // print summary every 30s
 const STALL_DETECT_MS     = 40;       // jump ≥ this between ticks = stall event
 const TICK_WINDOW         = 40;       // rolling window of ticks per device
 
+// Launch verification (Phase 4.1) — acceptance test for synced entry
+const LAUNCH_WINDOW_MS    = 20_000;   // observe this long after a track_change
+const LAUNCH_TARGET_MS    = 50;       // every device must reach |drift| < this…
+const LAUNCH_TARGET_S     = 3_000;    // …within this many ms of the launch event
+
 const __dir = dirname(fileURLToPath(import.meta.url));
 const logDir = join(__dir, 'monitor-logs');
 mkdirSync(logDir, { recursive: true });
@@ -46,6 +51,63 @@ function getDevice(id) {
     };
   }
   return devices[id];
+}
+
+// ── Launch verification (Phase 4.1) ───────────────────────────────────────────
+// A track_change/hard_sync sync_event opens a launch window. Every hud_data
+// tick inside the window is collected per device; when the window closes we
+// print a per-launch report: time-to-target per device, spread, snap counts,
+// and a PASS/FAIL against LAUNCH_TARGET_MS within LAUNCH_TARGET_S.
+let _launch = null; // { kind, t0, devices: { id → { ticks:[{dtMs,drift}], snap0, convergedAtMs } }, timer }
+
+function openLaunchWindow(kind, deviceId) {
+  const now = Date.now();
+  if (_launch && now - _launch.t0 < 3000) {
+    // Same launch seen from another device — don't restart the window
+    return;
+  }
+  if (_launch) closeLaunchWindow('superseded');
+  _launch = { kind, t0: now, firstDevice: deviceId, devices: {}, timer: setTimeout(() => closeLaunchWindow('window end'), LAUNCH_WINDOW_MS) };
+  console.log(`\n🚀 LAUNCH DETECTED (${kind}) — observing ${LAUNCH_WINDOW_MS/1000}s…`);
+}
+
+function launchTick(id, drift, snapCount) {
+  if (!_launch) return;
+  const dtMs = Date.now() - _launch.t0;
+  if (dtMs > LAUNCH_WINDOW_MS) return;
+  const d = _launch.devices[id] ??= { ticks: [], snap0: snapCount ?? null, convergedAtMs: null };
+  d.ticks.push({ dtMs, drift, snapCount: snapCount ?? null });
+  if (d.convergedAtMs === null && Math.abs(drift) < LAUNCH_TARGET_MS) d.convergedAtMs = dtMs;
+}
+
+function closeLaunchWindow(reason) {
+  if (!_launch) return;
+  clearTimeout(_launch.timer);
+  const L = _launch; _launch = null;
+  const ids = Object.keys(L.devices);
+  console.log(`\n${'─'.repeat(62)}`);
+  console.log(`🚀 LAUNCH REPORT (${L.kind}, ${reason}) — ${ids.length} devices`);
+  if (!ids.length) { console.log('  (no device ticks during window)\n'); return; }
+  let pass = true;
+  for (const id of ids) {
+    const d = L.devices[id];
+    const drifts = d.ticks.map(t => Math.abs(t.drift));
+    const maxD = Math.round(Math.max(...drifts));
+    const lastD = Math.round(d.ticks.at(-1).drift);
+    const snaps = (d.ticks.at(-1).snapCount != null && d.snap0 != null)
+      ? d.ticks.at(-1).snapCount - d.snap0 : null;
+    const conv = d.convergedAtMs;
+    const ok = conv !== null && conv <= LAUNCH_TARGET_S;
+    if (!ok) pass = false;
+    console.log(`  ${ok ? '✓' : '✗'} ${id}  converged=${conv !== null ? (conv/1000).toFixed(1)+'s' : 'never'}  max=${maxD}ms  final=${lastD}ms${snaps !== null ? `  snaps=${snaps}` : ''}  (${d.ticks.length} ticks)`);
+  }
+  // Spread at end of window: max−min of final drifts (audible misalignment proxy)
+  const finals = ids.map(id => L.devices[id].ticks.at(-1).drift);
+  const spread = Math.round(Math.max(...finals) - Math.min(...finals));
+  console.log(`  spread(final)=${spread}ms   target: |drift|<${LAUNCH_TARGET_MS}ms within ${LAUNCH_TARGET_S/1000}s`);
+  console.log(`  ${pass ? '✅ PASS — entered synced' : '❌ FAIL — scattered entry'}`);
+  console.log('─'.repeat(62) + '\n');
+  csvStream.write(`# LAUNCH ${new Date(L.t0).toISOString()} kind=${L.kind} devices=${ids.length} spread=${spread} pass=${pass}\n`);
 }
 
 // ── Stall detection ───────────────────────────────────────────────────────────
@@ -196,6 +258,7 @@ db.channel('byob_debug')
 
     const dev = getDevice(id);
     detectStall(dev, drift, label);
+    launchTick(id, drift, p.terSnapCount != null ? parseInt(p.terSnapCount) : null);
 
     dev.ticks.push({ ts: Date.now(), drift, label, rate });
     if (dev.ticks.length > TICK_WINDOW) dev.ticks.shift();
@@ -227,6 +290,10 @@ db.channel('byob_debug')
     }
   })
   .on('broadcast', { event: 'sync_event' }, ({ payload: p }) => {
+    if (p?.kind === 'track_change' || p?.kind === 'hard_sync') {
+      openLaunchWindow(p.kind, p.deviceId);
+      return;
+    }
     if (p?.kind !== 'ter_calibration') return;
     const id = p.deviceId;
     if (!id) return;

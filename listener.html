@@ -1423,7 +1423,9 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     if (!audio.duration) { _hardReloadTrack(); return; }
     window._hardReloadCount = 0; // track loaded successfully — reset retry counter
     seekToSync(startedAt, playAt, playFromS);
-    window._trackLoading = false;
+    // A scheduled start keeps _trackLoading true until it fires — the drift
+    // corrector must not act while we hold silent on a future play_at.
+    if (!window._scheduledStartPending) window._trackLoading = false;
     // Apply master BPM warp if DJ has set one
     const mySlot = window._spatialConfig ? getSpatialSlot(window._spatialConfig) : 'C';
     applyBpmWarp(mySlot, url);
@@ -1433,9 +1435,15 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
       // Block the persistent playing re-anchor handler for the full settle window
       // so our scheduled seeks don't cascade into extra re-anchors on iOS.
       _reAnchorInFlight = true;
+      if (window._scheduledStartPending) {
+        // Scheduled entry owns positioning — the settle re-seeks would fight
+        // the silent hold. Just release the re-anchor guard after the window.
+        setTimeout(() => { _reAnchorInFlight = false; }, 1300);
+      } else {
       seekToSync(startedAt, playAt, playFromS);
       setTimeout(() => seekToSync(startedAt, playAt, playFromS), 600);
       setTimeout(() => { seekToSync(startedAt, playAt, playFromS); _reAnchorInFlight = false; }, 1300);
+      }
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({ title: title||'BYOB', artist: 'Live from the Zone 🎧', album: activeZone?.name||'BYOB' });
         navigator.mediaSession.setActionHandler('play',  () => { audio.play(); setMuteBtn(false); });
@@ -1445,7 +1453,8 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
     const _wasPlaying = _webAudioPlaying;
     audio.play().then(() => {
       _webAudioPlaying = true;
-      fadeAudioIn(_wasPlaying ? 800 : 5000);
+      // Scheduled entry: stay silent — _armScheduledStart un-mutes at play_at.
+      if (!window._scheduledStartPending) fadeAudioIn(_wasPlaying ? 800 : 5000);
       if (!orgReady) initOrganism();
     }).catch((e) => {
       console.warn('Play blocked:', e.message);
@@ -1464,6 +1473,14 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
 const SEEK_STAB_S = 0.19; // audio seek stabilization latency — must match sync/sync-engine.js
 function seekToSync(startedAt, playAt, playFromS) {
   if (!audio.duration) return;
+  // Scheduled synced entry: a future play_at means "everyone enters together
+  // at this instant." Hold silent on the start position and fire at play_at
+  // instead of playing immediately (which made every device enter at a
+  // different position and converge audibly — the scattered-entry bug).
+  if (playAt && playFromS !== undefined && playAt - syncedNow() > 250) {
+    _armScheduledStart(playAt, playFromS || 0);
+    return;
+  }
   const seekTo = window.SyncEngine.computeSeekTime({
     startedAt, playAt, playFromS,
     syncedNowMs: syncedNow(),
@@ -1471,6 +1488,32 @@ function seekToSync(startedAt, playAt, playFromS) {
     scatterOffsetMs: _scatterOffsetMs,
   });
   audio.currentTime = Math.max(0, seekTo % audio.duration);
+}
+
+// ── Scheduled synced entry ────────────────────────────────────
+// Preload muted on the start position, then un-mute at play_at plus this
+// device's own BT latency — the element starts late by exactly the time the
+// speaker adds, so the *sound* lands on play_at across all devices.
+// While armed, _trackLoading stays true so the drift corrector can't fight
+// the silent hold (playback_started_at may be future-dated → bogus huge lag).
+let _schedGen = 0;
+function _armScheduledStart(playAt, playFromS) {
+  const gen = ++_schedGen;
+  window._scheduledStartPending = true;
+  const target = Math.max(0, ((playFromS || 0) + SEEK_STAB_S) % audio.duration);
+  audio.volume = 0;
+  audio.currentTime = target; // pre-seek now — buffer settles during the wait
+  console.log('[sched-start] armed — fires in', Math.round(playAt - syncedNow()), 'ms (+', _deviceLatencyMs, 'ms BT)');
+  (function fire() {
+    if (gen !== _schedGen) return; // superseded by a newer launch
+    const waitMs = (playAt + _deviceLatencyMs) - syncedNow();
+    if (waitMs > 25) { setTimeout(fire, Math.max(10, Math.min(waitMs - 15, 250))); return; }
+    window._scheduledStartPending = false;
+    window._trackLoading = false;
+    audio.currentTime = target; // re-land the position at the instant of entry
+    fadeAudioIn(150);
+    console.log('[sched-start] entered at', new Date(syncedNow()).toISOString());
+  })();
 }
 
 // ════════════════════════════════════════════════════════════
@@ -4090,12 +4133,14 @@ function buildSyncChannel(zoneId) {
     if (payload.resetOffsets || payload.clearScatter) { _scatterOffsetMs = 0; }
     const delay = Math.max(0, waitMs);
     boomSay('Syncing…', delay + 300, false, 'regular');
+    // Track change: load NOW, don't wait out resyncAt — buffering happens
+    // silently inside the wait and the scheduled start fires at resyncAt.
+    if (payload.track_url && audio.src !== payload.track_url) {
+      loadTrack(payload.track_url, payload.track_name, payload.playback_started_at, payload.resyncAt, 0);
+      showToast('Now playing: ' + (payload.track_name || 'new track'));
+      return;
+    }
     setTimeout(() => {
-      if (payload.track_url && audio.src !== payload.track_url) {
-        loadTrack(payload.track_url, payload.track_name, payload.playback_started_at, payload.resyncAt, 0);
-        showToast('Now playing: ' + (payload.track_name || 'new track'));
-        return;
-      }
       if (!audio.duration) return;
       cancelDriftCorrection();
       const elapsed = (syncedNow() - new Date(payload.playback_started_at).getTime()) / 1000;
