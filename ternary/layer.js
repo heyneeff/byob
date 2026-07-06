@@ -176,6 +176,15 @@
     if (Math.abs(mean) < 30)  return null; // already converged
     if (Math.abs(mean) > 200) return null; // stall contamination (real floors < 200ms)
     if (Math.abs(mean) > 500) return null; // wrapLag artifact
+    // Steadfast-servant check (oracle 56.2→9): a structural floor is stable
+    // in TIME, not just in magnitude. Require the older and newer halves of
+    // the raw history to agree — same sign, means within 35ms — otherwise
+    // this is a transient decaying/growing through the window, not a floor.
+    const mid = Math.floor(_driftHistory.length / 2);
+    const m1 = _driftHistory.slice(0, mid).reduce((a, v) => a + v, 0) / mid;
+    const m2 = _driftHistory.slice(mid).reduce((a, v) => a + v, 0) / (_driftHistory.length - mid);
+    if (Math.sign(m1) !== Math.sign(m2)) return null;
+    if (Math.abs(m1 - m2) > 35)          return null;
     return mean;
   }
 
@@ -240,13 +249,33 @@
   }
 
   // ── TICK — called by fastDriftCorrect() AND burst interval ────────────────
+  let _lastTickLag = null;
+  let _lastDisturbTs = 0;
+  const DISTURB_JUMP_MS   = 120;    // tick-to-tick jump this large = seek/stall/jolt landed
+  const DISTURB_QUIET_MS  = 10000;  // floor samples need this much calm after a disturbance
+
   function tick(lagMs, isBurst) {
     if (typeof lagMs !== 'number' || isNaN(lagMs)) return;
     _tickCount++;
 
     const abs = Math.abs(lagMs);
-    _driftHistory.push(lagMs);
-    if (_driftHistory.length > 12) _driftHistory.shift(); // 12 readings = ~36s at 3s tick
+    // Floor-sample hygiene (oracle 56.2.5→9, small taming): the floor
+    // detector was reading launch transients and post-jolt recovery as
+    // structural floors, shoving CONVERGED devices off by 30-90ms (observed
+    // live 2026-07-06). Samples are only trustworthy in calm water:
+    //  - never during burst (the launch window is all transient)
+    //  - not within 10s of a disturbance (a big tick-to-tick jump means a
+    //    seek/stall/jolt landed — everything after it is settling, not floor)
+    if (_lastTickLag !== null && Math.abs(lagMs - _lastTickLag) > DISTURB_JUMP_MS) {
+      _lastDisturbTs = Date.now();
+      _driftHistory = []; // samples before the disturbance describe the old regime
+    }
+    _lastTickLag = lagMs;
+    const calm = !isBurst && (Date.now() - _lastDisturbTs) > DISTURB_QUIET_MS;
+    if (calm) {
+      _driftHistory.push(lagMs);
+      if (_driftHistory.length > 12) _driftHistory.shift(); // 12 readings = ~36s at 3s tick
+    }
 
     const snapThreshold = consensusSnapThreshold(isBurst);
     _trit = driftToTrit(lagMs, snapThreshold);
