@@ -561,7 +561,7 @@ function populateZones(zones) {
   zones.forEach(z => {
     const opt = document.createElement('option');
     opt.value = z.id;
-    opt.textContent = z.name + (z.track_name ? ' · ' + z.track_name : '');
+    opt.textContent = z.name + (z.track_name ? ' · ' + z.track_name : '') + (z.active === false ? ' (inactive — select to activate)' : '');
     sel.appendChild(opt);
   });
   const keep = _connectedZoneId || cur;

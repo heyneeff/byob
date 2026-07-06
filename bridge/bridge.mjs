@@ -188,7 +188,12 @@ async function fetchZones() {
   // returned [] and the UI showed no zones even with an active zone live.
   const { data, error } = await db.from('zones').select('id,name,current_track_url,track_name,playback_started_at,zone_tracks,active').eq('active', true).limit(20);
   if (error) { console.error('[zones]', error.message); return []; }
-  return data || [];
+  if (data?.length) return data;
+  // No active zones (they deactivate when a broadcast ends). The bridge IS
+  // the broadcaster, so offer recent zones — selecting one re-activates it.
+  const recent = await db.from('zones').select('id,name,current_track_url,track_name,playback_started_at,zone_tracks,active').order('playback_started_at', { ascending: false, nullsFirst: false }).limit(10);
+  if (recent.error) { console.error('[zones]', recent.error.message); return []; }
+  return recent.data || [];
 }
 
 // Auto-connect: if exactly one zone is active, select it without a click.
@@ -278,8 +283,12 @@ async function handleUIMessage(msg, ws) {
       _activeZoneId = msg.zoneId;
       buildSyncChannel(msg.zoneId);
       buildPresenceChannel(msg.zoneId);
+      // Selecting a zone from the bridge ACTIVATES it — the bridge is the
+      // broadcaster, so picking a zone means "broadcast here" (no artist.html
+      // round-trip needed to reactivate after a stopped session).
+      await db.from('zones').update({ active: true }).eq('id', msg.zoneId);
       // fetch zone to restore playback_started_at
-      const { data } = await db.from('zones').select('playback_started_at,zone_tracks,track_name,current_track_url').eq('id', msg.zoneId).single();
+      const { data } = await db.from('zones').select('name,playback_started_at,zone_tracks,track_name,current_track_url').eq('id', msg.zoneId).single();
       if (data?.playback_started_at) _playbackStartedAt = data.playback_started_at;
       broadcastToUI({ type: 'zone_loaded', zoneId: msg.zoneId, ...data });
       console.log(`[ui] zone → ${msg.zoneId}`);
