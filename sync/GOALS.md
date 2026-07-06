@@ -50,13 +50,14 @@ ticks to fully recover.
 **Proposed fix:** add a `visibilitychange` listener — on regaining
 visibility, force an immediate drift check + correction instead of waiting
 for the next scheduled tick.
-**Status: not started.** Self-contained, lower risk than Goal 3 — good
-candidate to do first.
-**Requires oracle cast before implementation** (touches engine correction
-trigger path).
+**Status: DONE** (verified 2026-07-06, oracle 7.1.6→41 "Decrease" — the
+handler already existed in listener.html's `visibilitychange` listener:
+instant memory-based resync via `cancelDriftCorrection()` +
+`seekPreservingBT()`, stuck-playback recovery, and a background
+`syncZoneAudio()` health check. No new code needed.)
 
 ## Suggested order
-1. Goal 4 (contained, low risk, clear win)
+1. ~~Goal 4~~ done
 2. Goal 3 (bigger lift — measure cadence first, then design, then cast, then implement)
 
 ---

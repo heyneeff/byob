@@ -326,3 +326,60 @@ Complete rewrite of the debug dashboard into a multi-panel monitoring observator
   peers, consensus, snaps, stalls, seek (intended vs measured), readyState, visibility
 
 ---
+
+---
+
+## 2026-07-06 session — synced entry, roving fix, jolt diagnosis ("the launch day")
+
+Full plan: `~/.claude/plans/we-are-developing-something-robust-cook.md`. Live
+baseline + verification via the new launch reports in `sync/live-monitor.mjs`
+(per-launch: spread at play_at, time-to-converged, snap count, PASS/FAIL at
+<50ms within 3s; `sync/launch-cycler.mjs` fires test launches on an interval).
+
+**Baseline measured (3 phones, ~12 launches):** entry began 0.2–1.7s off,
+took 3–17s and 1–33 audible mute/ramp snaps per device to converge;
+calibration relearned the same floor every clip. Steady state was healthy —
+entry was the whole disease.
+
+**Shipped, in order (each oracle-cast):**
+1. `cf770e4`/`b509598` — scheduled synced entry (17.4→3): playback_started_at
+   = play_at (one shared future instant, ≥2.5s lead, bar-quantized from Link
+   in the bridge); listeners preload muted and un-mute at play_at + own
+   deviceLatencyMs. Verified live: entries went to sub-second, first ✅ PASS.
+2. `b74a564` — roving re-anchor fix (54.1→40): computeSeekTime's play_at
+   branch omitted BT-latency compensation; devices parked at +own-latency
+   (stuck 62–666ms) on every wake/reconnect. Pinned by tests.
+3. `d52c3a5` — calibration persists across tracks + burst snapping RETIRED
+   (63.3→3, 34.5→43): the per-track cal reset was a ratchet creeping latency
+   to the 1200ms cap; burst snaps were the audible cutting (up to 33/launch).
+4. `59145e2` — wrap over-threshold seek targets into duration (17.6→25):
+   unwrapped currentTime+lag past a loop's end was clamped → endless seek
+   wedge at constant lag.
+5. `1c944cf` — debug.html straggler controls (63.3→3): RESET CAL, NUDGE
+   field, auto ⚠ STRAGGLER flag (cap-pinned / constant-offset).
+6. `40c3568` — bridge never re-anchors from Link's ABSOLUTE beat (3.2→60):
+   tempo-change reanchors + bridge hard_syncs minted references minutes in
+   the past → the 20–160s room-wide jolts (grew with transport age).
+   **Bridge process must be restarted to pick this up.**
+7. `df7ea54` — floor-sample hygiene (56.2.5→9): no samples during burst,
+   10s quiet after a >120ms tick jump, floor must hold across both window
+   halves. Fixes auto-cal shoving converged devices off by 30–90ms.
+8. `890110b` — zone offset knob (4.2.4→35): zone_offset_ms on spatial_config,
+   applied inside syncedNow() (single choke point); bridge UI field. Trims
+   the measured ~60–75ms common-mode offset vs the broadcaster by ear.
+
+**Best observed:** room mutual spread ~2ms (four phones at 74–76ms identical
+common-mode); entries converging in 0.1–1s with zero snaps; first launch-report
+PASSes.
+
+**Next session (casts pending):**
+- Extend no-op-seek escalation to the engine seekPreservingBT path (cast was
+  interrupted — re-cast first).
+- Live-verify floor hygiene + zone offset knob + restarted bridge; disciplined
+  launch-cycler session at 60s cadence; tighten PASS bar 50→25ms.
+- Watch: devices whose true BT latency exceeds the 1200ms cap (oracle has
+  held against raising it three times, latest 64.1→38 — revisit only with
+  clean post-fix evidence).
+- Note: same-track relaunches don't reload the audio element — wedged phones
+  free only on a DIFFERENT track URL (or reload). Candidate fix if it still
+  matters after escalation lands.

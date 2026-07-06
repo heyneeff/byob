@@ -221,6 +221,22 @@ Verification: `sync/live-monitor.mjs` prints a per-launch report (spread at
 `play_at`, time-to-converged, snap count, PASS/FAIL at <50ms within 3s);
 `sync/launch-cycler.mjs` fires launches on an interval against a test zone.
 
+## Zone offset — the room's one timeline trim (2026-07-06)
+
+`zone_offset_ms` (broadcast on `spatial_config`, tunable from the bridge UI)
+shifts every listener's effective clock inside `syncedNow()` — the single
+choke point all seeks, drift checks, and scheduled entries flow through.
+Positive = the whole room plays later. Because the shift is inside the clock,
+drift still reads 0 when aligned; nothing else in the engine knows it exists.
+Use it to trim the room's common-mode offset against the broadcaster by ear.
+Never fold zone offset into the seek formula's terms at call sites — the one
+clean point is the clock (oracle 4.2.4→35: entangled folly brings humiliation).
+
+Floor detection (`ternary/layer.js detectFloor`) samples only calm water:
+never during burst, not within 10s of a >120ms tick-to-tick jump, and a floor
+must hold across both halves of the sample window (same sign, means within
+35ms). Launch transients decay; structural floors hold (oracle 56.2.5→9).
+
 ## The golden rule: one corrector, one entry point
 
 **Every code path that wants to nudge a listener's playback position calls
