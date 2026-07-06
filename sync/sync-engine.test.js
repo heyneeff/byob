@@ -115,6 +115,34 @@ test('computeSeekTime: startedAt path applies all four terms', () => {
   assert.ok(Math.abs(seek - (10 - 0.1 + SEEK_STAB_S - 0.05)) < 1e-9);
 });
 
+test('computeSeekTime: play_at path applies latency/scatter compensation', () => {
+  const seek = computeSeekTime({
+    startedAt: undefined, playAt: 5000, playFromS: 0,
+    syncedNowMs: 10000, // play_at 5s in the past
+    deviceLatencyMs: 100, scatterOffsetMs: 50,
+  });
+  // seekTo = 0 + SEEK_STAB_S - 0.1 - 0.05 + 5 (elapsed past play_at)
+  assert.ok(Math.abs(seek - (SEEK_STAB_S - 0.1 - 0.05 + 5)) < 1e-9);
+});
+
+test('computeSeekTime: past play_at agrees with startedAt branch when startedAt == play_at', () => {
+  // Scheduled synced entry future-dates playback_started_at = play_at. Any
+  // later re-anchor may take either branch — they must land identically or
+  // the corrector fights the re-anchor at a constant per-device offset
+  // (the 2026-07-06 roving regression: stuck 307/398/666ms drifts).
+  const playAtMs = 60_000, nowMs = 90_000;
+  const viaPlayAt = computeSeekTime({
+    startedAt: undefined, playAt: playAtMs, playFromS: 0,
+    syncedNowMs: nowMs, deviceLatencyMs: 398, scatterOffsetMs: 0,
+  });
+  const viaStartedAt = computeSeekTime({
+    startedAt: new Date(playAtMs).toISOString(), playAt: undefined, playFromS: undefined,
+    syncedNowMs: nowMs, deviceLatencyMs: 398, scatterOffsetMs: 0,
+  });
+  assert.ok(Math.abs(viaPlayAt - viaStartedAt) < 1e-9,
+    `branches disagree: play_at=${viaPlayAt} startedAt=${viaStartedAt}`);
+});
+
 test('computeClockOffset: rejects RTT >= 400ms, returns median of the rest', () => {
   const samples = [
     { t0: 0, t1: 100, serverMs: 1000 }, // rtt 100 -> offset 950

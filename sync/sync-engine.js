@@ -52,8 +52,15 @@ export function wrapLag(lagMs, durationMs) {
 export function computeSeekTime({ startedAt, playAt, playFromS, syncedNowMs, deviceLatencyMs, scatterOffsetMs }) {
   let seekTo = 0;
   if (playAt && playFromS !== undefined) {
+    // Must compensate deviceLatencyMs/scatterOffsetMs exactly like the
+    // startedAt branch below — with playback_started_at == play_at (scheduled
+    // synced entry), a past play_at is the same reference and the two branches
+    // must land on the same position. Omitting the compensation here planted
+    // devices at exactly +deviceLatencyMs on every wake/reconnect re-anchor,
+    // which the drift corrector then fought (roving at a constant per-device
+    // offset — observed live 2026-07-06 as stuck 307/398/666ms drifts).
     const delayMs = playAt - syncedNowMs;
-    seekTo = (playFromS || 0) + SEEK_STAB_S;
+    seekTo = (playFromS || 0) + SEEK_STAB_S - (deviceLatencyMs / 1000) - (scatterOffsetMs / 1000);
     if (delayMs < 0) seekTo += (-delayMs / 1000);
   } else if (startedAt) {
     const elapsed = (syncedNowMs - new Date(startedAt).getTime()) / 1000;
