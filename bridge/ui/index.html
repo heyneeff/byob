@@ -259,6 +259,18 @@ input.num {
     <div style="margin-top:4px;font-size:10px;color:var(--dim)">Sets tempo in Ableton via Link</div>
   </div>
 
+  <!-- Zone timeline trim — shifts every listener's audio by one constant.
+       Tune by ear against the broadcaster; + is later, − is earlier. -->
+  <div class="sec">
+    <div class="sec-title">Zone Offset <span style="color:var(--dim);font-size:9px">room vs broadcaster</span></div>
+    <div class="pr">
+      <label>ms</label>
+      <input class="num" id="zone-offset" type="number" step="10" value="0" onchange="setZoneOffset(this.value)">
+      <button class="btn stop" onclick="document.getElementById('zone-offset').value=0;setZoneOffset(0)">✕</button>
+    </div>
+    <div style="margin-top:4px;font-size:10px;color:var(--dim)">+later / −earlier, all phones at once</div>
+  </div>
+
   <!-- Spatial modes -->
   <div class="sec">
     <div class="sec-title">Spatial Mode</div>
@@ -570,6 +582,12 @@ function setManualBpm(v) {
   if (!bpm || bpm < 40 || bpm > 240) return;
   send({ type: 'set_tempo', bpm });
   log(`Tempo → ${bpm} BPM (sent to Ableton)`, 'ok');
+}
+
+function setZoneOffset(v) {
+  const ms = parseFloat(v) || 0;
+  send({ type: 'spatial_config', payload: { zone_offset_ms: ms } });
+  log(`Zone offset → ${ms >= 0 ? '+' : ''}${ms}ms (all phones)`, 'ok');
 }
 
 // ── Modes ─────────────────────────────────────────────────────

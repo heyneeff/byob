@@ -206,6 +206,9 @@ function applySweepOffset(sweep) {
 
 function onSpatialConfig(payload) {
   window._spatialConfig = payload;
+  // Zone-wide timeline trim — applied inside syncedNow() (listener.html).
+  // Only update when the field is present so unrelated broadcasts don't clear it.
+  if (payload.zone_offset_ms != null) window._zoneOffsetMs = parseFloat(payload.zone_offset_ms) || 0;
   window._masterBPM = payload.master_bpm || null;
   window._trackBpms = payload.track_bpms || {};
   if (payload.slot_volumes) window._slotVolumes = payload.slot_volumes;

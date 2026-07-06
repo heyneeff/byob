@@ -4996,7 +4996,14 @@ async function measureClockOffset() {
   }
   if (samples.length) _clockOffset = samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)];
 }
-function syncedNow() { return Math.round(Date.now() + _clockOffset); }
+// zone_offset_ms (DJ-tunable via spatial_config) shifts this listener's whole
+// effective timeline by one constant — the single choke point for trimming the
+// room's common-mode offset against the broadcaster (oracle 4.2.4→35: one
+// clean point, never smeared across the seek-formula call sites). Positive
+// zone_offset_ms = audio plays later. Every seek, drift check, and scheduled
+// entry flows through here, so the room shifts uniformly and drift still
+// reads 0 when aligned.
+function syncedNow() { return Math.round(Date.now() + _clockOffset - (window._zoneOffsetMs || 0)); }
 window.syncedNow = syncedNow; // expose for ternary/arp.js phase-locked scheduling
 
 
