@@ -115,9 +115,18 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     }
 
     // Beyond warp reach — muted seek with volume ramp.
+    // Wrap the target into [0, duration): on a looping track, currentTime+lag
+    // can land past the end, and seekPreservingBT CLAMPS to duration-0.1
+    // instead of wrapping — the seek "lands" in the wrong place, lag
+    // recomputes to nearly the same value, and the device wedges in an
+    // endless seek loop (observed live 2026-07-06: three phones stuck at a
+    // constant ~21.4s lag with snaps firing every tick and never landing).
     if (abs >= TH_SEEK) {
       cancelDriftCorrection();
-      seekPreservingBT(transport.currentTime + lagMs / 1000);
+      const dur = transport.duration;
+      let target = transport.currentTime + lagMs / 1000;
+      if (dur) target = ((target % dur) + dur) % dur;
+      seekPreservingBT(target);
       return;
     }
 
