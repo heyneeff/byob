@@ -496,7 +496,7 @@ function handle(msg) {
   }
   if (msg.type === 'zone_loaded') {
     log(`Zone loaded: ${msg.name || msg.zoneId}`, 'ok');
-    setZoneDisplay(msg.name || msg.zoneId);
+    setZoneDisplay(msg.zoneId, msg.name);
     if (msg.playback_started_at) setAnchorLabel(msg.playback_started_at);
   }
   if (msg.type === 'presence') {
@@ -533,9 +533,22 @@ function setAnchorLabel(iso) {
   setDot('link-dot','active');
 }
 
-function setZoneDisplay(id) {
+let _connectedZoneId = null;
+function setZoneDisplay(id, name) {
+  // The 'state'/'zone_loaded' message often arrives BEFORE the zone list has
+  // populated the dropdown — assigning an unknown value is silently ignored
+  // and the picker stays on "— pick zone —". Remember the connected zone,
+  // create the option if it's missing, and re-apply after populateZones.
+  _connectedZoneId = id;
   const sel = document.getElementById('zone-select');
-  if (sel) sel.value = id;
+  if (!sel) return;
+  if (![...sel.options].some(o => o.value === id)) {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = name || ('zone ' + String(id).slice(0, 8));
+    sel.appendChild(opt);
+  }
+  sel.value = id;
 }
 
 // ── Zone picker ───────────────────────────────────────────────
@@ -551,7 +564,11 @@ function populateZones(zones) {
     opt.textContent = z.name + (z.track_name ? ' · ' + z.track_name : '');
     sel.appendChild(opt);
   });
-  if (cur) sel.value = cur;
+  const keep = _connectedZoneId || cur;
+  if (keep) {
+    const z = zones.find(z => z.id === keep);
+    setZoneDisplay(keep, z?.name);
+  }
   log(`${zones.length} active zones loaded`, 'dim');
 }
 
