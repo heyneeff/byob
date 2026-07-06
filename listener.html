@@ -4211,7 +4211,7 @@ function buildSyncChannel(zoneId) {
   .on('broadcast', { event: 'anchor' }, ({ payload }) => {
     if (payload?.position != null && payload?.ts) {
       _anchorPlaybackStartedAtMs = payload.ts - payload.position * 1000;
-      _launchGuardUntil = 0; // anchor received — corrections now have a clean reference
+      if (!window._trackLoading) _launchGuardUntil = 0; // only clear guard once track is ready
     }
   })
   .on('broadcast', { event: 'stream_end' }, () => {
