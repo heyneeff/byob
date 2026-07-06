@@ -279,14 +279,15 @@
       _consecutiveN = 0; // P-state only: truly converged, no cal needed
     }
 
-    // Burst mode: snap aggressively at track start (audio is transitioning).
-    // If floor detection has confirmed a large uncorrectable residual (device is
-    // beyond the 1200ms BT cap), snapping only causes seekPreservingBT ramps that
-    // bounce drift back. Still the reflex — let warp handle it instead.
-    if (isBurst && abs >= TER_SNAP_BURST && abs < BIN_THRESHOLD) {
-      const overCap = _lastFloor !== null && _lastFloor > 150;
-      if (!overCap) applySnap(lagMs, 'burst-snap');
-    }
+    // Burst-mode snapping RETIRED 2026-07-06 (oracle 34.5→43: lose the goat
+    // with ease). Scheduled synced entry (listener.html _armScheduledStart)
+    // now aligns devices BEFORE audio is audible — the 1s/20ms snap loop's
+    // job no longer exists, and each snap was an audible mute+ramp cut
+    // (measured live: up to 33 cuts per launch). Burst mode itself remains
+    // as a fast measurement window: 1s ticks feed _driftHistory/auto-cal and
+    // the launch verification report while the entry settles. Do not
+    // re-add snapping here; large post-entry drift is the corrector's job
+    // (warp <500ms, seek beyond — same as steady state).
 
     if (!isBurst && _consecutiveN >= 10) { // 10 × 3s = 30s of stable N-state before attempting cal
       maybeAutoCalibrate();
@@ -472,13 +473,19 @@
       const startedAt = window._terGetZone?.()?.playback_started_at;
       if (startedAt && startedAt !== _lastStartedAt) {
         if (_lastStartedAt !== null) {
-          // It changed — new track starting
+          // It changed — new track starting. Reset MEASUREMENTS only.
+          // Calibration state (_calCount/_lastCalTs/_calApplied) persists:
+          // _deviceLatencyMs describes the hardware, not the track. Resetting
+          // it every clip re-ran up to 4 fresh corrections per track — a
+          // ratchet that crept latency toward the 1200ms cap over a session,
+          // after which every correction was swallowed and devices sat
+          // permanently 70-90ms off (observed live 2026-07-06).
+          // Oracle 63.3→3: don't re-fight conquered territory.
+          // The budget refills slowly instead: one slot per track change.
           enterBurst('track_change detected');
-          _calApplied = false;
-          _calCount   = 0;
-          _lastCalTs  = 0;
           _driftHistory = [];
           _consecutiveN = 0;
+          if (_calCount > 0 && _capHits === 0) _calCount--;
           window._terEngineReset?.(); // clear engine's floor history for new track (cal lock preserved)
         }
         _lastStartedAt = startedAt;

@@ -73,6 +73,11 @@ function openLaunchWindow(kind, deviceId) {
 
 function launchTick(id, drift, snapCount) {
   if (!_launch) return;
+  // One row per physical phone: ter_/dev_ prefixes are two reporting layers
+  // of the same device. Prefer the ter layer (canonical, has snap counts) —
+  // ignore the dev layer whenever a ter row for the same suffix exists.
+  const suffix = id.replace(/^(ter_|dev_)/, '');
+  if (id.startsWith('dev_') && _launch.devices['ter_' + suffix]) return;
   const dtMs = Date.now() - _launch.t0;
   if (dtMs > LAUNCH_WINDOW_MS) return;
   const d = _launch.devices[id] ??= { ticks: [], snap0: snapCount ?? null, convergedAtMs: null };

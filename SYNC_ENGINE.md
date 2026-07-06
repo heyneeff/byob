@@ -191,6 +191,36 @@ entirely — it's locked.
 untouched. A device that reached PPP stays protected across tracks. The trigram
 represents the device's hardware, not the track.
 
+## Scheduled synced entry (2026-07-06) — and the retirement of burst snapping
+
+Clips now **enter aligned** instead of converging in public. Every launch path
+(bridge `play`, artist.html `playNext`/scene fire) anchors
+`playback_started_at = play_at` — one shared future instant with a ≥2.5s lead
+(bar-quantized from Ableton Link in the bridge). Listeners receiving a future
+`play_at` call `_armScheduledStart()` (listener.html): preload muted, pre-seek
+to the start position, then un-mute at `play_at + own _deviceLatencyMs` so the
+*sound* lands together across devices. `_trackLoading` stays true during the
+hold so the corrector can't fight it. Late joiners use the immediate path.
+
+`computeSeekTime`'s `play_at` branch must apply the same
+`deviceLatencyMs`/`scatterOffsetMs` compensation as the `startedAt` branch —
+omitting it planted devices at exactly +their-own-latency on every
+wake/reconnect re-anchor (the 2026-07-06 roving regression; pinned by tests).
+
+**🚫 BURST-MODE SNAPPING IS RETIRED — do not re-add.** (Oracle 34.5→43,
+2026-07-06.) With entry alignment handled before audio is audible, burst's
+1s/20ms snap loop had no job left, and each snap was an audible mute+ramp cut
+(up to 33 per launch measured live). Burst mode survives only as a fast
+measurement window (1s ticks feeding auto-cal and the launch report).
+Likewise **calibration state persists across track changes** — the per-track
+reset re-ran fresh corrections every clip, ratcheting `_deviceLatencyMs`
+toward the 1200ms cap over a session until corrections were swallowed. The
+correction budget refills one slot per track change instead.
+
+Verification: `sync/live-monitor.mjs` prints a per-launch report (spread at
+`play_at`, time-to-converged, snap count, PASS/FAIL at <50ms within 3s);
+`sync/launch-cycler.mjs` fires launches on an interval against a test zone.
+
 ## The golden rule: one corrector, one entry point
 
 **Every code path that wants to nudge a listener's playback position calls
