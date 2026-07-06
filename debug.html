@@ -234,6 +234,38 @@ function sendLatencyCmd(deviceId, deltaMs) {
   debugCh.send({ type: 'broadcast', event: 'latency_cmd', payload: { deviceId, deltaMs } });
 }
 
+// Reset calibration: -1200 clamps stored latency to 0 on the listener, forcing
+// auto-cal to relearn the device's true BT latency from scratch. The live fix
+// for cap-pinned devices (corrections swallowed at 1200ms) and for stale
+// ratchet-era values that leave a phone audibly behind with clean drift numbers.
+function resetCal(deviceId) {
+  sendLatencyCmd(deviceId, -1200);
+}
+
+function nudgeCal(deviceId) {
+  const el = document.getElementById('nudge-' + deviceId);
+  const ms = parseFloat(el?.value);
+  if (!isNaN(ms) && ms !== 0) sendLatencyCmd(deviceId, ms);
+  if (el) el.value = '';
+}
+
+// Straggler detection — the two signatures visible in telemetry:
+//  cap-pinned: stored latency at the 1200ms cap (auto-cal corrections swallowed)
+//  constant offset: drift parked at a stable nonzero value (roving/floor — the
+//  corrector reads it but can't close it). The ear-only case (sound late,
+//  drift clean) is NOT detectable here — that one stays ear → nudge.
+function stragglerFlag(d) {
+  if (parseFloat(d.deviceLatencyMs) >= 1200) return 'CAP-PINNED';
+  const h = (driftHistory[d.deviceId] || []).slice(-10);
+  if (h.length >= 8) {
+    const vals = h.map(p => p.driftMs).sort((a, b) => a - b);
+    const med = vals[Math.floor(vals.length / 2)];
+    const spread = vals[vals.length - 1] - vals[0];
+    if (Math.abs(med) > 60 && spread < 50) return 'CONST OFFSET ' + Math.round(med) + 'ms';
+  }
+  return null;
+}
+
 function renderEvents() {
   const el = document.getElementById('events');
   if (!_events.length) { el.style.display = 'none'; return; }
@@ -414,9 +446,13 @@ function renderSyncCard(d, age) {
     ${r('seek intend', d.seekIntendedMs!=null ? d.seekIntendedMs+'ms' : '—')}
     ${r('seek landed', d.seekMeasuredMs!=null ? d.seekMeasuredMs+'ms' : '—',
         d.seekIntendedMs!=null && d.seekMeasuredMs!=null && Math.abs(d.seekIntendedMs) > 100 && Math.abs(d.seekMeasuredMs) < Math.abs(d.seekIntendedMs) * 0.3 ? 'bad' : '')}
-    <div class="row" style="padding-top:6px;gap:4px;justify-content:flex-end;border-bottom:none;">
+    ${(() => { const f = stragglerFlag(d); return f ? `<div class="row" style="border-bottom:none;"><span class="k" style="color:#f5443c;font-weight:bold;">⚠ STRAGGLER</span><span class="v" style="color:#f5443c;">${f}</span></div>` : ''; })()}
+    <div class="row" style="padding-top:6px;gap:4px;justify-content:flex-end;border-bottom:none;flex-wrap:wrap;">
       <button onclick="sendLatencyCmd('${d.deviceId}',-50)" style="background:#0a0a0a;border:1px solid #333;color:#f57e20;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">−50ms BT</button>
       <button onclick="sendLatencyCmd('${d.deviceId}',+50)" style="background:#0a0a0a;border:1px solid #333;color:#f57e20;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">+50ms BT</button>
+      <input id="nudge-${d.deviceId}" type="number" step="10" placeholder="±ms" style="width:52px;background:#0a0a0a;border:1px solid #333;color:#eee;font-family:monospace;font-size:10px;padding:3px 5px;border-radius:3px;">
+      <button onclick="nudgeCal('${d.deviceId}')" style="background:#0a0a0a;border:1px solid #333;color:#f57e20;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">NUDGE</button>
+      <button onclick="resetCal('${d.deviceId}')" style="background:#1a0505;border:1px solid #f5443c;color:#f5443c;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">RESET CAL</button>
     </div>
   </div>`;
 }
