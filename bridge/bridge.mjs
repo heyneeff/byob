@@ -121,8 +121,13 @@ function computeLaunchAt() {
 }
 
 function reanchor(bpm, beat) {
-  _playbackStartedAt = computeStartedAt(bpm, beat);
-  broadcastHardSync({ playback_started_at: _playbackStartedAt, resetOffsets: false });
+  // Oracle 3.2→60 (Limitation): the bridge must never re-anchor from Link's
+  // ABSOLUTE beat count — that measures time since Ableton's transport
+  // started, not since the track launched, and each re-anchor jolted every
+  // listener by 20-160s (observed live 2026-07-06, growing with transport
+  // age). Tempo changes already propagate as master_bpm via spatial_config;
+  // the wall-clock reference stays where the launch put it. The DJ anchor
+  // heartbeat (artist.html) is the live ground truth for corrections.
   broadcastToUI({ type: 'link_state', bpm, beat, playback_started_at: _playbackStartedAt });
 }
 
@@ -286,9 +291,16 @@ async function handleUIMessage(msg, ws) {
     }
 
     case 'hard_sync': {
-      const state = { bpm: link.getTempo(), beat: link.getBeat() };
-      _playbackStartedAt = computeStartedAt(state.bpm, state.beat);
-      broadcastHardSync({ playback_started_at: _playbackStartedAt, resetOffsets: true });
+      // Use the EXISTING reference — never recompute from Link's absolute
+      // beat (oracle 3.2→60, see reanchor()). A sync command snaps everyone
+      // to the current timeline; it must not move the timeline itself.
+      if (!_playbackStartedAt && _activeZoneId) {
+        const { data } = await db.from('zones').select('playback_started_at').eq('id', _activeZoneId).single();
+        _playbackStartedAt = data?.playback_started_at || null;
+      }
+      if (_playbackStartedAt) {
+        broadcastHardSync({ playback_started_at: _playbackStartedAt, resetOffsets: true });
+      }
       break;
     }
 
