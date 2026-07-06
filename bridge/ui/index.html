@@ -495,7 +495,8 @@ function handle(msg) {
     populateZones(msg.zones);
   }
   if (msg.type === 'zone_loaded') {
-    log(`Zone loaded: ${msg.zoneId}`, 'ok');
+    log(`Zone loaded: ${msg.name || msg.zoneId}`, 'ok');
+    setZoneDisplay(msg.name || msg.zoneId);
     if (msg.playback_started_at) setAnchorLabel(msg.playback_started_at);
   }
   if (msg.type === 'presence') {
