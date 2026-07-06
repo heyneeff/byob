@@ -248,15 +248,15 @@ input.num {
     </div>
   </div>
 
-  <!-- Tap tempo (override Link) -->
+  <!-- Tap tempo → pushes into Ableton Link -->
   <div class="sec">
-    <div class="sec-title">Tap Tempo <span style="color:var(--dim);font-size:9px">(overrides Link)</span></div>
+    <div class="sec-title">Tempo</div>
     <button id="tap-btn" onclick="tap()">TAP</button>
-    <div class="pr">
+    <div class="pr" style="margin-top:6px">
       <label>BPM</label>
       <input class="num" id="manual-bpm" type="number" min="40" max="240" placeholder="—" oninput="setManualBpm(this.value)">
-      <button class="btn stop" onclick="clearBpm()">✕</button>
     </div>
+    <div style="margin-top:4px;font-size:10px;color:var(--dim)">Sets tempo in Ableton via Link</div>
   </div>
 
   <!-- Spatial modes -->
@@ -568,15 +568,8 @@ function tap() {
 function setManualBpm(v) {
   const bpm = parseFloat(v);
   if (!bpm || bpm < 40 || bpm > 240) return;
-  _bpm = bpm;
-  updateBpmDisplay();
-  send({ type: 'spatial_config', payload: { master_bpm: bpm } });
-  log(`BPM → ${bpm}`, 'ok');
-}
-
-function clearBpm() {
-  document.getElementById('manual-bpm').value = '';
-  log('BPM override cleared — following Link', 'dim');
+  send({ type: 'set_tempo', bpm });
+  log(`Tempo → ${bpm} BPM (sent to Ableton)`, 'ok');
 }
 
 // ── Modes ─────────────────────────────────────────────────────
