@@ -493,6 +493,19 @@ U(30,150): window 12/deadband 10 converged but sawtoothed ±38ms; **window
 per-launch absolute offsets (previously wandering 0–80ms per launch) should
 stabilize; then trim the stable residual with zone_offset_ms.
 
+**REVERTED ~3:15am (`0b54638`, oracle 59.2.5→23 — "hurry to that which
+supports him"):** phones that refreshed onto the clock discipline
+destabilized within minutes (250–460ms finals, 11–25 snaps/window, latency
+debt re-inflating right after RESET CAL) while the one pre-refresh phone
+stayed rock stable. The dragons' third form: the clock slew and auto-cal
+both absorb the same residual — clock moves the reference ≤15ms/heartbeat,
+corrector chases, auto-cal eats the churn into stored latency. The 2.2.6→4
+warning was about server-vs-anchor; the REAL second authority was auto-cal.
+Redesign requirement for daylight: when the anchor disciplines the clock,
+auto-cal must be frozen (or the clock slewed only while cal is settled) —
+one authority per signal, not just per clock. Offline sim missed it because
+it modeled no calibration loop. The `pre-master-clock` tag did its job.
+
 ---
 
 **Next session (casts pending):**
