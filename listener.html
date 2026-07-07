@@ -2297,7 +2297,10 @@ function fastDriftCorrect() {
         window._snapFailCount = 0;
       }
     }, 200);
-  } else if (_absLag >= 5) {
+  } else if (_absLag >= 5 || window.SyncEngine?.isSilentWarp?.()) {
+    // The isSilentWarp branch keeps ticking the engine below 5ms so a phone
+    // that converged while silenced always reaches the un-mute exit path —
+    // without it a sub-5ms landing would strand the phone silent.
     requestCorrection(lagMs); // warp for 5–500ms drift (micro-nudge holds sub-10ms, step 8)
   }
 }
@@ -6196,6 +6199,8 @@ const engine = createTernaryEngine({
     set playbackRate(v) { audio.playbackRate = v; },
     get volume() { return audio.volume; },
     set volume(v) { audio.volume = v; },
+    get muted() { return audio.muted; },
+    set muted(v) { audio.muted = v; },
     hasSrcObject: () => !!audio.srcObject,
   },
   timers: {

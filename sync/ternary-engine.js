@@ -53,6 +53,9 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   let _trit                = Z;
   let _prevLag             = 0;
   let _seekFailCount       = 0;      // consecutive snap-magnitude seeks that didn't land
+  let _silentWarp          = false;  // aggressive warp with output silenced (oracle 32.4→46)
+  let _silentSavedVol      = null;
+  let _silentRampGen       = 0;
   let _warpTimer           = null;
   let _driftGen            = 0;
   let _state               = 'idle'; // 'idle' | 'warping' | 'seeking'
@@ -145,9 +148,16 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     const NUDGE_GAIN    = 0.00010;      // gentle first-touch gain right after P — tuning step 4, oracle 2.1.6→27 + 14.1.3→64
     const PROP_GAIN     = 0.00040;      // rate change per ms of drift — tuning step 3 (was 0.00025, oracle 8.1.5→24)
     const COMPOUND_GAIN = 0.00060;      // a second stall landing mid-correction — tuning step 6, oracle 14.1.2→30
-    const MAX_WARP  = 0.030;            // 3% — audible DJ-style warp accepted for faster convergence, oracle 53 unchanging (gradual: 1.5→3%, revisit 6% after live verify; 1.5% was step 7, oracle 49.3.6→25)
+    const MAX_WARP_AUDIBLE = 0.015;     // proven inaudible ceiling — tuning step 7, oracle 49.3.6→25 (flat 3% audible cap retired: 32.4→46, "no game in the field")
+    const SILENT_WARP_TH   = 150;       // ms — beyond this, don't correct in front of the audience: go silent
+    const SILENT_WARP_EXIT = 30;        // ms — hysteresis: un-silence only once genuinely close
+    const MAX_WARP_SILENT  = 0.08;      // 8% while silenced — closes 400ms in ~5s, inaudible because nothing plays
     const dir = lagMs > 0 ? 1 : -1;
     const isCompounding = wasWarping && abs > prevAbsLag;
+
+    if (abs >= SILENT_WARP_TH) _enterSilentWarp();
+    else if (_silentWarp && abs < SILENT_WARP_EXIT) _exitSilentWarp();
+    const MAX_WARP = _silentWarp ? MAX_WARP_SILENT : MAX_WARP_AUDIBLE;
 
     // seekSilent: compounding drift in 300–500ms range (oracle 48.3→29 — The Well).
     // BT buffer absorbs a small position jump silently; no mute ramp needed.
@@ -174,6 +184,44 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     _warpTimer = timers.setTimeout(settleToIdle, 2600);
   }
 
+  // ── Silent warp (oracle 32.4→46 — "no game in the field") ──────────────────
+  // Audible warp above ~1.5% is unlistenable; audible correction of large
+  // drift is hunting where there's no game. Above SILENT_WARP_TH the output
+  // is silenced and the warp ceiling rises to MAX_WARP_SILENT — aggressive
+  // convergence nobody can hear. Silence via transport.muted when available:
+  // the FX pulse loop rewrites transport.volume every frame and would
+  // un-silence a volume-based mute (volume is the fallback for harnesses
+  // without a muted accessor).
+  function _enterSilentWarp() {
+    if (_silentWarp) return;
+    _silentWarp = true;
+    _silentRampGen++; // kill any in-flight restore ramp
+    _silentSavedVol = transport.volume || 1;
+    if ('muted' in transport) transport.muted = true;
+    else transport.volume = 0;
+  }
+
+  function _exitSilentWarp() {
+    if (!_silentWarp) return;
+    _silentWarp = false;
+    const vol = _silentSavedVol || 1;
+    _silentSavedVol = null;
+    if (!('muted' in transport)) { transport.volume = vol; return; }
+    transport.muted = false;
+    // 180ms smoothstep ramp so re-entry doesn't click (same shape as
+    // seekPreservingBT's restore)
+    const gen = ++_silentRampGen;
+    transport.volume = 0;
+    const rampMs = 180, start = timers.now();
+    function ramp(now) {
+      if (gen !== _silentRampGen) return;
+      const t = Math.min((now - start) / rampMs, 1);
+      transport.volume = vol * (t * t * (3 - 2 * t));
+      if (t < 1) timers.requestAnimationFrame(ramp);
+    }
+    timers.requestAnimationFrame(ramp);
+  }
+
   function settleToIdle() {
     transport.playbackRate = getBaseRate();
     _state = 'idle';
@@ -186,6 +234,8 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     timers.clearTimeout(_warpTimer);
     _state = 'idle';
     transport.playbackRate = getBaseRate();
+    // Coordinated snaps / track changes land here — never strand a phone silent
+    _exitSilentWarp();
   }
 
   function seekPreservingBT(newTime) {
@@ -255,6 +305,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     computeLagMs,
     requestCorrection,
     cancelDriftCorrection,
+    isSilentWarp: () => _silentWarp,
     seekPreservingBT,
     receivePeer,
     peerConsensus,
