@@ -6157,6 +6157,7 @@ const engine = createTernaryEngine({
     scatterOffsetMs: _scatterOffsetMs,
   }),
   getBaseRate: () => _getBpmWarpRate(),
+  onSeekStuck: () => _hardReloadTrack(),
 });
 
 // Expose peer feed so ternary/layer.js can share lagMs with the engine

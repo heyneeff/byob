@@ -49,9 +49,10 @@ function lagToTrit(absMs) {
 }
 
 // ── Engine ────────────────────────────────────────────────────────────────────
-export function createTernaryEngine({ transport, timers, clock, getContext, getBaseRate }) {
+export function createTernaryEngine({ transport, timers, clock, getContext, getBaseRate, onSeekStuck }) {
   let _trit                = Z;
   let _prevLag             = 0;
+  let _seekFailCount       = 0;      // consecutive snap-magnitude seeks that didn't land
   let _warpTimer           = null;
   let _driftGen            = 0;
   let _state               = 'idle'; // 'idle' | 'warping' | 'seeking'
@@ -144,7 +145,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     const NUDGE_GAIN    = 0.00010;      // gentle first-touch gain right after P — tuning step 4, oracle 2.1.6→27 + 14.1.3→64
     const PROP_GAIN     = 0.00040;      // rate change per ms of drift — tuning step 3 (was 0.00025, oracle 8.1.5→24)
     const COMPOUND_GAIN = 0.00060;      // a second stall landing mid-correction — tuning step 6, oracle 14.1.2→30
-    const MAX_WARP  = 0.015;            // 1.5% — tuning step 7, oracle 49.3.6→25 (was 0.040)
+    const MAX_WARP  = 0.030;            // 3% — audible DJ-style warp accepted for faster convergence, oracle 53 unchanging (gradual: 1.5→3%, revisit 6% after live verify; 1.5% was step 7, oracle 49.3.6→25)
     const dir = lagMs > 0 ? 1 : -1;
     const isCompounding = wasWarping && abs > prevAbsLag;
 
@@ -192,8 +193,29 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     _state = 'seeking';
     const safeTime = Math.max(0, Math.min(newTime, (transport.duration || 9999) - 0.1));
     const vol = transport.volume || 1;
+    const preSeekTime = transport.currentTime;
     transport.volume = 0;
     transport.currentTime = safeTime;
+    // No-op-seek escalation — same chronic BT condition handled in
+    // listener.html's snap branch (oracle 16.3.5→31; engine extension 22
+    // unchanging): on some BT routes currentTime=x silently no-ops while
+    // playing, so identical seeks re-fire forever. Measure the landing
+    // ~200ms out; after 3 consecutive no-lands hand off to onSeekStuck
+    // (hard reload) instead of re-issuing the same seek. Deliberately NOT
+    // gated on _driftGen: the post-ramp recheck re-seeks (bumping the gen)
+    // precisely when the seek didn't land, which would starve the counter.
+    const durMs = (transport.duration || 0) * 1000;
+    const intendedJumpMs = durMs ? wrapLag((safeTime - preSeekTime) * 1000, durMs) : 0;
+    if (Math.abs(intendedJumpMs) >= TH_SEEK) {
+      timers.setTimeout(() => {
+        const measuredJumpMs = wrapLag((transport.currentTime - preSeekTime) * 1000, durMs);
+        if (Math.abs(measuredJumpMs) < Math.abs(intendedJumpMs) * 0.3) {
+          if (++_seekFailCount >= 3) { _seekFailCount = 0; onSeekStuck?.(); }
+        } else {
+          _seekFailCount = 0;
+        }
+      }, 200);
+    }
     const rampMs = 180, start = timers.now();
     function ramp(now) {
       if (_driftGen !== gen) return; // cancelled

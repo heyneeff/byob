@@ -372,9 +372,33 @@ entry was the whole disease.
 common-mode); entries converging in 0.1–1s with zero snaps; first launch-report
 PASSes.
 
+---
+
+## Step — 2026-07-06 (engine no-op-seek escalation)
+
+**Oracle:** 22 unchanging (Grace). Modest yes — favorable in small matters;
+implement as pure ornament on the proven step-5 mechanism, no new structure.
+
+**Change:** `seekPreservingBT()` in sync/ternary-engine.js now measures its
+own landing (intended vs measured jump, both wrapLag'd, 200ms post-seek) for
+snap-magnitude seeks (intended ≥ TH_SEEK). Three consecutive no-lands
+(measured < 30% of intended) → `onSeekStuck()` hook, wired to
+`_hardReloadTrack()` in listener.html; any landed seek resets the counter.
+Measurement deliberately NOT gated on `_driftGen`: the post-ramp recheck
+re-seeks (bumping the gen) exactly when the seek failed, which would starve
+the counter. Covers the engine's own TH_SEEK branch plus all coordinated-snap
+callers, which the listener-side step-5 check couldn't see.
+**Files:** sync/ternary-engine.js — createTernaryEngine()/seekPreservingBT();
+listener.html — engine construction (onSeekStuck).
+
+**Status:** implemented; verified offline with a fake-transport harness
+(no-op transport escalates once after 3, landed seeks never escalate,
+landing resets the count, sub-TH_SEEK jumps ignored). Existing 35 engine
+tests pass. Needs live recurrence of a BT no-op route to observe.
+
+---
+
 **Next session (casts pending):**
-- Extend no-op-seek escalation to the engine seekPreservingBT path (cast was
-  interrupted — re-cast first).
 - Live-verify floor hygiene + zone offset knob + restarted bridge; disciplined
   launch-cycler session at 60s cadence; tighten PASS bar 50→25ms.
 - Watch: devices whose true BT latency exceeds the 1200ms cap (oracle has
