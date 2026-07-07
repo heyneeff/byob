@@ -618,3 +618,7 @@ master-clock sim lacked). Five scenarios, all pass:
 `terGreenhorn:true` → one `ter_greenhorn_cal` within ~20s → converged
 without hand-tending; two same-model phones then a third → third should
 log the crowd prior and enter near-correct.
+
+**Deploy cast (55.1.4→15 — Abundance, "dark at midday, yet he meets his
+hidden ruler" → Modesty): GO.** Pushed `ba763b2` between broadcasts.
+Phones pick it up on next refresh. Live-verify checklist unchanged above.
