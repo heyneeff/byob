@@ -89,7 +89,11 @@ function closeLaunchWindow(reason) {
   if (!_launch) return;
   clearTimeout(_launch.timer);
   const L = _launch; _launch = null;
-  const ids = Object.keys(L.devices);
+  // launchTick's dev_-skip only works when the ter_ row arrived first; if the
+  // dev layer ticked first its row was already created. Re-dedupe at report
+  // time so one phone never grades (and fails) twice.
+  const ids = Object.keys(L.devices).filter(id =>
+    !(id.startsWith('dev_') && L.devices['ter_' + id.replace(/^dev_/, '')]));
   console.log(`\n${'─'.repeat(62)}`);
   console.log(`🚀 LAUNCH REPORT (${L.kind}, ${reason}) — ${ids.length} devices`);
   if (!ids.length) { console.log('  (no device ticks during window)\n'); return; }

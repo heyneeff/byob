@@ -2249,6 +2249,7 @@ function fastDriftCorrect() {
   window._terLayer?.tick(lagMs); // ternary layer — reads drift, broadcasts trit
   window._lastDriftMs = Math.round(lagMs);
   const _absLag = Math.abs(lagMs);
+  _boomySyncTick(_absLag);
   if (_absLag >= DRIFT_SNAP_THRESHOLD_MS && _absLag < TH_SEEK_SANITY && !window._terLayer?.isBurstMode?.()) {
     window._snapCount = (window._snapCount || 0) + 1;
     // Diagnostic — confirm the seek actually lands. On some BT routes
@@ -2286,6 +2287,49 @@ function fastDriftCorrect() {
     }, 200);
   } else if (_absLag >= 5) {
     requestCorrection(lagMs); // warp for 5–500ms drift (micro-nudge holds sub-10ms, step 8)
+  }
+}
+// ── Boomy sync-entry companion (oracle 48.1.2.4→49 — "lining the well"):
+// when this speaker is way off during entry, tell the listener what's
+// happening and give a soft waiting beep instead of leaving scattered audio
+// unexplained. UI layer only — reads lag, never touches audio.volume/.muted
+// (seek ramps and the FX pulse loop own those) or corrector state.
+let _boomySyncOffTicks = 0, _boomySyncShowing = false, _boomySyncCooldownUntil = 0;
+function _boomySyncBeep() {
+  try {
+    const ctx = getSfxCtx(), now = ctx.currentTime;
+    [523.25, 659.25].forEach((f, i) => { // C5→E5 — gentle rising "please hold"
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.value = f;
+      const t = now + i * 0.28;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.12, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(t); o.stop(t + 0.25);
+    });
+  } catch (e) {}
+}
+function _boomySyncTick(absLag) {
+  const now = Date.now();
+  if (_boomySyncShowing) {
+    if (absLag < 50) { // convergence — celebrate once, then cool down
+      _boomySyncShowing = false;
+      _boomySyncCooldownUntil = now + 45000;
+      boomSay('✨ Locked in!', 1800, false, 'regular');
+    }
+    return;
+  }
+  if (absLag >= 300) {
+    // two consecutive drift ticks (~5s) way off — a real rough entry, not a blip
+    if (++_boomySyncOffTicks >= 2 && now >= _boomySyncCooldownUntil) {
+      _boomySyncShowing = true;
+      _boomySyncOffTicks = 0;
+      boomSay('🔄 Syncing up with everyone…', 4000, false, 'regular');
+      _boomySyncBeep();
+    }
+  } else {
+    _boomySyncOffTicks = 0;
   }
 }
 audio.addEventListener('timeupdate', () => {
