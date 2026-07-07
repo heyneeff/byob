@@ -1,11 +1,11 @@
 -- Shared, anyone-can-open presets for ternary/sampler.html.
--- Run manually in the Supabase SQL editor (Dashboard → SQL Editor → New query).
+-- Run manually in the Supabase SQL editor (Dashboard > SQL Editor > New query).
 --
--- No accounts in this app, so this is intentionally public: anon can read,
--- create, and overwrite-by-name (upsert) presets. Anon delete is NOT granted —
--- one bad actor deleting everyone's shared presets is a worse failure mode
--- than living without public delete. (Local, browser-only presets still
--- support delete client-side via localStorage, unaffected by this table.)
+-- No accounts in this app, so this is intentionally public.
+-- Anon + authenticated can read, create, and overwrite-by-name (upsert).
+-- No delete policy: one bad actor deleting shared presets for everyone
+-- is worse than living without public delete. Local browser-only
+-- presets still delete fine client-side via localStorage.
 
 create table if not exists sampler_presets (
   id         uuid default gen_random_uuid() primary key,
@@ -17,11 +17,10 @@ create table if not exists sampler_presets (
 
 alter table sampler_presets enable row level security;
 
--- `to anon, authenticated` (not just anon): this app has no accounts for the
--- sampler itself, but the browser may already hold an authenticated Supabase
--- session from artist.html/listener.html on the same origin — Supabase JS
--- auto-restores any session it finds in localStorage. A policy scoped to
--- `anon` only would then reject that browser's requests with an RLS error.
+-- Grants both anon and authenticated: the browser may already hold an
+-- authenticated Supabase session from artist.html/listener.html, since
+-- Supabase JS auto-restores any session found in localStorage. A policy
+-- scoped to anon only would then reject that browser's requests.
 drop policy if exists "Public read" on sampler_presets;
 create policy "Public read" on sampler_presets
   for select to anon, authenticated using (true);
