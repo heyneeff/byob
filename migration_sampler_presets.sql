@@ -17,14 +17,22 @@ create table if not exists sampler_presets (
 
 alter table sampler_presets enable row level security;
 
+-- `to anon, authenticated` (not just anon): this app has no accounts for the
+-- sampler itself, but the browser may already hold an authenticated Supabase
+-- session from artist.html/listener.html on the same origin — Supabase JS
+-- auto-restores any session it finds in localStorage. A policy scoped to
+-- `anon` only would then reject that browser's requests with an RLS error.
+drop policy if exists "Public read" on sampler_presets;
 create policy "Public read" on sampler_presets
-  for select to anon using (true);
+  for select to anon, authenticated using (true);
 
+drop policy if exists "Public create" on sampler_presets;
 create policy "Public create" on sampler_presets
-  for insert to anon with check (true);
+  for insert to anon, authenticated with check (true);
 
+drop policy if exists "Public overwrite by name" on sampler_presets;
 create policy "Public overwrite by name" on sampler_presets
-  for update to anon using (true) with check (true);
+  for update to anon, authenticated using (true) with check (true);
 
 -- Keep updated_at current on overwrite (upsert onConflict).
 create or replace function sampler_presets_touch_updated_at()
