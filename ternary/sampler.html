@@ -506,13 +506,12 @@ const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','tru
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt']);
 // Composite timbres: layer two sample sets into one voice.
-// handpan ≈ dampened metallic strike (detuned + lowpassed for a dull thud) +
-// a quiet sub-octave "shell hum" (same sample, down an octave, darker still) —
-// no bright sustained bow layer, or it reads as xylophone/bell shimmer instead.
+// handpan ≈ vibraphone bow (slightly sustained struck tone, detuned + lowpassed
+// to dull the shimmer) + bass clarinet an octave down underneath (woody "box" resonance)
 const TIMBRE_LAYERS = {
   handpan: [
-    { name: 'vib_damp', mix: 1.00, detune:   -30, lpf: 2200 },
-    { name: 'vib_damp', mix: 0.32, detune: -1230, lpf: 1100 },
+    { name: 'petal',   mix: 1.00, detune:   -25, lpf: 2600 },
+    { name: 'bass_cl', mix: 0.40, detune: -1200 },
   ],
 };
 
