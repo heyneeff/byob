@@ -495,6 +495,11 @@
       getOctoName:        () => OCTO_NAME[_octoState],
       isGlobalDisruption,
       weightedConsensus,
+      // External authorities (anchor-clock slew) announce reference moves so
+      // floor sampling distrusts the following stretch — a 15ms clock slew is
+      // invisible to the 120ms jump detector but poisons floors all the same
+      // (learned live 2026-07-07 ~3am: cal ate clock-slew churn as latency).
+      noteExternalDisturbance: () => { _lastDisturbTs = Date.now(); _driftHistory = []; },
     };
     console.log('[ternary/layer] Phase 5 ready — octonary participation layer');
   }

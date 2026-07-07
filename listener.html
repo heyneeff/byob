@@ -4271,6 +4271,7 @@ function buildSyncChannel(zoneId) {
     if (payload?.position != null && payload?.ts) {
       _anchorPlaybackStartedAtMs = payload.ts - payload.position * 1000;
       if (!window._trackLoading) _launchGuardUntil = 0; // only clear guard once track is ready
+      _anchorClockDiscipline(payload); // train the virtual clock on the master (P-state slew only)
     }
   })
   .on('broadcast', { event: 'stream_end' }, () => {
@@ -5037,7 +5038,50 @@ let _launchGuardUntil = 0; // suppress fastDriftCorrect until anchor arrives aft
 let _outputLatencySeeded = false;
 
 
+// ── Anchor-disciplined clock, second crossing (oracle 64.2→35 — brake the
+// wheels, then Progress at sunrise; first attempt 15.1.3.6→27 reverted at
+// 59.2.5→23, see TUNING_LOG). Same min-filter core as the first attempt —
+// o = ourServerNow − anchor.ts = clockError + latency, min over 24 beats ≈
+// error at the latency floor — with the two lessons applied:
+//  1. SLEW ONLY IN P-STATE: the clock moves only while the engine is
+//     converged and audible correction idle, so the corrector never chases
+//     a moving reference mid-work.
+//  2. ANNOUNCE EVERY SLEW to the calibration layer (noteExternalDisturbance)
+//     — a 15ms slew is invisible to cal's 120ms jump detector but poisons
+//     floor samples; announced, cal simply sits out the settling stretch.
+//     Coupling is one-directional (clock reads anchor timestamps, never
+//     drift), so cal cannot poison the clock back.
+// ONE clock authority: server loop yields to bootstrap/fallback while the
+// anchor feeds. Revert point: tag pre-master-clock.
+const _anchorClock = { samples: [], lastAt: 0, active: false };
+function _anchorClockDiscipline(payload) {
+  const now = Date.now();
+  if (now - _anchorClock.lastAt > 30000) _anchorClock.samples.length = 0; // stale window
+  _anchorClock.lastAt = now;
+  const o = (now + _clockOffset) - payload.ts;
+  if (!isFinite(o) || Math.abs(o) > 2000) return; // outlier / reference mid-change
+  _anchorClock.samples.push(o);
+  if (_anchorClock.samples.length > 24) _anchorClock.samples.shift(); // ~2min window (swept: 24/15 = zero wobble)
+  if (_anchorClock.samples.length < 3) return;
+  _anchorClock.active = true;
+  // P-state gate: hold the slew unless converged (<50ms) and not silenced —
+  // sampling continues regardless (o is drift-independent), only motion waits
+  if (Math.abs(window._engineLagMs ?? Infinity) >= 50) return;
+  if (window.SyncEngine?.isSilentWarp?.()) return;
+  const est = Math.min(..._anchorClock.samples);
+  if (Math.abs(est) <= 15) return; // deadband
+  const step = Math.max(-15, Math.min(15, -est));
+  _clockOffset += step;
+  for (let i = 0; i < _anchorClock.samples.length; i++) _anchorClock.samples[i] += step;
+  window._terLayer?.noteExternalDisturbance?.(); // cal sits out the settling
+  console.log('[anchor-clock] slew', step.toFixed(1) + 'ms  est', est.toFixed(1) + 'ms  → offset', _clockOffset.toFixed(1) + 'ms');
+}
+
 async function measureClockOffset() {
+  // One clock authority: while the DJ anchor disciplines the clock, the
+  // server loop yields — bootstrap (first measurement) + fallback (anchor
+  // silent >60s) only.
+  if (_anchorClock.active && Date.now() - _anchorClock.lastAt < 60000 && _clockOffset !== 0) return;
   const count = activeZone ? 8 : 5; // more samples while in a zone = tighter sync
   const samples = [];
   for (let i = 0; i < count; i++) {
