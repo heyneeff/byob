@@ -96,11 +96,24 @@ function closeLaunchWindow(reason) {
   // launchTick's dev_-skip only works when the ter_ row arrived first; if the
   // dev layer ticked first its row was already created. Re-dedupe at report
   // time so one phone never grades (and fails) twice.
-  const ids = Object.keys(L.devices).filter(id =>
+  // Grade ONLY ter_ rows (the engine's own drift). Legacy dev_ rows measure
+  // against whatever reference their layer holds and produced every fake
+  // multi-second "scattered entry" alarm on 2026-07-07 — informational only.
+  const allIds = Object.keys(L.devices).filter(id =>
     !(id.startsWith('dev_') && L.devices['ter_' + id.replace(/^dev_/, '')]));
+  const ids = allIds.filter(id => id.startsWith('ter_')).length
+    ? allIds.filter(id => id.startsWith('ter_')) : allIds;
   console.log(`\n${'─'.repeat(62)}`);
   console.log(`🚀 LAUNCH REPORT (${L.kind}, ${reason}) — ${ids.length} devices`);
   if (!ids.length) { console.log('  (no device ticks during window)\n'); return; }
+  // A graded row tens of seconds off means the window straddled a reference
+  // re-mint (hard_sync ghost) — the room isn't scattered, the ruler moved.
+  const ghost = ids.some(id => Math.max(...L.devices[id].ticks.map(t => Math.abs(t.drift))) > 10000);
+  if (ghost) {
+    console.log('  ⚠ REFERENCE GHOST — window straddled a re-mint; not graded');
+    console.log('─'.repeat(62) + '\n');
+    return;
+  }
   let pass = true;
   for (const id of ids) {
     const d = L.devices[id];
