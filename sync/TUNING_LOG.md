@@ -522,6 +522,53 @@ it modeled no calibration loop. The `pre-master-clock` tag did its job.
 
 ---
 
+---
+
+## 2026-07-07 daylight session — stabilization + instrumentation
+
+Direction set by a five-question cast batch: acoustic bench YES-as-servant
+(54.1.2→16 "one-eyed man who is able to see"); construction freeze (31);
+entry-phase cal gate YES (44.2.5→22); anchor clock DORMANT (19.3→11 again);
+ternary engine parked hard (23.3→52, double hold).
+
+Shipped: DJ gate retreat 500ms restored (12.3→33 — quiet self-repair for
+150–500ms band was cast and HELD); entry-phase floor-sample gate + engine
+`isEntryPhase()`; anchor clock behind `window._anchorClockEnabled` (default
+off); ter hud rows carry ts/duration/deviceLatencyMs (master gauge on
+trusted rows); monitor grades ter-only + final-tick ghost detection.
+
+Acoustic bench built (sox + numpy venv, scratchpad roombench.*): real music
+defeated both envelope and waveform correlation (loop-based tracks
+self-match every ~5.5s). Non-repeating bench signal generated →
+~/Desktop/byob-bench-signal.wav (60s chirp cloud); upload as a track and
+play once to measure every speaker's true acoustic offset (master's own
+peak = zero reference). NOT the banned mic calibration — laptop-side bench
+only.
+
+45-min scorecard: sap54f self-healed (22ms med, 0 snaps — the machinery
+works); dlqexq healing (239→80ms); four phones DEADLOCKED at 160–240ms:
+**snap↔cal deadlock** — ≥6 snaps/min means never 10 calm seconds, so the
+calibration that would stop the snapping can never run. Broken live with
+floor-sized latency_cmd nudges (the correction cal would have made).
+
+Unresolved measurement puzzle: latency_cmd nudges of +700/+1100ms moved the
+monitor's master column only ~80ms — the audible-position model
+(currentTime − deviceLatencyMs) is not validated; bench first, then trust.
+
+**NEXT SESSION, FIRST MOVE (cast already obtained, 14.2→30 — "a big wagon
+for loading"): GREENHORN FAST-CAL for live crowds.** Reframed goal: 500
+random BT devices entering, sound-sync near-immediate. Element sync is
+seconds and scales; sound sync is minutes and hand-tended. Design blessed:
+(1) device with no stored latency makes ONE bold 100% correction from ~8
+early drift samples (2s post-disturbance, post-entry) within ~10–20s, then
+conservative mode — also structurally cures the snap↔cal deadlock;
+(2) trust ctx.outputLatency at t=0 harder; (3) crowd prior — devices report
+(model, learned latency) so new arrivals of known hardware start correct;
+the bigger the crowd, the faster it syncs. Implementation was about to
+begin in ternary/layer.js tick() when the session closed — no code written.
+
+---
+
 **Next session (casts pending):**
 - Live-verify floor hygiene + zone offset knob + restarted bridge; disciplined
   launch-cycler session at 60s cadence; tighten PASS bar 50→25ms.
