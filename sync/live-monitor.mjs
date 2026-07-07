@@ -61,7 +61,8 @@ function getDevice(id) {
 // print a per-launch report: time-to-target per device, spread, snap counts,
 // and a PASS/FAIL against LAUNCH_TARGET_MS within LAUNCH_TARGET_S.
 let _launch = null; // { kind, t0, devices: { id → { ticks:[{dtMs,drift}], snap0, convergedAtMs } }, timer }
-let _masterTick = null; // latest { position, ts } from the bridge's master clock
+let _masterTick = null; // latest { position, ts } master reference (DJ anchor preferred)
+let _masterFromAnchor = false; // once the DJ anchor is heard, bridge ticks are ignored
 
 function openLaunchWindow(kind, deviceId) {
   const now = Date.now();
@@ -265,6 +266,26 @@ console.log(`\nBYOB Live Monitor — logging to ${csvPath}`);
 console.log('Open listener.html on each machine with HUD panel open.');
 console.log('Ctrl+C to stop.\n');
 
+// The DJ anchor heartbeat is the master audio's ground truth (broadcast on
+// the zone's sync channel every 5s). Subscribe to the active zone and prefer
+// it over the bridge's master_tick, whose reference goes stale when launches
+// don't pass through the bridge.
+(async () => {
+  try {
+    const { data } = await db.from('zones').select('id,name').eq('active', true).limit(1).single();
+    if (!data) return;
+    db.channel(`sync_${data.id}`)
+      .on('broadcast', { event: 'anchor' }, ({ payload: p }) => {
+        if (p && isFinite(p.position) && isFinite(p.ts)) {
+          _masterTick = { position: p.position, ts: p.ts };
+          _masterFromAnchor = true;
+        }
+      })
+      .subscribe();
+    console.log(`Master source: DJ anchor on sync_${data.id} ("${data.name}")`);
+  } catch (_) {}
+})();
+
 db.channel('byob_debug')
   .on('broadcast', { event: 'hud_data' }, ({ payload: p }) => {
     const id = p.deviceId;
@@ -325,7 +346,11 @@ db.channel('byob_debug')
     }
   })
   .on('broadcast', { event: 'master_tick' }, ({ payload: p }) => {
-    if (p && isFinite(p.position) && isFinite(p.ts)) _masterTick = { position: p.position, ts: p.ts };
+    // Bridge fallback only — its reference goes stale when launches happen
+    // through artist.html rather than the bridge (observed: a 152s "master
+    // offset"). The DJ anchor (below) is the live master audio and wins.
+    if (p && isFinite(p.position) && isFinite(p.ts) && !_masterFromAnchor)
+      _masterTick = { position: p.position, ts: p.ts };
   })
   .on('broadcast', { event: 'sync_event' }, ({ payload: p }) => {
     if (p?.kind === 'track_change' || p?.kind === 'hard_sync') {
