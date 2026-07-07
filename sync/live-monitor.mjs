@@ -19,8 +19,10 @@ const TICK_WINDOW         = 40;       // rolling window of ticks per device
 
 // Launch verification (Phase 4.1) — acceptance test for synced entry
 const LAUNCH_WINDOW_MS    = 20_000;   // observe this long after a track_change
-const LAUNCH_TARGET_MS    = 50;       // every device must reach |drift| < this…
+const LAUNCH_TARGET_MS    = 50;       // convergence bar: every device must reach |drift| < this…
 const LAUNCH_TARGET_S     = 3_000;    // …within this many ms of the launch event
+const LAUNCH_SPREAD_PASS_MS = 25;     // room mutual spread — listenability bar
+const MASTER_PASS_MS      = 50;       // median offset vs bridge master_tick — alignment bar
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const logDir = join(__dir, 'monitor-logs');
@@ -59,6 +61,7 @@ function getDevice(id) {
 // print a per-launch report: time-to-target per device, spread, snap counts,
 // and a PASS/FAIL against LAUNCH_TARGET_MS within LAUNCH_TARGET_S.
 let _launch = null; // { kind, t0, devices: { id → { ticks:[{dtMs,drift}], snap0, convergedAtMs } }, timer }
+let _masterTick = null; // latest { position, ts } from the bridge's master clock
 
 function openLaunchWindow(kind, deviceId) {
   const now = Date.now();
@@ -108,15 +111,24 @@ function closeLaunchWindow(reason) {
     const conv = d.convergedAtMs;
     const ok = conv !== null && conv <= LAUNCH_TARGET_S;
     if (!ok) pass = false;
-    console.log(`  ${ok ? '✓' : '✗'} ${id}  converged=${conv !== null ? (conv/1000).toFixed(1)+'s' : 'never'}  max=${maxD}ms  final=${lastD}ms${snaps !== null ? `  snaps=${snaps}` : ''}  (${d.ticks.length} ticks)`);
+    const mOff = devices[id]?.masterOffMs;
+    console.log(`  ${ok ? '✓' : '✗'} ${id}  converged=${conv !== null ? (conv/1000).toFixed(1)+'s' : 'never'}  max=${maxD}ms  final=${lastD}ms${snaps !== null ? `  snaps=${snaps}` : ''}${mOff != null ? `  master=${mOff}ms` : ''}  (${d.ticks.length} ticks)`);
   }
-  // Spread at end of window: max−min of final drifts (audible misalignment proxy)
+  // Two separate goods (plan "Listenable Entry"): SPREAD is what ears hear
+  // (max−min of final drifts — listenability); MASTER is the median offset
+  // vs the bridge's master_tick (alignment — feeds the zone_offset_ms knob).
   const finals = ids.map(id => L.devices[id].ticks.at(-1).drift);
   const spread = Math.round(Math.max(...finals) - Math.min(...finals));
-  console.log(`  spread(final)=${spread}ms   target: |drift|<${LAUNCH_TARGET_MS}ms within ${LAUNCH_TARGET_S/1000}s`);
-  console.log(`  ${pass ? '✅ PASS — entered synced' : '❌ FAIL — scattered entry'}`);
+  const spreadPass = spread < LAUNCH_SPREAD_PASS_MS;
+  const mOffs = ids.map(id => devices[id]?.masterOffMs).filter(v => v != null).sort((a, b) => a - b);
+  const masterMedian = mOffs.length ? mOffs[Math.floor(mOffs.length / 2)] : null;
+  console.log(`  SPREAD ${spreadPass ? '✅' : '❌'} ${spread}ms (listenability, target <${LAUNCH_SPREAD_PASS_MS}ms)`);
+  if (masterMedian !== null)
+    console.log(`  MASTER ${Math.abs(masterMedian) < MASTER_PASS_MS ? '✅' : '❌'} median ${masterMedian}ms vs master clock (target <${MASTER_PASS_MS}ms — trim zone_offset_ms by ${-masterMedian}ms)`);
+  console.log(`  convergence: target |drift|<${LAUNCH_TARGET_MS}ms within ${LAUNCH_TARGET_S/1000}s`);
+  console.log(`  ${pass && spreadPass ? '✅ PASS — entered synced' : '❌ FAIL — scattered entry'}`);
   console.log('─'.repeat(62) + '\n');
-  csvStream.write(`# LAUNCH ${new Date(L.t0).toISOString()} kind=${L.kind} devices=${ids.length} spread=${spread} pass=${pass}\n`);
+  csvStream.write(`# LAUNCH ${new Date(L.t0).toISOString()} kind=${L.kind} devices=${ids.length} spread=${spread} masterMedian=${masterMedian ?? ''} pass=${pass && spreadPass}\n`);
 }
 
 // ── Stall detection ───────────────────────────────────────────────────────────
@@ -269,6 +281,20 @@ db.channel('byob_debug')
     detectStall(dev, drift, label);
     launchTick(id, drift, p.terSnapCount != null ? parseInt(p.terSnapCount) : null);
 
+    // Offset vs the bridge's master clock: device audible position (element
+    // position minus BT latency) compared to the master_tick position
+    // extrapolated to this HUD packet's server timestamp. Both timestamps are
+    // server-clock based (hud ts = syncedNow(), tick ts = bridge serverNow()),
+    // so no monitor-local clock enters the math. Wrapped to the loop length.
+    if (_masterTick && p.ts && p.currentTime != null && p.duration) {
+      const durMs = parseFloat(p.duration) * 1000;
+      const audiblePos = parseFloat(p.currentTime) - (parseFloat(p.deviceLatencyMs) || 0) / 1000;
+      const masterPos = _masterTick.position + (p.ts - _masterTick.ts) / 1000;
+      let off = (audiblePos - masterPos) * 1000;
+      if (durMs > 0) { off = ((off % durMs) + durMs) % durMs; if (off > durMs / 2) off -= durMs; }
+      dev.masterOffMs = Math.round(off);
+    }
+
     dev.ticks.push({ ts: Date.now(), drift, label, rate });
     if (dev.ticks.length > TICK_WINDOW) dev.ticks.shift();
     dev.lastLabel = label;
@@ -297,6 +323,9 @@ db.channel('byob_debug')
       process.stdout.write('\n');
       report();
     }
+  })
+  .on('broadcast', { event: 'master_tick' }, ({ payload: p }) => {
+    if (p && isFinite(p.position) && isFinite(p.ts)) _masterTick = { position: p.position, ts: p.ts };
   })
   .on('broadcast', { event: 'sync_event' }, ({ payload: p }) => {
     if (p?.kind === 'track_change' || p?.kind === 'hard_sync') {

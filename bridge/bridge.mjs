@@ -131,6 +131,26 @@ function reanchor(bpm, beat) {
   broadcastToUI({ type: 'link_state', bpm, beat, playback_started_at: _playbackStartedAt });
 }
 
+// ── Master tick — the master clock as a measurable broadcast ──────────────
+// Every 5s, publish the bridge's own playback position on byob_debug so
+// sync/live-monitor.mjs can print each device's offset vs the master clock
+// (plan "Listenable Entry + Master-Clock Alignment", Piece 3). Same shape as
+// the DJ anchor: { position, ts }, both server-clock based.
+const _debugChannel = db.channel('byob_debug');
+_debugChannel.subscribe();
+setInterval(() => {
+  if (!_playbackStartedAt) return;
+  const startedMs = new Date(_playbackStartedAt).getTime();
+  if (isNaN(startedMs)) return;
+  const now = serverNow();
+  try {
+    _debugChannel.send({
+      type: 'broadcast', event: 'master_tick',
+      payload: { position: (now - startedMs) / 1000, ts: now, bpm: _linkBpm },
+    });
+  } catch (_) {}
+}, 5000);
+
 // ── Supabase channels ─────────────────────────────────────────
 function buildSyncChannel(zoneId) {
   if (_syncChannel) { try { _syncChannel.unsubscribe(); } catch (_) {} }
