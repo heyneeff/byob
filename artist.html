@@ -2801,11 +2801,37 @@ async function triggerResync() {
 
 let _killArmed = false, _killArmedTimer = null;
 let _anchorInterval = null;
+let _anchorTickN = 0;
+
+// Schism repair (oracle 32.2→62 — Duration; keep it small): the anchor
+// heartbeat, triggerResync, and the DJ's own drift gate all run off the
+// CACHED reference (currentStartedAt), so a zone row that diverged from it
+// is invisible here — yet every listener entry-seek and 60s poll reads the
+// row. Observed live 2026-07-06: row and anchor half a track apart, every
+// launch ping-ponging phones between the two references while auto-cal ate
+// the difference as fake latency. Every 5th heartbeat, fetch the row and
+// rewrite it to the lived reference if they disagree. Skips scheduled
+// launches still inside their lead window (future play_at + 15s grace).
+async function _repairRowReference(startedAt) {
+  try {
+    const { data } = await db.from('zones')
+      .select('playback_started_at, play_at').eq('id', activeZone.id).single();
+    if (!data) return;
+    if (data.play_at && data.play_at + 15000 > serverNow()) return; // scheduled entry in flight
+    const rowMs = data.playback_started_at ? new Date(data.playback_started_at).getTime() : null;
+    const cacheMs = new Date(startedAt).getTime();
+    if (rowMs !== null && Math.abs(rowMs - cacheMs) <= 500) return;
+    await db.from('zones').update({ playback_started_at: startedAt }).eq('id', activeZone.id);
+    console.log('[anchor] row reference repaired:', rowMs, '→', cacheMs);
+  } catch (e) {}
+}
+
 function _startAnchorBroadcast() {
   if (_anchorInterval) clearInterval(_anchorInterval);
   _anchorInterval = setInterval(() => {
     if (!window._djSyncChannel || !activeZone || audio.paused || !audio.duration) return;
     const startedAt = currentStartedAt();
+    if (startedAt && ++_anchorTickN % 5 === 0) _repairRowReference(startedAt);
     if (startedAt) {
       const elapsed = (serverNow() - new Date(startedAt).getTime()) / 1000;
       const expectedPos = ((elapsed % audio.duration) + audio.duration) % audio.duration;
