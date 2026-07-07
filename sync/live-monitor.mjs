@@ -106,9 +106,12 @@ function closeLaunchWindow(reason) {
   console.log(`\n${'─'.repeat(62)}`);
   console.log(`🚀 LAUNCH REPORT (${L.kind}, ${reason}) — ${ids.length} devices`);
   if (!ids.length) { console.log('  (no device ticks during window)\n'); return; }
-  // A graded row tens of seconds off means the window straddled a reference
-  // re-mint (hard_sync ghost) — the room isn't scattered, the ruler moved.
-  const ghost = ids.some(id => Math.max(...L.devices[id].ticks.map(t => Math.abs(t.drift))) > 10000);
+  // A graded row that ENDS tens of seconds off means the window straddled a
+  // reference re-mint (hard_sync ghost) — the room isn't scattered, the ruler
+  // moved. Judged on the final tick only: every normal launch begins with a
+  // huge transient (old position vs new reference) that a max-based check
+  // would flag, ghosting all grading.
+  const ghost = ids.some(id => Math.abs(L.devices[id].ticks.at(-1).drift) > 10000);
   if (ghost) {
     console.log('  ⚠ REFERENCE GHOST — window straddled a re-mint; not graded');
     console.log('─'.repeat(62) + '\n');
