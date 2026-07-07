@@ -191,6 +191,7 @@ select.arp-sel:focus{border-color:#303060;}
     <button class="chip" data-s="5" style="--c:#20d0e0" onclick="setSample(5)">DAMP<span>vibe dampen</span></button>
     <button class="chip" data-s="6" style="--c:#e0d020" onclick="setSample(6)">SHRT<span>vibe short</span></button>
     <button class="chip" data-s="7" style="--c:#e04040" onclick="setSample(7)">TRPT<span>trumpet vib</span></button>
+    <button class="chip" data-s="8" style="--c:#c08048" onclick="setSample(8)">HPAN<span>handpan (layered)</span></button>
   </div>
 </div>
 
@@ -501,9 +502,17 @@ const SAMPLE_MAP = {
     86:'samples/Trumpet.vib.ff.D6.stereo.wav',
   },
 };
-const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet'];
+const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','handpan'];
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt']);
+// Composite timbres: layer two sample sets into one voice.
+// handpan ≈ vibraphone dampen (metallic strike, detuned down for thump) + vibraphone bow (soft bloom underneath)
+const TIMBRE_LAYERS = {
+  handpan: [
+    { name: 'vib_damp', mix: 1.00, detune: -35 },
+    { name: 'petal',    mix: 0.55, detune:   0 },
+  ],
+};
 
 // ── Arp data ──────────────────────────────────────────────────────────────────
 const CHORD_MAP = {
@@ -673,7 +682,7 @@ function initAudio() {
   _fx.limit.connect(_fx.master);   _fx.master.connect(_ctx.destination);
 
   // Init voice pool
-  for (let i = 0; i < NUM_VOICES; i++) _voices.push({ src: null, gain: null, lfo: null, lfoG: null, busy: false, midi: -1 });
+  for (let i = 0; i < NUM_VOICES; i++) _voices.push({ src: null, gain: null, lfo: null, lfoG: null, layers: null, busy: false, midi: -1 });
 }
 
 // Finds the first frame where the RMS of a 40ms window exceeds threshold
@@ -688,10 +697,9 @@ function detectOnset(buf, threshold = 0.012) {
   return 0;
 }
 
-// Find nearest root MIDI note for the current timbre
-function nearestRoot(midi) {
-  const name = TIMBRE[_sample];
-  const map  = SAMPLE_MAP[name] ?? {};
+// Find nearest root MIDI note for a given sample-map name (defaults to current timbre)
+function nearestRoot(midi, name = TIMBRE[_sample]) {
+  const map = SAMPLE_MAP[name] ?? {};
   let best = null, bestD = Infinity;
   for (const k of Object.keys(map)) {
     const d = Math.abs(parseInt(k) - midi);
@@ -702,18 +710,21 @@ function nearestRoot(midi) {
 
 async function loadSamples() {
   if (!_ctx) return;
-  const name = TIMBRE[_sample];
-  const map  = SAMPLE_MAP[name] ?? {};
-  await Promise.all(Object.entries(map).map(async ([rootMidi, url]) => {
-    const key = `${name}_${rootMidi}`;
-    if (_bufs[key]) return;
-    try {
-      const ab  = await (await fetch(url)).arrayBuffer();
-      const buf = await new Promise((res, rej) => _ctx.decodeAudioData(ab, res, rej));
-      _bufs[key]   = buf;
-      _onsets[key] = detectOnset(buf);
-      console.log('[sampler]', key, 'onset:', _onsets[key].toFixed(2) + 's  dur:', buf.duration.toFixed(1) + 's');
-    } catch(e) { console.warn('[sampler] failed', url, e.message); }
+  const name   = TIMBRE[_sample];
+  const layers = TIMBRE_LAYERS[name]?.map(l => l.name) ?? [name];
+  await Promise.all(layers.map(ln => {
+    const map = SAMPLE_MAP[ln] ?? {};
+    return Promise.all(Object.entries(map).map(async ([rootMidi, url]) => {
+      const key = `${ln}_${rootMidi}`;
+      if (_bufs[key]) return;
+      try {
+        const ab  = await (await fetch(url)).arrayBuffer();
+        const buf = await new Promise((res, rej) => _ctx.decodeAudioData(ab, res, rej));
+        _bufs[key]   = buf;
+        _onsets[key] = detectOnset(buf);
+        console.log('[sampler]', key, 'onset:', _onsets[key].toFixed(2) + 's  dur:', buf.duration.toFixed(1) + 's');
+      } catch(e) { console.warn('[sampler] failed', url, e.message); }
+    }));
   }));
 }
 
@@ -722,22 +733,22 @@ let _voiceRR = 0;
 
 function noteOn(midi) {
   if (!_ctx) return null;
-  const rootMidi = nearestRoot(midi);
-  const key      = `${TIMBRE[_sample]}_${rootMidi}`;
-  const buf      = _bufs[key];
-  if (!buf) return null;
+  const name      = TIMBRE[_sample];
+  const layerCfgs = TIMBRE_LAYERS[name] ?? [{ name, mix: 1, detune: 0 }];
+
+  const resolved = layerCfgs.map(cfg => {
+    const rootMidi = nearestRoot(midi, cfg.name);
+    const key      = `${cfg.name}_${rootMidi}`;
+    return { cfg, rootMidi, key, buf: _bufs[key] };
+  }).filter(r => r.buf != null);
+  if (!resolved.length) return null;
 
   // Find idle voice or steal oldest
   let v = _voices.find(x => !x.busy);
   if (!v) { v = _voices[_voiceRR % NUM_VOICES]; killVoice(v); }
   _voiceRR++;
 
-  const onset = _onsets[key] ?? 0;
-  const loopS = Math.min(onset + 0.25, buf.duration * 0.3);
-  const loopE = Math.min(onset + 2.2,  buf.duration - 0.05);
-  const rate  = Math.pow(2, (midi - rootMidi) / 12);
-  const now   = _ctx.currentTime;
-
+  const now  = _ctx.currentTime;
   const peak = 0.82;
   const atk  = 0.003 + knobs.atk * 1.997;
   const dec  = 0.01  + knobs.dec * 1.99;
@@ -749,28 +760,43 @@ function noteOn(midi) {
   v.gain.gain.setTargetAtTime(Math.max(sus, 0.001), now + atk, dec * 0.35);
   v.gain.connect(_fx.filt);
 
-  v.src = _ctx.createBufferSource();
-  v.src.buffer = buf;
-  v.src.loop   = !TIMBRE_NOLOOP.has(TIMBRE[_sample]);
-  if (v.src.loop) {
-    v.src.loopStart = loopS;
-    v.src.loopEnd   = Math.max(loopS + 0.1, loopE);
-  }
-  v.src.playbackRate.value = rate;
+  v.layers = resolved.map(({ cfg, rootMidi, key, buf }) => {
+    const onset = _onsets[key] ?? 0;
+    const loopS = Math.min(onset + 0.25, buf.duration * 0.3);
+    const loopE = Math.min(onset + 2.2,  buf.duration - 0.05);
+    const rate  = Math.pow(2, ((midi - rootMidi) * 100 + (cfg.detune || 0)) / 1200);
 
-  // Warp LFO
-  if (knobs.warp > 0.008) {
-    const depth = knobs.warp * 0.08;
-    const rate2  = 0.2 + knobs.warp * 0.6;
-    v.lfoG = _ctx.createGain(); v.lfoG.gain.value = depth;
-    v.lfo  = _ctx.createOscillator(); v.lfo.type = 'sine';
-    v.lfo.frequency.value = rate2;
-    v.lfo.connect(v.lfoG); v.lfoG.connect(v.src.playbackRate);
-    v.lfo.start(now);
-  }
+    const src = _ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop   = !TIMBRE_NOLOOP.has(cfg.name);
+    if (src.loop) {
+      src.loopStart = loopS;
+      src.loopEnd   = Math.max(loopS + 0.1, loopE);
+    }
+    src.playbackRate.value = rate;
 
-  v.src.connect(v.gain);
-  v.src.start(now, onset);  // start at detected note onset
+    const layerGain = _ctx.createGain();
+    layerGain.gain.value = cfg.mix ?? 1;
+    src.connect(layerGain); layerGain.connect(v.gain);
+
+    // Warp LFO (per layer)
+    let lfo = null, lfoG = null;
+    if (knobs.warp > 0.008) {
+      const depth = knobs.warp * 0.08;
+      const rate2 = 0.2 + knobs.warp * 0.6;
+      lfoG = _ctx.createGain(); lfoG.gain.value = depth;
+      lfo  = _ctx.createOscillator(); lfo.type = 'sine';
+      lfo.frequency.value = rate2;
+      lfo.connect(lfoG); lfoG.connect(src.playbackRate);
+      lfo.start(now);
+    }
+
+    src.start(now, onset);  // start at detected note onset
+    return { src, layerGain, lfo, lfoG };
+  });
+
+  // Back-compat single refs (first layer) for any code paths that read v.src/v.lfo directly
+  v.src = v.layers[0].src; v.lfo = v.layers[0].lfo; v.lfoG = v.layers[0].lfoG;
   v.busy = true; v.midi = midi;
   return v;
 }
@@ -779,9 +805,8 @@ function noteOff(v) {
   if (!v || !v.busy || !_ctx) return;
   // Capture node refs now — the voice slot may be stolen+reassigned before the timeout fires.
   // Using captured refs for the ramp/stop, and only clearing the slot if it still owns them.
-  const src  = v.src;
-  const gain = v.gain;
-  const lfo  = v.lfo;
+  const layers = v.layers;
+  const gain   = v.gain;
   const rel  = 0.01 + knobs.rel * 4.99;
   const now  = _ctx.currentTime;
   const cur  = Math.max(gain.gain.value, 0.001);
@@ -789,19 +814,24 @@ function noteOff(v) {
   gain.gain.setValueAtTime(cur, now);
   gain.gain.exponentialRampToValueAtTime(0.0001, now + rel);
   const stopAt = now + rel + 0.05;
-  try { src?.stop(stopAt); } catch(e) {}
-  try { lfo?.stop(stopAt); } catch(e) {}
+  for (const L of layers) {
+    try { L.src?.stop(stopAt); } catch(e) {}
+    try { L.lfo?.stop(stopAt); } catch(e) {}
+  }
   setTimeout(() => {
-    if (v.src === src) { v.busy=false; v.src=null; v.gain=null; v.lfo=null; v.lfoG=null; }
+    if (v.layers === layers) { v.busy=false; v.src=null; v.gain=null; v.lfo=null; v.lfoG=null; v.layers=null; }
   }, (rel + 0.1) * 1000);
 }
 
 function killVoice(v) {
   if (!v || !_ctx) return;
   const now = _ctx.currentTime;
-  try { v.gain?.gain.setTargetAtTime(0, now, 0.01); v.src?.stop(now + 0.05); } catch(e) {}
-  try { v.lfo?.stop(); } catch(e) {}
-  v.busy = false; v.src = null; v.gain = null; v.lfo = null; v.lfoG = null;
+  try { v.gain?.gain.setTargetAtTime(0, now, 0.01); } catch(e) {}
+  for (const L of (v.layers || [])) {
+    try { L.src?.stop(now + 0.05); } catch(e) {}
+    try { L.lfo?.stop(); } catch(e) {}
+  }
+  v.busy = false; v.src = null; v.gain = null; v.lfo = null; v.lfoG = null; v.layers = null;
 }
 
 // ── Sample switching ──────────────────────────────────────────────────────────
@@ -1176,6 +1206,8 @@ hexCv.addEventListener('touchmove', e => {
         _active.set(t.identifier, { ...hex, midi, v });
         _pressedMidi.add(midi);
       }
+      // Draw mode: dragging across hexes in seq mode appends each new note
+      if (_seqMode && !_arpRunning) seqAddNote(midi);
     }
   }
   drawHex();
@@ -1237,6 +1269,8 @@ hexCv.addEventListener('mousemove', e => {
     noteOff(_mouseV); _pressedMidi.delete(_mouseMidi);
     _mouseV = noteOn(midi); _mouseMidi = midi;
     if (_mouseV) _pressedMidi.add(midi);
+    // Draw mode: dragging across hexes in seq mode appends each new note
+    if (_seqMode && !_arpRunning) seqAddNote(midi);
     drawHex();
   }
 });
@@ -1447,7 +1481,7 @@ function renderSeqChips() {
   if (_seqNotes.length === 0) {
     const hint = document.createElement('span');
     hint.style.cssText = 'font-size:9px;color:#1a1a34;letter-spacing:.08em;align-self:center;';
-    hint.textContent = 'tap notes to build sequence';
+    hint.textContent = 'tap or drag across hexes to build sequence';
     el.appendChild(hint);
     return;
   }
