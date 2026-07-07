@@ -373,11 +373,16 @@ db.channel('byob_debug')
       openLaunchWindow(p.kind, p.deviceId);
       return;
     }
-    if (p?.kind !== 'ter_calibration') return;
+    const CAL_KINDS = {
+      ter_calibration:   '🔧 AUTO-CAL',
+      ter_greenhorn_cal: '🌱 GREENHORN FAST-CAL',
+      ter_crowd_prior:   '👥 CROWD PRIOR',
+    };
+    if (!CAL_KINDS[p?.kind]) return;
     const id = p.deviceId;
     if (!id) return;
     const dev = getDevice(id);
-    const entry = `🔧 AUTO-CAL  floor=${p.floorMs}ms → correction=${p.correctionMs}ms  (#${p.calCount})`;
+    const entry = `${CAL_KINDS[p.kind]}  floor=${p.floorMs}ms → correction=${p.correctionMs}ms  (#${p.calCount})`;
     dev.calEvents.push(entry);
     process.stdout.write(`\n  ${id}: ${entry}\n`);
   })

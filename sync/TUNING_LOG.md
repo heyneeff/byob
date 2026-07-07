@@ -622,3 +622,22 @@ log the crowd prior and enter near-correct.
 **Deploy cast (55.1.4→15 — Abundance, "dark at midday, yet he meets his
 hidden ruler" → Modesty): GO.** Pushed `ba763b2` between broadcasts.
 Phones pick it up on next refresh. Live-verify checklist unchanged above.
+
+**LIVE VERIFY (same evening, 3 phones ~20:45–21:10):**
+- 🌱 **Greenhorn fired live**: after RESET CAL, `ter_sld052` re-armed and
+  made its one bold shot — `floor=104ms → correction=104ms (#1)`, zero
+  snaps, no hand-tending. RESET→greenhorn re-arm path confirmed working.
+- **Watch item found — conservative lane races the bold lane:** `h4k5e3`
+  never greenhorned; two small auto-cals (18/20ms) fired first and disarmed
+  it (by design), leaving an ~85–117ms sawtooth the bold lane would have
+  taken in one bite. Cause hypothesis: the sawtooth spread keeps failing
+  the ±60ms agreement guard, sliding the window until 30s auto-cal wins.
+  Candidates (cast first): widen agreement band; or don't let a sub-30ms
+  auto-cal disarm a still-armed greenhorn.
+- Crowd prior not exercised — all three phones different models.
+- Master gauge vindicated: MASTER median −7ms ✅ on trusted ter rows
+  (the ~87.7s mystery was the dev_-row-only computation, now bypassed).
+- End state: 3 phones flat at 67–117ms drift, snaps=0, spread 40–48ms —
+  quiet but not tight; residual debt for auto-cal/zone_offset to close.
+- Monitor patch: `ter_greenhorn_cal`/`ter_crowd_prior` sync_events now
+  print inline (🌱/👥) — they were silently dropped before.
