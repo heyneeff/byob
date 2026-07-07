@@ -4271,7 +4271,6 @@ function buildSyncChannel(zoneId) {
     if (payload?.position != null && payload?.ts) {
       _anchorPlaybackStartedAtMs = payload.ts - payload.position * 1000;
       if (!window._trackLoading) _launchGuardUntil = 0; // only clear guard once track is ready
-      _anchorClockDiscipline(payload); // train the virtual clock on the master
     }
   })
   .on('broadcast', { event: 'stream_end' }, () => {
@@ -5038,44 +5037,7 @@ let _launchGuardUntil = 0; // suppress fastDriftCorrect until anchor arrives aft
 let _outputLatencySeeded = false;
 
 
-// ── Anchor-disciplined clock (oracle 15.1.3.6→27 — "chastise one's own
-// city"; dual cast 30.1.4.6→15 + 2.2.6→4, design law: ONE clock authority).
-// Each phone estimates its clock disagreement with the DJ from the anchor
-// heartbeats: o = ourServerNow − anchor.ts = error + networkLatency (L ≥ 0),
-// so min(o) over a rolling window ≈ error + latency floor. Slewing that out
-// kills per-phone RTT asymmetry; the common latency floor is shared by every
-// phone and lands in zone_offset_ms territory. Slew-limited (≤15ms per 5s
-// heartbeat), deadbanded, outlier-guarded (27: mind what you feed on).
-// While the anchor feeds, the server loop yields (bootstrap/fallback only) —
-// two authorities pulling _clockOffset is the "dragons fight in the meadow".
-// Revert point: tag pre-master-clock.
-const _anchorClock = { samples: [], lastAt: 0, active: false };
-function _anchorClockDiscipline(payload) {
-  const now = Date.now();
-  if (now - _anchorClock.lastAt > 30000) _anchorClock.samples.length = 0; // stale window
-  _anchorClock.lastAt = now;
-  const o = (now + _clockOffset) - payload.ts;
-  if (!isFinite(o) || Math.abs(o) > 2000) return; // outlier / reference mid-change
-  _anchorClock.samples.push(o);
-  // Window 24 (~2min) + deadband 15ms: swept offline — converges 190→15ms
-  // inter-phone in 5min with ZERO long-run wobble (12/10 sawtoothed ±38ms
-  // as lucky-low samples aged out of the min window)
-  if (_anchorClock.samples.length > 24) _anchorClock.samples.shift();
-  if (_anchorClock.samples.length < 3) return;
-  _anchorClock.active = true;
-  const est = Math.min(..._anchorClock.samples);
-  if (Math.abs(est) <= 15) return; // deadband
-  const step = Math.max(-15, Math.min(15, -est));
-  _clockOffset += step;
-  for (let i = 0; i < _anchorClock.samples.length; i++) _anchorClock.samples[i] += step;
-  console.log('[anchor-clock] slew', step.toFixed(1) + 'ms  est', est.toFixed(1) + 'ms  → offset', _clockOffset.toFixed(1) + 'ms');
-}
-
 async function measureClockOffset() {
-  // One clock authority: while the DJ anchor is actively disciplining the
-  // clock, the server loop yields entirely — it remains the bootstrap (first
-  // measurement, before any anchor) and the fallback (anchor silent >60s).
-  if (_anchorClock.active && Date.now() - _anchorClock.lastAt < 60000 && _clockOffset !== 0) return;
   const count = activeZone ? 8 : 5; // more samples while in a zone = tighter sync
   const samples = [];
   for (let i = 0; i < count; i++) {
