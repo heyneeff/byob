@@ -506,11 +506,13 @@ const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','tru
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt']);
 // Composite timbres: layer two sample sets into one voice.
-// handpan ≈ vibraphone dampen (metallic strike, detuned down for thump) + vibraphone bow (soft bloom underneath)
+// handpan ≈ dampened metallic strike (detuned + lowpassed for a dull thud) +
+// a quiet sub-octave "shell hum" (same sample, down an octave, darker still) —
+// no bright sustained bow layer, or it reads as xylophone/bell shimmer instead.
 const TIMBRE_LAYERS = {
   handpan: [
-    { name: 'vib_damp', mix: 1.00, detune: -35 },
-    { name: 'petal',    mix: 0.55, detune:   0 },
+    { name: 'vib_damp', mix: 1.00, detune:   -30, lpf: 2200 },
+    { name: 'vib_damp', mix: 0.32, detune: -1230, lpf: 1100 },
   ],
 };
 
@@ -777,7 +779,18 @@ function noteOn(midi) {
 
     const layerGain = _ctx.createGain();
     layerGain.gain.value = cfg.mix ?? 1;
-    src.connect(layerGain); layerGain.connect(v.gain);
+
+    let lpf = null;
+    if (cfg.lpf) {
+      lpf = _ctx.createBiquadFilter();
+      lpf.type = 'lowpass';
+      lpf.frequency.value = cfg.lpf;
+      lpf.Q.value = 0.5;
+      src.connect(lpf); lpf.connect(layerGain);
+    } else {
+      src.connect(layerGain);
+    }
+    layerGain.connect(v.gain);
 
     // Warp LFO (per layer)
     let lfo = null, lfoG = null;
