@@ -56,6 +56,9 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
   let _silentWarp          = false;  // aggressive warp with output silenced (oracle 32.4→46)
   let _silentSavedVol      = null;
   let _silentRampGen       = 0;
+  let _entryPhase          = true;   // silent warp is an ENTRY tool only (oracle 19.3→11):
+                                     // armed at launch/coordinated snaps, disarmed at first
+                                     // convergence — steady-state never mutes mid-music
   let _warpTimer           = null;
   let _driftGen            = 0;
   let _state               = 'idle'; // 'idle' | 'warping' | 'seeking'
@@ -155,7 +158,8 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     const dir = lagMs > 0 ? 1 : -1;
     const isCompounding = wasWarping && abs > prevAbsLag;
 
-    if (abs >= SILENT_WARP_TH) _enterSilentWarp();
+    if (abs < SILENT_WARP_EXIT) _entryPhase = false; // locked once — entry is over
+    if (_entryPhase && abs >= SILENT_WARP_TH) _enterSilentWarp();
     else if (_silentWarp && abs < SILENT_WARP_EXIT) _exitSilentWarp();
     const MAX_WARP = _silentWarp ? MAX_WARP_SILENT : MAX_WARP_AUDIBLE;
 
@@ -234,8 +238,11 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     timers.clearTimeout(_warpTimer);
     _state = 'idle';
     transport.playbackRate = getBaseRate();
-    // Coordinated snaps / track changes land here — never strand a phone silent
+    // Coordinated snaps / track changes land here — never strand a phone
+    // silent, and re-arm the entry phase: what follows a coordinated reset
+    // is a fresh entry, allowed one silent convergence.
     _exitSilentWarp();
+    _entryPhase = true;
   }
 
   function seekPreservingBT(newTime) {
