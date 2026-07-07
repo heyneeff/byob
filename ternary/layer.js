@@ -271,7 +271,14 @@
       _driftHistory = []; // samples before the disturbance describe the old regime
     }
     _lastTickLag = lagMs;
-    const calm = !isBurst && (Date.now() - _lastDisturbTs) > DISTURB_QUIET_MS;
+    // Entry-phase gate (oracle 44.2.5→22 — "a fish in the tank; does not
+    // further guests"): the whole entry is transient — silent warp, seeks,
+    // scheduled un-mutes. Feeding those samples to the floor detector was
+    // the rotating latency ratchet (7+ phones in turn overnight 2026-07-07,
+    // 250–460ms debt each). Contain the fish: no floor samples until the
+    // engine's first convergence of the current entry.
+    const entering = window.SyncEngine?.isEntryPhase?.() === true;
+    const calm = !isBurst && !entering && (Date.now() - _lastDisturbTs) > DISTURB_QUIET_MS;
     if (calm) {
       _driftHistory.push(lagMs);
       if (_driftHistory.length > 12) _driftHistory.shift(); // 12 readings = ~36s at 3s tick

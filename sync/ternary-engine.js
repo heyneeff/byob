@@ -313,6 +313,7 @@ export function createTernaryEngine({ transport, timers, clock, getContext, getB
     requestCorrection,
     cancelDriftCorrection,
     isSilentWarp: () => _silentWarp,
+    isEntryPhase: () => _entryPhase,
     seekPreservingBT,
     receivePeer,
     peerConsensus,

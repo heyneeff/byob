@@ -4271,7 +4271,11 @@ function buildSyncChannel(zoneId) {
     if (payload?.position != null && payload?.ts) {
       _anchorPlaybackStartedAtMs = payload.ts - payload.position * 1000;
       if (!window._trackLoading) _launchGuardUntil = 0; // only clear guard once track is ready
-      _anchorClockDiscipline(payload); // train the virtual clock on the master (P-state slew only)
+      // Dormant during stabilization (oracle 19.3→11 — the comfortable
+      // approach of leaving it running has no advantage; re-awaken
+      // deliberately with the validated gauge watching, plan Step 4):
+      // window._anchorClockEnabled = true  from the console to arm.
+      if (window._anchorClockEnabled) _anchorClockDiscipline(payload);
     }
   })
   .on('broadcast', { event: 'stream_end' }, () => {
