@@ -443,6 +443,12 @@
           playbackRate:  window._audio?.playbackRate ?? 1,
           driftState:    window._driftState ?? 'unknown',
           currentTime:   window._audio?.currentTime ?? null,
+          // Position fields for master-offset measurement (live-monitor.mjs):
+          // ts is server-clocked so the monitor can extrapolate the DJ anchor
+          // to this packet's instant without touching its own clock.
+          ts:            window.syncedNow?.() ?? null,
+          duration:      window._audio?.duration ?? null,
+          deviceLatencyMs: window._terGetDeviceLatencyMs?.() ?? null,
           zone:          window.activeZone?.name ?? 'unknown',
         },
       });
