@@ -398,6 +398,71 @@ tests pass. Needs live recurrence of a BT no-op route to observe.
 
 ---
 
+---
+
+## 2026-07-06/07 late session — live tuning marathon (broadcast running throughout)
+
+Deployed and verified live, in oracle order:
+
+1. `73baf10` — **no-op-seek escalation in the engine** (22 unchanging) +
+   **MAX_WARP 1.5→3%** (53 unchanging, gradual). The 3% was later judged
+   unlistenable mid-music and superseded by (5).
+2. `0009296` — **Boomy sync-entry companion** (48.1.2.4→49, "lining the
+   well"): ≥300ms for 2 ticks → "Syncing up with everyone…" + soft C5→E5
+   beep; "Locked in!" under 50ms; 45s cooldown. Monitor report-time
+   ter_/dev_ dedupe (dev-first race was double-grading phones).
+3. `af5c28e` — **zone-row reference repair** (32.2→62): the anchor
+   heartbeat/triggerResync/DJ gate all run off the cached reference, so a
+   diverged row (observed ±140s!) was invisible while every entry-seek and
+   60s poll read it. Every 5th heartbeat: fetch row, rewrite if >500ms
+   apart (skips scheduled launches in their lead window). Root cause of the
+   night's "entering ~1s desynced" — entries seeked the ghost row, then the
+   anchor reeled them back.
+4. `81179e3` — **loadTrack no-op guard** (14.5→1): ANY zones-row update
+   (listener-count bump on join, DJ message) re-ran loadTrack on every
+   phone — a new device joining forced the whole room to reload/re-enter
+   the current track. Same URL + same reference → no-op. Fixed "adding a
+   device desyncs everyone" (user-observed, confirmed mechanism).
+5. `1c82be5` — **two-tier warp** (32.4→46, "no game in the field"):
+   audible ceiling back to 1.5%; ≥150ms silences output (transport.muted —
+   FX pulse loop owns volume) and warps to 8%, un-mute via 180ms
+   smoothstep <30ms, hysteresis 150/30.
+6. `8d77d12` — **silent warp gated to entry phase** (19.3→11): (5) fired
+   on any ≥150ms drift, so mid-track BT stalls kept muting playback.
+   Now: armed at launch/coordinated snaps, disarmed at first convergence.
+   Steady state = micro-nudge + inaudible 1.5% + seekSilent; can never
+   mute mid-music. Engine life cycle: silent heavy entry → lock →
+   inaudible hold forever.
+7. `281e379`/`2c53819` — **master_tick + split grading**: bridge publishes
+   its position on byob_debug (5s); monitor grades SPREAD (<25ms,
+   listenability) separately from MASTER (median vs master, <50ms) and
+   convergence (<3s). Master source switched to the DJ anchor after the
+   bridge reference proved stale for artist-launched tracks. **MASTER math
+   still wrong** (stable ~87.7s, then −2.2s readings) — debug next session;
+   SPREAD/convergence unaffected.
+
+Ops during the session: bridge restarted (master_tick live), artist.html
+refreshed (row-repair active — schism ghosts stopped recurring after),
+remote RESET CAL via latency_cmd from CLI (fvotp9: 222ms pinned+snapping →
+70ms clean). Launch reports observed: first full PASS (3 devices, 1.3–1.7s
+convergence, 10ms spread); post-fix complete windows converging 0.9–2.7s,
+spreads reaching 9–28ms.
+
+**Posture cast** (user question: "sync once and keep them synced"):
+63.1→39 — After Completion: perfect sync is the moment decay begins;
+keeping synced is continuous small vigilance (micro-nudge IS the product).
+Line 1: brake the wheels at each crossing (restrained entry; a wet tail —
+30ms residue, a beat of silence — is no blame). →39: when obstructed,
+don't push — pause, regroup, rejoin (disruption hold).
+
+**Deferred by dual cast** (user 30.1.4.6→15, Claude 2.2.6→4):
+anchor-disciplined virtual clock (phones slew _clockOffset to the DJ
+anchor's time base, killing per-phone server RTT asymmetry ~10–40ms).
+Right destination, wrong night. Design law from line 6 ("dragons fight in
+the meadow"): exactly ONE clock authority at a time — server loop must
+fully yield when the anchor disciplines, never blend. See Obsidian "BYOB
+Synced Entry" action items.
+
 **Next session (casts pending):**
 - Live-verify floor hygiene + zone offset knob + restarted bridge; disciplined
   launch-cycler session at 60s cadence; tighten PASS bar 50→25ms.
