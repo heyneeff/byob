@@ -143,6 +143,28 @@ When a stable floor is detected (low variance, 20–250ms magnitude), the engine
 fires `onCalibrate(delta)` which adjusts `_deviceLatencyMs` and the floor
 shrinks. How hard to push is governed by the **octonary trigram** (see Step 7).
 
+**2b. Greenhorn fast-cal** (oracle 14.2→30, 2026-07-07) — a device with NO
+stored latency at page load (`window._terLatencyWasStored === false`) is a
+*greenhorn*: instead of waiting for the conservative auto-cal lane (10 calm
+seconds, 50% steps, 60s settle gaps), it makes **one bold 100% correction**
+from ~8 drift samples that each need only 2s of post-disturbance calm
+(post-entry, non-burst). Median with an agreement guard (≥5 of 8 within
+±60ms, else the window slides). Fires typically within ~20s of joining;
+below 25ms it stands down without correcting. Because 2s calm gaps exist
+even between snap-storm snaps, greenhorns cannot enter the snap↔cal
+deadlock. After the bold shot the device drops into the conservative lane
+(`_calCount = 1`). RESET CAL re-arms greenhorn mode
+(`_terLayer.noteLatencyReset()`).
+
+**2c. Crowd prior** — peer trit broadcasts on `byob_ternary` carry
+`(model, latencyMs, calSettled)` where model is the UA platform segment.
+A greenhorn seeing ≥2 settled same-model peers seeds `_deviceLatencyMs`
+from their median latency immediately (one shot), then its own fast-cal may
+still refine once. New arrivals of known hardware start correct — the
+bigger the crowd, the faster it syncs. Offline validation:
+`node sync/greenhorn-sim.mjs` (runs the real `ternary/layer.js` in a vm
+sandbox, calibration loop included).
+
 **3. Remote debug nudge** — `debug.html` can send a `latency_cmd` broadcast on
 the `byob_debug` channel with `{ deviceId, deltaMs }`. The listener receives it,
 applies the delta in-memory, and persists to `localStorage`. Each press is ±50ms.

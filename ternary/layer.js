@@ -87,6 +87,95 @@
   const _history     = [];
   let _octoState     = OCTO.LISTENING; // start conservative — observe before contributing
 
+  // ── GREENHORN FAST-CAL (oracle 14.2→30 — "a big wagon for loading") ──────
+  // Live-crowd reframe: 500 random Bluetooths entering, sound-sync must be
+  // near-immediate. A device with NO learned latency (greenhorn) makes ONE
+  // bold 100% correction from ~8 early drift samples, then drops into the
+  // conservative auto-cal lane. Sampling needs only 2s of post-disturbance
+  // calm (vs auto-cal's 10s), so a snap-storming device still accrues
+  // samples between snaps — this structurally cures the snap↔cal deadlock
+  // for new arrivals. Crowd prior: peers broadcast (model, latency); a
+  // greenhorn seeing ≥2 settled same-model peers seeds from their median
+  // immediately — the bigger the crowd, the faster it syncs.
+  const GREEN_SAMPLES_NEEDED = 8;
+  const GREEN_CALM_MS        = 2000;   // vs DISTURB_QUIET_MS=10000 for auto-cal
+  const GREEN_MIN_FLOOR_MS   = 25;     // below this, nothing worth correcting
+  const GREEN_AGREE_BAND_MS  = 60;     // samples must cluster around the median
+  const GREEN_AGREE_MIN      = 5;      // ≥5 of 8 within band, else slide window
+  const GREEN_PRIOR_MIN_PEERS = 2;
+  const DEVICE_MODEL = (typeof navigator !== 'undefined'
+    ? (navigator.userAgent.match(/\(([^)]+)\)/)?.[1] || 'unknown') : 'unknown').slice(0, 80);
+
+  let _greenhorn    = false;  // no stored latency at page load (set in init)
+  let _greenDone    = false;  // bold correction fired (or judged unnecessary)
+  let _greenPrior   = false;  // crowd prior already applied
+  let _greenSamples = [];
+
+  function median(arr) {
+    const s = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  }
+
+  function calBroadcast(kind, floorMs, correctionMs) {
+    try {
+      const ch = _debugChannel || window._debugChannel;
+      ch?.send({
+        type: 'broadcast', event: 'sync_event',
+        payload: { deviceId: myId(), kind,
+                   floorMs: Math.round(floorMs), correctionMs: Math.round(correctionMs),
+                   calCount: _calCount }
+      });
+    } catch (e) {}
+  }
+
+  function maybeGreenhornCal() {
+    if (_greenSamples.length < GREEN_SAMPLES_NEEDED) return;
+    const med = median(_greenSamples);
+    const agree = _greenSamples.filter(v => Math.abs(v - med) <= GREEN_AGREE_BAND_MS).length;
+    if (agree < GREEN_AGREE_MIN) { _greenSamples.shift(); return; } // scattered — slide the window
+    if (Math.abs(med) < GREEN_MIN_FLOOR_MS) {
+      // Already tight (outputLatency seed or crowd prior landed) — no bold move needed.
+      _greenDone = true;
+      console.log('[ternary] greenhorn: median', Math.round(med) + 'ms — already tight, standing down');
+      return;
+    }
+    if (typeof window._terAdjustLatency !== 'function') return;
+    const correction = Math.round(med); // 100% — one bold move, then conservative
+    const actualDelta = window._terAdjustLatency(correction);
+    _greenDone   = true;
+    _calApplied  = true;
+    _calCount    = Math.max(_calCount, 1); // the bold move spends one slot
+    _lastCalTs   = Date.now();
+    _lastDisturbTs = Date.now(); // reference moved — everything after is settling
+    _greenSamples = [];
+    _driftHistory = [];
+    _consecutiveN = 0;
+    console.log(`[ternary] GREENHORN fast-cal: median ${Math.round(med)}ms → adjust ${correction}ms (actual ${Math.round(actualDelta ?? correction)}ms)`);
+    calBroadcast('ter_greenhorn_cal', med, correction);
+  }
+
+  function maybeCrowdPrior() {
+    if (!_greenhorn || _greenDone || _greenPrior) return;
+    if (typeof window._terAdjustLatency !== 'function') return;
+    const now = Date.now();
+    const peers = Object.values(_peerTrits).filter(p =>
+      now - p.ts < 20000 && p.calSettled && p.model === DEVICE_MODEL &&
+      p.latencyMs != null && p.latencyMs > 0);
+    if (peers.length < GREEN_PRIOR_MIN_PEERS) return;
+    const med = median(peers.map(p => p.latencyMs));
+    const current = window._terGetDeviceLatencyMs?.() ?? 0;
+    const delta = med - current;
+    _greenPrior = true; // one shot either way — own fast-cal refines from here
+    if (Math.abs(delta) < GREEN_MIN_FLOOR_MS) return;
+    window._terAdjustLatency(delta);
+    _lastDisturbTs = Date.now();
+    _greenSamples = [];
+    _driftHistory = [];
+    console.log(`[ternary] crowd prior: ${peers.length} settled "${DEVICE_MODEL}" peers, median ${Math.round(med)}ms → seeded (+${Math.round(delta)}ms)`);
+    calBroadcast('ter_crowd_prior', med, delta);
+  }
+
   // ── BURST MODE ────────────────────────────────────────────────────────────
   let _burstMode    = false;
   let _burstTimer   = null;   // setInterval handle
@@ -202,6 +291,7 @@
     if (Math.abs(correction) < 8)                         { _calState = 4; return; }
     const actualDelta = window._terAdjustLatency(correction); // updates _deviceLatencyMs + localStorage
     _calApplied = true;
+    _greenDone  = true; // conservative lane spoke first — greenhorn boldness no longer needed
     if (Math.abs(actualDelta ?? correction) >= 5) {
       _calCount++;
       _capHits = 0;
@@ -282,6 +372,18 @@
     if (calm) {
       _driftHistory.push(lagMs);
       if (_driftHistory.length > 12) _driftHistory.shift(); // 12 readings = ~36s at 3s tick
+    }
+
+    // Greenhorn lane (14.2→30): needs only 2s calm, so a snapping device
+    // still accrues samples between snaps. Crowd prior checked first — a
+    // known-hardware arrival may not need its own samples at all.
+    if (_greenhorn && !_greenDone && !isBurst && !entering) {
+      maybeCrowdPrior();
+      if ((Date.now() - _lastDisturbTs) > GREEN_CALM_MS) {
+        _greenSamples.push(lagMs);
+        if (_greenSamples.length > GREEN_SAMPLES_NEEDED + 4) _greenSamples.shift();
+        maybeGreenhornCal();
+      }
     }
 
     const snapThreshold = consensusSnapThreshold(isBurst);
@@ -397,9 +499,11 @@
   }
 
   // ── PEER ──────────────────────────────────────────────────────────────────
-  function receivePeerTrit(deviceId, trit, lagMs, octoState) {
+  function receivePeerTrit(deviceId, trit, lagMs, octoState, model, latencyMs, calSettled) {
     if (trit == null || deviceId === myId()) return;
-    _peerTrits[deviceId] = { trit, lagMs: lagMs ?? null, octoState: octoState ?? OCTO.PULLING, ts: Date.now() };
+    _peerTrits[deviceId] = { trit, lagMs: lagMs ?? null, octoState: octoState ?? OCTO.PULLING,
+                             model: model ?? null, latencyMs: latencyMs ?? null,
+                             calSettled: calSettled === true, ts: Date.now() };
   }
 
   // Median of all peer lagMs values (excludes nulls, expires stale peers)
@@ -444,6 +548,9 @@
           terCalState:   _calState,
           terLastFloor:  _lastFloor !== null ? Math.round(_lastFloor) : null,
           terConsecN:    _consecutiveN,
+          terGreenhorn:  _greenhorn && !_greenDone,
+          terGreenSamples: _greenSamples.length,
+          terGreenPrior: _greenPrior,
           terOctoState:  _octoState,
           terOctoName:   OCTO_NAME[_octoState],
           terGlobalDisruption: isGlobalDisruption(),
@@ -470,7 +577,12 @@
     try {
       _peerChannel.send({
         type: 'broadcast', event: 'trit',
-        payload: { deviceId: myId(), trit: _trit, lagMs: Math.round(lagMs), octoState: _octoState, ts: Date.now() },
+        payload: { deviceId: myId(), trit: _trit, lagMs: Math.round(lagMs), octoState: _octoState, ts: Date.now(),
+                   // Crowd prior (14.2→30): settled devices donate their learned
+                   // latency so greenhorns of the same hardware start correct.
+                   model: DEVICE_MODEL,
+                   latencyMs: window._terGetDeviceLatencyMs?.() ?? null,
+                   calSettled: _calApplied || !_greenhorn },
       });
     } catch (e) {}
   }
@@ -483,7 +595,8 @@
     _peerChannel = window.db.channel('byob_ternary')
       .on('broadcast', { event: 'trit' }, ({ payload }) => {
         if (payload?.deviceId && payload.deviceId !== myId()) {
-          receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs, payload.octoState);
+          receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs, payload.octoState,
+                          payload.model, payload.latencyMs, payload.calSettled);
           // Feed peer data into the ternary engine for tcons() rate modulation
           window._terEngineReceivePeer?.(payload.deviceId, payload.trit, payload.lagMs);
           // Feed peer trits into arpeggiator for room consensus / voice harmony
@@ -507,7 +620,18 @@
       // invisible to the 120ms jump detector but poisons floors all the same
       // (learned live 2026-07-07 ~3am: cal ate clock-slew churn as latency).
       noteExternalDisturbance: () => { _lastDisturbTs = Date.now(); _driftHistory = []; },
+      // RESET CAL makes the device a greenhorn again — relearn boldly once.
+      noteLatencyReset: () => {
+        _greenhorn = true; _greenDone = false; _greenPrior = false;
+        _greenSamples = []; _calCount = 0; _capHits = 0;
+        console.log('[ternary] latency reset → greenhorn mode re-armed');
+      },
     };
+
+    // Greenhorn eligibility: listener.html records whether a learned latency
+    // existed at page load. Undefined (other hosts) → not a greenhorn.
+    _greenhorn = window._terLatencyWasStored === false;
+    if (_greenhorn) console.log('[ternary] greenhorn device — fast-cal lane armed (model: ' + DEVICE_MODEL + ')');
     console.log('[ternary/layer] Phase 5 ready — octonary participation layer');
   }
 

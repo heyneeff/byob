@@ -5036,6 +5036,10 @@ let _deviceLatencyMs = (() => {
   if (stored > 1200) { localStorage.removeItem('byob_device_latency'); return 0; } // nuke overcalibrated values
   return stored;
 })();
+// Greenhorn flag (oracle 14.2→30): a device with no learned latency at load
+// is eligible for the ternary layer's one-shot bold fast-cal. Evaluated
+// after the init IIFE so a nuked >1200ms value counts as greenhorn too.
+window._terLatencyWasStored = localStorage.getItem('byob_device_latency') !== null;
 let _scatterOffsetMs = 0;
 let _anchorPlaybackStartedAtMs = null; // synthetic playback_started_at derived from DJ anchor broadcasts
 let _launchGuardUntil = 0; // suppress fastDriftCorrect until anchor arrives after track launch
@@ -5844,6 +5848,7 @@ function hudForceExit() {
 function hudResetCal() {
   localStorage.removeItem('byob_device_latency');
   _deviceLatencyMs = 0;
+  window._terLayer?.noteLatencyReset?.(); // back to greenhorn — fast-cal relearns boldly
   showToast('🔄 Latency reset — re-entering zone recommended');
 }
 

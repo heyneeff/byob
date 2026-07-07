@@ -578,3 +578,43 @@ begin in ternary/layer.js tick() when the session closed — no code written.
 - Note: same-track relaunches don't reload the audio element — wedged phones
   free only on a DIFFERENT track URL (or reload). Candidate fix if it still
   matters after escalation lands.
+
+---
+
+## 2026-07-07 evening session — greenhorn fast-cal (offline build)
+
+No live listeners — built and validated offline per the fourth-wave handoff
+(cast already obtained, 14.2→30 — "a big wagon for loading").
+
+**Shipped (code + sim, NOT yet live-verified):**
+- **Greenhorn fast-cal** (`ternary/layer.js`): device with no stored latency
+  at load makes ONE bold 100% correction from 8 drift samples needing only
+  2s post-disturbance calm each (vs auto-cal's 10s) — median + agreement
+  guard (≥5/8 within ±60ms, else slide). <25ms → stands down. After firing,
+  conservative lane (`_calCount = 1`). Structurally immune to the snap↔cal
+  deadlock: 2s calm windows exist between snap-storm snaps.
+- **Crowd prior**: `byob_ternary` trit broadcasts now carry
+  `(model, latencyMs, calSettled)`; a greenhorn with ≥2 settled same-model
+  peers seeds from their median latency on its first tick. One shot; own
+  fast-cal may still refine once.
+- **Plumbing** (`listener.html`): `window._terLatencyWasStored` flag at load;
+  `hudResetCal()` calls `_terLayer.noteLatencyReset()` so RESET CAL re-arms
+  the greenhorn lane (relearn boldly, `_calCount = 0`).
+- **Debug fields**: `terGreenhorn`, `terGreenSamples`, `terGreenPrior` in hud
+  packets; `ter_greenhorn_cal` / `ter_crowd_prior` sync_events.
+
+**Offline validation — `sync/greenhorn-sim.mjs`** (runs the REAL layer.js in
+a vm sandbox with simulated clock + calibration loop — the loop the reverted
+master-clock sim lacked). Five scenarios, all pass:
+1. plain greenhorn floor 350ms → one correction at 20s, lands 343ms
+2. deadlock (snap every ~7.5s, floor 200ms) → auto-cal can never run,
+   greenhorn fires at 50s with +201ms
+3. crowd prior (2 settled Pixel-7 peers @300ms) → seeded 300ms on first
+   tick at 2.5s, stands down, no second correction
+4. tight greenhorn (floor 10ms) → zero corrections
+5. veteran (stored latency) → greenhorn lane stays dark
+
+**Live verify next session:** fresh phone (or RESET CAL) should show
+`terGreenhorn:true` → one `ter_greenhorn_cal` within ~20s → converged
+without hand-tending; two same-model phones then a third → third should
+log the crowd prior and enter near-correct.
