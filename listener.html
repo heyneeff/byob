@@ -1363,6 +1363,16 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   // still loading adds a duplicate loadedmetadata listener → double seeks,
   // double audio.play(), and an 8-seek cascade that takes seconds to settle.
   if (url === window._currentTrackUrl && window._trackLoading) return;
+  // Same track, same reference → nothing to load (oracle 14.5→1). The zone
+  // row updates for reasons that aren't track changes — listener-count bumps
+  // on every join, DJ messages — and each update re-runs this function on
+  // every phone in the room. Without this guard a single new device joining
+  // forced the whole room to reload and re-enter the current track (observed
+  // live 2026-07-06 as "adding a device desyncs everyone"). A same-URL call
+  // with a NEW reference (relaunch/restart) still proceeds.
+  if (url === window._currentTrackUrl && !window._trackLoading &&
+      String(startedAt ?? '') === String(window._currentTrackStartedAt ?? '') &&
+      String(playAt ?? '') === String(window._currentTrackPlayAt ?? '')) return;
   broadcastSyncEvent('track_change');
   // activeZone.playback_started_at is updated (by the caller) to the NEW
   // track's value before this runs, but audio.duration/currentTime still
@@ -1374,6 +1384,8 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   window._trackLoading = true;
   window._currentTrackUrl = url;
   window._currentTrackTitle = title;
+  window._currentTrackStartedAt = startedAt;
+  window._currentTrackPlayAt = playAt;
   // Reset retry counter when a new URL comes in
   if (window._hardReloadUrl !== url) { window._hardReloadUrl = url; window._hardReloadCount = 0; }
   // Watchdog: if 'loadedmetadata' never fires, retry via _hardReloadTrack().
