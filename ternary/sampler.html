@@ -191,7 +191,7 @@ select.arp-sel:focus{border-color:#303060;}
     <button class="chip" data-s="5" style="--c:#20d0e0" onclick="setSample(5)">DAMP<span>vibe dampen</span></button>
     <button class="chip" data-s="6" style="--c:#e0d020" onclick="setSample(6)">SHRT<span>vibe short</span></button>
     <button class="chip" data-s="7" style="--c:#e04040" onclick="setSample(7)">TRPT<span>trumpet vib</span></button>
-    <button class="chip" data-s="8" style="--c:#c08048" onclick="setSample(8)">HPAN<span>handpan (layered)</span></button>
+    <button class="chip" data-s="8" style="--c:#c08048" onclick="setSample(8)">HANG<span>hang, D minor (9 notes)</span></button>
   </div>
 </div>
 
@@ -501,19 +501,25 @@ const SAMPLE_MAP = {
     85:'samples/Trumpet.vib.ff.Db6.stereo.wav',
     86:'samples/Trumpet.vib.ff.D6.stereo.wav',
   },
+  // Hang (D minor) — 9 notes, real recorded handpan-family instrument (FreePats, CC0)
+  // Only these 9 pitches exist on the real instrument — no in-between semitones.
+  hang: {
+    57:'samples/Hang.A3.stereo.wav',
+    62:'samples/Hang.D4.stereo.wav',
+    64:'samples/Hang.E4.stereo.wav',
+    65:'samples/Hang.F4.stereo.wav',
+    67:'samples/Hang.G4.stereo.wav',
+    69:'samples/Hang.A4.stereo.wav',
+    70:'samples/Hang.Bb4.stereo.wav',
+    72:'samples/Hang.C5.stereo.wav',
+    74:'samples/Hang.D5.stereo.wav',
+  },
 };
-const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','handpan'];
+const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','hang'];
 // timbres whose samples decay naturally — looping would repeat silence
-const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt']);
-// Composite timbres: layer two sample sets into one voice.
-// handpan ≈ vibraphone bow (slightly sustained struck tone, detuned + lowpassed
-// to dull the shimmer) + bass clarinet an octave down underneath (woody "box" resonance)
-const TIMBRE_LAYERS = {
-  handpan: [
-    { name: 'petal',   mix: 1.00, detune:   -25, lpf: 2600 },
-    { name: 'bass_cl', mix: 0.40, detune: -1200 },
-  ],
-};
+const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt','hang']);
+// Composite timbres: layer two sample sets into one voice. (none currently active)
+const TIMBRE_LAYERS = {};
 
 // ── Arp data ──────────────────────────────────────────────────────────────────
 const CHORD_MAP = {
