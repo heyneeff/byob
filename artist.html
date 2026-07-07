@@ -2830,9 +2830,23 @@ function _startAnchorBroadcast() {
   if (_anchorInterval) clearInterval(_anchorInterval);
   _anchorInterval = setInterval(() => {
     if (!window._djSyncChannel || !activeZone || audio.paused || !audio.duration) return;
-    const startedAt = currentStartedAt();
-    if (startedAt && ++_anchorTickN % 5 === 0) _repairRowReference(startedAt);
-    if (startedAt) {
+    let startedAt = currentStartedAt();
+    // Master self-discipline (oracle 16.6→35 — "deluded enthusiasm; if after
+    // completion one changes, no blame"). The unwatched gap: audio playing
+    // with NO reference (cache null — e.g. deck play without a launch path
+    // that minted one) meant no drift gate, no row repair, anchors following
+    // raw wandering audio while the row disagreed by minutes (measured −68s
+    // at dawn 2026-07-07 by the master gauge). Adopt-and-write: mint the
+    // reference from the current audio position so master, row, and anchors
+    // share one basis from this beat on.
+    if (!startedAt) {
+      startedAt = new Date(serverNow() - audio.currentTime * 1000).toISOString();
+      noteStartedAt(startedAt);
+      db.from('zones').update({ playback_started_at: startedAt }).eq('id', activeZone.id)
+        .then(() => console.log('[anchor] adopted reference from live audio:', startedAt));
+    }
+    if (++_anchorTickN % 5 === 0) _repairRowReference(startedAt);
+    {
       const elapsed = (serverNow() - new Date(startedAt).getTime()) / 1000;
       const expectedPos = ((elapsed % audio.duration) + audio.duration) % audio.duration;
       const rawDrift = (audio.currentTime - expectedPos) * 1000;
@@ -2841,7 +2855,10 @@ function _startAnchorBroadcast() {
       while (wrapped > half) wrapped -= audio.duration * 1000;
       while (wrapped < -half) wrapped += audio.duration * 1000;
       const djDrift = Math.abs(wrapped);
-      if (djDrift > 500) { triggerResync(); return; }
+      // 500→150ms (16.6→35): the master's own slide is the room's common-mode
+      // error — catch it before ears do. triggerResync re-seeks this audio to
+      // the reference and hard-syncs the room to the same instant.
+      if (djDrift > 150) { triggerResync(); return; }
     }
     window._djSyncChannel.send({ type: 'broadcast', event: 'anchor',
       payload: { position: audio.currentTime, ts: serverNow() } });
