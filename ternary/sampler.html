@@ -72,7 +72,8 @@ html,body{
   display:flex;align-items:center;gap:6px;
   padding:5px 12px 4px;border-bottom:1px solid #0e0e1e;background:#020210;
 }
-.arp-dots{display:flex;gap:3px;align-items:center;flex:1;}
+.arp-dots{display:flex;gap:3px;align-items:center;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;}
+.arp-dots::-webkit-scrollbar{display:none;}
 .arp-dot{
   width:9px;height:9px;border-radius:50%;
   border:1.5px solid #1a1a30;background:#08081a;
