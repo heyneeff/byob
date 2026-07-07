@@ -852,6 +852,24 @@ function killVoice(v) {
   v.busy = false; v.src = null; v.gain = null; v.lfo = null; v.lfoG = null; v.layers = null;
 }
 
+// ── One-touch chord strum ──────────────────────────────────────────────────────
+// While a chord pad is held (_chordHeld), playing a hex/key becomes the root of
+// that chord (root + each interval), instead of a single note. Every note-on
+// site returns an array of voices (length 1 when no chord is armed) so
+// touch/mouse/keyboard tracking is uniform whether one note or a full chord
+// is sounding.
+function chordOn(midi) {
+  const ivs = (_chordHeld && CHORD_MAP[_chordHeld]?.ivs) ? CHORD_MAP[_chordHeld].ivs : [0];
+  const voices = [];
+  for (const iv of ivs) {
+    const v = noteOn(midi + iv);
+    if (v) voices.push(v);
+  }
+  return voices;
+}
+function chordOff(voices) { (voices || []).forEach(v => noteOff(v)); }
+function chordKill(voices) { (voices || []).forEach(v => killVoice(v)); }
+
 // ── Sample switching ──────────────────────────────────────────────────────────
 function setSample(idx) {
   _sample = idx;
@@ -991,16 +1009,22 @@ function sizeHex() {
   const W     = wrap.clientWidth  - 8;
   const H     = wrap.clientHeight - 8;
   _hexCols    = Math.max(6, Math.min(14, Math.floor(W / 42)));
-  _hexRows    = _hexRowPin != null
-    ? _hexRowPin
-    : Math.max(3, Math.min(9, Math.floor(H / 52)));
   // Reserve 2 ctrl columns (chord pads) left of keyboard; 1 extra row below (r=-1) for LOCK/PANIC
   const CTRL  = 2;
-  const span  = _hexCols + CTRL + (_hexRows - 1) / 2;
-  _hexR       = Math.min(
-    W / (Math.sqrt(3) * (span + 0.5)),
-    H / (1.5 * _hexRows + 3)
-  );
+  const hexRFor = rows => {
+    const span = _hexCols + CTRL + (rows - 1) / 2;
+    return Math.min(W / (Math.sqrt(3) * (span + 0.5)), H / (1.5 * rows + 3));
+  };
+  // Auto default caps at 5 rows (was 9) — on narrow/portrait screens, width (not
+  // height) is what actually bounds hex size, so maxing out rows just crammed in
+  // more, tinier hexes without using any extra vertical space. Fewer rows by
+  // default means noticeably bigger, easier-to-tap keys; still manually
+  // adjustable up to 9 via the +/- row control (shiftHexRows), which pins rows.
+  _hexRows = _hexRowPin != null
+    ? _hexRowPin
+    : Math.max(3, Math.min(5, Math.floor(H / 52)));
+  _hexR = hexRFor(_hexRows);
+  const span = _hexCols + CTRL + (_hexRows - 1) / 2;
   hexCv.width  = Math.ceil(W);
   hexCv.height = Math.ceil(H);
   // _hexOX: keyboard starts at q=0; ctrl cols at q=-2,-1 extend left
@@ -1181,13 +1205,23 @@ function cvXY(touch) {
 }
 
 // ── Touch handling ────────────────────────────────────────────────────────────
+// Chord pads are momentary/held, not a latch: _chordPadTouches tracks which
+// touch id(s) are currently pressing a pad. _chordHeld (used by chordOn) is
+// armed while at least one pad touch (or the mouse, via _mouseChordDown) is down.
+const _chordPadTouches = new Map(); // touchId → chord key
+let _mouseChordDown = false;
+
 hexCv.addEventListener('touchstart', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
     const p    = cvXY(t);
     const ctrl = hitControlHex(p.x, p.y);
     if (ctrl) {
-      if (ctrl.type === 'chord') chordPadDown(ctrl.key);
+      if (ctrl.type === 'chord') {
+        _chordPadTouches.set(t.identifier, ctrl.key);
+        _chordHeld = ctrl.key;
+        chordPadDown(ctrl.key);
+      }
       else if (ctrl.type === 'lock') toggleScaleLock();
       else if (ctrl.type === 'panic') panicStop();
       continue;
@@ -1196,9 +1230,9 @@ hexCv.addEventListener('touchstart', e => {
     if (!hex) continue;
     const midi = hexMidi(hex.q, hex.r);
     setArpRoot(midi);
-    const v    = noteOn(midi);
-    if (v) {
-      _active.set(t.identifier, { ...hex, midi, v });
+    const voices = chordOn(midi);
+    if (voices.length) {
+      _active.set(t.identifier, { ...hex, midi, voices });
       _pressedMidi.add(midi);
     }
     if (_seqMode && !_arpRunning) seqAddNote(midi);
@@ -1217,11 +1251,11 @@ hexCv.addEventListener('touchmove', e => {
     const midi = hexMidi(hex.q, hex.r);
     if (midi !== prev.midi) {
       // Legato slide to new note
-      noteOff(prev.v);
+      chordOff(prev.voices);
       _pressedMidi.delete(prev.midi);
-      const v = noteOn(midi);
-      if (v) {
-        _active.set(t.identifier, { ...hex, midi, v });
+      const voices = chordOn(midi);
+      if (voices.length) {
+        _active.set(t.identifier, { ...hex, midi, voices });
         _pressedMidi.add(midi);
       }
       // Draw mode: dragging across hexes in seq mode appends each new note
@@ -1231,12 +1265,20 @@ hexCv.addEventListener('touchmove', e => {
   drawHex();
 }, { passive: false });
 
+function releaseChordPadTouch(id) {
+  if (!_chordPadTouches.has(id)) return false;
+  _chordPadTouches.delete(id);
+  if (_chordPadTouches.size === 0 && !_mouseChordDown) _chordHeld = null;
+  return true;
+}
+
 hexCv.addEventListener('touchend', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
+    if (releaseChordPadTouch(t.identifier)) continue;
     const prev = _active.get(t.identifier);
     if (prev) {
-      noteOff(prev.v);
+      chordOff(prev.voices);
       _pressedMidi.delete(prev.midi);
       _active.delete(t.identifier);
     }
@@ -1247,9 +1289,10 @@ hexCv.addEventListener('touchend', e => {
 hexCv.addEventListener('touchcancel', e => {
   e.preventDefault();
   for (const t of e.changedTouches) {
+    if (releaseChordPadTouch(t.identifier)) continue;
     const prev = _active.get(t.identifier);
     if (prev) {
-      killVoice(prev.v);
+      chordKill(prev.voices);
       _pressedMidi.delete(prev.midi);
       _active.delete(t.identifier);
     }
@@ -1258,13 +1301,17 @@ hexCv.addEventListener('touchcancel', e => {
 }, { passive: false });
 
 // Mouse support (desktop / monitors)
-let _mouseV = null, _mouseMidi = -1;
+let _mouseVoices = null, _mouseMidi = -1;
 hexCv.addEventListener('mousedown', e => {
   const px = e.offsetX * (hexCv.width / hexCv.clientWidth);
   const py = e.offsetY * (hexCv.height / hexCv.clientHeight);
   const ctrl = hitControlHex(px, py);
   if (ctrl) {
-    if (ctrl.type === 'chord') chordPadDown(ctrl.key);
+    if (ctrl.type === 'chord') {
+      _mouseChordDown = true;
+      _chordHeld = ctrl.key;
+      chordPadDown(ctrl.key);
+    }
     else if (ctrl.type === 'lock') toggleScaleLock();
     else if (ctrl.type === 'panic') panicStop();
     return;
@@ -1273,27 +1320,33 @@ hexCv.addEventListener('mousedown', e => {
   if (!hex) return;
   const midi = hexMidi(hex.q, hex.r);
   setArpRoot(midi);
-  _mouseV = noteOn(midi); _mouseMidi = midi;
-  if (_mouseV) _pressedMidi.add(midi);
+  _mouseVoices = chordOn(midi); _mouseMidi = midi;
+  if (_mouseVoices.length) _pressedMidi.add(midi);
   if (_seqMode && !_arpRunning) seqAddNote(midi);
   drawHex();
 });
+document.addEventListener('mouseup', () => {
+  if (!_mouseChordDown) return;
+  _mouseChordDown = false;
+  if (_chordPadTouches.size === 0) _chordHeld = null;
+  drawHex();
+});
 hexCv.addEventListener('mousemove', e => {
-  if (!_mouseV) return;
+  if (!_mouseVoices) return;
   const hex = hitHex(e.offsetX * (hexCv.width / hexCv.clientWidth), e.offsetY * (hexCv.height / hexCv.clientHeight));
   if (!hex) return;
   const midi = hexMidi(hex.q, hex.r);
   if (midi !== _mouseMidi) {
-    noteOff(_mouseV); _pressedMidi.delete(_mouseMidi);
-    _mouseV = noteOn(midi); _mouseMidi = midi;
-    if (_mouseV) _pressedMidi.add(midi);
+    chordOff(_mouseVoices); _pressedMidi.delete(_mouseMidi);
+    _mouseVoices = chordOn(midi); _mouseMidi = midi;
+    if (_mouseVoices.length) _pressedMidi.add(midi);
     // Draw mode: dragging across hexes in seq mode appends each new note
     if (_seqMode && !_arpRunning) seqAddNote(midi);
     drawHex();
   }
 });
 ['mouseup','mouseleave'].forEach(ev => hexCv.addEventListener(ev, () => {
-  if (_mouseV) { noteOff(_mouseV); _pressedMidi.delete(_mouseMidi); _mouseV = null; drawHex(); }
+  if (_mouseVoices && _mouseVoices.length) { chordOff(_mouseVoices); _pressedMidi.delete(_mouseMidi); _mouseVoices = null; drawHex(); }
 }));
 
 // ── Keyboard mapping (Wicki-Hayden, 4 rows × 10 columns) ─────────────────────
@@ -1328,15 +1381,15 @@ document.addEventListener('keydown', e => {
   if (!_ctx) return;
   const midi = hexMidi(qr.q, qr.r);
   setArpRoot(midi);
-  const v = noteOn(midi);
-  if (v) { _keyVoices[e.code] = { v, midi }; _pressedMidi.add(midi); drawHex(); }
+  const voices = chordOn(midi);
+  if (voices.length) { _keyVoices[e.code] = { voices, midi }; _pressedMidi.add(midi); drawHex(); }
   if (_seqMode && !_arpRunning) seqAddNote(midi);
 });
 
 document.addEventListener('keyup', e => {
   const entry = _keyVoices[e.code];
   if (!entry) return;
-  noteOff(entry.v);
+  chordOff(entry.voices);
   _pressedMidi.delete(entry.midi);
   delete _keyVoices[e.code];
   drawHex();
@@ -1573,6 +1626,7 @@ function panicStop() {
   _voices.forEach(v => killVoice(v));
   _active.clear(); _pressedMidi.clear();
   Object.keys(_keyVoices).forEach(k => delete _keyVoices[k]);
+  _chordPadTouches.clear(); _mouseChordDown = false; _chordHeld = null;
   if (_arpRunning) {
     _arpRunning = false;
     clearTimeout(_arpTimer); _arpTimer = null;
