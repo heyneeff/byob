@@ -493,6 +493,20 @@ U(30,150): window 12/deadband 10 converged but sawtoothed ±38ms; **window
 per-launch absolute offsets (previously wandering 0–80ms per launch) should
 stabilize; then trim the stable residual with zone_offset_ms.
 
+**SECOND CROSSING ~sunrise (`c97364c` + gauge `8a9dd9d`, oracle 64.2→35 —
+"he brakes his wheels; perseverance brings good fortune" → Progress, the sun
+rising):** same min-filter core, two lessons applied: (1) slews only in
+P-state (engine converged <50ms, not silent-warping) so the corrector never
+chases a moving reference; (2) every slew calls the calibration layer's new
+`noteExternalDisturbance()` hook so floor sampling sits out the settling
+stretch (the 15ms slews were invisible to the 120ms jump detector). Coupling
+is one-directional — clock reads anchor timestamps, never drift — so cal
+cannot poison the clock back. Gauge fixed first: ter_ hud rows now carry
+ts/duration/deviceLatencyMs, so live-monitor's MASTER column reads the
+trusted rows. Gated sim: 190→5ms inter-phone in 80 beats despite 30%
+gate-outs, zero wobble. Verify live: [anchor-clock] slews taper, cal floors
+stay honest, MASTER column stabilizes → trim zone_offset_ms once.
+
 **REVERTED ~3:15am (`0b54638`, oracle 59.2.5→23 — "hurry to that which
 supports him"):** phones that refreshed onto the clock discipline
 destabilized within minutes (250–460ms finals, 11–25 snaps/window, latency
