@@ -463,6 +463,38 @@ the meadow"): exactly ONE clock authority at a time — server loop must
 fully yield when the anchor disciplines, never blend. See Obsidian "BYOB
 Synced Entry" action items.
 
+---
+
+## 2026-07-07 ~2:30am — anchor-disciplined virtual clock (MARKED OCCASION)
+
+**Revert point: `pre-master-clock` tag (83f9efb).** Change: `15e622e`.
+
+**Oracle:** deferred earlier by dual cast (30.1.4.6→15 / 2.2.6→4 "dragons");
+user directed proceed; implementation cast 15.1.3.6→27 — Modesty (the very
+hexagram the user's cast resolved to): line 6 "set armies marching to
+chastise one's own city" = each phone disciplines its own clock; →27 mind
+what feeds it (sample hygiene).
+
+**Change (listener.html):** `_anchorClockDiscipline()` on every DJ anchor
+heartbeat: o = ourServerNow − anchor.ts = clockError + latency; min(o) over
+a 24-beat (~2min) window estimates error at the latency floor; slew
+_clockOffset ∓15ms/heartbeat with a 15ms deadband, 2s outlier guard, window
+reset after 30s anchor silence. **One authority:** measureClockOffset
+returns early while the anchor is feeding (bootstrap + >60s-silence
+fallback only). Kills per-phone server RTT asymmetry; the common latency
+floor is shared by all phones → zone_offset territory.
+
+**Offline sweep:** 3 simulated phones, errors +45/−70/+120ms, latency
+U(30,150): window 12/deadband 10 converged but sawtoothed ±38ms; **window
+24/deadband 15 → 15ms inter-phone in 5min, 0.0ms wobble over 33min.**
+
+**Status:** deployed; phones pick it up on next refresh/wake. Verify: watch
+[anchor-clock] slews in device consoles taper to silence; launch-report
+per-launch absolute offsets (previously wandering 0–80ms per launch) should
+stabilize; then trim the stable residual with zone_offset_ms.
+
+---
+
 **Next session (casts pending):**
 - Live-verify floor hygiene + zone offset knob + restarted bridge; disciplined
   launch-cycler session at 60s cadence; tighten PASS bar 50→25ms.
