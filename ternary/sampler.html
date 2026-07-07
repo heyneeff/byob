@@ -295,6 +295,14 @@ select.arp-sel:focus{border-color:#303060;}
         <button class="arp-oct-btn" onclick="shiftArpOct(+1)">+</button>
       </div>
     </div>
+    <div class="arp-grp">
+      <span class="arp-lbl">PRESET</span>
+      <div style="display:flex;align-items:center;gap:3px;">
+        <select class="arp-sel" id="preset-sel" onchange="loadNamedPreset(this.value)" style="min-width:96px"></select>
+        <button class="arp-oct-btn" onclick="saveNamedPreset()" title="Save current settings as a new preset">💾</button>
+        <button class="arp-oct-btn" onclick="deleteNamedPreset()" title="Delete selected preset">✕</button>
+      </div>
+    </div>
   </div>
   <!-- MOD row — LFO automation -->
   <div class="arp-ctrl-row" style="border-top:1px solid #0a0a1e;">
@@ -1694,25 +1702,54 @@ function updateDegreeSelect() {
 }
 
 // ── Preset save / load (localStorage) ────────────────────────────────────────
+// "Auto" preset (byob_sampler_v3): the last-touched state, restored silently on
+// reload. "Named" presets (byob_sampler_presets_v1): a user-managed bank of
+// snapshots the user can save/recall/delete via the PRESET dropdown.
+const PRESET_BANK_KEY = 'byob_sampler_presets_v1';
+
+function presetData() {
+  return {
+    knobs:       { ...knobs },
+    sample:      _sample,
+    arpChord:    _arpChord,
+    arpStyle:    _arpStyle,
+    scaleKey:    _scaleKey,
+    scaleDeg:    _scaleDeg,
+    scaleLocked: _scaleLocked,
+    hexRowPin:   _hexRowPin,
+    seqMode:     _seqMode,
+    seqNotes:    [..._seqNotes],
+    lfos: _lfos.map(l => ({ on: l.on, target: l.target, shape: l.shape })),
+  };
+}
+
+function applyPresetData(d) {
+  if (!d) return;
+  if (d.knobs)    Object.assign(knobs, d.knobs);
+  if (d.sample != null) _sample = Math.max(0, Math.min(TIMBRE.length - 1, d.sample));
+  if (d.arpChord && CHORD_MAP[d.arpChord]) _arpChord = d.arpChord;
+  if (d.arpStyle && ARP_PAT[d.arpStyle])   _arpStyle = d.arpStyle;
+  if (d.scaleKey && SCALE_MAP[d.scaleKey]) _scaleKey = d.scaleKey;
+  if (d.scaleDeg   != null) _scaleDeg   = d.scaleDeg;
+  if (d.scaleLocked != null) _scaleLocked = d.scaleLocked;
+  if (d.hexRowPin  != null) _hexRowPin  = d.hexRowPin;
+  if (d.seqMode    != null) _seqMode    = d.seqMode;
+  if (Array.isArray(d.seqNotes)) _seqNotes = d.seqNotes;
+  if (Array.isArray(d.lfos)) {
+    d.lfos.forEach((saved, i) => {
+      if (!_lfos[i]) return;
+      if (saved.target && LFO_TARGETS.some(([k]) => k === saved.target)) _lfos[i].target = saved.target;
+      if (saved.shape)  _lfos[i].shape  = saved.shape;
+      if (saved.on)     _lfos[i].on     = true; // restart after UI sync
+    });
+  }
+}
+
 let _saveTimer = null;
 function savePreset() {
   clearTimeout(_saveTimer);
   _saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem('byob_sampler_v3', JSON.stringify({
-        knobs:       { ...knobs },
-        sample:      _sample,
-        arpChord:    _arpChord,
-        arpStyle:    _arpStyle,
-        scaleKey:    _scaleKey,
-        scaleDeg:    _scaleDeg,
-        scaleLocked: _scaleLocked,
-        hexRowPin:   _hexRowPin,
-        seqMode:     _seqMode,
-        seqNotes:    [..._seqNotes],
-        lfos: _lfos.map(l => ({ on: l.on, target: l.target, shape: l.shape })),
-      }));
-    } catch(e) {}
+    try { localStorage.setItem('byob_sampler_v3', JSON.stringify(presetData())); } catch(e) {}
   }, 400);
 }
 
@@ -1720,26 +1757,91 @@ function loadPreset() {
   try {
     const raw = localStorage.getItem('byob_sampler_v3');
     if (!raw) return;
-    const d = JSON.parse(raw);
-    if (d.knobs)    Object.assign(knobs, d.knobs);
-    if (d.sample != null) _sample = Math.max(0, Math.min(TIMBRE.length - 1, d.sample));
-    if (d.arpChord && CHORD_MAP[d.arpChord]) _arpChord = d.arpChord;
-    if (d.arpStyle && ARP_PAT[d.arpStyle])   _arpStyle = d.arpStyle;
-    if (d.scaleKey && SCALE_MAP[d.scaleKey]) _scaleKey = d.scaleKey;
-    if (d.scaleDeg   != null) _scaleDeg   = d.scaleDeg;
-    if (d.scaleLocked != null) _scaleLocked = d.scaleLocked;
-    if (d.hexRowPin  != null) _hexRowPin  = d.hexRowPin;
-    if (d.seqMode    != null) _seqMode    = d.seqMode;
-    if (Array.isArray(d.seqNotes)) _seqNotes = d.seqNotes;
-    if (Array.isArray(d.lfos)) {
-      d.lfos.forEach((saved, i) => {
-        if (!_lfos[i]) return;
-        if (saved.target && LFO_TARGETS.some(([k]) => k === saved.target)) _lfos[i].target = saved.target;
-        if (saved.shape)  _lfos[i].shape  = saved.shape;
-        if (saved.on)     _lfos[i].on     = true; // restart after UI init
-      });
-    }
+    applyPresetData(JSON.parse(raw));
   } catch(e) {}
+}
+
+// ── Named presets ─────────────────────────────────────────────────────────────
+function loadPresetBank() {
+  try { return JSON.parse(localStorage.getItem(PRESET_BANK_KEY)) || {}; }
+  catch(e) { return {}; }
+}
+function savePresetBank(bank) {
+  try { localStorage.setItem(PRESET_BANK_KEY, JSON.stringify(bank)); } catch(e) {}
+}
+
+function refreshPresetSelect(selectName) {
+  const sel = document.getElementById('preset-sel');
+  if (!sel) return;
+  const names = Object.keys(loadPresetBank()).sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">— presets —</option>' +
+    names.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');
+  sel.value = names.includes(selectName) ? selectName : '';
+}
+
+function saveNamedPreset() {
+  const name = prompt('Save preset as:');
+  if (!name) return;
+  const bank = loadPresetBank();
+  bank[name] = presetData();
+  savePresetBank(bank);
+  refreshPresetSelect(name);
+}
+
+function loadNamedPreset(name) {
+  if (!name) return;
+  const bank = loadPresetBank();
+  const d = bank[name];
+  if (!d) return;
+  applyPresetData(d);
+  syncUIFromState();
+}
+
+function deleteNamedPreset() {
+  const sel  = document.getElementById('preset-sel');
+  const name = sel?.value;
+  if (!name) return;
+  if (!confirm(`Delete preset "${name}"?`)) return;
+  const bank = loadPresetBank();
+  delete bank[name];
+  savePresetBank(bank);
+  refreshPresetSelect();
+}
+
+// Re-syncs on-screen controls to current state after a runtime preset load.
+// (At boot, initArpUI()/layout() do this job while also building the DOM
+// option lists; this is the lighter-weight version for after those exist.)
+function syncUIFromState() {
+  setSample(_sample);
+  refreshKnobs();
+  const chordSel = document.getElementById('arp-chord-sel');
+  const patSel   = document.getElementById('arp-pat-sel');
+  const scaleSel = document.getElementById('arp-scale-sel');
+  if (chordSel) chordSel.value = _arpChord;
+  if (patSel)   patSel.value   = _arpStyle;
+  if (scaleSel) scaleSel.value = _scaleKey;
+  updateDegreeSelect();
+  _arpRoot = computeArpRoot();
+  const rootEl = document.getElementById('arp-root-disp');
+  if (rootEl) rootEl.textContent = NOTE_NAMES[_arpRoot % 12] + (Math.floor(_arpRoot / 12) - 1);
+  document.getElementById('seq-mode-btn').className = _seqMode ? 'arp-play-btn on' : 'arp-play-btn';
+  document.getElementById('arp-dots').style.display  = _seqMode ? 'none' : '';
+  document.getElementById('seq-chips').style.display = _seqMode ? '' : 'none';
+  renderSeqChips();
+  [0, 1].forEach(i => {
+    const wantOn = !!_lfos[i].on;
+    _lfos[i].on = false;
+    const btn = document.getElementById(`lfo${i+1}-btn`);
+    if (btn) btn.className = 'arp-play-btn';
+    const tgtSel = document.getElementById(`lfo${i+1}-tgt`);
+    const shpSel = document.getElementById(`lfo${i+1}-shp`);
+    if (tgtSel) tgtSel.value = _lfos[i].target;
+    if (shpSel) shpSel.value = _lfos[i].shape;
+    if (wantOn) toggleLfo(i); // re-initializes baseVal/phase, starts RAF, sets button class
+  });
+  stopLfoRafIfIdle();
+  sizeHex(); drawHex();
+  savePreset();
 }
 
 // ── LFO automation ────────────────────────────────────────────────────────────
@@ -1916,6 +2018,7 @@ loadPreset();
 initArpUI();
 layout();
 setSample(_sample);
+refreshPresetSelect();
 </script>
 </body>
 </html>
