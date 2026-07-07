@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
 <title>◈ BYOB SAMPLER</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html,body{
@@ -362,6 +363,11 @@ select.arp-sel:focus{border-color:#303060;}
 
 <script>
 'use strict';
+
+const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // ── Sample map — Iowa EMS + full libraries ────────────────────────────────────
 const SAMPLE_MAP = {
@@ -1762,6 +1768,13 @@ function loadPreset() {
 }
 
 // ── Named presets ─────────────────────────────────────────────────────────────
+// Two tiers: "cloud" presets live in Supabase (sampler_presets table) and are
+// visible to anyone who opens this page — no login, matches this app's
+// no-accounts model. "local" presets are this-browser-only (localStorage),
+// kept for offline/private use. Dropdown option values are prefixed
+// (cloud:name / local:name) so same-named presets in each tier don't collide.
+let _cloudPresets = {}; // name → { id, data }
+
 function loadPresetBank() {
   try { return JSON.parse(localStorage.getItem(PRESET_BANK_KEY)) || {}; }
   catch(e) { return {}; }
@@ -1770,37 +1783,71 @@ function savePresetBank(bank) {
   try { localStorage.setItem(PRESET_BANK_KEY, JSON.stringify(bank)); } catch(e) {}
 }
 
-function refreshPresetSelect(selectName) {
+async function fetchCloudPresets() {
+  try {
+    const { data, error } = await db.from('sampler_presets').select('name,data').order('name');
+    if (error) throw error;
+    _cloudPresets = {};
+    (data || []).forEach(row => { _cloudPresets[row.name] = row.data; });
+  } catch(e) { console.warn('[sampler] cloud presets unavailable:', e.message); }
+}
+
+function refreshPresetSelect(selectValue) {
   const sel = document.getElementById('preset-sel');
   if (!sel) return;
-  const names = Object.keys(loadPresetBank()).sort((a, b) => a.localeCompare(b));
-  sel.innerHTML = '<option value="">— presets —</option>' +
-    names.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');
-  sel.value = names.includes(selectName) ? selectName : '';
+  const esc = s => s.replace(/"/g,'&quot;');
+  const cloudNames = Object.keys(_cloudPresets).sort((a, b) => a.localeCompare(b));
+  const localNames = Object.keys(loadPresetBank()).sort((a, b) => a.localeCompare(b));
+  const opt = (tag, n) => `<option value="${tag}:${esc(n)}">${n}</option>`;
+  let html = '<option value="">— presets —</option>';
+  if (cloudNames.length) html += `<optgroup label="☁ shared">${cloudNames.map(n => opt('cloud', n)).join('')}</optgroup>`;
+  if (localNames.length) html += `<optgroup label="💻 this device">${localNames.map(n => opt('local', n)).join('')}</optgroup>`;
+  sel.innerHTML = html;
+  sel.value = selectValue && [...sel.options].some(o => o.value === selectValue) ? selectValue : '';
 }
 
-function saveNamedPreset() {
+async function saveNamedPreset() {
   const name = prompt('Save preset as:');
   if (!name) return;
-  const bank = loadPresetBank();
-  bank[name] = presetData();
-  savePresetBank(bank);
-  refreshPresetSelect(name);
+  const shared = confirm('Save as a SHARED preset — visible to anyone who opens this page?\n\nOK = shared (cloud)\nCancel = just this device');
+  if (shared) {
+    try {
+      const { error } = await db.from('sampler_presets')
+        .upsert({ name, data: presetData() }, { onConflict: 'name' });
+      if (error) throw error;
+      await fetchCloudPresets();
+      refreshPresetSelect(`cloud:${name}`);
+    } catch(e) {
+      alert('Could not save shared preset: ' + e.message);
+    }
+  } else {
+    const bank = loadPresetBank();
+    bank[name] = presetData();
+    savePresetBank(bank);
+    refreshPresetSelect(`local:${name}`);
+  }
 }
 
-function loadNamedPreset(name) {
-  if (!name) return;
-  const bank = loadPresetBank();
-  const d = bank[name];
+function loadNamedPreset(value) {
+  if (!value) return;
+  const i = value.indexOf(':');
+  const tier = value.slice(0, i), name = value.slice(i + 1);
+  const d = tier === 'cloud' ? _cloudPresets[name] : loadPresetBank()[name];
   if (!d) return;
   applyPresetData(d);
   syncUIFromState();
 }
 
-function deleteNamedPreset() {
-  const sel  = document.getElementById('preset-sel');
-  const name = sel?.value;
-  if (!name) return;
+async function deleteNamedPreset() {
+  const sel   = document.getElementById('preset-sel');
+  const value = sel?.value;
+  if (!value) return;
+  const i = value.indexOf(':');
+  const tier = value.slice(0, i), name = value.slice(i + 1);
+  if (tier === 'cloud') {
+    alert('Shared presets can\'t be deleted from here — ask whoever manages the Supabase project.');
+    return;
+  }
   if (!confirm(`Delete preset "${name}"?`)) return;
   const bank = loadPresetBank();
   delete bank[name];
@@ -2019,6 +2066,7 @@ initArpUI();
 layout();
 setSample(_sample);
 refreshPresetSelect();
+fetchCloudPresets().then(() => refreshPresetSelect());
 </script>
 </body>
 </html>
