@@ -235,7 +235,6 @@ select.arp-sel:focus{border-color:#303060;}
   <span class="arp-form-lbl" id="arp-form-lbl">○  ○  ○</span>
   <button class="arp-play-btn" id="seq-mode-btn" onclick="toggleSeqMode()">SEQ</button>
   <button class="arp-play-btn" id="seq-clear-btn" onclick="seqClear()" style="display:none">CLR</button>
-  <button class="arp-play-btn" id="chord-bank-btn" onclick="toggleChordBank()" title="Swap the 8 hex chord pads between triads/7ths and jazzy 9ths/alts">7th</button>
   <div style="display:flex;align-items:center;gap:2px;flex-shrink:0;margin-left:4px;">
     <button class="arp-oct-btn" onclick="shiftHexRows(-1)">−</button>
     <span id="hex-rows-disp" style="font-size:10px;font-weight:700;color:#7070b0;min-width:16px;text-align:center;letter-spacing:-.02em;"></span>
@@ -699,22 +698,20 @@ const CHORD_MAP = {
   PNN:{ sym:'☴', name:'Sus 4',    col:'#50d870', ivs:[0,5,7,12]  },
   NPP:{ sym:'☳', name:'½ Dim 7',  col:'#9050e8', ivs:[0,3,6,10]  },
   PPN:{ sym:'☶', name:'Dim 7',    col:'#8090a0', ivs:[0,3,6,9]   },
-  // Bank B — jazzy extended/altered voicings (9ths, 6/9, alt dominants). The
-  // 8-trit ternary namespace (PPP..PPN) is fully used by Bank A, so these get
-  // their own plain keys; CHORD_KEYS_B lists which ones sit on the hex pads.
-  MAJ9:  { sym:'✦', name:'Maj 9',   col:'#f0e060', ivs:[0,4,7,11,14] },
-  MIN9:  { sym:'✧', name:'Min 9',   col:'#4070f0', ivs:[0,3,7,10,14] },
-  DOM9:  { sym:'✶', name:'Dom 9',   col:'#f06030', ivs:[0,4,7,10,14] },
-  SIX9:  { sym:'✷', name:'6/9',     col:'#40d0c0', ivs:[0,4,7,9,14]  },
-  MMAJ7: { sym:'✸', name:'MinMaj7', col:'#8060f0', ivs:[0,3,7,11]    },
-  DOM7S9:{ sym:'✹', name:'7♯9',     col:'#ff5060', ivs:[0,4,7,10,15] },
-  DOM7B9:{ sym:'✺', name:'7♭9',     col:'#e08030', ivs:[0,4,7,10,13] },
-  MIN11: { sym:'✻', name:'Min 11',  col:'#5090ff', ivs:[0,3,7,10,17] },
+  // Jazz piano voicings — the 8-trit ternary namespace (PPP..PPN) above is
+  // fully used, so these get their own plain keys. Sit on the hex pads
+  // directly below the 8 above (see CHORD_KEYS / padPos in the hex draw code).
+  DOM7SUS4:{ sym:'⟡', name:'7sus4',   col:'#30c8a0', ivs:[0,5,7,10]     },
+  DOM9:    { sym:'✶', name:'7(9)',    col:'#f06030', ivs:[0,4,7,10,14]  },
+  MIN11:   { sym:'✻', name:'Min 11',  col:'#5090ff', ivs:[0,3,7,10,14,17] },
+  MAJ7S11: { sym:'❖', name:'Maj7♯11', col:'#ffd060', ivs:[0,4,7,11,18]  },
+  MAJ9:    { sym:'✦', name:'Maj 9',   col:'#f0e060', ivs:[0,4,7,11,14]  },
+  MIN6:    { sym:'❋', name:'Min 6',   col:'#6080e8', ivs:[0,3,7,9]      },
 };
-const CHORD_KEYS   = ['PPP','NNN','NNP','NPN','PNP','PNN','NPP','PPN'];             // Bank A — hex pads, triads/7ths
-const CHORD_KEYS_B = ['MAJ9','MIN9','DOM9','SIX9','MMAJ7','DOM7S9','DOM7B9','MIN11']; // Bank B — hex pads, jazzy 9ths/alts
-const CHORD_KEYS_ALL = [...CHORD_KEYS, ...CHORD_KEYS_B]; // full set, e.g. for the ARP chord dropdown
-let _chordBank = 0; // 0 = Bank A (triads/7ths), 1 = Bank B (jazzy voicings) — which set sits on the hex pads
+// Insertion order = hex pad order: original 8 (triads/7ths) first/top, then
+// the 6 jazz voicings below them. See padPos() in the hex draw code.
+const CHORD_KEYS = ['PPP','NNN','NNP','NPN','PNP','PNN','NPP','PPN',
+                     'DOM7SUS4','DOM9','MIN11','MAJ7S11','MAJ9','MIN6'];
 const SCALE_MAP = {
   none:      { name:'— free —',   ivs:null },
   major:     { name:'Major',      ivs:[0,2,4,5,7,9,11] },
@@ -1222,11 +1219,17 @@ function sizeHex() {
   // further left than the chord pads above it, so the true leftmost content
   // column is q=-2.5, not q=-2.
   const CTRL  = 2.5;
+  // The 14-chord pad column now spans r=-1 (LOCK/PANIC, bottom) up to r=6
+  // (top of the original 8), independent of how many keyboard rows are
+  // showing — so it, not the keyboard, usually dictates vertical extent.
+  const CTRL_TOP_R = 6, CTRL_BOT_R = -1;
   const hexRFor = rows => {
-    const span = _hexCols + CTRL + (rows - 1) / 2;
-    return Math.min(W / (Math.sqrt(3) * (span + 1)), H / (1.5 * rows + 3));
+    const span   = _hexCols + CTRL + (rows - 1) / 2;
+    const topR   = Math.max(rows - 1, CTRL_TOP_R);
+    const botR   = Math.min(0, CTRL_BOT_R);
+    return Math.min(W / (Math.sqrt(3) * (span + 1)), H / (1.5 * (topR - botR) + 2));
   };
-  // Auto default caps at 8 rows. Width (not height) is what actually bounds hex
+  // Auto default caps at 6 rows. Width (not height) is what actually bounds hex
   // size on narrow/portrait screens — more rows costs very little hex radius
   // (grid stays width-bound throughout the 3-9 range) but uses far more of the
   // hex-wrap area now that controls live in the menu instead of a tall header/
@@ -1245,8 +1248,11 @@ function sizeHex() {
   const rightUnit = (_hexCols - 1) + (_hexRows - 1) / 2;
   const contentW  = u * (rightUnit - leftUnit) + 2 * _hexR;
   _hexOX = (hexCv.width - contentW) / 2 + _hexR - u * leftUnit;
-  // _hexOY: center content including r=-1 ctrl row below keyboard
-  _hexOY = hexCv.height / 2 + _hexR * 0.75 * (_hexRows - 1.5);
+  // Same exact-centering approach vertically: topmost/bottommost r across
+  // both the keyboard and the (now taller) chord-pad column.
+  const topMostR    = Math.max(_hexRows - 1, CTRL_TOP_R);
+  const bottomMostR = Math.min(0, CTRL_BOT_R);
+  _hexOY = hexCv.height / 2 + _hexR * 0.75 * (topMostR + bottomMostR);
   const el = document.getElementById('hex-rows-disp');
   if (el) el.textContent = _hexRows + 'R';
 }
@@ -1368,13 +1374,11 @@ function drawHex() {
     }
   }
 
-  // ── Control hexes (chord pads + LOCK + PANIC + BANK) at q=-2, q=-1 ───────
-  // 8 chord pads: q=-2 → idx 0-3, q=-1 → idx 4-7, rows 0..3. Which 8 chords
-  // show here depends on _chordBank (0=triads/7ths, 1=jazzy 9ths/alts).
-  const padKeys = _chordBank ? CHORD_KEYS_B : CHORD_KEYS;
-  padKeys.forEach((key, idx) => {
-    const col = idx < 4 ? -2 : -1;
-    const row = idx % 4;
+  // ── Control hexes (14 chord pads + LOCK + PANIC) at q=-2, q=-1 ───────────
+  // Original 8 triads/7ths occupy rows 3-6 (top); the 6 jazz voicings occupy
+  // rows 0-2 (below them); LOCK/PANIC sit at r=-1 (bottom-most). See padPos().
+  CHORD_KEYS.forEach((key, idx) => {
+    const { col, row } = padPos(idx);
     const { x, y } = hexCenter(col, row);
     const ch = CHORD_MAP[key];
     drawCtrlHex(x, y, ch.sym, ch.name, ch.col, key === _arpChord);
@@ -1400,13 +1404,21 @@ function hitHex(cx, cy) {
   return bestD <= _hexR ? best : null;
 }
 
+// Chord-pad grid position for CHORD_KEYS[idx]: original 8 (idx 0-7) sit on
+// top at rows 3-6; the 6 jazz voicings (idx 8-13) sit below at rows 0-2.
+function padPos(idx) {
+  if (idx < 8) return { col: idx < 4 ? -2 : -1, row: (idx % 4) + 3 };
+  const j = idx - 8;
+  return { col: j < 3 ? -2 : -1, row: j % 3 };
+}
+
 // Returns {type, key} if (px,py) hits a control hex, else null
 function hitControlHex(px, py) {
   const hitR = _hexR * 0.86; // matches ctrl hex drawn size (_hexR - 5 ≈ 0.86*_hexR for typical sizes)
-  const padKeys = _chordBank ? CHORD_KEYS_B : CHORD_KEYS;
-  for (let i = 0; i < 8; i++) {
-    const { x, y } = hexCenter(i < 4 ? -2 : -1, i % 4);
-    if (Math.hypot(px - x, py - y) <= hitR) return { type: 'chord', key: padKeys[i] };
+  for (let i = 0; i < CHORD_KEYS.length; i++) {
+    const { col, row } = padPos(i);
+    const { x, y } = hexCenter(col, row);
+    if (Math.hypot(px - x, py - y) <= hitR) return { type: 'chord', key: CHORD_KEYS[i] };
   }
   { const { x, y } = hexCenter(-2, -1);
     if (Math.hypot(px - x, py - y) <= hitR) return { type: 'lock' }; }
@@ -1739,14 +1751,6 @@ function updateArpDots() {
   if (lbl) lbl.textContent = _arpRunning ? FORMS[_arpForm] : '○  ○  ○';
 }
 
-function toggleChordBank() {
-  _chordBank = _chordBank ? 0 : 1;
-  const btn = document.getElementById('chord-bank-btn');
-  if (btn) { btn.textContent = _chordBank ? 'JAZZ' : '7th'; btn.className = _chordBank ? 'arp-play-btn on' : 'arp-play-btn'; }
-  drawHex();
-  savePreset();
-}
-
 function toggleSeqMode() {
   _seqMode = !_seqMode;
   _seqStep = 0; _seqFlashIdx = -1;
@@ -1931,7 +1935,6 @@ function presetData() {
     knobs:       { ...knobs },
     sample:      _sample,
     arpChord:    _arpChord,
-    chordBank:   _chordBank,
     arpStyle:    _arpStyle,
     scaleKey:    _scaleKey,
     scaleDeg:    _scaleDeg,
@@ -1948,7 +1951,6 @@ function applyPresetData(d) {
   if (d.knobs)    Object.assign(knobs, d.knobs);
   if (d.sample != null) _sample = Math.max(0, Math.min(TIMBRE.length - 1, d.sample));
   if (d.arpChord && CHORD_MAP[d.arpChord]) _arpChord = d.arpChord;
-  if (d.chordBank != null) _chordBank = d.chordBank ? 1 : 0;
   if (d.arpStyle && ARP_PAT[d.arpStyle])   _arpStyle = d.arpStyle;
   if (d.scaleKey && SCALE_MAP[d.scaleKey]) _scaleKey = d.scaleKey;
   if (d.scaleDeg   != null) _scaleDeg   = d.scaleDeg;
@@ -2089,8 +2091,6 @@ function syncUIFromState() {
   document.getElementById('seq-mode-btn').className = _seqMode ? 'arp-play-btn on' : 'arp-play-btn';
   document.getElementById('arp-dots').style.display  = _seqMode ? 'none' : '';
   document.getElementById('seq-chips').style.display = _seqMode ? '' : 'none';
-  const bankBtn = document.getElementById('chord-bank-btn');
-  if (bankBtn) { bankBtn.textContent = _chordBank ? 'JAZZ' : '7th'; bankBtn.className = _chordBank ? 'arp-play-btn on' : 'arp-play-btn'; }
   renderSeqChips();
   [0, 1].forEach(i => {
     const wantOn = !!_lfos[i].on;
