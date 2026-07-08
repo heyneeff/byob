@@ -262,6 +262,7 @@ select.arp-sel:focus{border-color:#303060;}
       <button class="chip" data-s="6" style="--c:#e0d020" onclick="setSample(6)">SHRT<span>vibe short</span></button>
       <button class="chip" data-s="7" style="--c:#e04040" onclick="setSample(7)">TRPT<span>trumpet vib</span></button>
       <button class="chip" data-s="8" style="--c:#c08048" onclick="setSample(8)">HANG<span>hang, D minor (9 notes)</span></button>
+      <button class="chip" data-s="9" style="--c:#4090ff" onclick="setSample(9)">BASS<span>double bass arco</span></button>
     </div>
 
     <div class="menu-section-lbl">ENVELOPE &amp; FX</div>
@@ -581,8 +582,21 @@ const SAMPLE_MAP = {
     72:'samples/Hang.C5.stereo.wav',
     74:'samples/Hang.D5.stereo.wav',
   },
+  // double bass arco (bowed) · ff — 10 notes, C1–G4 (already in samples/, was unused)
+  bass: {
+    24:'samples/Bass.arco.ff.sulC.C1.stereo.wav',
+    27:'samples/Bass.arco.ff.sulC.Eb1.stereo.wav',
+    38:'samples/Bass.arco.ff.sulD.D2.stereo.wav',
+    42:'samples/Bass.arco.ff.sulD.Gb2.stereo.wav',
+    46:'samples/Bass.arco.ff.sulD.Bb2.stereo.wav',
+    50:'samples/Bass.arco.ff.sulD.D3.stereo.wav',
+    54:'samples/Bass.arco.ff.sulD.Gb3.stereo.wav',
+    58:'samples/Bass.arco.ff.sulD.Bb3.stereo.wav',
+    62:'samples/Bass.arco.ff.sulD.D4.stereo.wav',
+    67:'samples/Bass.arco.ff.sulG.G4.stereo.wav',
+  },
 };
-const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','hang'];
+const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','hang','bass'];
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt','hang']);
 // Composite timbres: layer two sample sets into one voice. (none currently active)
