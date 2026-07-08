@@ -263,6 +263,8 @@ select.arp-sel:focus{border-color:#303060;}
       <button class="chip" data-s="7" style="--c:#e04040" onclick="setSample(7)">TRPT<span>trumpet vib</span></button>
       <button class="chip" data-s="8" style="--c:#c08048" onclick="setSample(8)">HANG<span>hang, D minor (9 notes)</span></button>
       <button class="chip" data-s="9" style="--c:#4090ff" onclick="setSample(9)">BASS<span>double bass arco</span></button>
+      <button class="chip" data-s="10" style="--c:#d04070" onclick="setSample(10)">CELLO<span>cello arco</span></button>
+      <button class="chip" data-s="11" style="--c:#e8a020" onclick="setSample(11)">HORN<span>french horn</span></button>
     </div>
 
     <div class="menu-section-lbl">ENVELOPE &amp; FX</div>
@@ -595,8 +597,37 @@ const SAMPLE_MAP = {
     62:'samples/Bass.arco.ff.sulD.D4.stereo.wav',
     67:'samples/Bass.arco.ff.sulG.G4.stereo.wav',
   },
+  // cello arco (bowed) · ff — 12 notes, C2–Ab5 (Iowa MIS, same source as bass/violin/etc.)
+  cello: {
+    36:'samples/Cello.arco.ff.sulC.C2.stereo.wav',
+    40:'samples/Cello.arco.ff.sulC.E2.stereo.wav',
+    44:'samples/Cello.arco.ff.sulG.Ab2.stereo.wav',
+    48:'samples/Cello.arco.ff.sulG.C3.stereo.wav',
+    52:'samples/Cello.arco.ff.sulD.E3.stereo.wav',
+    56:'samples/Cello.arco.ff.sulD.Ab3.stereo.wav',
+    60:'samples/Cello.arco.ff.sulD.C4.stereo.wav',
+    64:'samples/Cello.arco.ff.sulD.E4.stereo.wav',
+    68:'samples/Cello.arco.ff.sulD.Ab4.stereo.wav',
+    72:'samples/Cello.arco.ff.sulD.C5.stereo.wav',
+    76:'samples/Cello.arco.ff.sulA.E5.stereo.wav',
+    80:'samples/Cello.arco.ff.sulA.Ab5.stereo.wav',
+  },
+  // French horn · ff — 11 notes, Bb1–D5 (Iowa MIS)
+  horn: {
+    34:'samples/Horn.ff.Bb1.stereo.wav',
+    38:'samples/Horn.ff.D2.stereo.wav',
+    42:'samples/Horn.ff.Gb2.stereo.wav',
+    46:'samples/Horn.ff.Bb2.stereo.wav',
+    50:'samples/Horn.ff.D3.stereo.wav',
+    54:'samples/Horn.ff.Gb3.stereo.wav',
+    58:'samples/Horn.ff.Bb3.stereo.wav',
+    62:'samples/Horn.ff.D4.stereo.wav',
+    66:'samples/Horn.ff.Gb4.stereo.wav',
+    70:'samples/Horn.ff.Bb4.stereo.wav',
+    74:'samples/Horn.ff.D5.stereo.wav',
+  },
 };
-const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','hang','bass'];
+const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','hang','bass','cello','horn'];
 // timbres whose samples decay naturally — looping would repeat silence
 const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt','hang']);
 // Composite timbres: layer two sample sets into one voice. (none currently active)
