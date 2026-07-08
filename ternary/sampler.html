@@ -1228,11 +1228,15 @@ function sizeHex() {
     const botR   = Math.min(0, CTRL_BOT_R);
     return Math.min(W / (Math.sqrt(3) * (span + 1)), H / (1.5 * (topR - botR) + 2));
   };
-  // Auto default caps at 5 rows — bigger cells, matches the chord column's
-  // own 5-row cap. Still manually adjustable via the +/- row control.
+  // Auto default caps at 6 rows (r=0..5). Combined with the always-on extra
+  // row at r=-1 (see the keyboard loop in drawHex/hitHex — LOCK/PANIC already
+  // reserve that vertical band for the chord columns, so the keyboard's own
+  // q>=0 side of it was sitting empty; using it is free), that's up to 7
+  // playable rows, C2-ish through the mid-6th octave. Still manually
+  // adjustable via the +/- row control.
   _hexRows = _hexRowPin != null
     ? _hexRowPin
-    : Math.max(3, Math.min(5, Math.floor(H / 96)));
+    : Math.max(3, Math.min(6, Math.floor(H / 96)));
   _hexR = hexRFor(_hexRows);
   hexCv.width  = Math.ceil(W);
   hexCv.height = Math.ceil(H);
@@ -1255,9 +1259,25 @@ function sizeHex() {
 
 function shiftHexRows(d) {
   if (_hexRowPin == null) _hexRowPin = _hexRows; // pin at current auto value first
-  _hexRowPin = Math.max(2, Math.min(7, _hexRowPin + d));
+  _hexRowPin = Math.max(2, Math.min(8, _hexRowPin + d));
   sizeHex(); drawHex();
   savePreset();
+}
+
+// Scale degree of `midi` relative to the active root (_arpRoot), not octave.
+// With a scale active: 1-7 (etc.) for in-scale tones, root always shows "1";
+// out-of-scale passing tones show nothing (matches hexStyle's dimming of
+// them, rather than cluttering the key with a number that doesn't apply).
+// With no scale ("free"): chromatic degree 1-12 from the root, root = "1".
+function scaleDegreeLabel(midi) {
+  const rootPc = _arpRoot % 12;
+  const rel    = ((midi % 12) - rootPc + 12) % 12;
+  const scale  = SCALE_MAP[_scaleKey];
+  if (scale?.ivs) {
+    const idx = scale.ivs.indexOf(rel);
+    return idx >= 0 ? String(idx + 1) : '';
+  }
+  return String(rel + 1);
 }
 
 function hexStyle(midi) {
@@ -1338,7 +1358,10 @@ function drawHex() {
   hexCtx.fillStyle = '#010108'; hexCtx.fillRect(0, 0, W, H);
 
   // ── Keyboard notes ────────────────────────────────────────────────────────
-  for (let r = 0; r < _hexRows; r++) {
+  // Starts at r=-1: LOCK/PANIC already reserve that vertical band on the
+  // control-hex side (q<0), so the keyboard's own q>=0 side of it costs
+  // nothing extra — one free row of lower notes.
+  for (let r = -1; r < _hexRows; r++) {
     for (let q = 0; q < _hexCols; q++) {
       const midi    = hexMidi(q, r);
       const { x, y } = hexCenter(q, r);
@@ -1369,15 +1392,17 @@ function drawHex() {
 
       const pc   = midi % 12;
       const NOTE = ['C','C♯','D','D♯','E','F','F♯','G','G♯','A','A♯','B'];
-      const oct  = Math.floor(midi / 12) - 1;
+      const deg  = scaleDegreeLabel(midi);
       hexCtx.textAlign = 'center'; hexCtx.textBaseline = 'middle';
       hexCtx.font      = `700 ${Math.round(_hexR * 0.42)}px 'Barlow Condensed',system-ui`;
       hexCtx.fillStyle = pressed ? '#ffffff' : st.text;
       hexCtx.fillText(NOTE[pc], x, y - _hexR * 0.1);
-      hexCtx.globalAlpha = .55;
-      hexCtx.font        = `${Math.round(_hexR * 0.25)}px 'DM Mono',monospace`;
-      hexCtx.fillText(oct, x, y + _hexR * .36);
-      hexCtx.globalAlpha = 1;
+      if (deg) {
+        hexCtx.globalAlpha = .55;
+        hexCtx.font        = `${Math.round(_hexR * 0.25)}px 'DM Mono',monospace`;
+        hexCtx.fillText(deg, x, y + _hexR * .36);
+        hexCtx.globalAlpha = 1;
+      }
     }
   }
 
@@ -1401,7 +1426,7 @@ function drawHex() {
 // ── Hit detection ─────────────────────────────────────────────────────────────
 function hitHex(cx, cy) {
   let best = null, bestD = Infinity;
-  for (let r = 0; r < _hexRows; r++) {
+  for (let r = -1; r < _hexRows; r++) {
     for (let q = 0; q < _hexCols; q++) {
       const { x, y } = hexCenter(q, r);
       const d = Math.hypot(cx - x, cy - y);
