@@ -277,6 +277,11 @@ select.arp-sel:focus{border-color:#303060;}
     <span id="hex-rows-disp" style="font-size:10px;font-weight:700;color:#7070b0;min-width:16px;text-align:center;letter-spacing:-.02em;"></span>
     <button class="arp-oct-btn" onclick="shiftHexRows(+1)">+</button>
   </div>
+  <div style="display:flex;align-items:center;gap:2px;flex-shrink:0;margin-left:4px;" title="Shift the whole hex grid up/down an octave">
+    <button class="arp-oct-btn" onclick="shiftHexOctave(-1)">−</button>
+    <span id="hex-oct-disp" style="font-size:9px;font-weight:700;color:#7070b0;min-width:22px;text-align:center;letter-spacing:-.02em;"></span>
+    <button class="arp-oct-btn" onclick="shiftHexOctave(+1)">+</button>
+  </div>
   <button class="arp-play-btn" id="arp-play-btn" onclick="toggleArp()">▶ ARP</button>
   <button class="panel-toggle-btn" id="bottom-toggle-btn" onclick="toggleBottomPanel()" title="Show/hide arp, scale, chord &amp; LFO controls">▼</button>
 </div>
@@ -737,6 +742,7 @@ const KNOB_DEFAULT = { atk:.005, dec:.1, sus:.85, rel:.25, warp:0, echo:0, drive
 
 // Wicki-Hayden: right=+2st, up-right=+7st
 const HEX_DQ = 2, HEX_DR = 7, HEX_BASE = 48; // C3 base — A3 sits comfortably in the middle
+let _hexOctShift = 0; // whole-grid octave offset in semitones (±12 per step), see shiftHexOctave()
 
 // Lumatone-style interval colors from A (root = interval 0)
 const INTERVAL_STYLE = {
@@ -1196,7 +1202,21 @@ document.addEventListener('pointercancel',() => { _dragging = null; });
 const hexCv  = document.getElementById('hex-cv');
 const hexCtx = hexCv.getContext('2d');
 
-function hexMidi(q, r) { return HEX_BASE + q * HEX_DQ + r * HEX_DR; }
+function hexMidi(q, r) { return HEX_BASE + _hexOctShift + q * HEX_DQ + r * HEX_DR; }
+
+function shiftHexOctave(d) {
+  _hexOctShift = Math.max(-24, Math.min(24, _hexOctShift + d * 12));
+  updateHexOctDisp();
+  drawHex();
+  savePreset();
+}
+
+function updateHexOctDisp() {
+  const el = document.getElementById('hex-oct-disp');
+  if (!el) return;
+  const baseMidi = HEX_BASE + _hexOctShift;
+  el.textContent = NOTE_NAMES[((baseMidi % 12) + 12) % 12] + (Math.floor(baseMidi / 12) - 1);
+}
 
 function hexCenter(q, r) {
   return {
@@ -1965,6 +1985,7 @@ function presetData() {
     scaleDeg:    _scaleDeg,
     scaleLocked: _scaleLocked,
     hexRowPin:   _hexRowPin,
+    hexOctShift: _hexOctShift,
     seqMode:     _seqMode,
     seqNotes:    [..._seqNotes],
     lfos: _lfos.map(l => ({ on: l.on, target: l.target, shape: l.shape })),
@@ -1981,6 +2002,7 @@ function applyPresetData(d) {
   if (d.scaleDeg   != null) _scaleDeg   = d.scaleDeg;
   if (d.scaleLocked != null) _scaleLocked = d.scaleLocked;
   if (d.hexRowPin  != null) _hexRowPin  = d.hexRowPin;
+  if (d.hexOctShift != null) _hexOctShift = Math.max(-24, Math.min(24, d.hexOctShift));
   if (d.seqMode    != null) _seqMode    = d.seqMode;
   if (Array.isArray(d.seqNotes)) _seqNotes = d.seqNotes;
   if (Array.isArray(d.lfos)) {
@@ -2298,6 +2320,7 @@ async function unlock() {
 function layout() {
   sizeHex();
   refreshKnobs();
+  updateHexOctDisp();
   drawHex();
 }
 
