@@ -18,18 +18,56 @@ html,body{
   display:flex;flex-direction:column;
 }
 
-/* ── Header ── */
+/* ── Header (slim — hex grid gets the rest of the screen) ── */
 .hdr{
   display:flex;align-items:center;gap:10px;
-  padding:7px 14px 5px;
+  padding:6px 12px;
   border-bottom:1px solid #0e0e22;
   flex-shrink:0;
 }
-.logo{font-size:14px;font-weight:900;letter-spacing:.15em;color:#00e090;}
+.logo{font-size:13px;font-weight:900;letter-spacing:.15em;color:#00e090;flex-shrink:0;}
 .hdr-div{width:1px;height:16px;background:#141430;flex-shrink:0;}
+.hdr-sample-badge{
+  flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:11px;font-weight:700;letter-spacing:.1em;color:#606090;
+}
+.menu-btn{
+  flex-shrink:0;width:30px;height:26px;border-radius:4px;
+  border:1.5px solid #141430;background:#08081a;color:#7070b0;
+  font-size:15px;line-height:1;cursor:pointer;
+}
+.menu-btn:active{color:#00e090;}
+
+/* ── Menu overlay — bottom sheet holding everything except the hex grid
+   and the transport bar (SEQ/CLR/rows/ARP), which stay on-screen for play ── */
+.menu-overlay{
+  position:fixed;inset:0;background:rgba(1,1,8,.75);
+  z-index:50;display:flex;align-items:flex-end;
+}
+.menu-panel{
+  width:100%;max-height:82vh;overflow-y:auto;
+  background:#020210;border-top:1px solid #141430;
+  border-radius:10px 10px 0 0;
+  padding-bottom:env(safe-area-inset-bottom,0);
+}
+.menu-panel-hdr{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px 8px;position:sticky;top:0;background:#020210;
+  border-bottom:1px solid #0e0e22;z-index:1;
+}
+.menu-panel-hdr span{font-size:12px;font-weight:900;letter-spacing:.15em;color:#00e090;}
+.menu-close-btn{
+  width:26px;height:26px;border-radius:4px;
+  border:1.5px solid #141430;background:#08081a;color:#7070b0;
+  font-size:13px;cursor:pointer;
+}
+.menu-section-lbl{
+  font-size:9px;font-weight:700;letter-spacing:.15em;color:#383870;
+  padding:10px 14px 2px;
+}
 
 /* Sample chips — OP-1 style: small colored tabs */
-.chips{display:flex;gap:5px;flex:1;overflow-x:auto;scrollbar-width:none;}
+.chips{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding:0 14px 8px;}
 .chips::-webkit-scrollbar{display:none;}
 .chip{
   padding:4px 12px 3px;border-radius:3px;
@@ -67,10 +105,10 @@ html,body{
 #hex-cv{display:block;touch-action:none;}
 
 /* ── ARP section ── */
-.arp-section{flex-shrink:0;border-top:1px solid #0e0e22;}
 .arp-steps-row{
+  flex-shrink:0;
   display:flex;align-items:center;gap:6px;
-  padding:5px 12px 4px;border-bottom:1px solid #0e0e1e;background:#020210;
+  padding:5px 12px 4px;border-top:1px solid #0e0e22;background:#020210;
 }
 .arp-dots{display:flex;gap:3px;align-items:center;flex:1;min-width:0;overflow-x:auto;scrollbar-width:none;}
 .arp-dots::-webkit-scrollbar{display:none;}
@@ -180,184 +218,198 @@ select.arp-sel:focus{border-color:#303060;}
   <div class="u-tap">TAP TO BEGIN</div>
 </div>
 
-<!-- Header -->
+<!-- Header (slim) -->
 <div class="hdr">
   <span class="logo">◈ SAMPLER</span>
-  <div class="hdr-div"></div>
-  <div class="chips">
-    <button class="chip active" data-s="0" style="--c:#00e090" onclick="setSample(0)">VIBE<span>vibraphone bow</span></button>
-    <button class="chip" data-s="1" style="--c:#f04880" onclick="setSample(1)">PIZZ<span>violin pizz</span></button>
-    <button class="chip" data-s="2" style="--c:#f57e20" onclick="setSample(2)">CLAR<span>bass clarinet</span></button>
-    <button class="chip" data-s="3" style="--c:#80d020" onclick="setSample(3)">FLUTE<span>flute vib</span></button>
-    <button class="chip" data-s="4" style="--c:#a060f0" onclick="setSample(4)">VSUS<span>vibe sustain</span></button>
-    <button class="chip" data-s="5" style="--c:#20d0e0" onclick="setSample(5)">DAMP<span>vibe dampen</span></button>
-    <button class="chip" data-s="6" style="--c:#e0d020" onclick="setSample(6)">SHRT<span>vibe short</span></button>
-    <button class="chip" data-s="7" style="--c:#e04040" onclick="setSample(7)">TRPT<span>trumpet vib</span></button>
-    <button class="chip" data-s="8" style="--c:#c08048" onclick="setSample(8)">HANG<span>hang, D minor (9 notes)</span></button>
-  </div>
+  <span class="hdr-sample-badge" id="hdr-sample-badge">VIBE</span>
+  <button class="menu-btn" onclick="toggleMenu()" title="Sound, FX, arp, scale, chord, LFO, presets">☰</button>
 </div>
 
-<!-- Knob row -->
-<div class="knob-row" id="knob-row">
-  <div class="kw" data-k="atk">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">ATK</div><div class="kv">13ms</div>
-  </div>
-  <div class="kw" data-k="dec">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">DEC</div><div class="kv">209ms</div>
-  </div>
-  <div class="kw" data-k="sus">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">SUS</div><div class="kv">85%</div>
-  </div>
-  <div class="kw" data-k="rel">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">REL</div><div class="kv">1.3s</div>
-  </div>
-  <div class="knob-sep"></div>
-  <div class="kw" data-k="warp">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">WARP</div><div class="kv">0%</div>
-  </div>
-  <div class="kw" data-k="echo">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">ECHO</div><div class="kv">0%</div>
-  </div>
-  <div class="kw" data-k="drive">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">DRIVE</div><div class="kv">0%</div>
-  </div>
-  <div class="kw" data-k="rev">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">REV</div><div class="kv">0%</div>
-  </div>
-  <div class="kw" data-k="tone">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">TONE</div><div class="kv">3.0k</div>
-  </div>
-  <div class="kw" data-k="vol">
-    <canvas width="48" height="48"></canvas>
-    <div class="kl">VOL</div><div class="kv">75%</div>
-  </div>
-</div>
-
-<!-- Hex keyboard -->
+<!-- Hex keyboard — the main event, takes up nearly the whole screen -->
 <div id="hex-wrap"><canvas id="hex-cv"></canvas></div>
 
-<!-- ARP section -->
-<div class="arp-section">
-  <div class="arp-steps-row">
-    <div class="arp-dots" id="arp-dots"></div>
-    <div class="arp-dots" id="seq-chips" style="display:none"></div>
-    <span class="arp-form-lbl" id="arp-form-lbl">○  ○  ○</span>
-    <button class="arp-play-btn" id="seq-mode-btn" onclick="toggleSeqMode()">SEQ</button>
-    <button class="arp-play-btn" id="seq-clear-btn" onclick="seqClear()" style="display:none">CLR</button>
-    <div style="display:flex;align-items:center;gap:2px;flex-shrink:0;margin-left:4px;">
-      <button class="arp-oct-btn" onclick="shiftHexRows(-1)">−</button>
-      <span id="hex-rows-disp" style="font-size:10px;font-weight:700;color:#7070b0;min-width:16px;text-align:center;letter-spacing:-.02em;"></span>
-      <button class="arp-oct-btn" onclick="shiftHexRows(+1)">+</button>
-    </div>
-    <button class="arp-play-btn" id="arp-play-btn" onclick="toggleArp()">▶ ARP</button>
+<!-- Transport bar — stays on screen; everything else lives in the menu -->
+<div class="arp-steps-row">
+  <div class="arp-dots" id="arp-dots"></div>
+  <div class="arp-dots" id="seq-chips" style="display:none"></div>
+  <span class="arp-form-lbl" id="arp-form-lbl">○  ○  ○</span>
+  <button class="arp-play-btn" id="seq-mode-btn" onclick="toggleSeqMode()">SEQ</button>
+  <button class="arp-play-btn" id="seq-clear-btn" onclick="seqClear()" style="display:none">CLR</button>
+  <div style="display:flex;align-items:center;gap:2px;flex-shrink:0;margin-left:4px;">
+    <button class="arp-oct-btn" onclick="shiftHexRows(-1)">−</button>
+    <span id="hex-rows-disp" style="font-size:10px;font-weight:700;color:#7070b0;min-width:16px;text-align:center;letter-spacing:-.02em;"></span>
+    <button class="arp-oct-btn" onclick="shiftHexRows(+1)">+</button>
   </div>
-  <div class="arp-ctrl-row">
-    <div class="arp-grp">
-      <span class="arp-lbl">SCALE</span>
-      <select class="arp-sel" id="arp-scale-sel" onchange="setScaleKey(this.value)" style="min-width:88px"></select>
+  <button class="arp-play-btn" id="arp-play-btn" onclick="toggleArp()">▶ ARP</button>
+</div>
+
+<!-- Menu overlay — timbre, envelope/FX, arp/scale/chord, LFOs, presets -->
+<div class="menu-overlay" id="menu-overlay" style="display:none" onclick="if(event.target===this) toggleMenu()">
+  <div class="menu-panel">
+    <div class="menu-panel-hdr">
+      <span>SOUND &amp; CONTROLS</span>
+      <button class="menu-close-btn" onclick="toggleMenu()">✕</button>
     </div>
-    <div class="arp-grp" id="arp-deg-grp" style="display:none">
-      <span class="arp-lbl">DEGREE</span>
-      <select class="arp-sel" id="arp-deg-sel" onchange="setScaleDeg(+this.value)"></select>
+
+    <div class="menu-section-lbl">TIMBRE</div>
+    <div class="chips">
+      <button class="chip active" data-s="0" style="--c:#00e090" onclick="setSample(0)">VIBE<span>vibraphone bow</span></button>
+      <button class="chip" data-s="1" style="--c:#f04880" onclick="setSample(1)">PIZZ<span>violin pizz</span></button>
+      <button class="chip" data-s="2" style="--c:#f57e20" onclick="setSample(2)">CLAR<span>bass clarinet</span></button>
+      <button class="chip" data-s="3" style="--c:#80d020" onclick="setSample(3)">FLUTE<span>flute vib</span></button>
+      <button class="chip" data-s="4" style="--c:#a060f0" onclick="setSample(4)">VSUS<span>vibe sustain</span></button>
+      <button class="chip" data-s="5" style="--c:#20d0e0" onclick="setSample(5)">DAMP<span>vibe dampen</span></button>
+      <button class="chip" data-s="6" style="--c:#e0d020" onclick="setSample(6)">SHRT<span>vibe short</span></button>
+      <button class="chip" data-s="7" style="--c:#e04040" onclick="setSample(7)">TRPT<span>trumpet vib</span></button>
+      <button class="chip" data-s="8" style="--c:#c08048" onclick="setSample(8)">HANG<span>hang, D minor (9 notes)</span></button>
     </div>
-    <div class="arp-grp">
-      <span class="arp-lbl">CHORD</span>
-      <select class="arp-sel" id="arp-chord-sel" onchange="setArpChord(this.value)"></select>
-    </div>
-    <div class="arp-grp">
-      <span class="arp-lbl">PATTERN</span>
-      <select class="arp-sel" id="arp-pat-sel" onchange="_arpStyle=this.value;savePreset()"></select>
-    </div>
-    <div class="kw" data-k="bpm">
-      <canvas width="40" height="40"></canvas>
-      <div class="kl">BPM</div><div class="kv">120</div>
-    </div>
-    <div class="kw" data-k="swing">
-      <canvas width="40" height="40"></canvas>
-      <div class="kl">SWING</div><div class="kv">50%</div>
-    </div>
-    <div class="kw" data-k="gate">
-      <canvas width="40" height="40"></canvas>
-      <div class="kl">GATE</div><div class="kv">50%</div>
-    </div>
-    <div class="arp-grp">
-      <span class="arp-lbl">ROOT</span>
-      <div class="arp-root-ctrl">
-        <button class="arp-oct-btn" onclick="shiftArpOct(-1)">−</button>
-        <span class="arp-root-disp" id="arp-root-disp">C4</span>
-        <button class="arp-oct-btn" onclick="shiftArpOct(+1)">+</button>
+
+    <div class="menu-section-lbl">ENVELOPE &amp; FX</div>
+    <div class="knob-row" id="knob-row" style="border-bottom:none;">
+      <div class="kw" data-k="atk">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">ATK</div><div class="kv">13ms</div>
+      </div>
+      <div class="kw" data-k="dec">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">DEC</div><div class="kv">209ms</div>
+      </div>
+      <div class="kw" data-k="sus">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">SUS</div><div class="kv">85%</div>
+      </div>
+      <div class="kw" data-k="rel">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">REL</div><div class="kv">1.3s</div>
+      </div>
+      <div class="knob-sep"></div>
+      <div class="kw" data-k="warp">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">WARP</div><div class="kv">0%</div>
+      </div>
+      <div class="kw" data-k="echo">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">ECHO</div><div class="kv">0%</div>
+      </div>
+      <div class="kw" data-k="drive">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">DRIVE</div><div class="kv">0%</div>
+      </div>
+      <div class="kw" data-k="rev">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">REV</div><div class="kv">0%</div>
+      </div>
+      <div class="kw" data-k="tone">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">TONE</div><div class="kv">3.0k</div>
+      </div>
+      <div class="kw" data-k="vol">
+        <canvas width="48" height="48"></canvas>
+        <div class="kl">VOL</div><div class="kv">75%</div>
       </div>
     </div>
-    <div class="arp-grp">
-      <span class="arp-lbl">PRESET</span>
-      <div style="display:flex;align-items:center;gap:3px;">
-        <select class="arp-sel" id="preset-sel" onchange="loadNamedPreset(this.value)" style="min-width:96px"></select>
-        <button class="arp-oct-btn" onclick="saveNamedPreset()" title="Save current settings as a new preset">💾</button>
-        <button class="arp-oct-btn" onclick="deleteNamedPreset()" title="Delete selected preset">✕</button>
+
+    <div class="menu-section-lbl">ARP / SCALE / CHORD / PRESET</div>
+    <div class="arp-ctrl-row">
+      <div class="arp-grp">
+        <span class="arp-lbl">SCALE</span>
+        <select class="arp-sel" id="arp-scale-sel" onchange="setScaleKey(this.value)" style="min-width:88px"></select>
+      </div>
+      <div class="arp-grp" id="arp-deg-grp" style="display:none">
+        <span class="arp-lbl">DEGREE</span>
+        <select class="arp-sel" id="arp-deg-sel" onchange="setScaleDeg(+this.value)"></select>
+      </div>
+      <div class="arp-grp">
+        <span class="arp-lbl">CHORD</span>
+        <select class="arp-sel" id="arp-chord-sel" onchange="setArpChord(this.value)"></select>
+      </div>
+      <div class="arp-grp">
+        <span class="arp-lbl">PATTERN</span>
+        <select class="arp-sel" id="arp-pat-sel" onchange="_arpStyle=this.value;savePreset()"></select>
+      </div>
+      <div class="kw" data-k="bpm">
+        <canvas width="40" height="40"></canvas>
+        <div class="kl">BPM</div><div class="kv">120</div>
+      </div>
+      <div class="kw" data-k="swing">
+        <canvas width="40" height="40"></canvas>
+        <div class="kl">SWING</div><div class="kv">50%</div>
+      </div>
+      <div class="kw" data-k="gate">
+        <canvas width="40" height="40"></canvas>
+        <div class="kl">GATE</div><div class="kv">50%</div>
+      </div>
+      <div class="arp-grp">
+        <span class="arp-lbl">ROOT</span>
+        <div class="arp-root-ctrl">
+          <button class="arp-oct-btn" onclick="shiftArpOct(-1)">−</button>
+          <span class="arp-root-disp" id="arp-root-disp">C4</span>
+          <button class="arp-oct-btn" onclick="shiftArpOct(+1)">+</button>
+        </div>
+      </div>
+      <div class="arp-grp">
+        <span class="arp-lbl">PRESET</span>
+        <div style="display:flex;align-items:center;gap:3px;">
+          <select class="arp-sel" id="preset-sel" onchange="loadNamedPreset(this.value)" style="min-width:96px"></select>
+          <button class="arp-oct-btn" onclick="saveNamedPreset()" title="Save current settings as a new preset">💾</button>
+          <button class="arp-oct-btn" onclick="deleteNamedPreset()" title="Delete selected preset">✕</button>
+        </div>
       </div>
     </div>
-  </div>
-  <!-- MOD row — LFO automation -->
-  <div class="arp-ctrl-row" style="border-top:1px solid #0a0a1e;">
-    <div class="arp-grp">
-      <span class="arp-lbl">LFO 1</span>
-      <button class="arp-play-btn" id="lfo1-btn" onclick="toggleLfo(0)">ON</button>
-    </div>
-    <div class="arp-grp">
-      <span class="arp-lbl">TARGET</span>
-      <select class="arp-sel" id="lfo1-tgt" onchange="setLfoTarget(0,this.value)" style="min-width:68px"></select>
-    </div>
-    <div class="arp-grp">
-      <span class="arp-lbl">SHAPE</span>
-      <select class="arp-sel" id="lfo1-shp" onchange="setLfoShape(0,this.value)" style="min-width:76px">
-        <option value="sine">∿ SINE</option>
-        <option value="tri">△ TRI</option>
-        <option value="sqr">⊓ SQR</option>
-        <option value="rnd">↯ S&amp;H</option>
-      </select>
-    </div>
-    <div class="kw" data-k="lfo1rate">
-      <canvas width="40" height="40"></canvas>
-      <div class="kl">RATE</div><div class="kv">0.25Hz</div>
-    </div>
-    <div class="kw" data-k="lfo1depth">
-      <canvas width="40" height="40"></canvas>
-      <div class="kl">DEPTH</div><div class="kv">50%</div>
-    </div>
-    <div class="knob-sep"></div>
-    <div class="arp-grp">
-      <span class="arp-lbl">LFO 2</span>
-      <button class="arp-play-btn" id="lfo2-btn" onclick="toggleLfo(1)">ON</button>
-    </div>
-    <div class="arp-grp">
-      <span class="arp-lbl">TARGET</span>
-      <select class="arp-sel" id="lfo2-tgt" onchange="setLfoTarget(1,this.value)" style="min-width:68px"></select>
-    </div>
-    <div class="arp-grp">
-      <span class="arp-lbl">SHAPE</span>
-      <select class="arp-sel" id="lfo2-shp" onchange="setLfoShape(1,this.value)" style="min-width:76px">
-        <option value="sine">∿ SINE</option>
-        <option value="tri">△ TRI</option>
-        <option value="sqr">⊓ SQR</option>
-        <option value="rnd">↯ S&amp;H</option>
-      </select>
-    </div>
-    <div class="kw" data-k="lfo2rate">
-      <canvas width="40" height="40"></canvas>
-      <div class="kl">RATE</div><div class="kv">0.45Hz</div>
-    </div>
-    <div class="kw" data-k="lfo2depth">
-      <canvas width="40" height="40"></canvas>
-      <div class="kl">DEPTH</div><div class="kv">30%</div>
+
+    <div class="menu-section-lbl">LFO</div>
+    <div class="arp-ctrl-row" style="border-top:none;">
+      <div class="arp-grp">
+        <span class="arp-lbl">LFO 1</span>
+        <button class="arp-play-btn" id="lfo1-btn" onclick="toggleLfo(0)">ON</button>
+      </div>
+      <div class="arp-grp">
+        <span class="arp-lbl">TARGET</span>
+        <select class="arp-sel" id="lfo1-tgt" onchange="setLfoTarget(0,this.value)" style="min-width:68px"></select>
+      </div>
+      <div class="arp-grp">
+        <span class="arp-lbl">SHAPE</span>
+        <select class="arp-sel" id="lfo1-shp" onchange="setLfoShape(0,this.value)" style="min-width:76px">
+          <option value="sine">∿ SINE</option>
+          <option value="tri">△ TRI</option>
+          <option value="sqr">⊓ SQR</option>
+          <option value="rnd">↯ S&amp;H</option>
+        </select>
+      </div>
+      <div class="kw" data-k="lfo1rate">
+        <canvas width="40" height="40"></canvas>
+        <div class="kl">RATE</div><div class="kv">0.25Hz</div>
+      </div>
+      <div class="kw" data-k="lfo1depth">
+        <canvas width="40" height="40"></canvas>
+        <div class="kl">DEPTH</div><div class="kv">50%</div>
+      </div>
+      <div class="knob-sep"></div>
+      <div class="arp-grp">
+        <span class="arp-lbl">LFO 2</span>
+        <button class="arp-play-btn" id="lfo2-btn" onclick="toggleLfo(1)">ON</button>
+      </div>
+      <div class="arp-grp">
+        <span class="arp-lbl">TARGET</span>
+        <select class="arp-sel" id="lfo2-tgt" onchange="setLfoTarget(1,this.value)" style="min-width:68px"></select>
+      </div>
+      <div class="arp-grp">
+        <span class="arp-lbl">SHAPE</span>
+        <select class="arp-sel" id="lfo2-shp" onchange="setLfoShape(1,this.value)" style="min-width:76px">
+          <option value="sine">∿ SINE</option>
+          <option value="tri">△ TRI</option>
+          <option value="sqr">⊓ SQR</option>
+          <option value="rnd">↯ S&amp;H</option>
+        </select>
+      </div>
+      <div class="kw" data-k="lfo2rate">
+        <canvas width="40" height="40"></canvas>
+        <div class="kl">RATE</div><div class="kv">0.45Hz</div>
+      </div>
+      <div class="kw" data-k="lfo2depth">
+        <canvas width="40" height="40"></canvas>
+        <div class="kl">DEPTH</div><div class="kv">30%</div>
+      </div>
     </div>
   </div>
 </div>
@@ -893,11 +945,21 @@ function chordKill(voices) { (voices || []).forEach(v => killVoice(v)); }
 function setSample(idx) {
   _sample = idx;
   document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
-  document.querySelector(`.chip[data-s="${idx}"]`)?.classList.add('active');
+  const chip = document.querySelector(`.chip[data-s="${idx}"]`);
+  chip?.classList.add('active');
+  const badge = document.getElementById('hdr-sample-badge');
+  if (badge && chip) badge.textContent = chip.childNodes[0].textContent.trim();
   _voices.forEach(v => killVoice(v));
   _active.clear(); _pressedMidi.clear(); drawHex();
   if (_ctx) loadSamples();
   savePreset();
+}
+
+// ── Menu overlay (timbre, envelope/FX, arp/scale/chord, LFO, presets) ─────────
+function toggleMenu() {
+  const el = document.getElementById('menu-overlay');
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
 }
 
 // ── Knob system ───────────────────────────────────────────────────────────────
@@ -1034,14 +1096,14 @@ function sizeHex() {
     const span = _hexCols + CTRL + (rows - 1) / 2;
     return Math.min(W / (Math.sqrt(3) * (span + 0.5)), H / (1.5 * rows + 3));
   };
-  // Auto default caps at 5 rows (was 9) — on narrow/portrait screens, width (not
-  // height) is what actually bounds hex size, so maxing out rows just crammed in
-  // more, tinier hexes without using any extra vertical space. Fewer rows by
-  // default means noticeably bigger, easier-to-tap keys; still manually
-  // adjustable up to 9 via the +/- row control (shiftHexRows), which pins rows.
+  // Auto default caps at 8 rows. Width (not height) is what actually bounds hex
+  // size on narrow/portrait screens — more rows costs very little hex radius
+  // (grid stays width-bound throughout the 3-9 range) but uses far more of the
+  // hex-wrap area now that controls live in the menu instead of a tall header/
+  // knob-row/arp-section. Still manually adjustable via the +/- row control.
   _hexRows = _hexRowPin != null
     ? _hexRowPin
-    : Math.max(3, Math.min(5, Math.floor(H / 52)));
+    : Math.max(3, Math.min(8, Math.floor(H / 52)));
   _hexR = hexRFor(_hexRows);
   const span = _hexCols + CTRL + (_hexRows - 1) / 2;
   hexCv.width  = Math.ceil(W);
