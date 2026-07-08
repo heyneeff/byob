@@ -667,8 +667,7 @@ const CHORD_MAP = {
   NPP:{ sym:'☳', name:'½ Dim 7',  col:'#9050e8', ivs:[0,3,6,10]  },
   PPN:{ sym:'☶', name:'Dim 7',    col:'#8090a0', ivs:[0,3,6,9]   },
   // Jazz piano voicings — the 8-trit ternary namespace (PPP..PPN) above is
-  // fully used, so these get their own plain keys. Sit on the hex pads
-  // directly below the 8 above (see CHORD_KEYS / padPos in the hex draw code).
+  // fully used, so these get their own plain keys.
   DOM7SUS4:{ sym:'⟡', name:'7sus4',   col:'#30c8a0', ivs:[0,5,7,10]     },
   DOM9:    { sym:'✶', name:'7(9)',    col:'#f06030', ivs:[0,4,7,10,14]  },
   MIN11:   { sym:'✻', name:'Min 11',  col:'#5090ff', ivs:[0,3,7,10,14,17] },
@@ -676,10 +675,22 @@ const CHORD_MAP = {
   MAJ9:    { sym:'✦', name:'Maj 9',   col:'#f0e060', ivs:[0,4,7,11,14]  },
   MIN6:    { sym:'❋', name:'Min 6',   col:'#6080e8', ivs:[0,3,7,9]      },
 };
-// Insertion order = hex pad order: original 8 (triads/7ths) first/top, then
-// the 6 jazz voicings below them. See padPos() in the hex draw code.
-const CHORD_KEYS = ['PPP','NNN','NNP','NPN','PNP','PNN','NPP','PPN',
-                     'DOM7SUS4','DOM9','MIN11','MAJ7S11','MAJ9','MIN6'];
+// Chord pads sit in 3 side-by-side hex columns instead of one tall stack —
+// each column is its own family, capped at 5 rows so pads can be drawn much
+// bigger. Half-dim/dim ride with the minor column (they function as minor-ish
+// ii/vii chords); everything dominant/sus that isn't a clean major or minor
+// triad-family chord lands in the third "other" column. See CHORD_GROUPS in
+// the hex draw code for the actual column/row layout.
+const CHORD_KEYS = ['PPP','NNN','NNP','MAJ9','MAJ7S11',   // major family
+                     'PNP','MIN11','MIN6','NPP','PPN',    // minor family (+ dim/half-dim)
+                     'NPN','PNN','DOM7SUS4','DOM9'];      // dominant / sus
+// col = hex q-offset left of the keyboard (q=0). Rows within a column run
+// 0 (bottom) upward — max 5 rows tall.
+const CHORD_GROUPS = [
+  { col: -3, keys: ['PPP','NNN','NNP','MAJ9','MAJ7S11'] },
+  { col: -2, keys: ['PNP','MIN11','MIN6','NPP','PPN']   },
+  { col: -1, keys: ['NPN','PNN','DOM7SUS4','DOM9']      },
+];
 const SCALE_MAP = {
   none:      { name:'— free —',   ivs:null },
   major:     { name:'Major',      ivs:[0,2,4,5,7,9,11] },
@@ -1198,29 +1209,30 @@ function sizeHex() {
   const wrap  = document.getElementById('hex-wrap');
   const W     = wrap.clientWidth  - 8;
   const H     = wrap.clientHeight - 8;
-  _hexCols    = Math.max(5, Math.min(11, Math.floor(W / 52)));
-  // Ctrl hexes live at q=-2,-1; the LOCK/PANIC row (r=-1) shifts half a column
-  // further left than the chord pads above it, so the true leftmost content
-  // column is q=-2.5, not q=-2.
-  const CTRL  = 2.5;
-  // The 14-chord pad column now spans r=-1 (LOCK/PANIC, bottom) up to r=6
-  // (top of the original 8), independent of how many keyboard rows are
-  // showing — so it, not the keyboard, usually dictates vertical extent.
-  const CTRL_TOP_R = 6, CTRL_BOT_R = -1;
+  // Bigger cells overall (was /52 cols, /66 rows) — fewer, larger pads so
+  // they're comfortably fingertip-sized on a tablet. Width, not height, is
+  // what actually bounds hex size in practice, so the column cap matters
+  // more here than the row cap below.
+  _hexCols    = Math.max(5, Math.min(7, Math.floor(W / 88)));
+  // Ctrl hexes now live in 3 columns (q=-3,-2,-1, one per chord family — see
+  // CHORD_GROUPS); the LOCK/PANIC row (r=-1) shifts half a column further
+  // left than the chord pads above it, so the true leftmost content column
+  // is q=-3.5.
+  const CTRL  = 3.5;
+  // Each chord-family column caps at 5 rows now (was one 8-tall stack), so
+  // the control column is much shorter and stops dominating vertical sizing.
+  const CTRL_TOP_R = 4, CTRL_BOT_R = -1;
   const hexRFor = rows => {
     const span   = _hexCols + CTRL + (rows - 1) / 2;
     const topR   = Math.max(rows - 1, CTRL_TOP_R);
     const botR   = Math.min(0, CTRL_BOT_R);
     return Math.min(W / (Math.sqrt(3) * (span + 1)), H / (1.5 * (topR - botR) + 2));
   };
-  // Auto default caps at 6 rows. Width (not height) is what actually bounds hex
-  // size on narrow/portrait screens — more rows costs very little hex radius
-  // (grid stays width-bound throughout the 3-9 range) but uses far more of the
-  // hex-wrap area now that controls live in the menu instead of a tall header/
-  // knob-row/arp-section. Still manually adjustable via the +/- row control.
+  // Auto default caps at 5 rows — bigger cells, matches the chord column's
+  // own 5-row cap. Still manually adjustable via the +/- row control.
   _hexRows = _hexRowPin != null
     ? _hexRowPin
-    : Math.max(3, Math.min(6, Math.floor(H / 66)));
+    : Math.max(3, Math.min(5, Math.floor(H / 96)));
   _hexR = hexRFor(_hexRows);
   hexCv.width  = Math.ceil(W);
   hexCv.height = Math.ceil(H);
@@ -1243,7 +1255,7 @@ function sizeHex() {
 
 function shiftHexRows(d) {
   if (_hexRowPin == null) _hexRowPin = _hexRows; // pin at current auto value first
-  _hexRowPin = Math.max(2, Math.min(9, _hexRowPin + d));
+  _hexRowPin = Math.max(2, Math.min(7, _hexRowPin + d));
   sizeHex(); drawHex();
   savePreset();
 }
@@ -1369,19 +1381,19 @@ function drawHex() {
     }
   }
 
-  // ── Control hexes (14 chord pads + LOCK + PANIC) at q=-2, q=-1 ───────────
-  // Original 8 triads/7ths occupy rows 3-6 (top); the 6 jazz voicings occupy
-  // rows 0-2 (below them); LOCK/PANIC sit at r=-1 (bottom-most). See padPos().
-  CHORD_KEYS.forEach((key, idx) => {
-    const { col, row } = padPos(idx);
-    const { x, y } = hexCenter(col, row);
-    const ch = CHORD_MAP[key];
-    drawCtrlHex(x, y, ch.sym, ch.name, ch.col, key === _arpChord);
+  // ── Control hexes: 3 chord-family columns + LOCK + PANIC ─────────────────
+  // Major (q=-3), minor+dim (q=-2), dominant/sus (q=-1) — see CHORD_GROUPS.
+  // Each column runs bottom-up (row 0 first), capped at 5 rows.
+  CHORD_GROUPS.forEach(group => {
+    group.keys.forEach((key, row) => {
+      const { x, y } = hexCenter(group.col, row);
+      const ch = CHORD_MAP[key];
+      drawCtrlHex(x, y, ch.sym, ch.name, ch.col, key === _arpChord);
+    });
   });
-  // LOCK at q=-2, r=-1 (below chord col A)
-  { const { x, y } = hexCenter(-2, -1);
+  // LOCK below the major column, PANIC below the dominant/sus column
+  { const { x, y } = hexCenter(-3, -1);
     drawCtrlHex(x, y, 'LOCK', null, '#00e090', _scaleLocked); }
-  // PANIC at q=-1, r=-1 (below chord col B) — persistent dim red
   { const { x, y } = hexCenter(-1, -1);
     drawCtrlHex(x, y, 'STOP', null, '#802020', true); }
 }
@@ -1399,23 +1411,16 @@ function hitHex(cx, cy) {
   return bestD <= _hexR ? best : null;
 }
 
-// Chord-pad grid position for CHORD_KEYS[idx]: original 8 (idx 0-7) sit on
-// top at rows 3-6; the 6 jazz voicings (idx 8-13) sit below at rows 0-2.
-function padPos(idx) {
-  if (idx < 8) return { col: idx < 4 ? -2 : -1, row: (idx % 4) + 3 };
-  const j = idx - 8;
-  return { col: j < 3 ? -2 : -1, row: j % 3 };
-}
-
 // Returns {type, key} if (px,py) hits a control hex, else null
 function hitControlHex(px, py) {
   const hitR = _hexR * 0.86; // matches ctrl hex drawn size (_hexR - 5 ≈ 0.86*_hexR for typical sizes)
-  for (let i = 0; i < CHORD_KEYS.length; i++) {
-    const { col, row } = padPos(i);
-    const { x, y } = hexCenter(col, row);
-    if (Math.hypot(px - x, py - y) <= hitR) return { type: 'chord', key: CHORD_KEYS[i] };
+  for (const group of CHORD_GROUPS) {
+    for (let row = 0; row < group.keys.length; row++) {
+      const { x, y } = hexCenter(group.col, row);
+      if (Math.hypot(px - x, py - y) <= hitR) return { type: 'chord', key: group.keys[row] };
+    }
   }
-  { const { x, y } = hexCenter(-2, -1);
+  { const { x, y } = hexCenter(-3, -1);
     if (Math.hypot(px - x, py - y) <= hitR) return { type: 'lock' }; }
   { const { x, y } = hexCenter(-1, -1);
     if (Math.hypot(px - x, py - y) <= hitR) return { type: 'panic' }; }
