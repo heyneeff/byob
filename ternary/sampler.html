@@ -753,7 +753,7 @@ async function loadSamples() {
 // ── Voice management ──────────────────────────────────────────────────────────
 let _voiceRR = 0;
 
-function noteOn(midi) {
+function noteOn(midi, gainScale = 1) {
   if (!_ctx) return null;
   const name      = TIMBRE[_sample];
   const layerCfgs = TIMBRE_LAYERS[name] ?? [{ name, mix: 1, detune: 0 }];
@@ -771,7 +771,7 @@ function noteOn(midi) {
   _voiceRR++;
 
   const now  = _ctx.currentTime;
-  const peak = 0.82;
+  const peak = 0.82 * gainScale;
   const atk  = 0.003 + knobs.atk * 1.997;
   const dec  = 0.01  + knobs.dec * 1.99;
   const sus  = knobs.sus * peak;
@@ -875,9 +875,13 @@ function killVoice(v) {
 // is sounding.
 function chordOn(midi) {
   const ivs = (_chordHeld && CHORD_MAP[_chordHeld]?.ivs) ? CHORD_MAP[_chordHeld].ivs : [0];
+  // Compensate for stacking N voices at once — a 4-note chord (Maj7, Dom7, ...)
+  // would otherwise sum noticeably louder than a 3-note one (Major, Sus4, ...).
+  // 1/sqrt(N) balances perceived loudness without flattening bigger chords.
+  const gainScale = 1 / Math.sqrt(ivs.length);
   const voices = [];
   for (const iv of ivs) {
-    const v = noteOn(midi + iv);
+    const v = noteOn(midi + iv, gainScale);
     if (v) voices.push(v);
   }
   return voices;
