@@ -1026,7 +1026,20 @@ function noteOff(v) {
 function killVoice(v) {
   if (!v || !_ctx) return;
   const now = _ctx.currentTime;
-  try { v.gain?.gain.setTargetAtTime(0, now, 0.01); } catch(e) {}
+  // Must cancel any pending attack ramp from noteOn (linearRampToValueAtTime
+  // to peak, then setTargetAtTime to sustain) before scheduling the fade-out —
+  // otherwise, when a voice is stolen mid-attack, that old ramp is still
+  // queued on this (now-orphaned but still-connected) gain node and fires
+  // later anyway, snapping the volume back up to full peak: a loud percussive
+  // pop on top of whatever's currently playing.
+  try {
+    if (v.gain) {
+      const cur = Math.max(v.gain.gain.value, 0.0001);
+      v.gain.gain.cancelScheduledValues(now);
+      v.gain.gain.setValueAtTime(cur, now);
+      v.gain.gain.setTargetAtTime(0, now, 0.01);
+    }
+  } catch(e) {}
   for (const L of (v.layers || [])) {
     try { L.src?.stop(now + 0.05); } catch(e) {}
     try { L.lfo?.stop(); } catch(e) {}
@@ -1204,7 +1217,7 @@ function sizeHex() {
   const wrap  = document.getElementById('hex-wrap');
   const W     = wrap.clientWidth  - 8;
   const H     = wrap.clientHeight - 8;
-  _hexCols    = Math.max(6, Math.min(14, Math.floor(W / 42)));
+  _hexCols    = Math.max(5, Math.min(11, Math.floor(W / 52)));
   // Ctrl hexes live at q=-2,-1; the LOCK/PANIC row (r=-1) shifts half a column
   // further left than the chord pads above it, so the true leftmost content
   // column is q=-2.5, not q=-2.
@@ -1220,7 +1233,7 @@ function sizeHex() {
   // knob-row/arp-section. Still manually adjustable via the +/- row control.
   _hexRows = _hexRowPin != null
     ? _hexRowPin
-    : Math.max(3, Math.min(8, Math.floor(H / 52)));
+    : Math.max(3, Math.min(6, Math.floor(H / 66)));
   _hexR = hexRFor(_hexRows);
   hexCv.width  = Math.ceil(W);
   hexCv.height = Math.ceil(H);
