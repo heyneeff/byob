@@ -265,6 +265,7 @@ select.arp-sel:focus{border-color:#303060;}
       <button class="chip" data-s="9" style="--c:#4090ff" onclick="setSample(9)">BASS<span>double bass pizz</span></button>
       <button class="chip" data-s="10" style="--c:#d04070" onclick="setSample(10)">CELLO<span>cello pizz</span></button>
       <button class="chip" data-s="11" style="--c:#e8a020" onclick="setSample(11)">HORN<span>french horn</span></button>
+      <button class="chip" data-s="12" style="--c:#20e0a0" onclick="setSample(12)">FMEP<span>FM electric piano</span></button>
     </div>
 
     <div class="menu-section-lbl">ENVELOPE &amp; FX</div>
@@ -627,10 +628,36 @@ const SAMPLE_MAP = {
     70:'samples/Horn.ff.Bb4.stereo.wav',
     74:'samples/Horn.ff.D5.stereo.wav',
   },
+  // Yamaha TX81Z "FM Piano" — 22 notes, C0–C7, every major third (VCSL, CC0)
+  // Rhodes-adjacent FM electric piano tone; mono source, not looped (plucked/decaying).
+  fmpiano: {
+    12:'samples/FMPiano_C0.wav',
+    16:'samples/FMPiano_E0.wav',
+    20:'samples/FMPiano_Ab0.wav',
+    24:'samples/FMPiano_C1.wav',
+    28:'samples/FMPiano_E1.wav',
+    32:'samples/FMPiano_Ab1.wav',
+    36:'samples/FMPiano_C2.wav',
+    40:'samples/FMPiano_E2.wav',
+    44:'samples/FMPiano_Ab2.wav',
+    48:'samples/FMPiano_C3.wav',
+    52:'samples/FMPiano_E3.wav',
+    56:'samples/FMPiano_Ab3.wav',
+    60:'samples/FMPiano_C4.wav',
+    64:'samples/FMPiano_E4.wav',
+    68:'samples/FMPiano_Ab4.wav',
+    72:'samples/FMPiano_C5.wav',
+    76:'samples/FMPiano_E5.wav',
+    80:'samples/FMPiano_Ab5.wav',
+    84:'samples/FMPiano_C6.wav',
+    88:'samples/FMPiano_E6.wav',
+    92:'samples/FMPiano_Ab6.wav',
+    96:'samples/FMPiano_C7.wav',
+  },
 };
-const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','hang','bass','cello','horn'];
+const TIMBRE = ['petal','lip','bass_cl','flute','vib','vib_damp','vib_shrt','trumpet','hang','bass','cello','horn','fmpiano'];
 // timbres whose samples decay naturally — looping would repeat silence
-const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt','hang','bass','cello']);
+const TIMBRE_NOLOOP = new Set(['lip','vib_damp','vib_shrt','hang','bass','cello','fmpiano']);
 // Composite timbres: layer two sample sets into one voice. (none currently active)
 const TIMBRE_LAYERS = {};
 
