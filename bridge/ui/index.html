@@ -229,6 +229,7 @@ input.num {
     </select>
     <button class="btn" onclick="loadZones()">↻</button>
     <button class="btn" onclick="toggleZoneCreator()">+ zone</button>
+    <button class="btn" onclick="killZone()" title="delete selected zone">✕</button>
   </div>
 </header>
 
@@ -258,14 +259,12 @@ input.num {
   <div id="phone-count">0 phones</div>
   <canvas id="radar"></canvas>
   <div id="started-lbl">not anchored</div>
-</div>
-
-<!-- ── Relay status — phones just open the site; shim reads /relay.json ── -->
-<div id="join-section" style="display:none; padding:8px 14px; border-bottom:1px solid #222;">
-  <div style="font-size:11px; color:#9aa;">PHONES: <span style="color:#27e0c0;">boombox.productions/listener.html</span>
-    — geofence takes it from there</div>
-  <div id="join-url" style="font-size:10px; color:#667; word-break:break-all; margin-top:2px;"></div>
-  <div id="join-warn" style="font-size:11px; color:#e0a027;"></div>
+  <!-- Relay status overlay — phones just open the site; shim reads /relay.json -->
+  <div id="join-section" style="display:none; position:absolute; left:14px; bottom:10px; max-width:60%;">
+    <div style="font-size:10px; color:#9aa;">phones → <span style="color:#27e0c0;">boombox.productions/listener.html</span></div>
+    <div id="join-url" style="font-size:9px; color:#667; word-break:break-all;"></div>
+    <div id="join-warn" style="font-size:10px; color:#e0a027;"></div>
+  </div>
 </div>
 
 <!-- ── Controls ───────────────────────────────────────────── -->
@@ -658,6 +657,16 @@ function zcLocate() {
     _zcMap.setView([p.coords.latitude, p.coords.longitude], 15);
     zcSetCenter(p.coords.latitude, p.coords.longitude);
   }, () => log('geolocation unavailable — tap the map instead', 'dim'));
+}
+
+function killZone() {
+  const sel = document.getElementById('zone-select');
+  const id = sel.value || _connectedZoneId;
+  if (!id) { log('No zone selected', 'err'); return; }
+  const name = sel.options[sel.selectedIndex]?.textContent || id.slice(0, 8);
+  if (!confirm(`Delete zone "${name}"? Phones inside will drop out.`)) return;
+  send({ type: 'delete_zone', zoneId: id });
+  log(`Zone "${name}" deleted`, 'dim');
 }
 
 function zcCreate() {

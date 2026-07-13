@@ -401,7 +401,9 @@ async function handleUIMessage(msg, ws) {
 
     case 'create_zone': {
       // The bridge is the broadcaster — it can mint zones directly, no
-      // artist.html login round-trip needed.
+      // artist.html login round-trip needed. One live stage at a time:
+      // creating a zone retires all others.
+      await db.from('zones').update({ active: false }).eq('active', true);
       const { data: z, error } = await db.from('zones').insert({
         name: msg.name || 'Bridge Zone',
         host_id: 'bridge',
@@ -418,6 +420,15 @@ async function handleUIMessage(msg, ws) {
       const zones = await fetchZones();
       broadcastToUI({ type: 'zones', zones });
       broadcastToUI({ type: 'zone_loaded', zoneId: z.id, name: z.name });
+      break;
+    }
+
+    case 'delete_zone': {
+      if (!msg.zoneId) break;
+      await db.from('zones').delete().eq('id', msg.zoneId);
+      console.log(`[zones] deleted ${msg.zoneId}`);
+      if (_activeZoneId === msg.zoneId) _activeZoneId = null;
+      broadcastToUI({ type: 'zones', zones: await fetchZones() });
       break;
     }
 
