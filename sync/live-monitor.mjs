@@ -32,7 +32,7 @@ const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', 
 const csvPath = join(logDir, `${ts}.csv`);
 const csvStream = createWriteStream(csvPath, { flags: 'a' });
 
-const CSV_HEADER = 'wall_ts,deviceId,driftMs,terTritLabel,playbackRate,terSnapCount,terLastFloor,terCalState,terConsecN';
+const CSV_HEADER = 'wall_ts,deviceId,driftMs,terTritLabel,playbackRate,terSnapCount,terLastFloor,terCalState,terConsecN,masterOffMs';
 csvStream.write(CSV_HEADER + '\n');
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -63,6 +63,24 @@ function getDevice(id) {
 let _launch = null; // { kind, t0, devices: { id → { ticks:[{dtMs,drift}], snap0, convergedAtMs } }, timer }
 let _masterTick = null; // latest { position, ts } master reference (DJ anchor preferred)
 let _masterFromAnchor = false; // once the DJ anchor is heard, bridge ticks are ignored
+let _masterTickSetAt = 0;      // wall time the tick was received — extrapolation expires
+// Master-gauge hygiene (2026-07-12 diagnosis of the "stable 87.7s then wild"
+// readings): the wild values were all ±(dur/2) at hard_sync/track_change —
+// three compounding measurement bugs, not a sync failure. (1) anchor
+// extrapolation is linear across the DJ's own seeks/track jumps, so offsets
+// computed between a jump and the next anchor are garbage; (2) per-device
+// masterOffMs never expired, so mid-transition values got medianed later;
+// (3) the ±dur/2 wrap makes a near-half-track offset sign-ambiguous (87.7s
+// IS half of a ~175s track). Guards: tick invalidated on launch events and
+// after 20s without refresh, offsets expire after 15s, near-boundary values
+// (|off| > 0.4×dur) are dropped as wrap-ambiguous.
+const MASTER_TICK_MAX_AGE_MS = 20_000;
+const MASTER_OFF_MAX_AGE_MS  = 15_000;
+function freshMasterOff(dev) {
+  return dev && dev.masterOffMs != null &&
+         Date.now() - (dev.masterOffTs || 0) < MASTER_OFF_MAX_AGE_MS
+    ? dev.masterOffMs : null;
+}
 
 function openLaunchWindow(kind, deviceId) {
   const now = Date.now();
@@ -128,7 +146,7 @@ function closeLaunchWindow(reason) {
     const conv = d.convergedAtMs;
     const ok = conv !== null && conv <= LAUNCH_TARGET_S;
     if (!ok) pass = false;
-    const mOff = devices[id]?.masterOffMs;
+    const mOff = freshMasterOff(devices[id]);
     console.log(`  ${ok ? '✓' : '✗'} ${id}  converged=${conv !== null ? (conv/1000).toFixed(1)+'s' : 'never'}  max=${maxD}ms  final=${lastD}ms${snaps !== null ? `  snaps=${snaps}` : ''}${mOff != null ? `  master=${mOff}ms` : ''}  (${d.ticks.length} ticks)`);
   }
   // Two separate goods (plan "Listenable Entry"): SPREAD is what ears hear
@@ -137,7 +155,7 @@ function closeLaunchWindow(reason) {
   const finals = ids.map(id => L.devices[id].ticks.at(-1).drift);
   const spread = Math.round(Math.max(...finals) - Math.min(...finals));
   const spreadPass = spread < LAUNCH_SPREAD_PASS_MS;
-  const mOffs = ids.map(id => devices[id]?.masterOffMs).filter(v => v != null).sort((a, b) => a - b);
+  const mOffs = ids.map(id => freshMasterOff(devices[id])).filter(v => v != null).sort((a, b) => a - b);
   const masterMedian = mOffs.length ? mOffs[Math.floor(mOffs.length / 2)] : null;
   console.log(`  SPREAD ${spreadPass ? '✅' : '❌'} ${spread}ms (listenability, target <${LAUNCH_SPREAD_PASS_MS}ms)`);
   if (masterMedian !== null)
@@ -295,6 +313,7 @@ console.log('Ctrl+C to stop.\n');
         if (p && isFinite(p.position) && isFinite(p.ts)) {
           _masterTick = { position: p.position, ts: p.ts };
           _masterFromAnchor = true;
+          _masterTickSetAt = Date.now();
         }
       })
       .subscribe();
@@ -323,13 +342,18 @@ db.channel('byob_debug')
     // extrapolated to this HUD packet's server timestamp. Both timestamps are
     // server-clock based (hud ts = syncedNow(), tick ts = bridge serverNow()),
     // so no monitor-local clock enters the math. Wrapped to the loop length.
-    if (_masterTick && p.ts && p.currentTime != null && p.duration) {
+    if (_masterTick && p.ts && p.currentTime != null && p.duration &&
+        Date.now() - _masterTickSetAt < MASTER_TICK_MAX_AGE_MS) {
       const durMs = parseFloat(p.duration) * 1000;
       const audiblePos = parseFloat(p.currentTime) - (parseFloat(p.deviceLatencyMs) || 0) / 1000;
       const masterPos = _masterTick.position + (p.ts - _masterTick.ts) / 1000;
       let off = (audiblePos - masterPos) * 1000;
       if (durMs > 0) { off = ((off % durMs) + durMs) % durMs; if (off > durMs / 2) off -= durMs; }
-      dev.masterOffMs = Math.round(off);
+      // Wrap-ambiguous zone: near ±dur/2 the sign is a coin flip — drop it.
+      if (!(durMs > 0 && Math.abs(off) > durMs * 0.4)) {
+        dev.masterOffMs = Math.round(off);
+        dev.masterOffTs = Date.now();
+      }
     }
 
     dev.ticks.push({ ts: Date.now(), drift, label, rate });
@@ -349,6 +373,7 @@ db.channel('byob_debug')
       p.terLastFloor ?? '',
       p.terCalState  ?? '',
       p.terConsecN   ?? '',
+      freshMasterOff(dev) ?? '',
     ].join(',');
     csvStream.write(row + '\n');
 
@@ -365,11 +390,18 @@ db.channel('byob_debug')
     // Bridge fallback only — its reference goes stale when launches happen
     // through artist.html rather than the bridge (observed: a 152s "master
     // offset"). The DJ anchor (below) is the live master audio and wins.
-    if (p && isFinite(p.position) && isFinite(p.ts) && !_masterFromAnchor)
+    if (p && isFinite(p.position) && isFinite(p.ts) && !_masterFromAnchor) {
       _masterTick = { position: p.position, ts: p.ts };
+      _masterTickSetAt = Date.now();
+    }
   })
   .on('broadcast', { event: 'sync_event' }, ({ payload: p }) => {
     if (p?.kind === 'track_change' || p?.kind === 'hard_sync') {
+      // The master reference just moved — the old tick extrapolates garbage
+      // until a fresh anchor arrives (≤5s), and every stored offset predates
+      // the move. Blackout both instead of medianing ghosts.
+      _masterTick = null;
+      for (const d of Object.values(devices)) { d.masterOffMs = null; d.masterOffTs = 0; }
       openLaunchWindow(p.kind, p.deviceId);
       return;
     }

@@ -164,6 +164,9 @@ _debugChannel.on('broadcast', { event: 'hud_data' }, ({ payload: p }) => {
   let off = (audiblePos - masterPos) * 1000;
   if (!isFinite(off)) return;
   if (durMs > 0) { off = ((off % durMs) + durMs) % durMs; if (off > durMs / 2) off -= durMs; }
+  // Near ±dur/2 the wrap makes the sign a coin flip (the monitor's "87.7s
+  // then wild" bug) — drop wrap-ambiguous readings rather than vote on them.
+  if (durMs > 0 && Math.abs(off) > durMs * 0.4) return;
   _fieldOffsets.set(p.deviceId, { offMs: off, ts: Date.now() });
 });
 _debugChannel.subscribe();
