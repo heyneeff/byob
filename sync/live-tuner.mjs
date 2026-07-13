@@ -2,10 +2,11 @@
 // Usage: node live-tuner.mjs [collect_seconds]
 // Subscribes to byob_debug, collects hud_data, sweeps engine params, reports.
 
-import { createClient } from '@supabase/supabase-js';
+import '../byob-shim.js';
+const { createClient } = globalThis.supabase;
 
-const SUPABASE_URL = 'https://ohacvuwzvuifpyqckise.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+const SUPABASE_URL = 'http://localhost:3100';
+const SUPABASE_KEY = 'local';
 const COLLECT_S = parseInt(process.argv[2] || '90'); // default 90s collection window
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);

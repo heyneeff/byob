@@ -5,11 +5,12 @@
 // Output: byob-debug-session-<ISO>.csv in the current directory,
 // identical format to debug.html's "Export CSV" button.
 
-import { createClient } from '@supabase/supabase-js';
+import './byob-shim.js';
+const { createClient } = globalThis.supabase;
 import { writeFileSync, appendFileSync } from 'fs';
 
-const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+const SUPABASE_URL      = 'http://localhost:3100';
+const SUPABASE_ANON_KEY = 'local';
 
 const durationMs = parseInt(process.argv[2] || '300', 10) * 1000;
 

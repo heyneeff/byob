@@ -1,9 +1,10 @@
 // Filtered sync stream — only emits state transitions, stalls, and 30s summary
-import { createClient } from '@supabase/supabase-js';
+import '../byob-shim.js';
+const { createClient } = globalThis.supabase;
 
 const db = createClient(
-  'https://ohacvuwzvuifpyqckise.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY'
+  'http://localhost:3100',
+  'local'
 );
 
 const state  = {}; // deviceId:layer → { label, drift, ts }

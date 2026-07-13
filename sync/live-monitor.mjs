@@ -5,13 +5,15 @@
 // Writes a rolling log to ./monitor-logs/YYYY-MM-DD_HH-MM.csv automatically.
 // Tracks per-device drift, stall signature, P/Z/N state distribution in real time.
 
-import { createClient } from '@supabase/supabase-js';
+import '../byob-shim.js';
 import { createWriteStream, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+const { createClient } = globalThis.supabase;
 
-const SUPABASE_URL = 'https://ohacvuwzvuifpyqckise.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+// Self-hosted relay (bridge/relay.mjs). Override with BYOB_SERVER env var.
+const SUPABASE_URL = 'http://localhost:3100';
+const SUPABASE_KEY = 'local';
 
 const REPORT_INTERVAL_MS  = 30_000;   // print summary every 30s
 const STALL_DETECT_MS     = 40;       // jump ≥ this between ticks = stall event

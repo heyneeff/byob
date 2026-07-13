@@ -454,7 +454,7 @@ function connect() {
     send({ type: 'get_zones' });
     log('Bridge connected','ok');
   };
-  ws.onmessage = e => handle(JSON.parse(e.data));
+  ws.onmessage = e => { _lastMsgAt = Date.now(); handle(JSON.parse(e.data)); };
   ws.onclose = () => {
     wsOk = false;
     setDot('ws-dot',''); setText('ws-lbl','reconnecting…');
@@ -463,6 +463,20 @@ function connect() {
 }
 
 function send(obj) { if (wsOk) ws.send(JSON.stringify(obj)); }
+
+// Zombie-socket watchdog: the bridge streams beat_tick at 10Hz, so >5s of
+// silence on an "open" socket means the TCP link died without a close event
+// (mac sleep, network blip). Force-close so onclose reconnects — otherwise
+// the UI shows "bridge" forever while every send() (get_zones, set_zone,
+// play…) goes into a dead pipe.
+let _lastMsgAt = Date.now();
+setInterval(() => {
+  if (wsOk && Date.now() - _lastMsgAt > 5000) {
+    log('No data 5s — reconnecting socket', 'dim');
+    wsOk = false;
+    try { ws.close(); } catch (_) {}
+  }
+}, 2000);
 
 // ── State ─────────────────────────────────────────────────────
 let _phones      = {};   // deviceId → {bearing, dist, slot, ...}
@@ -476,7 +490,11 @@ let _sweepDir    = 1;   // 1=CW, -1=CCW
 let _tapTimes    = [];
 
 // ── Bridge message handler ────────────────────────────────────
-function handle(msg) {
+// NOTE: the real entry point is handle() near the stems section, which wraps
+// this. Don't declare another `function handle` — declarations hoist, so a
+// `const _orig = handle` above a second declaration captures the NEW one and
+// recurses infinitely (this killed the whole UI once already).
+function handleBase(msg) {
   if (msg.type === 'state') {
     _bpm = msg.bpm; _beat = msg.beat;
     _slotVolumes = msg.slotVolumes || {};
@@ -858,10 +876,10 @@ function stemsStatus(msg, isErr = false) {
   el.style.color = isErr ? 'var(--pink)' : 'var(--teal)';
 }
 
-// Handle stems-related bridge messages (add to handle())
-const _origHandle = handle;
+// Handle stems-related bridge messages on top of handleBase (see note there —
+// never shadow `handle` with another function declaration).
 function handle(msg) {
-  _origHandle(msg);
+  handleBase(msg);
   if (msg.type === 'audio_devices') {
     const sel = document.getElementById('audio-device');
     sel.innerHTML = '<option value="">— pick device —</option>';

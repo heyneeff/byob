@@ -102,8 +102,15 @@ time they were written* — read them with this rename in mind, don't "fix" them
 
 ## Architecture
 
-### Backend: Supabase
-Single Supabase project (`ohacvuwzvuifpyqckise.supabase.co`) for auth, database, realtime, and file storage. `SUPABASE_URL` and `SUPABASE_ANON_KEY` are hard-coded at the top of each file's `<script>` block. Auth is shared — one login works everywhere.
+### Backend: self-hosted relay (Jul 13 2026 — Supabase retired)
+The old Supabase project (`ohacvuwzvuifpyqckise`) hit free-tier quota restriction on Jul 13 2026 and was replaced by a self-hosted backend — no quotas, no cloud dependency:
+
+- **`bridge/relay.mjs`** (port 3100) — one Node process providing everything the code used from Supabase: `zones`/`tracks` rows (JSON-persisted to `bridge/relay-data.json`), realtime broadcast channels, `postgres_changes`-style row events, the `server_now` clock authority (the bridge laptop IS the clock now), and audio storage with HTTP Range support (`bridge/media/`, served at `/storage/boombox/...`).
+- **`byob-shim.js`** — drop-in impersonation of the supabase-js API slice BYOB uses; loaded instead of the jsdelivr supabase-js tag (browser) or `@supabase/supabase-js` import (Node). All app code still calls `supabase.createClient()` / `db.from()` / `db.channel()` unchanged. Auth is a local stub (one persistent anonymous identity per device). Server URL resolution: `?server=` query param (persisted to `localStorage.byob_server`) > `localStorage` > the URL passed to `createClient` (Node: `BYOB_SERVER` env var).
+- **Phones reach the relay via Cloudflare quick tunnel** — `bridge/start.command` boots relay + tunnel + bridge, prints the `https://*.trycloudflare.com` URL. Open artist.html with `?server=<tunnel-url>`; the listener QR/join link carries it automatically.
+- `migration_rebuild_schema.sql` reconstructs the old schema should Supabase ever return; `swap-supabase.sh` re-points the files at a Supabase project.
+
+Note: relay broadcasts do not echo to the sender (matches Supabase behavior — the invariant below still holds).
 
 ### Database tables
 - **`zones`** — `id, name, host_id, lat, lng, radius_m, active, listeners, tip_url, current_track_url, track_name, playback_started_at, play_at, play_from_s, zone_tracks, last_message, last_message_at`

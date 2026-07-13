@@ -61,13 +61,10 @@ h1{font-size:14px;color:var(--teal);letter-spacing:.2em;text-transform:uppercase
   <div class="card-hdr"><span class="dev-id">↻ resync events</span></div>
 </div>
 <div class="grid" id="grid"></div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="byob-shim.js"></script>
 <script>
 const { createClient } = supabase;
-const db = createClient(
-  'https://ohacvuwzvuifpyqckise.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY'
-);
+const db = createClient('http://localhost:3100', 'local');
 
 const devs = {};
 const _events = [];

@@ -14,7 +14,8 @@ import { readFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
 import { WebSocketServer } from 'ws';
-import { createClient } from '@supabase/supabase-js';
+import '../byob-shim.js';
+const { createClient } = globalThis.supabase;
 import { AbletonLink } from '@ktamas77/abletonlink';
 import {
   startCapture, stopCapture, listAudioDevices, findBlackholeDevice,
@@ -24,8 +25,9 @@ import {
 const __dir = dirname(fileURLToPath(import.meta.url));
 
 // ── Config ────────────────────────────────────────────────────
-const SUPABASE_URL      = 'https://ohacvuwzvuifpyqckise.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY';
+// Self-hosted relay (relay.mjs). Override with BYOB_SERVER env var.
+const SUPABASE_URL      = 'http://localhost:3100';
+const SUPABASE_ANON_KEY = 'local';
 const HTTP_PORT = 3000;
 const WS_PORT   = 3001;
 

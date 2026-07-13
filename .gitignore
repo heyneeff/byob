@@ -6,3 +6,10 @@ ternary/samples/FLute/
 ternary/samples/Trumpet/
 ternary/samples/Vibraphone/
 ternary/samples/Violin PIzzicatto/
+
+# relay runtime state (local to bridge laptop)
+bridge/relay-data.json
+bridge/media/
+sync/monitor-logs/
+.DS_Store
+.claude/
