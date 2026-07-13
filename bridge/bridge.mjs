@@ -99,8 +99,15 @@ setInterval(() => {
   _linkBeat = beat;
 
   // Pulse beat counter to UI at ~10Hz
-  broadcastToUI({ type: 'beat_tick', bpm, beat });
+  broadcastToUI({ type: 'beat_tick', bpm, beat, peers: link.getNumPeers() });
 }, 100);
+
+// Peer count is the ONLY honest "Ableton is connected" signal — the bridge's
+// own Link clock ticks whether or not anyone else is in the session.
+link.setNumPeersCallback(n => {
+  console.log(`[link] peers: ${n}${n === 0 ? ' (Ableton not detected)' : ''}`);
+  broadcastToUI({ type: 'link_state', bpm: link.getTempo(), beat: link.getBeat(), playback_started_at: _playbackStartedAt, peers: n });
+});
 
 function computeStartedAt(bpm, beat) {
   const msElapsed = (beat / bpm) * 60_000;

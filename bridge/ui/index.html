@@ -215,7 +215,7 @@ input.num {
 
   <div class="pill">
     <div class="dot" id="link-dot"></div>
-    <span>Link</span>
+    <span id="link-lbl">Link</span>
   </div>
 
   <span id="bpm-val">—</span>
@@ -507,7 +507,12 @@ function handleBase(msg) {
     _bpm = msg.bpm; _beat = msg.beat;
     updateBpmDisplay();
     if (msg.playback_started_at) setAnchorLabel(msg.playback_started_at);
-    setDot('link-dot', 'ok');
+    // The dot means "peers in the Link session" (Ableton connected) — the
+    // bridge's own clock ticks regardless, so ticks alone prove nothing.
+    if (msg.peers != null) {
+      if (msg.peers > 0) { setDot('link-dot', 'ok'); setText('link-lbl', `Link ×${msg.peers}`); }
+      else { setDot('link-dot', ''); setText('link-lbl', 'Link — no peers'); }
+    }
   }
   if (msg.type === 'zones') {
     populateZones(msg.zones);
@@ -548,7 +553,6 @@ function updateBpmDisplay() {
 function setAnchorLabel(iso) {
   document.getElementById('started-lbl').textContent =
     'anchored ' + new Date(iso).toLocaleTimeString();
-  setDot('link-dot','active');
 }
 
 let _connectedZoneId = null;
