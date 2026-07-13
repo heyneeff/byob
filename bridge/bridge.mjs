@@ -237,6 +237,11 @@ function buildPresenceChannel(zoneId) {
     .on('broadcast', { event: 'presence' }, ({ payload }) => {
       broadcastToUI({ type: 'presence', payload });
     })
+    // Phones actually broadcast 'proximity' (listener.html sendPresence),
+    // keyed by `id` — map to the radar's expected deviceId field.
+    .on('broadcast', { event: 'proximity' }, ({ payload }) => {
+      broadcastToUI({ type: 'presence', payload: { ...payload, deviceId: payload.deviceId || payload.id } });
+    })
     .subscribe();
   console.log(`[supabase] presence_${zoneId}`);
 }
@@ -420,6 +425,12 @@ async function handleUIMessage(msg, ws) {
       const zones = await fetchZones();
       broadcastToUI({ type: 'zones', zones });
       broadcastToUI({ type: 'zone_loaded', zoneId: z.id, name: z.name });
+      break;
+    }
+
+    case 'get_tracks': {
+      const { data } = await db.from('tracks').select('title,public_url').order('created_at', { ascending: false }).limit(50);
+      ws.send(JSON.stringify({ type: 'tracks', tracks: data || [] }));
       break;
     }
 

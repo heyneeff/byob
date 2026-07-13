@@ -273,6 +273,12 @@ input.num {
   <!-- Transport -->
   <div class="sec">
     <div class="sec-title">Transport</div>
+    <div class="pr" style="margin-top:0">
+      <select id="track-select" style="flex:1">
+        <option value="">— track —</option>
+      </select>
+      <button class="btn" onclick="loadTracks()">↻</button>
+    </div>
     <div class="btn-row">
       <button class="btn go" style="font-size:14px;padding:6px 14px" onclick="doPlay()">▶ PLAY</button>
       <button class="btn danger" onclick="doHardSync()">⚡ RE-SYNC</button>
@@ -465,6 +471,7 @@ function connect() {
     wsOk = true;
     setDot('ws-dot','ok'); setText('ws-lbl','bridge');
     send({ type: 'get_zones' });
+    send({ type: 'get_tracks' });
     log('Bridge connected','ok');
   };
   ws.onmessage = e => { _lastMsgAt = Date.now(); handle(JSON.parse(e.data)); };
@@ -532,6 +539,18 @@ function handleBase(msg) {
   }
   if (msg.type === 'zone_create_failed') {
     log('Zone create failed: ' + msg.error, 'err');
+  }
+  if (msg.type === 'tracks') {
+    const sel = document.getElementById('track-select');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">— track —</option>';
+    msg.tracks.forEach(t => {
+      const o = document.createElement('option');
+      o.value = t.public_url; o.textContent = t.title;
+      sel.appendChild(o);
+    });
+    sel.value = cur;
+    log(msg.tracks.length + ' tracks in library', 'dim');
   }
   if (msg.type === 'config') {
     _tunnelUrl = msg.tunnel;
@@ -679,7 +698,14 @@ function zcCreate() {
 }
 
 // ── Transport ─────────────────────────────────────────────────
-function doPlay()     { send({ type: 'play' }); log('▶ Play → anchored to Link','ok'); }
+function doPlay() {
+  const sel = document.getElementById('track-select');
+  const track_url = sel.value || undefined;
+  const track_name = track_url ? sel.options[sel.selectedIndex].textContent : undefined;
+  send({ type: 'play', track_url, track_name });
+  log(`▶ Play${track_name ? ' — ' + track_name : ''} → anchored to Link`, 'ok');
+}
+function loadTracks() { send({ type: 'get_tracks' }); }
 function doHardSync() { send({ type: 'hard_sync' }); log('⚡ Hard sync','dim'); }
 
 // ── Tap tempo ─────────────────────────────────────────────────
