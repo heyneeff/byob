@@ -137,7 +137,37 @@ function reanchor(bpm, beat) {
 // (plan "Listenable Entry + Master-Clock Alignment", Piece 3). Same shape as
 // the DJ anchor: { position, ts }, both server-clock based.
 const _debugChannel = db.channel('byob_debug');
+
+// ── Master verdict — the field watches the unwatched authority ────────────
+// (Ternary research transfer, 2026-07-12, cast 47→9: the master's self-check
+// references state its own adopt path writes, so it can't see its own slide
+// — the −68s dawn bug. Every listener independently measures the master; a
+// consensus over those measurements is an opinion the master doesn't write.)
+// Per-device offset math copied from sync/live-monitor.mjs:326-333. A trit
+// sign-vote (tcons, deadband ±50ms) plus the median must agree for 3
+// consecutive ticks (~15s) before one master_verdict fires; re-arms after.
+const VERDICT_DEADBAND_MS = 50;
+const VERDICT_OFF_MS      = 150;
+const VERDICT_MIN_DEVICES = 3;
+const VERDICT_RUN_TICKS   = 3;
+const tcons = (...ts) => { const s = ts.reduce((a, v) => a + v, 0); return s > 0 ? 1 : s < 0 ? -1 : 0; };
+const _fieldOffsets = new Map(); // deviceId → { offMs, ts }
+let _verdictRun = 0;
+
+_debugChannel.on('broadcast', { event: 'hud_data' }, ({ payload: p }) => {
+  if (!p?.deviceId || !_playbackStartedAt) return;
+  const startedMs = new Date(_playbackStartedAt).getTime();
+  if (isNaN(startedMs) || p.currentTime == null || !p.ts || !p.duration) return;
+  const durMs = parseFloat(p.duration) * 1000;
+  const audiblePos = parseFloat(p.currentTime) - (parseFloat(p.deviceLatencyMs) || 0) / 1000;
+  const masterPos = (p.ts - startedMs) / 1000;
+  let off = (audiblePos - masterPos) * 1000;
+  if (!isFinite(off)) return;
+  if (durMs > 0) { off = ((off % durMs) + durMs) % durMs; if (off > durMs / 2) off -= durMs; }
+  _fieldOffsets.set(p.deviceId, { offMs: off, ts: Date.now() });
+});
 _debugChannel.subscribe();
+
 setInterval(() => {
   if (!_playbackStartedAt) return;
   const startedMs = new Date(_playbackStartedAt).getTime();
@@ -149,6 +179,33 @@ setInterval(() => {
       payload: { position: (now - startedMs) / 1000, ts: now, bpm: _linkBpm },
     });
   } catch (_) {}
+
+  // Verdict pass — after the tick, judge the field's opinion of the master.
+  for (const [id, o] of _fieldOffsets) if (Date.now() - o.ts > 30000) _fieldOffsets.delete(id);
+  const offs = [..._fieldOffsets.values()].map(o => o.offMs);
+  if (offs.length < VERDICT_MIN_DEVICES) { _verdictRun = 0; return; }
+  const sorted = [...offs].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  const med = sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  const trits = offs.map(v => v > VERDICT_DEADBAND_MS ? 1 : v < -VERDICT_DEADBAND_MS ? -1 : 0);
+  const consensus = tcons(...trits);
+  // Wrap-ambiguity guard: a median further out than makes physical sense for
+  // clock drift is a stale/foreign reference, not a verdict-worthy offset.
+  if (consensus !== 0 && Math.abs(med) > VERDICT_OFF_MS && Math.abs(med) < 60000) {
+    if (++_verdictRun >= VERDICT_RUN_TICKS) {
+      _verdictRun = 0; // one verdict per sustained episode
+      try {
+        _debugChannel.send({
+          type: 'broadcast', event: 'master_verdict',
+          payload: { medianOffMs: Math.round(med), deviceCount: offs.length, ts: serverNow() },
+        });
+      } catch (_) {}
+      console.log(`[verdict] field says master off by ${Math.round(med)}ms (${offs.length} devices)`);
+      broadcastToUI({ type: 'master_verdict', medianOffMs: Math.round(med), deviceCount: offs.length });
+    }
+  } else {
+    _verdictRun = 0;
+  }
 }, 5000);
 
 // ── Supabase channels ─────────────────────────────────────────
@@ -216,18 +273,33 @@ async function fetchZones() {
   return recent.data || [];
 }
 
+function connectZone(z, how) {
+  _activeZoneId = z.id;
+  buildSyncChannel(z.id);
+  buildPresenceChannel(z.id);
+  if (z.playback_started_at) _playbackStartedAt = z.playback_started_at;
+  broadcastToUI({ type: 'zone_loaded', zoneId: z.id, ...z });
+  console.log(`[zones] ${how} → "${z.name}" (${z.id})`);
+}
+
 // Auto-connect: if exactly one zone is active, select it without a click.
+// Also FOLLOW the broadcast: artist.html's zone creation deactivates the
+// host's old zones and mints a new id — if the bridge stays pinned to the
+// dead id it broadcasts into sync_{old} while every phone listens on the new
+// zone (observed live 2026-07-07). set_zone re-activates whatever the UI
+// picks, so a manual selection stays active and is never yanked away here.
 async function autoSelectZone() {
-  if (_activeZoneId) return;
   const zones = await fetchZones();
+  const active = zones.filter(z => z.active);
+  if (_activeZoneId) {
+    const mine = zones.find(z => z.id === _activeZoneId);
+    if ((!mine || !mine.active) && active.length === 1) {
+      connectZone(active[0], `followed (superseded ${_activeZoneId})`);
+    }
+    return;
+  }
   if (zones.length === 1) {
-    const z = zones[0];
-    _activeZoneId = z.id;
-    buildSyncChannel(z.id);
-    buildPresenceChannel(z.id);
-    if (z.playback_started_at) _playbackStartedAt = z.playback_started_at;
-    broadcastToUI({ type: 'zone_loaded', zoneId: z.id, ...z });
-    console.log(`[zones] auto-connected → "${z.name}" (${z.id})`);
+    connectZone(zones[0], 'auto-connected');
   } else if (zones.length) {
     broadcastToUI({ type: 'zones', zones });
   }

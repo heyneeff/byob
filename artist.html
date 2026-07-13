@@ -2802,6 +2802,8 @@ async function triggerResync() {
 let _killArmed = false, _killArmedTimer = null;
 let _anchorInterval = null;
 let _anchorTickN = 0;
+let _refAdopted = false;   // one-shot guard: adopt-and-write may fire once per reference
+let _lastSelfDrift = null; // last self-check djDrift (ms) — read by the master_verdict handler
 
 // Schism repair (oracle 32.2→62 — Duration; keep it small): the anchor
 // heartbeat, triggerResync, and the DJ's own drift gate all run off the
@@ -2820,14 +2822,47 @@ async function _repairRowReference(startedAt) {
     if (data.play_at && data.play_at + 15000 > serverNow()) return; // scheduled entry in flight
     const rowMs = data.playback_started_at ? new Date(data.playback_started_at).getTime() : null;
     const cacheMs = new Date(startedAt).getTime();
-    if (rowMs !== null && Math.abs(rowMs - cacheMs) <= 500) return;
+    // Blind spot lowered 500 → 100ms (2026-07-12, cast 47→9 — see drift gate
+    // below): sub-500ms row/cache divergence used to persist untouched.
+    if (rowMs !== null && Math.abs(rowMs - cacheMs) <= 100) return;
     await db.from('zones').update({ playback_started_at: startedAt }).eq('id', activeZone.id);
     console.log('[anchor] row reference repaired:', rowMs, '→', cacheMs);
   } catch (e) {}
 }
 
+// Master verdict receiver (cast 47→9 — small taming): the bridge votes over
+// listener-reported offsets vs the master clock and broadcasts master_verdict
+// when the field consistently disagrees with the master. Acted on ONLY in the
+// blind-spot case — the field says off while our own self-check reads clean,
+// which means the CACHED reference has diverged from the row everyone else
+// reads. Gentle action: re-adopt the reference from the row (trust the field
+// over the cache); the anchor loop's self-nudge then pulls audio to it. No
+// new correction channel, no room broadcast, 60s rate limit.
+let _lastVerdictActionTs = 0;
+function _ensureVerdictChannel() {
+  if (window._djDebugChannel) return;
+  window._djDebugChannel = db.channel('byob_debug')
+    .on('broadcast', { event: 'master_verdict' }, async ({ payload: p }) => {
+      if (!p || !activeZone) return;
+      if (!p.ts || serverNow() - p.ts > 15000) return;                 // stale verdict
+      if (Math.abs(p.medianOffMs ?? 0) <= 150 || (p.deviceCount ?? 0) < 3) return;
+      if (_lastSelfDrift == null || _lastSelfDrift >= 100) return;     // self-check already sees it — 1a handles
+      if (Date.now() - _lastVerdictActionTs < 60000) return;
+      _lastVerdictActionTs = Date.now();
+      console.warn(`[verdict] field says master off by ${p.medianOffMs}ms across ${p.deviceCount} devices — re-adopting reference from row`);
+      showToast(`⚖️ Field verdict: master ${p.medianOffMs}ms off — re-basing`);
+      try {
+        const { data } = await db.from('zones')
+          .select('playback_started_at').eq('id', activeZone.id).single();
+        if (data?.playback_started_at) noteStartedAt(data.playback_started_at);
+      } catch (e) {}
+    });
+  window._djDebugChannel.subscribe();
+}
+
 function _startAnchorBroadcast() {
   if (_anchorInterval) clearInterval(_anchorInterval);
+  _ensureVerdictChannel();
   _anchorInterval = setInterval(() => {
     if (!window._djSyncChannel || !activeZone || audio.paused || !audio.duration) return;
     let startedAt = currentStartedAt();
@@ -2840,8 +2875,14 @@ function _startAnchorBroadcast() {
     // reference from the current audio position so master, row, and anchors
     // share one basis from this beat on.
     if (!startedAt) {
+      // One-shot per reference (_refAdopted, cleared by every legit
+      // noteStartedAt): a flapping null must not repeatedly re-mint the
+      // reference from wandering audio — that laundering was half the −68s
+      // disease; the drift gate below can't see a reference that follows it.
+      if (_refAdopted) return;
       startedAt = new Date(serverNow() - audio.currentTime * 1000).toISOString();
       noteStartedAt(startedAt);
+      _refAdopted = true;
       db.from('zones').update({ playback_started_at: startedAt }).eq('id', activeZone.id)
         .then(() => console.log('[anchor] adopted reference from live audio:', startedAt));
     }
@@ -2855,16 +2896,26 @@ function _startAnchorBroadcast() {
       while (wrapped > half) wrapped -= audio.duration * 1000;
       while (wrapped < -half) wrapped += audio.duration * 1000;
       const djDrift = Math.abs(wrapped);
+      _lastSelfDrift = djDrift;
       // Gate history: 500ms (proven) → 150ms (16.6→35, same-morning) → back
       // to 500ms (12.3→33 — Retreat; "they bear shame"). At 150ms every
       // small master wobble fired triggerResync = a room-wide hard_sync,
       // producing constant re-mint jolts and snap storms. The real 68s
       // disease was the null-reference gap (adopt-and-write above, kept).
-      // Sub-500ms creep now accumulates to ONE occasional coordinated
-      // resync instead of continuous jolts. A quiet self-repair mechanism
-      // for the 150–500ms band was cast on and HELD (Standstill→Retreat) —
-      // do not add it without a fresh cast.
+      // The sub-500ms band was HELD (Standstill→Retreat) until a fresh cast;
+      // that cast came 2026-07-12 (47→9 lines 3,6 — Oppression leaning on
+      // wrong support → Small Taming: many small gentle restraints) and
+      // cleared it FOR A LOCAL NUDGE ONLY: above 100ms, seek the master's
+      // OWN audio to the reference — the same seek triggerResync performs
+      // locally (see :2789-2791) but with NO hard_sync broadcast, so the
+      // room never jolts. This is what the failed 150ms experiment wasn't:
+      // audio disciplined to the reference, never the reference to audio.
+      // The 5s heartbeat is the rate limit.
       if (djDrift > 500) { triggerResync(); return; }
+      if (djDrift > 100) {
+        audio.currentTime = Math.max(0, Math.min(expectedPos, audio.duration - 0.1));
+        console.log('[anchor] self-nudge', Math.round(wrapped) + 'ms → reference');
+      }
     }
     window._djSyncChannel.send({ type: 'broadcast', event: 'anchor',
       payload: { position: audio.currentTime, ts: serverNow() } });
@@ -4150,6 +4201,7 @@ function muteZone(event,zone){event.stopPropagation();showToast('Zone '+zone+' m
 function noteStartedAt(startedAt){
   if(activeZone) activeZone.playback_started_at=startedAt;
   window._currentZone={...(window._currentZone||{}),playback_started_at:startedAt};
+  _refAdopted=false; // legit mint — re-arm the anchor loop's one-shot adopt guard
 }
 function currentStartedAt(){
   return activeZone?.playback_started_at || window._currentZone?.playback_started_at || null;

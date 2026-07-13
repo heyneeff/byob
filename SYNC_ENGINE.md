@@ -320,3 +320,46 @@ The ternary panel (coral/pink) is `runSimTernary()`.
 - `bf76374` (`baseline-sync-jun16b`) — validated ceiling: SEEK_STAB_S=0.19,
   triggerResync uses existing reference. Every improvement must beat all three
   on real CSV data. **More complexity is never the answer.**
+
+## 2026-07-12 — Ternary-research transfers: master discipline, debt reset, snap-cal
+
+Three mechanisms landed together, each a direct transfer from the ternary CA
+research (see ~/Claude/ternary/TERNARY.md §9's method post-mortems). Oracle
+clearances: 47→9 lines 3,6 (fix 1), 4→7 line 6 (fix 2), 34 unchanging (fix 3).
+
+**1. Master self-discipline + field verdict (artist.html, bridge/bridge.mjs).**
+The −68s dawn slide (2026-07-07) was a self-check referencing state its own
+adopt path writes. Changes: (a) adopt-and-write is now one-shot per reference
+(`_refAdopted`, cleared by every legit `noteStartedAt`); (b) the anchor loop's
+150–500ms HOLD was cleared by a fresh cast — above 100ms the DJ's own audio is
+seeked to the reference locally (no `hard_sync` broadcast, so no room jolt;
+this is what the failed 150ms→triggerResync experiment wasn't); (c) row-repair
+blind spot lowered 500→100ms; (d) the bridge computes each listener's offset
+vs `master_tick` from `hud_data` (math copied from live-monitor.mjs), runs a
+tcons sign-vote (±50ms deadband) + median, and after 3 consistent ticks
+broadcasts `master_verdict` on `byob_debug`; artist.html acts on it only in
+the blind-spot case (field says >150ms off, own self-check <100ms) by
+re-adopting `playback_started_at` from the zone row — trust the field over
+the cache. 60s rate limit, one verdict per episode.
+
+**2. Cal-debt boundedness detector (ternary/layer.js `noteCalDebt`).** The
+rotating ratchet is a "creeper": monotone same-sign correction growth that no
+single-correction threshold can catch. Every applied correction (auto-cal,
+greenhorn, crowd prior, snap-cal) feeds a 20-min window; 3 consecutive
+same-sign corrections summing past 250ms → automatic RESET CAL (zero stored
+latency + greenhorn re-arm), event `ter_debt_reset`.
+
+**3. Snap-lane calibration (ternary/layer.js `maybeSnapCal`).** The snap↔cal
+deadlock: a snap-locked device's seek landings wipe `_driftHistory`, so the
+cal that would stop the snapping never runs. But the snap-scale readings ARE
+floor measurements in a different encoding. 5 same-sign readings ≥150ms
+within 90s clustering within ±60ms of their median → apply the same 50% step
+auto-cal would, sharing its budget (`_calCount`) and 60s settle. The calm
+path always outranks it (bails if `_driftHistory` ≥ 8 — but deliberately NOT
+gated on `_consecutiveN`, which deadlocked devices accrue too). Event
+`ter_snap_cal`.
+
+Validated offline via a node harness (stubbed `_terAdjustLatency`/channel,
+sawtooth snap-lock sequences): one snap-cal per episode at ~50% of floor,
+settle respected, calm precedence respected, debt reset exactly once on the
+third same-sign correction, never on mixed signs.

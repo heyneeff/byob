@@ -87,6 +87,20 @@
   const _history     = [];
   let _octoState     = OCTO.LISTENING; // start conservative — observe before contributing
 
+  // ── CAL-DEBT BOUNDEDNESS DETECTOR (oracle 4.6→7 — punish folly only to
+  // prevent) ────────────────────────────────────────────────────────────────
+  // The rotating ratchet (overnight 2026-07-07: phones accruing 250–400ms
+  // debt in turn) is a "creeper": monotone same-sign correction growth that
+  // no single-correction threshold can distinguish from legitimate cal.
+  // Boundedness is the tell — real calibration converges (signs mix, sums
+  // settle), a ratchet only climbs. Three same-sign corrections summing past
+  // 250ms inside 20min → the debt is structural contamination, not hardware:
+  // auto-fire the same reset the RESET CAL button does and relearn clean.
+  let _calDebt = [];                       // { deltaMs, ts } of every applied correction
+  const DEBT_WINDOW_MS = 20 * 60 * 1000;   // sliding window
+  const DEBT_MIN_RUN   = 3;                // consecutive same-sign corrections
+  const DEBT_SUM_MS    = 250;              // |sum| within window — matches observed ratchet debt
+
   // ── GREENHORN FAST-CAL (oracle 14.2→30 — "a big wagon for loading") ──────
   // Live-crowd reframe: 500 random Bluetooths entering, sound-sync must be
   // near-immediate. A device with NO learned latency (greenhorn) makes ONE
@@ -111,6 +125,22 @@
   let _greenPrior   = false;  // crowd prior already applied
   let _greenSamples = [];
 
+  // ── SNAP-LANE CALIBRATION (oracle 34 unchanging — the power is already in
+  // the snaps) ──────────────────────────────────────────────────────────────
+  // The snap↔cal deadlock: a device snapping ≥6/min never accrues the calm
+  // ticks floor sampling needs — each seek's landing jump wipes _driftHistory,
+  // so the cal that would stop the snapping can never run (npbpss/cn6fwj flat
+  // at 160–240ms for 45min, 2026-07-07). But the snap-scale readings ARE floor
+  // measurements in a different encoding — the transducer the deadlock needs.
+  // K same-sign readings ≥ BIN_THRESHOLD clustering tightly within a window =
+  // a structural floor; apply the same 50% step auto-cal would have. The calm
+  // lane always outranks this one (bail if a calm cal is plausibly imminent).
+  const SNAPCAL_NEEDED    = 5;      // K snap-scale readings
+  const SNAPCAL_WINDOW_MS = 90000;  // within 90s
+  const SNAPCAL_BAND_MS   = 60;     // spread band around median
+  const SNAPCAL_MIN_MS    = 25;     // below this, not worth acting
+  let _snapMags = [];               // { lagMs, ts }
+
   function median(arr) {
     const s = [...arr].sort((a, b) => a - b);
     const mid = Math.floor(s.length / 2);
@@ -127,6 +157,32 @@
                    calCount: _calCount }
       });
     } catch (e) {}
+  }
+
+  function noteCalDebt(deltaMs) {
+    if (!deltaMs) return;
+    const now = Date.now();
+    _calDebt.push({ deltaMs, ts: now });
+    _calDebt = _calDebt.filter(d => now - d.ts < DEBT_WINDOW_MS);
+    if (_calDebt.length < DEBT_MIN_RUN) return;
+    const run = _calDebt.slice(-DEBT_MIN_RUN);
+    const sign = Math.sign(run[0].deltaMs);
+    if (!run.every(d => Math.sign(d.deltaMs) === sign)) return;
+    const sum = _calDebt.reduce((a, d) => a + d.deltaMs, 0);
+    if (Math.abs(sum) < DEBT_SUM_MS) return;
+    // Ratchet confirmed — mirror the RESET CAL button (listener.html hudResetCal):
+    // zero the stored latency, re-arm greenhorn.
+    const current = window._terGetDeviceLatencyMs?.() ?? 0;
+    if (typeof window._terAdjustLatency === 'function' && current > 0) {
+      window._terAdjustLatency(-current);
+    }
+    console.log(`[ternary] cal-debt ratchet: ${run.length}×same-sign, Σ ${Math.round(sum)}ms in window → auto RESET CAL`);
+    calBroadcast('ter_debt_reset', sum, -current);
+    _calDebt = [];
+    _driftHistory = [];
+    _consecutiveN = 0;
+    _lastDisturbTs = Date.now();
+    window._terLayer?.noteLatencyReset?.();
   }
 
   function maybeGreenhornCal() {
@@ -153,6 +209,7 @@
     _consecutiveN = 0;
     console.log(`[ternary] GREENHORN fast-cal: median ${Math.round(med)}ms → adjust ${correction}ms (actual ${Math.round(actualDelta ?? correction)}ms)`);
     calBroadcast('ter_greenhorn_cal', med, correction);
+    noteCalDebt(actualDelta ?? correction);
   }
 
   function maybeCrowdPrior() {
@@ -168,12 +225,13 @@
     const delta = med - current;
     _greenPrior = true; // one shot either way — own fast-cal refines from here
     if (Math.abs(delta) < GREEN_MIN_FLOOR_MS) return;
-    window._terAdjustLatency(delta);
+    const actualDelta = window._terAdjustLatency(delta);
     _lastDisturbTs = Date.now();
     _greenSamples = [];
     _driftHistory = [];
     console.log(`[ternary] crowd prior: ${peers.length} settled "${DEVICE_MODEL}" peers, median ${Math.round(med)}ms → seeded (+${Math.round(delta)}ms)`);
     calBroadcast('ter_crowd_prior', med, delta);
+    noteCalDebt(actualDelta ?? delta);
   }
 
   // ── BURST MODE ────────────────────────────────────────────────────────────
@@ -298,6 +356,7 @@
       _lastCalTs = Date.now();
       _driftHistory = [];
       _consecutiveN = 0;
+      noteCalDebt(actualDelta ?? correction);
     } else {
       // Cap swallowed the correction — don't reset timer, count failures
       _capHits++;
@@ -313,6 +372,51 @@
                    floorMs: Math.round(floor), correctionMs: correction, calCount: _calCount }
       });
     } catch (e) {}
+  }
+
+  // ── SNAP-LANE CAL — the transducer (34 unchanging) ────────────────────────
+  function maybeSnapCal() {
+    // Same gate order as maybeAutoCalibrate — shared budget, shared settle.
+    if (_calCount >= 4) return;
+    if (Date.now() - _lastCalTs < CAL_SETTLE_MS) return;
+    if (typeof window._terAdjustLatency !== 'function') return;
+    if (_capHits >= 3) return;
+    // Calm path takes precedence — if floor sampling is accruing (history
+    // filling), a proper cal is plausibly imminent; wait. NOTE: do not gate
+    // on _consecutiveN here — deadlocked devices accrue it too (snap-scale
+    // ticks increment it) while their auto-cal keeps failing for lack of
+    // floor samples; that gate would block the transducer in exactly the
+    // deadlock case it exists for.
+    if (_driftHistory.length >= 8) return;
+    const now = Date.now();
+    _snapMags = _snapMags.filter(s => now - s.ts < SNAPCAL_WINDOW_MS);
+    if (_snapMags.length < SNAPCAL_NEEDED) return;
+    const mags = _snapMags.map(s => s.lagMs);
+    const sign = Math.sign(mags[0]);
+    if (!mags.every(v => Math.sign(v) === sign)) return;
+    const med = median(mags);
+    if (Math.abs(med) < SNAPCAL_MIN_MS) return;
+    const agree = mags.filter(v => Math.abs(v - med) <= SNAPCAL_BAND_MS).length;
+    if (agree < SNAPCAL_NEEDED - 1) return; // scattered — transient churn, not a floor
+    const correction = Math.round(med * 0.5); // same 50% step as auto-cal
+    const actualDelta = window._terAdjustLatency(correction);
+    _calApplied = true;
+    _greenDone  = true;
+    if (Math.abs(actualDelta ?? correction) >= 5) {
+      _calCount++;
+      _capHits = 0;
+    } else {
+      _capHits++;
+      if (_capHits >= 3) _calCount = 4;
+    }
+    _lastCalTs     = Date.now();
+    _lastDisturbTs = Date.now();
+    _snapMags      = [];
+    _driftHistory  = [];
+    _consecutiveN  = 0;
+    console.log(`[ternary] SNAP-CAL (deadlock transducer): median ${Math.round(med)}ms over ${mags.length} snap-scale readings → adjust ${correction}ms`);
+    calBroadcast('ter_snap_cal', med, correction);
+    noteCalDebt(actualDelta ?? correction);
   }
 
   // ── SNAP — burst only, light goes underground (36) ────────────────────────
@@ -402,6 +506,14 @@
     if (abs >= BIN_THRESHOLD) {
       _snapCount++;
       _consecutiveN++;
+      // Snap-lane cal feed: snap-scale readings are floor measurements in a
+      // different encoding (see SNAPCAL block). Entry phase excluded — launch
+      // transients are the ratchet fuel, not floor.
+      if (!isBurst && !entering) {
+        _snapMags.push({ lagMs, ts: Date.now() });
+        if (_snapMags.length > 20) _snapMags.shift();
+        maybeSnapCal();
+      }
 
     } else if (_trit === N) {
       // N-state rate correction owned by ternary-engine.js — no seek here.
@@ -619,7 +731,7 @@
       // floor sampling distrusts the following stretch — a 15ms clock slew is
       // invisible to the 120ms jump detector but poisons floors all the same
       // (learned live 2026-07-07 ~3am: cal ate clock-slew churn as latency).
-      noteExternalDisturbance: () => { _lastDisturbTs = Date.now(); _driftHistory = []; },
+      noteExternalDisturbance: () => { _lastDisturbTs = Date.now(); _driftHistory = []; _snapMags = []; },
       // RESET CAL makes the device a greenhorn again — relearn boldly once.
       noteLatencyReset: () => {
         _greenhorn = true; _greenDone = false; _greenPrior = false;
@@ -655,6 +767,7 @@
           // The budget refills slowly instead: one slot per track change.
           enterBurst('track_change detected');
           _driftHistory = [];
+          _snapMags = [];
           _consecutiveN = 0;
           if (_calCount > 0 && _capHits === 0) _calCount--;
           window._terEngineReset?.(); // clear engine's floor history for new track (cal lock preserved)
