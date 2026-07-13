@@ -6,7 +6,6 @@
 <title>BYOB · Spatial Controller</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -261,16 +260,12 @@ input.num {
   <div id="started-lbl">not anchored</div>
 </div>
 
-<!-- ── Join link — phones scan this; carries zone + relay tunnel URL ── -->
-<div id="join-section" style="display:none; padding:10px 14px; border-bottom:1px solid #222;
-     align-items:center; gap:12px;">
-  <canvas id="join-qr" width="96" height="96"></canvas>
-  <div style="min-width:0; flex:1;">
-    <div style="font-size:11px; color:#9aa; margin-bottom:4px;">PHONES JOIN HERE</div>
-    <div id="join-url" style="font-size:11px; word-break:break-all; color:#27e0c0;"></div>
-    <button class="btn" style="margin-top:6px" onclick="copyJoinLink()">copy link</button>
-    <span id="join-warn" style="font-size:11px; color:#e0a027;"></span>
-  </div>
+<!-- ── Relay status — phones just open the site; shim reads /relay.json ── -->
+<div id="join-section" style="display:none; padding:8px 14px; border-bottom:1px solid #222;">
+  <div style="font-size:11px; color:#9aa;">PHONES: <span style="color:#27e0c0;">boombox.productions/listener.html</span>
+    — geofence takes it from there</div>
+  <div id="join-url" style="font-size:10px; color:#667; word-break:break-all; margin-top:2px;"></div>
+  <div id="join-warn" style="font-size:11px; color:#e0a027;"></div>
 </div>
 
 <!-- ── Controls ───────────────────────────────────────────── -->
@@ -852,33 +847,23 @@ function pct(v) { return Math.round(parseFloat(v) * 100) + '%'; }
 // Rally removed from bridge UI — it's an artist.html crowd feature; the
 // bridge's rally WS handler still exists if it's ever wanted back.
 
-// ── Join link — the ONE url phones need (zone + relay tunnel) ─────────
+// ── Relay status — phones open the site bare; the shim discovers the
+// relay via /relay.json, which start.command publishes on boot. This
+// section just confirms the pointer chain is healthy.
 let _tunnelUrl = null;
-const PAGES_BASE = 'https://boombox.productions/';
 
-function joinUrl() {
-  if (!_connectedZoneId) return null;
-  let u = `${PAGES_BASE}listener.html?zone=${_connectedZoneId}`;
-  if (_tunnelUrl) u += `&server=${encodeURIComponent(_tunnelUrl)}`;
-  return u;
-}
-
-function renderJoinLink() {
+async function renderJoinLink() {
   const sec = document.getElementById('join-section');
-  const url = joinUrl();
-  if (!url) { sec.style.display = 'none'; return; }
-  sec.style.display = 'flex';
-  document.getElementById('join-url').textContent = url;
-  document.getElementById('join-warn').textContent =
-    _tunnelUrl ? '' : '⚠ no tunnel — phones on cellular can\'t reach the relay';
-  if (typeof QRCode !== 'undefined') {
-    QRCode.toCanvas(document.getElementById('join-qr'), url, { width: 96, margin: 1 }, () => {});
-  }
-}
-
-function copyJoinLink() {
-  const url = joinUrl();
-  if (url) navigator.clipboard.writeText(url).then(() => log('Join link copied', 'ok'));
+  sec.style.display = 'block';
+  document.getElementById('join-url').textContent = _tunnelUrl ? `relay: ${_tunnelUrl}` : '';
+  const warn = document.getElementById('join-warn');
+  if (!_tunnelUrl) { warn.textContent = '⚠ no tunnel — phones can\'t reach the relay'; return; }
+  try {
+    const r = await fetch('https://boombox.productions/relay.json?t=' + Date.now(), { cache: 'no-store' });
+    const j = await r.json();
+    warn.textContent = (j.relay === _tunnelUrl) ? ''
+      : '⚠ site still points at an old relay — Pages deploy pending (~1 min)';
+  } catch (e) { warn.textContent = '⚠ could not verify site relay pointer'; }
 }
 
 // ── Radar ─────────────────────────────────────────────────────

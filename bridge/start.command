@@ -24,10 +24,21 @@ if command -v cloudflared >/dev/null 2>&1; then
     [ -n "$TUNNEL_URL" ] && break; sleep 0.5
   done
   if [ -n "$TUNNEL_URL" ]; then
+    # Publish the tunnel URL to GitHub Pages: phones just open the site and
+    # byob-shim.js reads /relay.json — no QR, no params, geofence does the rest.
+    printf '{"relay":"%s","ts":"%s"}\n' "$TUNNEL_URL" "$(date -u +%FT%TZ)" > ../relay.json
+    if [ -n "$(git -C .. status --porcelain relay.json)" ]; then
+      git -C .. add relay.json \
+        && git -C .. commit -q -m "relay: publish tunnel URL" \
+        && git -C .. push -q origin main \
+        && PUBLISHED="yes" || PUBLISHED="push failed"
+    else
+      PUBLISHED="unchanged"
+    fi
     echo "╔════════════════════════════════════════════════════════╗"
-    echo "  PHONES REACH THE RELAY AT: $TUNNEL_URL"
-    echo "  Open artist.html with ?server=$TUNNEL_URL"
-    echo "  (the listener QR link then carries it automatically)"
+    echo "  RELAY TUNNEL: $TUNNEL_URL"
+    echo "  Published to boombox.productions/relay.json: $PUBLISHED"
+    echo "  (Pages deploys in ~1 min — then phones just open the site)"
     echo "╚════════════════════════════════════════════════════════╝"
   else
     echo "WARNING: tunnel did not come up — phones limited to LAN. Log: $TUNNEL_LOG"

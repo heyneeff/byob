@@ -14,13 +14,29 @@
   'use strict';
   const IS_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
 
-  function resolveServer(urlArg) {
-    let u = urlArg;
+  // Relay discovery, in precedence order:
+  //   1. ?server= query param (explicit override, persisted)
+  //   2. /relay.json on this page's own origin — start.command publishes the
+  //      current tunnel URL there, so phones just open the site and the
+  //      geofence does the rest (no QR, no params)
+  //   3. last-known relay from localStorage (offline/cached fallback)
+  //   4. the URL passed to createClient (localhost default)
+  // Node: BYOB_SERVER env var > arg.
+  async function resolveServer(urlArg) {
+    let u = urlArg || 'http://localhost:3100';
     if (IS_BROWSER) {
       try {
         const p = new URLSearchParams(location.search).get('server');
-        if (p) { localStorage.setItem('byob_server', p); u = p; }
-        else u = localStorage.getItem('byob_server') || urlArg;
+        if (p) u = p;
+        else if (location.protocol.startsWith('http') &&
+                 !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+          try {
+            const r = await fetch('/relay.json?t=' + Date.now(), { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+            if (r.ok) { const j = await r.json(); if (j && j.relay) u = j.relay; }
+          } catch (e) {}
+          if (u === (urlArg || 'http://localhost:3100')) u = store.get('byob_server') || u;
+        }
+        store.set('byob_server', u);
       } catch (e) {}
     } else if (typeof process !== 'undefined' && process.env && process.env.BYOB_SERVER) {
       u = process.env.BYOB_SERVER;
@@ -50,8 +66,12 @@
   }
 
   function createClient(urlArg /*, key */) {
-    const httpUrl = resolveServer(urlArg || 'http://localhost:3100');
-    const wsUrl = httpUrl.replace(/^http/, 'ws');
+    let httpUrl = (urlArg || 'http://localhost:3100').replace(/\/+$/, '');
+    let wsUrl = httpUrl.replace(/^http/, 'ws');
+    const ready = resolveServer(urlArg).then(u => {
+      httpUrl = u;
+      wsUrl = u.replace(/^http/, 'ws');
+    });
 
     // ---------- one WebSocket, auto-reconnect, resubscribe ----------
     let ws = null, wsOpen = false, nextId = 1;
@@ -72,7 +92,8 @@
         wsSend({ id, ...obj });
       });
     }
-    function connect() {
+    async function connect() {
+      await ready;   // relay discovery must finish before the socket opens
       ws = new WebSocket(wsUrl);
       ws.onopen = () => {
         wsOpen = true;
@@ -212,6 +233,7 @@
       return {
         async upload(path, file, opts) {
           try {
+            await ready;
             const r = await fetch(`${httpUrl}/storage/${bucket}/${path}`, {
               method: 'POST', body: file,
               headers: { 'Content-Type': (file && file.type) || 'application/octet-stream' },
@@ -222,6 +244,7 @@
         },
         getPublicUrl(path) { return { data: { publicUrl: `${httpUrl}/storage/${bucket}/${path}` } }; },
         async remove(paths) {
+          await ready;
           for (const p of [].concat(paths)) { try { await fetch(`${httpUrl}/storage/${bucket}/${p}`, { method: 'DELETE' }); } catch (e) {} }
           return { data: [], error: null };
         },
@@ -240,7 +263,7 @@
       removeChannel(ch) { return ch && ch.unsubscribe(); },
       auth,
       storage: { from: storageBucket },
-      _byob: { httpUrl, wsUrl },
+      _byob: { get httpUrl() { return httpUrl; }, get wsUrl() { return wsUrl; }, ready },
     };
   }
 
