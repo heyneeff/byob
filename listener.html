@@ -2800,18 +2800,20 @@ function enterApp() {
   setTimeout(() => {
     document.getElementById('login-screen').style.display = 'none';
 
-    // Check if profile is set
+    // Listeners are a door, not an app: never gate on a profile screen.
+    // Mint a fun identity silently on first visit; it persists via the
+    // shim's local user. The profile screen stays reachable from the menu.
     const displayName = currentUser.user_metadata?.display_name;
-  if (!displayName) {
-      // First login — show profile setup
-      document.getElementById('profile-screen').classList.add('active');
-      buildVibePicker();
-      // Fun emoji picker on tap
-      const emojis = ['🎪','🌀','🔮','🦑','🐙','👁','🦊','🌊','🎭','🔥','⚡','🌙','☄️','🦋','🐍','🌵','🎠','🧿','🪬','🦜','🐉','🌋','🎆','🧲','🪄','💀','👾','🤖','🛸','🌈','🍄','🦩','🦚','🦝','🦉','🐺','🌺','🧬','⚗️','🪩','🎡','🎢','🎰','🃏','🀄','🎴','🧸','🪆','🎃','🕯️'];
-      document.getElementById('profile-emoji').addEventListener('click', () => {
-        document.getElementById('profile-emoji').textContent = emojis[Math.floor(Math.random()*emojis.length)];
-      });
-      return;
+    if (!displayName) {
+      const names  = ['Wanderer','Catalyst','Witness','Oracle','Tender','Dancer','Instigator','Architect'];
+      const emojis = ['🎧','🌀','🔮','🦊','⚡','🌊','🎭','🔥','👁','🌙'];
+      const meta = {
+        display_name: names[Math.floor(Math.random()*names.length)] + ' ' + Math.floor(Math.random()*90+10),
+        emoji: emojis[Math.floor(Math.random()*emojis.length)],
+        role: currentUser.user_metadata?.role || 'listener',
+      };
+      db.auth.updateUser({ data: meta }).catch(()=>{});
+      currentUser.user_metadata = { ...currentUser.user_metadata, ...meta };
     }
 
     launchApp();
