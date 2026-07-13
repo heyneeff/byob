@@ -383,6 +383,28 @@ async function handleUIMessage(msg, ws) {
       break;
     }
 
+    case 'create_zone': {
+      // The bridge is the broadcaster — it can mint zones directly, no
+      // artist.html login round-trip needed.
+      const { data: z, error } = await db.from('zones').insert({
+        name: msg.name || 'Bridge Zone',
+        host_id: 'bridge',
+        lat: msg.lat, lng: msg.lng,
+        radius_m: msg.radius_m || 200,
+        active: true, listeners: 0,
+      }).select().single();
+      if (error || !z) {
+        ws.send(JSON.stringify({ type: 'zone_create_failed', error: error?.message || 'insert failed' }));
+        break;
+      }
+      console.log(`[zones] created → "${z.name}" (${z.id}) @ ${z.lat},${z.lng} r=${z.radius_m}m`);
+      connectZone(z, 'created');
+      const zones = await fetchZones();
+      broadcastToUI({ type: 'zones', zones });
+      broadcastToUI({ type: 'zone_loaded', zoneId: z.id, name: z.name });
+      break;
+    }
+
     case 'set_zone': {
       _activeZoneId = msg.zoneId;
       buildSyncChannel(msg.zoneId);

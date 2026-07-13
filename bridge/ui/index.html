@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BYOB · Spatial Controller</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -226,8 +228,23 @@ input.num {
       <option value="">— pick zone —</option>
     </select>
     <button class="btn" onclick="loadZones()">↻</button>
+    <button class="btn" onclick="toggleZoneCreator()">+ zone</button>
   </div>
 </header>
+
+<!-- ── Zone creator — map + radius, minted straight from the bridge ── -->
+<div id="zone-creator" style="display:none; padding:10px; border-bottom:1px solid #222;">
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+    <input id="zc-name" placeholder="zone name" style="flex:1; min-width:140px; background:#111; color:#eee; border:1px solid #333; padding:6px 8px; border-radius:4px;">
+    <label style="font-size:12px; opacity:.7;">radius <span id="zc-radius-val">200</span>m</label>
+    <input id="zc-radius" type="range" min="30" max="1000" value="200" style="width:120px;"
+           oninput="zcRadiusChanged(this.value)">
+    <button class="btn" onclick="zcLocate()">📍 me</button>
+    <button class="btn" id="zc-create" onclick="zcCreate()" disabled>CREATE ZONE</button>
+  </div>
+  <div id="zc-map" style="height:260px; border-radius:6px;"></div>
+  <div style="font-size:11px; opacity:.6; margin-top:4px;">tap the map to place the zone center</div>
+</div>
 
 <!-- ── Radar ──────────────────────────────────────────────── -->
 <div id="radar-wrap">
@@ -517,6 +534,9 @@ function handleBase(msg) {
   if (msg.type === 'zones') {
     populateZones(msg.zones);
   }
+  if (msg.type === 'zone_create_failed') {
+    log('Zone create failed: ' + msg.error, 'err');
+  }
   if (msg.type === 'zone_loaded') {
     log(`Zone loaded: ${msg.name || msg.zoneId}`, 'ok');
     setZoneDisplay(msg.zoneId, msg.name);
@@ -598,6 +618,53 @@ function onZoneSelect(id) {
   if (!id) return;
   send({ type: 'set_zone', zoneId: id });
   log(`Connecting to zone ${id}…`, 'dim');
+}
+
+// ── Zone creator ──────────────────────────────────────────────
+let _zcMap = null, _zcCircle = null, _zcCenter = null;
+
+function toggleZoneCreator() {
+  const el = document.getElementById('zone-creator');
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'block' : 'none';
+  if (show && !_zcMap && typeof L !== 'undefined') {
+    _zcMap = L.map('zc-map').setView([39.7392, -104.9903], 13);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      { subdomains: 'abcd', maxZoom: 19 }).addTo(_zcMap);
+    _zcMap.on('click', e => zcSetCenter(e.latlng.lat, e.latlng.lng));
+    zcLocate();
+  }
+  if (show && _zcMap) setTimeout(() => _zcMap.invalidateSize(), 50);
+}
+
+function zcSetCenter(lat, lng) {
+  _zcCenter = { lat, lng };
+  const r = parseInt(document.getElementById('zc-radius').value, 10);
+  if (_zcCircle) _zcCircle.setLatLng([lat, lng]).setRadius(r);
+  else _zcCircle = L.circle([lat, lng], { radius: r, color: '#27e0c0', weight: 2, fillOpacity: 0.15 }).addTo(_zcMap);
+  document.getElementById('zc-create').disabled = false;
+}
+
+function zcRadiusChanged(v) {
+  document.getElementById('zc-radius-val').textContent = v;
+  if (_zcCircle) _zcCircle.setRadius(parseInt(v, 10));
+}
+
+function zcLocate() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(p => {
+    _zcMap.setView([p.coords.latitude, p.coords.longitude], 15);
+    zcSetCenter(p.coords.latitude, p.coords.longitude);
+  }, () => log('geolocation unavailable — tap the map instead', 'dim'));
+}
+
+function zcCreate() {
+  if (!_zcCenter) return;
+  const name = document.getElementById('zc-name').value.trim() || 'Bridge Zone';
+  const radius_m = parseInt(document.getElementById('zc-radius').value, 10);
+  send({ type: 'create_zone', name, lat: _zcCenter.lat, lng: _zcCenter.lng, radius_m });
+  log(`Creating zone "${name}" (r=${radius_m}m)…`, 'ok');
+  document.getElementById('zone-creator').style.display = 'none';
 }
 
 // ── Transport ─────────────────────────────────────────────────
