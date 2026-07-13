@@ -386,6 +386,12 @@ db.channel('byob_debug')
       report();
     }
   })
+  .on('broadcast', { event: 'master_verdict' }, ({ payload: p }) => {
+    if (!p) return;
+    const line = `⚖️ MASTER VERDICT — field says master off by ${p.medianOffMs}ms (${p.deviceCount} devices)`;
+    process.stdout.write(`\n  ${line}\n`);
+    csvStream.write(`# VERDICT ${new Date().toISOString()} medianOffMs=${p.medianOffMs} devices=${p.deviceCount}\n`);
+  })
   .on('broadcast', { event: 'master_tick' }, ({ payload: p }) => {
     // Bridge fallback only — its reference goes stale when launches happen
     // through artist.html rather than the bridge (observed: a 152s "master
@@ -409,6 +415,8 @@ db.channel('byob_debug')
       ter_calibration:   '🔧 AUTO-CAL',
       ter_greenhorn_cal: '🌱 GREENHORN FAST-CAL',
       ter_crowd_prior:   '👥 CROWD PRIOR',
+      ter_snap_cal:      '⚡ SNAP-CAL (deadlock transducer)',
+      ter_debt_reset:    '♻️ DEBT RESET (ratchet caught)',
     };
     if (!CAL_KINDS[p?.kind]) return;
     const id = p.deviceId;
