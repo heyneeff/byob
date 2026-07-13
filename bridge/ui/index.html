@@ -6,6 +6,7 @@
 <title>BYOB · Spatial Controller</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -258,6 +259,18 @@ input.num {
   <div id="phone-count">0 phones</div>
   <canvas id="radar"></canvas>
   <div id="started-lbl">not anchored</div>
+</div>
+
+<!-- ── Join link — phones scan this; carries zone + relay tunnel URL ── -->
+<div id="join-section" style="display:none; padding:10px 14px; border-bottom:1px solid #222;
+     align-items:center; gap:12px;">
+  <canvas id="join-qr" width="96" height="96"></canvas>
+  <div style="min-width:0; flex:1;">
+    <div style="font-size:11px; color:#9aa; margin-bottom:4px;">PHONES JOIN HERE</div>
+    <div id="join-url" style="font-size:11px; word-break:break-all; color:#27e0c0;"></div>
+    <button class="btn" style="margin-top:6px" onclick="copyJoinLink()">copy link</button>
+    <span id="join-warn" style="font-size:11px; color:#e0a027;"></span>
+  </div>
 </div>
 
 <!-- ── Controls ───────────────────────────────────────────── -->
@@ -526,6 +539,10 @@ function handleBase(msg) {
   if (msg.type === 'zone_create_failed') {
     log('Zone create failed: ' + msg.error, 'err');
   }
+  if (msg.type === 'config') {
+    _tunnelUrl = msg.tunnel;
+    renderJoinLink();
+  }
   if (msg.type === 'zone_loaded') {
     log(`Zone loaded: ${msg.name || msg.zoneId}`, 'ok');
     setZoneDisplay(msg.zoneId, msg.name);
@@ -571,6 +588,7 @@ function setZoneDisplay(id, name) {
   // and the picker stays on "— pick zone —". Remember the connected zone,
   // create the option if it's missing, and re-apply after populateZones.
   _connectedZoneId = id;
+  renderJoinLink();
   const sel = document.getElementById('zone-select');
   if (!sel) return;
   if (![...sel.options].some(o => o.value === id)) {
@@ -833,6 +851,35 @@ function pct(v) { return Math.round(parseFloat(v) * 100) + '%'; }
 
 // Rally removed from bridge UI — it's an artist.html crowd feature; the
 // bridge's rally WS handler still exists if it's ever wanted back.
+
+// ── Join link — the ONE url phones need (zone + relay tunnel) ─────────
+let _tunnelUrl = null;
+const PAGES_BASE = 'https://boombox.productions/';
+
+function joinUrl() {
+  if (!_connectedZoneId) return null;
+  let u = `${PAGES_BASE}listener.html?zone=${_connectedZoneId}`;
+  if (_tunnelUrl) u += `&server=${encodeURIComponent(_tunnelUrl)}`;
+  return u;
+}
+
+function renderJoinLink() {
+  const sec = document.getElementById('join-section');
+  const url = joinUrl();
+  if (!url) { sec.style.display = 'none'; return; }
+  sec.style.display = 'flex';
+  document.getElementById('join-url').textContent = url;
+  document.getElementById('join-warn').textContent =
+    _tunnelUrl ? '' : '⚠ no tunnel — phones on cellular can\'t reach the relay';
+  if (typeof QRCode !== 'undefined') {
+    QRCode.toCanvas(document.getElementById('join-qr'), url, { width: 96, margin: 1 }, () => {});
+  }
+}
+
+function copyJoinLink() {
+  const url = joinUrl();
+  if (url) navigator.clipboard.writeText(url).then(() => log('Join link copied', 'ok'));
+}
 
 // ── Radar ─────────────────────────────────────────────────────
 const canvas = document.getElementById('radar');

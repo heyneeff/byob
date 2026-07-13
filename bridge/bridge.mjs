@@ -351,7 +351,22 @@ function stopMovement() {
 const wss = new WebSocketServer({ port: WS_PORT });
 const uiClients = new Set();
 
-wss.on('connection', ws => {
+// Phones need the relay's public URL baked into their join link — discover
+// the cloudflared quick tunnel via env or its local metrics endpoint.
+let _tunnelUrl = process.env.BYOB_TUNNEL_URL || null;
+async function discoverTunnel() {
+  if (_tunnelUrl) return _tunnelUrl;
+  for (const port of [20241, 20242, 20243, 20244, 20245]) {
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/quicktunnel`, { signal: AbortSignal.timeout(500) });
+      const j = await r.json();
+      if (j.hostname) { _tunnelUrl = `https://${j.hostname}`; return _tunnelUrl; }
+    } catch (_) {}
+  }
+  return null;
+}
+
+wss.on('connection', async ws => {
   uiClients.add(ws);
   ws.send(JSON.stringify({
     type: 'state',
@@ -362,6 +377,7 @@ wss.on('connection', ws => {
     slotVolumes: _slotVolumes,
     slotFx: _slotFx,
   }));
+  ws.send(JSON.stringify({ type: 'config', tunnel: await discoverTunnel() }));
   ws.on('message', raw => {
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     handleUIMessage(msg, ws);

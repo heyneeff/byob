@@ -37,6 +37,6 @@ else
   echo "      cellular. Install once with: brew install cloudflared"
 fi
 
-# 3. Bridge UI + Ableton Link
+# 3. Bridge UI + Ableton Link (bridge shows the phone join link + QR)
 open "http://localhost:3000" 2>/dev/null || true
-exec node bridge.mjs
+BYOB_TUNNEL_URL="${TUNNEL_URL:-}" exec node bridge.mjs
