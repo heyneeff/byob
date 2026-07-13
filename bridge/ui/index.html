@@ -232,18 +232,25 @@ input.num {
   </div>
 </header>
 
-<!-- ── Zone creator — map + radius, minted straight from the bridge ── -->
-<div id="zone-creator" style="display:none; padding:10px; border-bottom:1px solid #222;">
-  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-    <input id="zc-name" placeholder="zone name" style="flex:1; min-width:140px; background:#111; color:#eee; border:1px solid #333; padding:6px 8px; border-radius:4px;">
-    <label style="font-size:12px; opacity:.7;">radius <span id="zc-radius-val">200</span>m</label>
-    <input id="zc-radius" type="range" min="30" max="1000" value="200" style="width:120px;"
+<!-- ── Zone creator — full-screen overlay: map fills, one floating card ── -->
+<div id="zone-creator" style="display:none; position:fixed; inset:0; z-index:2000; background:#000;">
+  <div id="zc-map" style="position:absolute; inset:0;"></div>
+  <div style="position:absolute; top:14px; left:50%; transform:translateX(-50%); z-index:2001;
+              background:rgba(10,12,14,.92); border:1px solid #2a2f33; border-radius:10px;
+              padding:12px 14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+              max-width:calc(100% - 24px); box-shadow:0 4px 24px rgba(0,0,0,.6);">
+    <input id="zc-name" placeholder="zone name" style="width:160px; background:#111; color:#eee;
+           border:1px solid #333; padding:8px 10px; border-radius:6px; font-size:13px;">
+    <label style="font-size:12px; opacity:.75; white-space:nowrap;">radius <b id="zc-radius-val">200</b>m</label>
+    <input id="zc-radius" type="range" min="30" max="1000" value="200" style="width:140px;"
            oninput="zcRadiusChanged(this.value)">
     <button class="btn" onclick="zcLocate()">📍 me</button>
-    <button class="btn" id="zc-create" onclick="zcCreate()" disabled>CREATE ZONE</button>
+    <button class="btn go" id="zc-create" onclick="zcCreate()" disabled>CREATE ZONE</button>
+    <button class="btn" onclick="toggleZoneCreator()">✕</button>
   </div>
-  <div id="zc-map" style="height:260px; border-radius:6px;"></div>
-  <div style="font-size:11px; opacity:.6; margin-top:4px;">tap the map to place the zone center</div>
+  <div style="position:absolute; bottom:16px; left:50%; transform:translateX(-50%); z-index:2001;
+              font-size:12px; color:#9aa; background:rgba(10,12,14,.8); padding:6px 12px;
+              border-radius:6px;">tap the map to place the zone center · drag the slider to size it</div>
 </div>
 
 <!-- ── Radar ──────────────────────────────────────────────── -->
@@ -438,24 +445,6 @@ input.num {
   </div>
 
   <!-- Rally point -->
-  <div class="sec">
-    <div class="sec-title">Rally Point</div>
-    <div class="pr" style="margin-top:0">
-      <label>Label</label>
-      <input type="text" id="rally-label" placeholder="Meet here" style="flex:1">
-    </div>
-    <div class="pr">
-      <label>Lat</label>
-      <input class="num" type="number" id="rally-lat" placeholder="0.000" step="0.0001" style="width:80px;flex:none">
-      <label style="margin-left:4px">Lng</label>
-      <input class="num" type="number" id="rally-lng" placeholder="0.000" step="0.0001" style="width:80px;flex:none">
-    </div>
-    <div style="margin-top:6px" class="btn-row">
-      <button class="btn go" onclick="fireRally()">📍 Send rally</button>
-      <button class="btn" onclick="useMyLocation()">Use GPS</button>
-    </div>
-  </div>
-
 </div><!-- /controls -->
 
 <script>
@@ -842,23 +831,8 @@ function toggleFx(slot) {
 
 function pct(v) { return Math.round(parseFloat(v) * 100) + '%'; }
 
-// ── Rally ─────────────────────────────────────────────────────
-function fireRally() {
-  const lat   = parseFloat(document.getElementById('rally-lat').value);
-  const lng   = parseFloat(document.getElementById('rally-lng').value);
-  const label = document.getElementById('rally-label').value.trim();
-  if (isNaN(lat) || isNaN(lng)) { log('Enter lat/lng for rally point','err'); return; }
-  send({ type: 'rally', lat, lng, label });
-  log(`📍 Rally sent: ${label || '(no label)'}`, 'ok');
-}
-
-function useMyLocation() {
-  navigator.geolocation.getCurrentPosition(pos => {
-    document.getElementById('rally-lat').value = pos.coords.latitude.toFixed(6);
-    document.getElementById('rally-lng').value = pos.coords.longitude.toFixed(6);
-    log('GPS location loaded', 'ok');
-  }, () => log('GPS unavailable', 'err'));
-}
+// Rally removed from bridge UI — it's an artist.html crowd feature; the
+// bridge's rally WS handler still exists if it's ever wanted back.
 
 // ── Radar ─────────────────────────────────────────────────────
 const canvas = document.getElementById('radar');
