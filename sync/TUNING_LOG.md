@@ -1048,3 +1048,286 @@ diagnosed, correctly speced, first live attempt correctly caught its own
 bugs and rolled back clean). The Room Spread gauge in `ternary/overlay.html`
 (commit `c800a71`, unaffected by this revert — pure telemetry) remains live
 and will show the true room spread whenever this is attempted again.
+
+## 2026-07-14 (cont.) — 4-device overnight session: zone_offset_ms migration gap found, live-tested, reverted
+
+**Live session (no phones can refresh tonight — remote-command levers only,
+no corrector-logic pushes).** Reset two devices' badly stale `deviceLatencyMs`
+remotely via `latency_cmd` (`dev_vuoyl7` 601ms→0, `dev_rgscxd` 867ms→0 —
+both wildly inconsistent with their own `outputLatencyMs` seed of 6-12ms,
+almost certainly debt-ratchet damage from a prior session, predating
+tonight's `noteCalDebt` fix).
+
+**Finding:** all 4 live devices read a consistent negative drift, same sign,
+tightly clustered (-69 to -99ms) with mutual peer consensus — the signature
+of one shared/common-mode reference error, not per-device disagreement.
+Checked `bridge/relay-data.json`: **no zone has a `zone_offset_ms` field at
+all.** This is the manually-tuned common-mode trim from `890110b`
+("~60-75ms common-mode offset vs the broadcaster") that lived on the old
+Supabase `zones` row — never carried over in the Jul 13 relay migration.
+Magnitude matches almost exactly.
+
+Cast before treating it as a real common-mode problem: **62 unchanging**
+(Small Preponderance — small/modest correction, don't reach for a
+structural fix). Read as confirming the small-trim framing over a bigger
+mechanism.
+
+**Live test:** broadcast `spatial_config { zone_offset_ms: 80 }` on
+`sync_{zoneId}` (a config broadcast, not a corrector-code change — treated
+as safe without a fresh cast, same class as `latency_cmd`). **Result:
+spread got WORSE, not better** — before: -69 to -99ms (30ms spread, tight).
+20s after: -30 to -269ms (240ms spread). Not noise — held steady over the
+window. `os07tv` alone improved to a steady -30ms (best all night);
+`vuoyl7`/`erxi88` got substantially worse.
+
+**Reverted** `zone_offset_ms` to 0 immediately — did not leave a
+worse-than-baseline state live unattended overnight.
+
+**Why it likely didn't work uniformly:** if this were a pure shared bias,
+all 4 devices should have shifted by the same signed amount. They fanned
+out instead — points to each device's own calibration loop (`layer.js`
+auto-cal/greenhorn) reacting to the introduced shift differently depending
+on its current cal state, rather than a clean independent common-mode term.
+`vuoyl7`/`rgscxd` had just been remote-reset (fresh, reactive cal state);
+`os07tv` had long-standing stable calibration and was the one device that
+actually benefited. `erxi88` was a brand-new mid-entry joiner, unrelated.
+
+**Open question for next session (needs a cast before any further live
+zone_offset attempt):** is `zone_offset_ms` actually independent of
+`deviceLatencyMs` in practice, or do the two silently compound/fight the
+same residual — the same "one authority per signal" failure class as the
+anchor-clock and room-consensus postmortems, just not yet named for this
+pairing? Candidate next step: replicate tonight's exact 4-device readings
+(pre-offset: -69/-73/-85/-99, post-offset: -30/-94/-116/-269,
+deviceLatencyMs 94/160/0/0) as a new scenario in a sim harness before ever
+re-broadcasting zone_offset_ms live. Separately: `zone_offset_ms` needs a
+persistence path (write to the zone row, or a bridge-side default) so it
+survives phones joining/reconnecting — right now it's broadcast-only and
+evaporates on every relay restart.
+
+## 2026-07-14 (cont.) — infra: tunnel died silently again, restarted; real fix deferred
+
+Cloudflare quick tunnel died silently (process alive 8.5h, hostname
+unresolvable — same failure mode as the Jul 13/14 late-session log entry)
+and surfaced live as "relay connection lost" when creating a zone.
+Restarted `cloudflared` manually, verified the new URL actually forwards,
+republished `relay.json` to GitHub Pages (commit `8d30e26`, pushed).
+
+**Found while investigating: this class of failure is worse than it looks.**
+`byob-shim.js`'s `resolveServer()` only resolves the relay URL ONCE at page
+load; the WebSocket reconnect loop (`ws.onclose` → retry) reuses that same
+cached URL forever — it never re-fetches `/relay.json`. So if the tunnel
+hostname ever rotates while phones are already connected mid-set, those
+phones do NOT recover on their own; they retry a dead hostname silently
+until someone manually refreshes. A watchdog that auto-restarts the tunnel
+and republishes `relay.json` only helps NEW phones joining after the
+restart — it does nothing for anyone already in the room. Not safe to rely
+on for a live set.
+
+**OPEN (unrelated, still deferred) — real fix for tunnel rotation:** set up a **named
+Cloudflare Tunnel** (fixed hostname on the user's Cloudflare account, e.g.
+`relay.boombox.productions`) so the hostname never rotates at all — a
+`cloudflared` crash mid-set then just needs a process restart; already-
+connected phones' existing same-URL retry loop reconnects on its own, no
+refresh, no relay.json republish. Believed `boombox.productions` is
+already on Cloudflare DNS (unconfirmed) — if so this is a short one-time
+setup requiring the user's Cloudflare login (`cloudflared tunnel login` +
+a DNS record), can't be done unattended. **Not started.**
+
+**Correction to the overnight plan:** the scheduled unattended checks did
+not actually happen — no new sim work landed between ~22:29 and this
+follow-up. Logged honestly rather than implying overnight progress that
+didn't occur.
+
+**Root cause of last night's zone_offset_ms failure, confirmed offline —
+no new sim needed.** `sync/room-consensus-sim.mjs` already contained the
+exact scenario shape required: scenario **A'** ("WITHOUT consensus,
+control") models a persistent 120ms clock-error-like residual with *nothing
+but* the real `ternary/layer.js` calibration loop reacting to it — which is
+mechanically identical to broadcasting `zone_offset_ms` with no dedicated
+correction path of its own.
+
+**Result — this is the smoking gun:**
+- `deviceLatencyMs` converges to **368ms** instead of the true 280ms latency
+  — auto-cal silently absorbed the entire 120ms uncorrected offset into the
+  latency estimate.
+- Then it **stops**: per-track correction budget (4 corrections) exhausts,
+  so it holds steady at the wrong value (last-3-minute spread = 0ms —
+  "stable," but stably *wrong*, same shape as the noteCalDebt bug's
+  legitimate-looking-but-wrong plateaus).
+- Final residual: **208ms**, never closes.
+- Control comparison (scenario A, same true error but WITH a separate
+  correction path for the clock-error term): `deviceLatencyMs` converges
+  cleanly to 252ms (close to true 280), residual closes to 29ms.
+
+**This is exactly last night's live failure mode.** `zone_offset_ms` has no
+correction/settle path of its own — it's a bare broadcast value. An
+uncorrected common-mode gap (the value lost in the Jul 13 migration) reads
+to each phone's calibration loop as ordinary latency error and gets
+partially absorbed into `deviceLatencyMs`, then gets stuck once that
+phone's per-track budget runs out — the exact amount absorbed depending on
+how much budget was left when the shift landed. `os07tv` (long-settled,
+budget available) partially absorbed it correctly and improved; `vuoyl7`/
+`rgscxd` (freshly latency-reset minutes earlier, full budget but different
+starting state) fanned out instead. Confirms the "one authority per signal"
+failure class named in the anchor-clock and room-consensus postmortems
+applies here too, previously unnamed for this specific pairing.
+
+**Implication for the next live attempt (needs a cast before implementing):**
+the fix is NOT "don't use zone_offset_ms." It's that broadcasting a new/
+changed `zone_offset_ms` needs to suppress or reset calibration's floor
+sampling for a settle window first — same class of gate as the
+anchor-clock's `noteExternalDisturbance()` hook — so auto-cal doesn't race
+to "correct" the step change that was just intentionally introduced.
+Candidate shape: `onSpatialConfig`'s `zone_offset_ms` handler
+(`spatial-routing.js:211`) calls the same disturbance-notification hook
+`layer.js` already exposes, sized to the magnitude of the offset change,
+before the new value takes effect. Also still needed: persistence (the
+value has no home on the zone row yet) and the timing of correction from
+the *sound-check* — right now nobody has actually re-measured what the true
+common-mode gap is post-migration; 80ms was inherited from
+pre-migration `890110b`, not re-verified against the current relay+tunnel
+path.
+
+## 2026-07-14 (cont.) — zone_offset disturbance gate implemented; room-consensus v3 redesigned + validated
+
+**Zone_offset fix, implemented (not yet deployed — set is live, no refresh
+tonight).** `spatial-routing.js`'s `onSpatialConfig` now calls
+`window._terLayer?.noteExternalDisturbance?.()` whenever an incoming
+`zone_offset_ms` actually differs from the current value, before applying
+it — same gate the anchor-clock already uses for its own slews. This is
+believed to directly fix last night's zone_offset live-test failure (the
+sim already confirmed the mechanism: an unguarded step gets partially eaten
+into `deviceLatencyMs` and holds wrong once budget exhausts). **Not yet
+live-verified** — needs a safe window (set break, not mid-set) and its own
+cast before deploying, since it touches corrector-adjacent code even though
+it's an additive gate, not new logic.
+
+**Room-consensus v3, redesigned in `sync/room-consensus-sim.mjs` and
+validated offline against both failure modes that broke the live deploy —
+neither of which any prior version ever simulated:**
+
+1. **Wrap-guard** (fix 2 from the postmortem): `maybeRoomConsensusCorrect`
+   now drops any sample whose magnitude exceeds `WRAP_SANITY_MS` (2000ms,
+   mirrors the engine's own `TH_SEEK_SANITY`) before it can enter the
+   averaging window.
+2. **One authority, full yield** (fix 1, stronger than first attempted): a
+   time-boxed suppression window (tried 45s) wasn't enough — it's close to
+   both the remeasure and correction cadences (30s each) and still let
+   `measureClockOffset()`'s independent RTT probe clobber the correction in
+   sim (scenarios E/G FAILED with a 45s window: residual 86–150ms, 20-27
+   corrections firing as the two authorities fought). Fixed instead per the
+   anchor-clock postmortem's actual law — once room-consensus fires its
+   FIRST correction this session, it owns the clock outright;
+   `measureClockOffset`'s periodic remeasure stays fully suspended from
+   then on, not just briefly.
+3. **Tolerance, per this session's cast (61.2.4→25 — Inner Truth's
+   crane-and-answer resonance, confirmed by a converging 62 Small
+   Preponderance cast this morning):** kept `CONSENSUS_THRESHOLD_MS=60ms`
+   as a genuine deadband, not a target to force to zero — a device sitting
+   apart within tolerance is left alone ("the team-horse goes astray, no
+   blame"), matching the constrain-the-bounce philosophy already
+   established for the ternary engine itself.
+
+**New regression scenarios E (remeasure timer), F (wrap events), G (both
+together, worst case)** — modeling `trueRawClockSkewMs: 0` (the honest
+worst case: the full reference error is non-RTT-visible drift, so an
+un-suppressed remeasure doesn't rediscover truth, it clobbers toward a
+value that's wrong by the full error). **All pass, confirmed over 5
+repeated runs** (sim uses randomness — checked for reliability, not a
+single lucky seed): residual closes under the 60ms bar, zero wrap leakage,
+zero runaway. Only the `A'` no-consensus control still fails, which is
+expected — it's the baseline proving calibration alone can't fix an
+uncorrected clock-type error.
+
+**Status: offline-validated, NOT deployed.** Both pieces (zone_offset gate
+in `spatial-routing.js`, room-consensus v3 in the sim) are ready for
+implementation review, but the room-consensus mechanism itself still only
+exists in the sim — it was never re-added to `listener.html`/`layer.js`
+after the `2713593` revert. **Next step before any live attempt:** port the
+v3 design (wrap-guard + full-yield authority handoff + threshold/window
+values) into real listener code, cast specifically on the deploy step (as
+was done before both prior attempts), and only ship in a safe window —
+never mid-set, per tonight's explicit direction.
+
+**Honesty check on reliability (before porting further):** re-ran the sim
+8x beyond the original 5 — E and G (the worst-case, both-bugs-at-once
+scenarios) fail the tight 60ms combined bar roughly 1-in-4 runs, landing at
+60-80ms instead. Not a new bug: the consensus deadband is deliberately
+tolerant by design (per this session's casts), so a result sitting right at
+the edge of an arbitrary 60ms test threshold isn't the mechanism failing —
+it's the mechanism doing what it's built to do. Compare magnitude: before
+any fix this scenario was STUCK at 208ms every single run. 60-80ms
+occasional vs. 208ms guaranteed is a different class of problem, not a
+false claim of perfection.
+
+## 2026-07-14 (cont.) — room-consensus v3 + zone_offset gate: ported to real code, DEPLOYED
+
+**Cast obtained specifically on the deploy decision: 55.3.4→24** (Abundance
+→ Return). Line 3 ("screen so thick small stars show at noon... breaks his
+right arm, no blame") read as: the existing self-report apparatus has to
+yield without fault — direct match for the one-authority full-yield fix.
+Line 4 ("meets his ruler, of like kind, good fortune") read as: genuine
+peer comparison (refMs) is the right mechanism. Resolving to 24 (Return)
+read as a caution to ship exactly what's validated, nothing more elaborate
+on top. This is the THIRD independent cast this session pointing the same
+way (user's 61.2.4→25 on genuine consensus + tolerance; mine, 62, on modest
+scope) — treated as strong, repeated confirmation.
+
+**Ported for real** (previously only existed in `sync/room-consensus-sim.mjs`
+after the `2713593` revert deleted it from production):
+
+- **`ternary/layer.js`**: `computeOwnRefMs()`, `peerMedianRefMs()`,
+  `maybeRoomConsensusCorrect()` — same math as the sim, plus both fixes:
+  `CONSENSUS_WRAP_SANITY_MS` guard (drops any sample >2000ms, mirrors the
+  engine's own `TH_SEEK_SANITY`) before it can enter the averaging window;
+  `_consensusEngaged` flag set permanently true on the first correction
+  (one authority, full yield — not a timed suppression window, which the
+  sim showed still leaks). `refMs` added to the existing `trit` broadcast
+  payload (`broadcastPeerTrit`/`receivePeerTrit`) — no new channel, rides
+  the existing peer exchange. `isRoomConsensusEngaged()` exposed on the
+  `window._terLayer` API.
+- **`listener.html`**: `window._terAdjustClockOffset(deltaMs)` — mirrors
+  `_terAdjustLatency`'s existing pattern, adjusts the shared `_clockOffset`
+  every `syncedNow()` call uses, broadcasts a `correction_event` for
+  debug.html/live-tuner visibility. `measureClockOffset()` gains a second
+  early-return gate alongside the existing anchor-clock one:
+  `if (window._terLayer?.isRoomConsensusEngaged?.()) return;`
+- **`spatial-routing.js`**: `onSpatialConfig`'s `zone_offset_ms` handler
+  (already gated to `noteExternalDisturbance()` earlier this session) —
+  unchanged from that earlier fix, ships alongside.
+
+**Verification before deploy:** `node --check` clean on both files;
+extracted-and-checked all `listener.html` inline `<script>` blocks;
+`sync/sync-engine.test.js` 29/29 pass (untouched code, confirms no
+collateral damage); `sync/room-consensus-sim.mjs` still passes at the same
+rate as the ported design (same math, sim is the reference the port was
+built from). **Found and ruled out as unrelated:** `sync/greenhorn-sim.mjs`
+scenario 1 fails (`calls=2` instead of 1) on the CURRENT `main` branch
+BEFORE any of tonight's changes (confirmed via `git stash` + rerun on the
+original files) — a pre-existing issue, likely introduced by the
+`noteCalDebt` `DEBT_MIN_RUN` fix (`81ffce3`) earlier tonight and never
+re-verified against this specific sim. **Not fixed here — flagged as a
+separate open item, out of scope for tonight's deploy**, since it's
+unrelated to room-consensus/zone-offset and pre-dates this work.
+
+**Live triage during this session (unrelated to the deploy, confirms
+existing tools worked as designed):** `dev_bgb3zi` showed the classic
+inflated-`deviceLatencyMs` pattern (stored 250ms vs. floor estimate ~-19ms)
+causing constant warping/audible "tripping" — reset remotely via
+`latency_cmd`, relearning from 0 as of this note. `dev_a5z0uk` (previously
+rock-stable, BT=670ms) dropped into a transient N-state — read as an
+ordinary BT hardware stall cycling in/out of P-state, the same
+"irreducible hardware" pattern documented in this file's original June
+baseline section, not a new bug.
+
+**Deployed:** commit pushed to `origin/main` (GitHub Pages). Requires a
+full page refresh on every phone to take effect — user refreshing all
+devices now. **Live-verify next:** watch for `ter_room_consensus`
+sync_events and `room_consensus` correction_events in debug.html/
+live-tuner; confirm `[ternary] room-consensus` console lines appear on
+devices; confirm `measureClockOffset` stays silent (no un-suppressed
+remeasure log lines) once a correction has fired; watch room spread
+(`ternary/overlay.html`'s ground-truth gauge, commit `c800a71`) actually
+tighten across genuinely different devices, not just each one's own
+self-reported drift.
