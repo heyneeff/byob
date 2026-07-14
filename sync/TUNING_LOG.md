@@ -1048,3 +1048,49 @@ diagnosed, correctly speced, first live attempt correctly caught its own
 bugs and rolled back clean). The Room Spread gauge in `ternary/overlay.html`
 (commit `c800a71`, unaffected by this revert — pure telemetry) remains live
 and will show the true room spread whenever this is attempted again.
+
+## 2026-07-14 (cont.) — room-consensus v3: SECOND live attempt, reverted again
+
+Ported the v3 design (wrap-guard + one-authority-full-yield + zone_offset
+disturbance gate) from the sim into real code for the first time since the
+`2713593` revert, cast specifically on the deploy step (55.3.4→24 —
+Abundance→Return, third independent cast this session confirming the
+approach), deployed (`93dad07`), phones refreshed onto it.
+
+**Live result: room felt "generally chaotic."** Checked telemetry directly
+before deciding anything — watched `sync_event`/`correction_event` traffic
+for 65s straight. Found: **zero `room_consensus` corrections had fired** in
+that window (its first possible correction needs ~40s of accumulated
+4-sample averaging, so it hadn't even activated yet) — what was actually
+observed was a legitimate DJ track change (`track_change`+`hard_sync` on
+all 3 devices) landing at the same moment several freshly-refreshed devices
+were independently mid-recalibration (`auto_cal` events, 87→26ms,
+364→313ms) — the same "track changes are chaotic, fresh devices
+recalibrating" pattern that's always existed, not new.
+
+**Cast on whether to revert anyway: 30.3.4→27** (Fire/Clinging→Nourishment).
+Line 4 ("its coming is sudden; it flames up, dies down, is thrown away")
+read plainly as a revert signal. Line 3 (sunset, calm acceptance vs. gloomy
+complaint) read as: treat this as a natural step-back, not a dramatic
+failure. **Reverted** (`081efc4`), pushed, despite not having directly
+caught room-consensus misbehaving — because its danger window was still
+ahead (not yet fired) rather than behind, "no misfire observed yet" wasn't
+the same as "confirmed safe," and the live cost of waiting to be extra sure
+falls on an actual running party, not a test session.
+
+**Honest state of things:** still not proven whether v3 itself would have
+caused real problems if left running through its first actual correction —
+genuinely inconclusive, not a confirmed-bad result like the first attempt's
+`-67593ms` correction bug. Reverted on caution + cast + the practical
+reality of a live set, not on hard evidence of a new bug. `zone_offset_ms`
+disturbance gate reverted along with it (same commit, not isolated) —
+harmless but simplest to revert as one unit, matching the precedent from
+the first room-consensus revert.
+
+**Before any third attempt:** get a genuinely quiet verification window
+(not a live set) to actually observe a `room_consensus` correction fire
+start-to-finish, rather than judging from a deploy window that happened to
+coincide with an unrelated track change. The sim validation (E/F/G, ~75-90%
+clean pass rate at a strict bar) and the two real code fixes (wrap-guard,
+full-yield) are still believed sound — what's unresolved is purely "does it
+behave live," which this session did not get a clean chance to observe.
