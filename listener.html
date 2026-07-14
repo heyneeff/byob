@@ -5369,6 +5369,31 @@ window._terAdjustLatency  = (deltaMs) => {
   } catch(e) {}
   return actualDelta;
 };
+// Room-consensus clock correction (2026-07-14, cast [pending] — sim-validated
+// in sync/room-consensus-sim.mjs: discrete, averaged, rate-limited jump to
+// _clockOffset, NOT a continuous slew like the abandoned/dormant
+// _anchorClockDiscipline. Mirrors _terAdjustLatency's pattern exactly, but
+// adjusts the shared clock estimate instead of per-device BT latency — this
+// is what actually lets every phone agree on the same absolute instant,
+// closing the gap the ternary/octonary self-report consensus never could
+// (see sync/TUNING_LOG.md "the real remaining gap").
+window._terAdjustClockOffset = (deltaMs) => {
+  const prev = _clockOffset;
+  _clockOffset += deltaMs;
+  console.log('[ternary] room-consensus: clockOffset adjusted by', deltaMs.toFixed(1), 'ms →', _clockOffset.toFixed(1), 'ms');
+  ensureHUDChannel();
+  try {
+    _hudChannel?.send({
+      type: 'broadcast', event: 'correction_event',
+      payload: {
+        deviceId: _hudDeviceId, ts: syncedNow(), kind: 'room_consensus',
+        prevClockOffsetMs: Math.round(prev), newClockOffsetMs: Math.round(_clockOffset),
+        correctionMs: Math.round(deltaMs), driftMs: window._lastDriftMs ?? null,
+      }
+    });
+  } catch(e) {}
+  return _clockOffset - prev;
+};
 
 async function _runLockingPass(){
   if (_syncState !== 'locking' && _syncState !== 'verifying') return;
