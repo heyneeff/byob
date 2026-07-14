@@ -778,3 +778,71 @@ watch `deviceLatencyMs` per device — it should climb and *hold* (no more
 drop-to-0 resets) as it approaches each device's true floor. Use the new
 overlay.html marker buttons (✅ Synced / ⚠ Jump / 📝 Note, commit `d0c8147`)
 to stamp exact moments for correlation against the CSV export.
+
+## 2026-07-14 (cont.) — anchor-disciplined clock: offline re-validation, still NOT ready
+
+**Question:** after fixing tonight's anchor-broadcast scoping bug and the noteCalDebt
+ratchet, is it safe to re-enable the dormant `window._anchorClockEnabled` (the
+anchor-disciplined clock, `_anchorClockDiscipline` in listener.html) as the
+"disgustingly simple" fix for phones that converge individually but never
+share one absolute reference?
+
+**Cast: 50.4→18** (The Cauldron, "legs broken, meal spilled" → Work on What
+Has Been Spoiled). Reading: the mechanism is the right vessel for this
+problem, but line 4 warns against trusting an unchecked foundation with
+weight — resolving to 18 says the correct move is deliberate re-validation,
+not a live flag-flip. Built `sync/anchor-clock-sim.mjs` (same real-code vm
+sandbox approach as `greenhorn-sim.mjs`) to validate offline first.
+
+**History this matters against** ("2026-07-07 ~2:30am — anchor-disciplined
+virtual clock" above): this exact mechanism was deployed live and REVERTED
+TWICE the same night. First offline sim modeled no calibration loop at all.
+Second attempt added `noteExternalDisturbance()` coupling (cal sits out the
+settling stretch after every slew) — still destabilized live within minutes
+(250-460ms finals, 11-25 snaps/window). Postmortem: "the clock slew and
+auto-cal both absorb the same residual... one authority per signal, not just
+per clock" — never actually redesigned, just reverted.
+
+**Sim result: 3/4 scenarios FAIL.** Ran `_anchorClockDiscipline`'s real
+algorithm (ported verbatim) alongside the REAL `ternary/layer.js` calibration
+loop, modeling measured lag as the sum of an uncorrected clock-offset
+residual + an uncorrected device-latency residual (the literal "one signal,
+two authorities" coupling from the postmortem):
+- **Scenario A** (clock error 120ms + latency 280ms, 20min): converges partway
+  then PLATEAUS at ~60-85ms residual for the rest of the run. Final residual
+  258ms vs the 60ms bar.
+- **Scenario B** (clock error 180ms + latency 20ms, 15min): same plateau
+  shape, final residual 441ms.
+- **Scenario C** (latency 350ms alone, NO clock error — control): converges
+  cleanly to <35ms and holds. Confirms the corrector itself is fine in
+  isolation — the failure is specifically the interaction.
+- **Scenario D** (noisier anchor, stress test, 25min): same plateau shape,
+  final residual 315ms.
+
+**New failure mode found (distinct from the 2026-07-07 "cal eats slew churn"
+danger):** a genuine deadlock at the boundary of both mechanisms' gating
+conditions. `_anchorClockDiscipline` only slews while the corrector's own lag
+reading is already <50ms (the P-state gate — only nudge once things look
+basically converged). But `maybeAutoCalibrate`/`maybeSnapCal` exhaust their
+shared per-track budget (`_calCount` caps at 4) while the residual is still
+sitting just ABOVE that 50ms line. Calibration is out of moves; the clock
+won't slew further because the engine never looks "converged enough" to earn
+it. Neither mechanism finishes the job — the device plateaus at a stable but
+wrong position for the rest of the track.
+
+**This plausibly explains tonight's live "stable but none at the same time"
+finding directly**: each phone would plateau at ITS OWN residual (different
+clock-error/latency mix per device), never reaching a shared absolute
+position — re-enabling as-is would likely reproduce a milder version of the
+exact symptom it was proposed to fix, not solve it.
+
+**Verdict: DO NOT enable `window._anchorClockEnabled` yet.** Redesign needed
+before a third live attempt — candidates for next session (cast before
+building): loosen the P-state gate to allow slewing based on the anchor's own
+sample confidence rather than the corrector's current lag reading; or extend
+the correction budget specifically for tracks where clock-discipline is
+active; or coordinate the two budgets explicitly (one combined budget/gate
+covering both authorities, per the original postmortem's "one authority per
+signal" requirement, never actually implemented). Sim harness
+(`sync/anchor-clock-sim.mjs`) is reusable for validating whichever redesign
+comes next — extend scenarios there before any live re-enable.
