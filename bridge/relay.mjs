@@ -49,6 +49,20 @@ function matches(row, filters) {
   });
 }
 
+// One active zone per host: whenever a zone row becomes active, deactivate
+// every OTHER zone with the same host_id. Single choke point — covers
+// artist.html, bridge.mjs, and any future writer.
+function enforceOneActiveZone(activeRow) {
+  if (!activeRow || activeRow.active !== true) return;
+  for (const z of db.zones) {
+    if (z.id !== activeRow.id && z.host_id === activeRow.host_id && z.active) {
+      const old = { ...z };
+      z.active = false;
+      emitPg('zones', 'UPDATE', z, old);
+    }
+  }
+}
+
 function runQuery(q) {
   const table = db[q.table];
   if (!table) return { data: null, error: { message: `unknown table ${q.table}` } };
@@ -71,6 +85,7 @@ function runQuery(q) {
       const row = { id: randomUUID(), created_at: new Date().toISOString(), ...p };
       table.push(row);
       emitPg(q.table, 'INSERT', row, null);
+      if (q.table === 'zones') enforceOneActiveZone(row);
       return row;
     });
     persist();
@@ -83,6 +98,7 @@ function runQuery(q) {
       updated.push(row);
       emitPg(q.table, 'UPDATE', row, old);
     }
+    if (q.table === 'zones') updated.forEach(enforceOneActiveZone);
     persist();
     data = updated;
   } else if (q.verb === 'upsert') {
@@ -91,6 +107,7 @@ function runQuery(q) {
       let row = table.find(r => p[key] != null && String(r[key]) === String(p[key]));
       if (row) { const old = { ...row }; Object.assign(row, p, { updated_at: new Date().toISOString() }); emitPg(q.table, 'UPDATE', row, old); }
       else { row = { id: randomUUID(), created_at: new Date().toISOString(), ...p }; table.push(row); emitPg(q.table, 'INSERT', row, null); }
+      if (q.table === 'zones') enforceOneActiveZone(row);
       return row;
     });
     persist();

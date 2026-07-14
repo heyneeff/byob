@@ -353,7 +353,12 @@ function stopMovement() {
 }
 
 // ── WebSocket ─────────────────────────────────────────────────
-const wss = new WebSocketServer({ port: WS_PORT });
+// Primary WS rides the HTTP server on :3000 (single-port upgrade — Safari
+// blocks cross-port ws:// to localhost; see DEBUG-HANDOFF.md). The old :3001
+// listener stays for legacy remediation scripts; both funnel into `wss`.
+const wss = new WebSocketServer({ noServer: true });
+const wssLegacy = new WebSocketServer({ port: WS_PORT });
+wssLegacy.on('connection', (ws, req) => wss.emit('connection', ws, req));
 const uiClients = new Set();
 
 // Phones need the relay's public URL baked into their join link — discover
@@ -459,7 +464,30 @@ async function handleUIMessage(msg, ws) {
       break;
     }
 
+    case 'deactivate_zone': {
+      // Non-destructive kill: zone row survives, listeners get !active and
+      // stop (listener.html stopEverything path). Use delete_zone to remove.
+      if (!msg.zoneId) break;
+      await db.from('zones').update({ active: false }).eq('id', msg.zoneId);
+      console.log(`[zones] deactivated ${msg.zoneId}`);
+      if (_activeZoneId === msg.zoneId) _activeZoneId = null;
+      broadcastToUI({ type: 'zones', zones: await fetchZones() });
+      break;
+    }
+
     case 'play': {
+      // Never broadcast an unplayable anchor: without a track_url the phones
+      // would hard_sync into silence. Fall back to the zone's current track;
+      // if the zone has none either, reject the play.
+      if (!msg.track_url && _activeZoneId) {
+        const { data } = await db.from('zones').select('current_track_url,track_name').eq('id', _activeZoneId).single();
+        if (data?.current_track_url) { msg.track_url = data.current_track_url; msg.track_name = msg.track_name || data.track_name; }
+      }
+      if (!msg.track_url) {
+        broadcastToUI({ type: 'toast', text: 'No track loaded — pick a track before Play.' });
+        console.log('[bridge] play rejected: no track_url and zone has no current_track_url');
+        break;
+      }
       // Scheduled synced entry: anchor to the next bar boundary ≥2.5s out.
       // Phones preload muted during the lead and enter together at play_at.
       const { playAt, bpm, beat, leadMs } = computeLaunchAt();
@@ -655,6 +683,10 @@ const http = createServer((req, res) => {
   const ext  = extname(path);
   res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain' });
   res.end(readFileSync(path));
+});
+
+http.on('upgrade', (req, socket, head) => {
+  wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
 });
 
 http.listen(HTTP_PORT, async () => {

@@ -73,6 +73,23 @@
       wsUrl = u.replace(/^http/, 'ws');
     });
 
+    // ---------- storage-URL healing ----------
+    // Stored rows carry absolute /storage/ URLs captured at upload time, but
+    // Cloudflare quick tunnels rotate on every restart — so a stored host can
+    // be dead while the relay itself is reachable. Rewrite any stale storage
+    // URL (old tunnel or localhost) to THIS client's resolved relay origin.
+    // httpUrl is final before onmessage can fire (connect() awaits `ready`).
+    const STORAGE_URL_RE = /^https?:\/\/(?:[^\/]*\.trycloudflare\.com|localhost:3100|127\.0\.0\.1:3100)(\/storage\/.+)$/;
+    function normalizeUrls(v) {
+      if (typeof v === 'string') {
+        const m = v.match(STORAGE_URL_RE);
+        return m ? httpUrl + m[1] : v;
+      }
+      if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) v[i] = normalizeUrls(v[i]); return v; }
+      if (v && typeof v === 'object') { for (const k of Object.keys(v)) v[k] = normalizeUrls(v[k]); return v; }
+      return v;
+    }
+
     // ---------- one WebSocket, auto-reconnect, resubscribe ----------
     let ws = null, wsOpen = false, nextId = 1;
     const pending = new Map();      // id -> resolve
@@ -102,6 +119,7 @@
       };
       ws.onmessage = ev => {
         let msg; try { msg = JSON.parse(ev.data); } catch (e) { return; }
+        normalizeUrls(msg);  // heal stale tunnel-host storage URLs in rows, bcast payloads, pg events
         if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); return; }
         if (msg.op === 'bcast') {
           const hs = channelSubs.get(msg.channel);
@@ -242,6 +260,9 @@
             return { data: { path: `${bucket}/${path}` }, error: null };
           } catch (e) { return { data: null, error: { message: e.message } }; }
         },
+        // Absolute current-origin URL is intentional: pages aren't served from
+        // the relay, so relative /storage/ paths would resolve wrong. Stale
+        // hosts in stored rows are healed at read time by normalizeUrls().
         getPublicUrl(path) { return { data: { publicUrl: `${httpUrl}/storage/${bucket}/${path}` } }; },
         async remove(paths) {
           await ready;

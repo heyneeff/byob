@@ -3084,26 +3084,25 @@ async function openLibrary(){
   const status=document.getElementById('library-status');
   modal.style.display='flex';
   list.innerHTML='<div style="color:var(--muted);font-size:13px;padding:8px 0;">Loading…</div>';
-  const{data,error}=await db.storage.from('tracks').list('boombox',{limit:50,offset:0,sortBy:{column:'created_at',order:'desc'}});
+  // Library lists the tracks TABLE (title + public_url), not storage.list —
+  // the relay shim has no storage listing, and rows are the source of truth.
+  const{data,error}=await db.from('tracks').select('title,public_url,created_at').order('created_at',{ascending:false}).limit(50);
   if(error){list.innerHTML='<div style="color:var(--red);font-size:13px;">'+error.message+'</div>';return;}
   if(!data?.length){list.innerHTML='<div style="color:var(--muted);font-size:13px;">No tracks yet — upload one above.</div>';return;}
   status.textContent=data.length+' track'+(data.length!==1?'s':'')+' in library';
   list.innerHTML=data.map(f=>{
-    const sizeMB=(f.metadata?.size/1024/1024).toFixed(1);
-    const safeName=f.name.replace(/'/g,"\\'");
+    const safeTitle=(f.title||'untitled').replace(/'/g,"\\'");
+    const safeUrl=(f.public_url||'').replace(/'/g,"\\'");
     return '<div style="display:flex;align-items:center;gap:10px;padding:12px;background:var(--surface2);border-radius:10px;margin-bottom:8px;">'
       +'<div style="flex:1;min-width:0;">'
-      +'<div style="font-family:Barlow Condensed,sans-serif;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+f.name+'</div>'
-      +'<div style="font-size:10px;color:var(--muted);margin-top:2px;">'+sizeMB+' MB</div>'
+      +'<div style="font-family:Barlow Condensed,sans-serif;font-size:17px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+f.title+'</div>'
       +'</div>'
-      +'<button onclick="loadFromLibrary(\''+safeName+'\')" style="padding:10px 16px;background:var(--orange);color:#000;border:none;border-radius:8px;font-family:sans-serif;font-size:14px;font-weight:900;cursor:pointer;flex-shrink:0;">Load</button>'
+      +'<button onclick="loadFromLibrary(\''+safeUrl+'\',\''+safeTitle+'\')" style="padding:10px 16px;background:var(--orange);color:#000;border:none;border-radius:8px;font-family:sans-serif;font-size:14px;font-weight:900;cursor:pointer;flex-shrink:0;">Load</button>'
       +'</div>';
   }).join('');
 }
-async function loadFromLibrary(filename){
-  const{data}=db.storage.from('tracks').getPublicUrl('boombox/'+filename);
-  if(!data?.publicUrl){showToast('Could not load track');return;}
-  const url=data.publicUrl,name=filename.replace(/\.[^/.]+$/,'');
+async function loadFromLibrary(url,name){
+  if(!url){showToast('Could not load track');return;}
   if(selectedSlot){assignTrackToZone(selectedSlot,url,name);document.getElementById('library-modal').style.display='none';return;}
   audio.src=url; audio.load();
   window._lastPublicUrl=url;

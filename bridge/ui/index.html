@@ -229,6 +229,7 @@ input.num {
     </select>
     <button class="btn" onclick="loadZones()">↻</button>
     <button class="btn" onclick="toggleZoneCreator()">+ zone</button>
+    <button class="btn" onclick="deactivateZone()" title="deactivate selected zone (keeps it, stops listeners)">⏸</button>
     <button class="btn" onclick="killZone()" title="delete selected zone">✕</button>
   </div>
 </header>
@@ -274,13 +275,14 @@ input.num {
   <div class="sec">
     <div class="sec-title">Transport</div>
     <div class="pr" style="margin-top:0">
-      <select id="track-select" style="flex:1">
+      <select id="track-select" style="flex:1" onchange="updatePlayBtn()">
         <option value="">— track —</option>
       </select>
       <button class="btn" onclick="loadTracks()">↻</button>
     </div>
+    <div id="track-loaded" style="font-size:10px;color:var(--dim);min-height:14px"></div>
     <div class="btn-row">
-      <button class="btn go" style="font-size:14px;padding:6px 14px" onclick="doPlay()">▶ PLAY</button>
+      <button class="btn go" id="play-btn" style="font-size:14px;padding:6px 14px" onclick="doPlay()">▶ PLAY</button>
       <button class="btn danger" onclick="doHardSync()">⚡ RE-SYNC</button>
     </div>
   </div>
@@ -464,7 +466,9 @@ input.num {
 
 <script>
 // ── WebSocket ─────────────────────────────────────────────────
-const WS = `ws://${location.hostname}:3001`;
+// Single-port: WS rides the same origin as the page (Safari blocks
+// cross-port ws:// to localhost). Bridge upgrades on :3000 directly.
+const WS = `ws://${location.host}`;
 let ws, wsOk = false;
 
 function connect() {
@@ -552,6 +556,7 @@ function handleBase(msg) {
       sel.appendChild(o);
     });
     sel.value = cur;
+    updatePlayBtn();
     log(msg.tracks.length + ' tracks in library', 'dim');
   }
   if (msg.type === 'config') {
@@ -562,6 +567,12 @@ function handleBase(msg) {
     log(`Zone loaded: ${msg.name || msg.zoneId}`, 'ok');
     setZoneDisplay(msg.zoneId, msg.name);
     if (msg.playback_started_at) setAnchorLabel(msg.playback_started_at);
+    _zoneTrackName = msg.track_name || null;
+    updatePlayBtn();
+  }
+  if (msg.type === 'toast') {
+    showToast(msg.text);
+    log(msg.text, 'err');
   }
   if (msg.type === 'presence') {
     const p = msg.payload;
@@ -690,6 +701,15 @@ function killZone() {
   log(`Zone "${name}" deleted`, 'dim');
 }
 
+function deactivateZone() {
+  const sel = document.getElementById('zone-select');
+  const id = sel.value || _connectedZoneId;
+  if (!id) { log('No zone selected', 'err'); return; }
+  const name = sel.options[sel.selectedIndex]?.textContent || id.slice(0, 8);
+  send({ type: 'deactivate_zone', zoneId: id });
+  showToast(`Zone "${name}" deactivated — listeners released`);
+}
+
 function zcCreate() {
   if (!_zcCenter) return;
   const name = document.getElementById('zc-name').value.trim() || 'Bridge Zone';
@@ -708,6 +728,37 @@ function doPlay() {
   log(`▶ Play${track_name ? ' — ' + track_name : ''} → anchored to Link`, 'ok');
 }
 function loadTracks() { send({ type: 'get_tracks' }); }
+
+// Play is enabled when a track is picked OR the connected zone already has
+// one loaded (bridge falls back to the zone's current_track_url on play).
+let _zoneTrackName = null;
+function updatePlayBtn() {
+  const picked = document.getElementById('track-select').value;
+  const btn = document.getElementById('play-btn');
+  const ok = !!(picked || _zoneTrackName);
+  btn.disabled = !ok;
+  btn.style.opacity = ok ? '' : '.4';
+  document.getElementById('track-loaded').textContent =
+    picked ? '' : (_zoneTrackName ? 'zone track: ' + _zoneTrackName : 'no track — pick one to enable Play');
+}
+
+// Small floating toast — log() is console-only, this one is visible.
+let _toastTimer = null;
+function showToast(text) {
+  let el = document.getElementById('ui-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'ui-toast';
+    el.style.cssText = 'position:fixed;bottom:18px;left:50%;transform:translateX(-50%);z-index:3000;'
+      + 'background:rgba(10,12,14,.95);border:1px solid #e0a027;color:#e0a027;'
+      + 'padding:10px 16px;border-radius:8px;font-size:13px;max-width:80%;transition:opacity .3s;';
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.style.opacity = '1';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.style.opacity = '0'; }, 3500);
+}
 function doHardSync() { send({ type: 'hard_sync' }); log('⚡ Hard sync','dim'); }
 
 // ── Tap tempo ─────────────────────────────────────────────────
@@ -1020,6 +1071,7 @@ function handle(msg) {
 
 // ── Boot ──────────────────────────────────────────────────────
 connect();
+updatePlayBtn();
 renderSlots();
 </script>
 </body>
