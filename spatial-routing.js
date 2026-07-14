@@ -208,18 +208,7 @@ function onSpatialConfig(payload) {
   window._spatialConfig = payload;
   // Zone-wide timeline trim — applied inside syncedNow() (listener.html).
   // Only update when the field is present so unrelated broadcasts don't clear it.
-  // A changed value is a step-function disturbance to every device's measured
-  // drift, same in kind as an anchor-clock slew — without this, auto-cal reads
-  // the step as ordinary latency error and partially eats it into
-  // deviceLatencyMs, corrupting the real per-device floor (confirmed via sim
-  // 2026-07-14: scenario A' — an uncorrected step lands in deviceLatencyMs,
-  // holds wrong once the per-track budget exhausts). Gate it the same way the
-  // anchor-clock already learned to.
-  if (payload.zone_offset_ms != null) {
-    const newOffset = parseFloat(payload.zone_offset_ms) || 0;
-    if (newOffset !== window._zoneOffsetMs) window._terLayer?.noteExternalDisturbance?.();
-    window._zoneOffsetMs = newOffset;
-  }
+  if (payload.zone_offset_ms != null) window._zoneOffsetMs = parseFloat(payload.zone_offset_ms) || 0;
   window._masterBPM = payload.master_bpm || null;
   window._trackBpms = payload.track_bpms || {};
   if (payload.slot_volumes) window._slotVolumes = payload.slot_volumes;
