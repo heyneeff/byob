@@ -313,6 +313,13 @@
     _burstEndTs = Date.now() + BURST_DURATION_MS;
     _burstSnaps = 0;
     _consecutiveP = 0;
+    // A launch invalidates the cascade's comparison window: refMs samples
+    // taken against the old reference must not average with post-launch
+    // ones (observed live 2026-07-14: launch-straddling windows paid out a
+    // -460ms correction at drift 36). Cast 11.1→46 — pull the blade, the
+    // sod comes with it. Sampling is burst-gated, so clearing here is
+    // complete: no samples accrue until the new reference is live.
+    _cascadeSamples = [];
     console.log('[ternary] BURST MODE start —', reason);
     updateBadge();
 
