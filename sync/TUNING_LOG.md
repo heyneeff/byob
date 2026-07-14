@@ -943,3 +943,39 @@ does not need a cast; it's telemetry, not corrector behavior):
 This is the honest fulfillment of the ternary system's original intent —
 consensus over what's actually true, not consensus over what everyone
 privately believes.
+
+## 2026-07-14 (cont.) — discrete room-consensus correction: first offline validation, promising
+
+Built `sync/room-consensus-sim.mjs` to validate the discrete correction
+design from the consensus-plan conversation (see "the real remaining gap"
+above): instead of a continuous clock-slew (anchor-clock, already found
+broken), a phone periodically compares its own reconstructed reference
+(refMs, same math as the new overlay Room Spread gauge) against the room,
+and — only past a threshold and rate-limited — fires ONE discrete jump via
+the existing `window._terCorrect()` path (same machinery `hard_sync` already
+uses), entirely separate from `deviceLatencyMs`/calibration state.
+
+**Result: 3/4 checks fail, but for tuning reasons, not a structural
+deadlock** — a genuinely different and better outcome than anchor-clock-sim:
+- **Scenario B** (clock-error dominant, 180ms true error): PASSED all three
+  checks. One discrete correction landed the clock offset within ~6.5ms of
+  true, final residual **13.5ms**. Calibration converged normally alongside
+  it with zero interaction/fighting — no sign of the anchor-clock's deadlock.
+- **Scenario A** (120ms true clock error + 280ms latency): correction never
+  fired — the 150ms threshold was too high for this magnitude of error plus
+  ±20ms peer noise. Tuning issue, not a flaw: lower the threshold.
+- **Scenario D** (noisy peers, ±60ms): fired once but overshot by ~22ms —
+  a ONE-SHOT correction has no noise-averaging, so it fully inherits
+  whatever single noisy peer-comparison sample it acted on. The anchor-clock
+  avoided exactly this by taking a min-filter over 24 samples before acting;
+  this design wants an analogous short averaging window (a few peer
+  readings) before committing to the jump, not a reaction to one sample.
+
+**Conclusion: the discrete-jump design itself is sound and worth pursuing** —
+unlike the anchor-clock, it shows no interaction/deadlock with calibration
+in any scenario tested. Before live implementation: (1) lower/tune the
+disagreement threshold so real errors in the 100-150ms range actually
+trigger a correction, (2) average several peer refMs samples over a short
+window (e.g. 3-5 readings) before computing the jump, instead of acting on
+one comparison. Re-run this sim with those two changes before considering a
+cast to implement live. Not yet attempted tonight — clean stopping point.
