@@ -755,3 +755,26 @@ phones pick it up on next refresh. **Live-verify next: same test as before
 (byob_debug capture / CSV export over a several-minute track) — expect
 snap counts to stop incrementing and master_verdict to stabilize instead
 of swinging.**
+
+**Second fix applied 2026-07-14** (cast 8.1.5→24 — Holding Together, "the
+king's beaters cover three sides only, foregoes game running off in front"
+→ Return: push forward, don't revert, light touch): `noteCalDebt`'s
+`DEBT_MIN_RUN` raised 3→7 in `ternary/layer.js`. Root cause was distinct
+from the anchor-broadcast bug — a second, independent problem in the same
+session's symptom ("once synced perfectly, audio jumps and resets"). The
+debt-ratchet detector's own design comment already said the right thing
+("real calibration converges, a ratchet only climbs") but the
+implementation only checked sign-consistency + a raw sum over 3
+corrections — well inside a single track's normal legitimate budget (4
+auto-cal/snap-cal + 1 greenhorn + 1 crowd-prior = 6). Live data showed
+three phones getting zeroed mid-legitimate-convergence (12→91→197ms,
+112→246→312ms, 496→615→664ms — all plausible real floors, especially
+`v1vjb8`'s ~664ms) right as they approached their true latency. Raised past
+the max legitimate same-track count so it only fires on genuine
+cross-track/persisting debt. Commit `81ffce3`, pushed.
+
+**Live-verify next:** run a track for several minutes without refreshing;
+watch `deviceLatencyMs` per device — it should climb and *hold* (no more
+drop-to-0 resets) as it approaches each device's true floor. Use the new
+overlay.html marker buttons (✅ Synced / ⚠ Jump / 📝 Note, commit `d0c8147`)
+to stamp exact moments for correlation against the CSV export.
