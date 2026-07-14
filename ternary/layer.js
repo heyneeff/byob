@@ -76,30 +76,7 @@
   let _debugChannel  = null;  // set to window._debugChannel when available
   let _peerChannel   = null;
   let _badge         = null;
-  let _peerTrits     = {};   // { deviceId → { trit, lagMs, ts, refMs } }
-
-  // ── ROOM-CONSENSUS CLOCK CORRECTION (2026-07-14, sim-validated in
-  // sync/room-consensus-sim.mjs) ──────────────────────────────────────────
-  // ternary/octonary's existing consensus (weightedConsensus, isGlobalDisruption,
-  // peerMedianLag) all operate on each phone's own SELF-REPORTED trit/lagMs —
-  // consensus of opinions, never a comparison of actual playback position
-  // across devices. refMs fixes that: reconstruct, from this phone's own
-  // audible position, the wall-clock instant it believes the track started at
-  // (same math bridge.mjs's master_verdict trusts, and ternary/overlay.html's
-  // Room Spread gauge displays). refMs is time-invariant per device, so
-  // peers' latest values are directly comparable without extrapolation.
-  // Discrete, averaged, rate-limited jump to _clockOffset — NOT a continuous
-  // slew like the abandoned/dormant _anchorClockDiscipline (found deadlocked
-  // with auto-cal in sync/anchor-clock-sim.mjs). Averaging a short window of
-  // samples before acting (rather than reacting to one noisy comparison) is
-  // what took this design from 3/4 sim failures to all-pass.
-  const CONSENSUS_THRESHOLD_MS   = 60;    // avg peer-median disagreement to act on
-  const CONSENSUS_RATE_LIMIT_MS  = 30000; // min gap between corrections
-  const CONSENSUS_WINDOW_N       = 4;     // samples averaged before acting
-  const CONSENSUS_CHECK_MS       = 10000; // how often to sample the comparison
-  let _consensusSamples = [];
-  let _lastConsensusCheckTs = 0;
-  let _lastConsensusCorrectTs = 0;
+  let _peerTrits     = {};   // { deviceId → { trit, lagMs, ts } }
   let _driftHistory  = [];
   let _calApplied    = false;  // true once any correction fires (for badge)
   let _calCount      = 0;     // corrections applied this track (max 4)
@@ -589,10 +566,6 @@
     updateBadge();
     if (!isBurst) broadcastDebug(lagMs, snapThreshold, consensus);
     broadcastPeerTrit(lagMs);
-    // Room-consensus check — rate-limited internally to CONSENSUS_CHECK_MS,
-    // safe to call every tick. Not during burst (entry is all transient,
-    // same reasoning as the floor-sample entry-phase gate above).
-    if (!isBurst) maybeRoomConsensusCorrect();
 
     _octoState = computeOctoState(lagMs);
 
@@ -657,12 +630,11 @@
   }
 
   // ── PEER ──────────────────────────────────────────────────────────────────
-  function receivePeerTrit(deviceId, trit, lagMs, octoState, model, latencyMs, calSettled, refMs) {
+  function receivePeerTrit(deviceId, trit, lagMs, octoState, model, latencyMs, calSettled) {
     if (trit == null || deviceId === myId()) return;
     _peerTrits[deviceId] = { trit, lagMs: lagMs ?? null, octoState: octoState ?? OCTO.PULLING,
                              model: model ?? null, latencyMs: latencyMs ?? null,
-                             calSettled: calSettled === true, ts: Date.now(),
-                             refMs: refMs ?? null };
+                             calSettled: calSettled === true, ts: Date.now() };
   }
 
   // Median of all peer lagMs values (excludes nulls, expires stale peers)
@@ -675,58 +647,6 @@
     if (!lags.length) return null;
     const mid = Math.floor(lags.length / 2);
     return lags.length % 2 ? lags[mid] : (lags[mid - 1] + lags[mid]) / 2;
-  }
-
-  // Reconstruct "what wall-clock instant do I believe the track started at" —
-  // time-invariant per device, so this is directly comparable across phones.
-  function computeOwnRefMs() {
-    const ts = window.syncedNow?.();
-    const ct = window._audio?.currentTime;
-    const lat = window._terGetDeviceLatencyMs?.() ?? 0;
-    if (ts == null || ct == null || !isFinite(ts) || !isFinite(ct)) return null;
-    return ts - (ct - lat / 1000) * 1000;
-  }
-
-  function peerMedianRefMs() {
-    const now = Date.now();
-    const refs = Object.values(_peerTrits)
-      .filter(p => now - p.ts < 20000 && p.refMs != null)
-      .map(p => p.refMs)
-      .sort((a, b) => a - b);
-    if (refs.length < GREEN_PRIOR_MIN_PEERS) return null; // need a real median, not one opinion
-    const mid = Math.floor(refs.length / 2);
-    return refs.length % 2 ? refs[mid] : (refs[mid - 1] + refs[mid]) / 2;
-  }
-
-  // Discrete, averaged, rate-limited correction toward the room's ground-truth
-  // median — the piece ternary/octonary's self-report consensus never had.
-  // Read-only observation (computeOwnRefMs/peerMedianRefMs) happens every
-  // tick already via broadcastPeerTrit; this just decides, periodically,
-  // whether the accumulated evidence justifies ONE jump.
-  function maybeRoomConsensusCorrect() {
-    const now = Date.now();
-    if (now - _lastConsensusCheckTs < CONSENSUS_CHECK_MS) return;
-    _lastConsensusCheckTs = now;
-    if (typeof window._terAdjustClockOffset !== 'function') return;
-    const own = computeOwnRefMs();
-    const peerMed = peerMedianRefMs();
-    if (own == null || peerMed == null) return;
-    _consensusSamples.push(peerMed - own); // + means "I should move forward to match the room"
-    if (_consensusSamples.length > CONSENSUS_WINDOW_N) _consensusSamples.shift();
-    if (_consensusSamples.length < CONSENSUS_WINDOW_N) return;
-    const avg = _consensusSamples.reduce((a, v) => a + v, 0) / _consensusSamples.length;
-    if (Math.abs(avg) <= CONSENSUS_THRESHOLD_MS) return;
-    if (now - _lastConsensusCorrectTs < CONSENSUS_RATE_LIMIT_MS) return;
-    _lastConsensusCorrectTs = now;
-    _consensusSamples = [];
-    const actualDelta = window._terAdjustClockOffset(avg);
-    console.log(`[ternary] room-consensus correction: ${Math.round(avg)}ms → clockOffset (actual ${Math.round(actualDelta ?? avg)}ms)`);
-    try {
-      const ch = _debugChannel || window._debugChannel;
-      ch?.send({ type: 'broadcast', event: 'sync_event',
-                 payload: { deviceId: myId(), kind: 'ter_room_consensus',
-                            floorMs: Math.round(peerMed - own), correctionMs: Math.round(avg) } });
-    } catch (e) {}
   }
 
   function myId() {
@@ -793,9 +713,7 @@
                    // latency so greenhorns of the same hardware start correct.
                    model: DEVICE_MODEL,
                    latencyMs: window._terGetDeviceLatencyMs?.() ?? null,
-                   calSettled: _calApplied || !_greenhorn,
-                   // Room-consensus ground truth (2026-07-14) — see receivePeerTrit.
-                   refMs: computeOwnRefMs() },
+                   calSettled: _calApplied || !_greenhorn },
       });
     } catch (e) {}
   }
@@ -809,7 +727,7 @@
       .on('broadcast', { event: 'trit' }, ({ payload }) => {
         if (payload?.deviceId && payload.deviceId !== myId()) {
           receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs, payload.octoState,
-                          payload.model, payload.latencyMs, payload.calSettled, payload.refMs);
+                          payload.model, payload.latencyMs, payload.calSettled);
           // Feed peer data into the ternary engine for tcons() rate modulation
           window._terEngineReceivePeer?.(payload.deviceId, payload.trit, payload.lagMs);
           // Feed peer trits into arpeggiator for room consensus / voice harmony
