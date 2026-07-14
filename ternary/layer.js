@@ -690,12 +690,25 @@
 
   // Reconstruct "what wall-clock instant do I believe the track started at" —
   // time-invariant per device, so this is directly comparable across peers.
+  //
+  // SIGN MATTERS (cast 61.3→44, 2026-07-14): the seek formula plants a
+  // converged device at ct = elapsed − devLat/1000, so reconstruction must
+  // ADD devLat back (ct + lat/1000). The previous form (ct − lat/1000)
+  // yielded trackStart + 2·devLat for every converged phone — clock terms
+  // cancel — so peers' refMs "disagreement" was just their latency
+  // difference doubled, un-closable by any clockOffset correction. Live
+  // result: converged phones orbiting each other with mirror-image cascade
+  // jumps every rate-limit window (observed 2026-07-14, magnitudes matching
+  // 2·Δlat within a few ms; see TUNING_LOG). With the correct sign a
+  // converged phone reports trackStart itself regardless of devLat, while
+  // snap-locked or stale-reference devices still expose their true offset —
+  // the rescue behavior is preserved, the false gap is gone.
   function computeOwnRefMs() {
     const ts = window.syncedNow?.();
     const ct = window._audio?.currentTime;
     const lat = window._terGetDeviceLatencyMs?.() ?? 0;
     if (ts == null || ct == null || !isFinite(ts) || !isFinite(ct)) return null;
-    return ts - (ct - lat / 1000) * 1000;
+    return ts - (ct + lat / 1000) * 1000;
   }
 
   // Pick the single highest-octonary-weight visible peer — the cascade's
