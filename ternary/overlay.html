@@ -32,11 +32,13 @@ body{background:var(--bg);color:#8ab;font-family:monospace;font-size:12px;min-he
 #rec-count{color:#444;font-size:10px;}
 
 /* ── overview row ── */
-#overview{display:grid;grid-template-columns:1fr 1fr 2fr auto;gap:8px;padding:10px 16px;border-bottom:1px solid #0e1a22;}
+#overview{display:grid;grid-template-columns:1fr 1fr 1fr 2fr auto;gap:8px;padding:10px 16px;border-bottom:1px solid #0e1a22;}
 .ov-panel{background:var(--card);border:1px solid #0e1a22;border-radius:5px;padding:8px 10px;}
 .ov-title{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#446;margin-bottom:6px;}
 #spread-val{font-size:26px;font-weight:bold;color:var(--teal);line-height:1;}
 #spread-sub{font-size:10px;color:#446;margin-top:2px;}
+#room-spread-val{font-size:26px;font-weight:bold;color:var(--teal);line-height:1;}
+#room-spread-sub{font-size:10px;color:#446;margin-top:2px;}
 #trit-bar-wrap{height:10px;border-radius:2px;overflow:hidden;display:flex;margin-bottom:5px;}
 #trit-counts{display:flex;gap:12px;font-size:10px;}
 #octo-bar-wrap{height:10px;border-radius:2px;overflow:hidden;display:flex;margin-bottom:5px;}
@@ -115,11 +117,21 @@ canvas.chart{display:block;width:100%;height:160px;}
 
 <!-- overview -->
 <div id="overview">
-  <!-- spread -->
+  <!-- spread (self-reported — each phone's own driftMs vs ITS OWN reference;
+       can read low even when phones disagree with each other, see room-spread) -->
   <div class="ov-panel">
-    <div class="ov-title">room drift spread</div>
+    <div class="ov-title">self-reported drift spread</div>
     <div id="spread-val">—</div>
     <div id="spread-sub">— devices playing</div>
+  </div>
+
+  <!-- room spread (ground truth — reconstructed absolute reference position
+       per device, compared directly; this is what actually answers "are the
+       phones playing the same instant of the song") -->
+  <div class="ov-panel">
+    <div class="ov-title">room spread (ground truth)</div>
+    <div id="room-spread-val">—</div>
+    <div id="room-spread-sub">— devices compared</div>
   </div>
 
   <!-- ternary -->
@@ -464,6 +476,20 @@ function updateOverview() {
   } else { sv.textContent = '—'; sv.style.color = 'var(--teal)'; }
   ss.textContent = playing.length + ' device' + (playing.length !== 1 ? 's' : '') + ' playing';
 
+  // Room spread — ground truth. refMs is time-invariant per device (it's a
+  // reconstructed constant, "when did the track start" — not a live drift
+  // reading), so comparing each device's latest value directly is valid
+  // without extrapolating for capture-time skew.
+  const refs = playing.map(d => d.refMs).filter(v => v != null && isFinite(v));
+  const roomSpread = refs.length >= 2 ? Math.max(...refs) - Math.min(...refs) : null;
+  const rsv = document.getElementById('room-spread-val');
+  const rss = document.getElementById('room-spread-sub');
+  if (roomSpread != null) {
+    rsv.textContent = roomSpread.toFixed(0) + 'ms';
+    rsv.style.color = roomSpread > 500 ? 'var(--red)' : roomSpread > 100 ? 'var(--orange)' : 'var(--teal)';
+  } else { rsv.textContent = '—'; rsv.style.color = 'var(--teal)'; }
+  rss.textContent = refs.length + ' device' + (refs.length !== 1 ? 's' : '') + ' compared';
+
   // Ternary bar
   const tc = { N:0, Z:0, P:0 };
   sync.forEach(d => { const t = d.terTrit || driftToTrit(d.driftMs); if (t) tc[t]++; });
@@ -590,8 +616,27 @@ function renderEvents() {
 }
 
 // ── Channels ──────────────────────────────────────────────────────────────
+// Ground-truth room spread (2026-07-14 — see sync/TUNING_LOG.md "the real
+// remaining gap"): ternary's existing consensus (weightedConsensus, the
+// driftMs spread above) is built entirely from each phone's own SELF-REPORT
+// — its drift against ITS OWN private reference. Two phones can each report
+// near-zero drift while sitting seconds apart in the actual track, because
+// nothing ever compares their absolute positions. refMs fixes that: back out
+// each phone's own latency compensation from its current audible position to
+// reconstruct "what wall-clock instant does this phone believe corresponds
+// to the track's start" — the same math bridge.mjs's master_verdict already
+// trusts. If phones agree, refMs matches across all of them; if they don't,
+// this is where it shows, directly, not inferred from driftMs looking calm.
+// Read-only: purely a dashboard number, never fed back into any correction.
+function computeRefMs(p) {
+  const ts = parseFloat(p.ts), ct = parseFloat(p.currentTime), lat = parseFloat(p.deviceLatencyMs) || 0;
+  if (!isFinite(ts) || !isFinite(ct)) return null;
+  return ts - (ct - lat / 1000) * 1000;
+}
+
 db.channel('byob_debug')
   .on('broadcast', { event: 'hud_data' }, ({ payload: p }) => {
+    p.refMs = computeRefMs(p); // attach so it flows into recordRow('sync', p) below via REC_COLS
     devs[p.deviceId] = { ...p, _kind: 'sync', lastSeen: Date.now() };
     pushHist(driftHist,  p.deviceId, p.driftMs);
     pushHist(warpHist,   p.deviceId, ((parseFloat(p.playbackRate)||1) - 1) * 100);
@@ -623,7 +668,7 @@ const REC_COLS = [
   'driftState','driftPending','terTrit','terOctoState','terOctoName','terGlobalDisruption',
   'terCalState','terLastFloor','terConsecN','terPeerCount','terConsensus',
   'terSnapCount','terBurstSnaps','stallCount','snapCount','seekIntendedMs','seekMeasuredMs',
-  'readyState','visibilityState','currentTime','expectedPos','note',
+  'readyState','visibilityState','currentTime','expectedPos','refMs','note',
 ];
 function toggleRecord() {
   _recording = !_recording;
@@ -663,7 +708,7 @@ function markAll(label) {
       zone: snap.zone, driftMs: snap.driftMs, deviceLatencyMs: snap.deviceLatencyMs,
       playbackRate: snap.playbackRate, driftState: snap.driftState,
       snapCount: snap.snapCount, currentTime: snap.currentTime,
-      expectedPos: snap.expectedPos, note: label,
+      expectedPos: snap.expectedPos, refMs: snap.refMs, note: label,
     });
     document.getElementById('rec-count').textContent = _records.length + ' rows';
     events.unshift({ kind: 'mark', deviceId: id, note: label + ' — ' + detail, at });
