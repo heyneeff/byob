@@ -1094,3 +1094,104 @@ coincide with an unrelated track change. The sim validation (E/F/G, ~75-90%
 clean pass rate at a strict bar) and the two real code fixes (wrap-guard,
 full-yield) are still believed sound — what's unresolved is purely "does it
 behave live," which this session did not get a clean chance to observe.
+
+## 2026-07-15 — octonary cascade consensus: designed, built, sim-validated, ported
+
+**New day, controlled test only — no live party, explicitly agreed
+("just me and you testing, I wouldn't test this at a party").**
+
+**Design origin:** real CSV analysis (`byob-obs-2026-07-14T17-37-57-018Z.csv`,
+post-revert baseline) found one device (`k7je2c`) was the lowest/most-
+reference-like `refMs` in **106/106** five-second windows across the whole
+session — a stable natural flagship the flat weighted-median approach (v3)
+never recognized or used. Also found the disagreement itself is a slow,
+stable, near-constant bias per device (one stretch held ±8ms for nearly a
+minute), not fast jitter — the right regime for a rate-limited discrete
+correction, wrong regime for a continuous slew.
+
+**Design: NTP/PTP-stratum-style cascade** — each device locks onto its
+single highest-octonary-weight visible peer (ANCHORING 2.0 > HOLDING 1.5 >
+PULLING 1.0 > ... > REACHING 0.0) and corrects toward that ONE peer's
+`refMs`, rather than v3's flat median of all peers. Trust propagates
+outward one hop at a time; a real flagship (or the DJ, in a later
+follow-up) emerges from the existing weight table with no manual
+assignment. First divergent cast of the session (mine: 52, Keeping Still;
+user's: 19.1.2.4→16, Approach→Enthusiasm) — reconciled as "discuss/design
+yes, code not yet," consistent with three earlier casts resolving to
+Return. Cast specifically on this cascade design once formulated:
+30.4→22 (Fire→Grace), line 4 repeating the exact same "flames up, dies
+down, thrown away" caution from the earlier revert decision — read as
+refine-in-sim, not rush-to-deploy.
+
+**Built `sync/octonary-cascade-sim.mjs`** — multi-instance harness, N real
+independent copies of `ternary/layer.js` sharing one wall clock, exchanging
+real trit+refMs broadcasts through an in-process bus (not one device vs. an
+abstracted peer median like room-consensus-sim.mjs — this needed actual
+interacting instances to test emergence).
+
+**Real bugs found and fixed during sim iteration (not tuning nits):**
+1. **Chicken-and-egg deadlock**: requiring a peer to already be HOLDING/
+   ANCHORING before ever acting means the room can get stuck at PULLING
+   forever whenever no device can naturally reach that trust level WITHOUT
+   the correction it's gated on (exactly true for an uncorrected clock-type
+   error — calibration alone plateaus, see room-consensus-sim.mjs scenario
+   A'). Fixed: lowered minimum trust weight to accept a PULLING-level peer
+   (1.0) as a valid, if weak, bootstrap anchor.
+2. **Sim-only bug**: `ownRefMs()` used the raw shared clock instead of
+   `syncedNow()` (clock + own `clockOffsetMs`), making corrections
+   invisible to the next cycle — runaway re-correction, -1182ms every
+   single 30s cycle instead of converging once. Caught via `DEBUG_CASCADE=1`
+   instrumentation.
+3. **Sim-only bug**: synthetic DJ reference assumed "track started right
+   now" while devices assumed 10s already elapsed — a baseline mismatch
+   that made every DJ-vs-phone comparison look like a false ~12,500ms
+   disagreement and get wrap-guarded away. Fixed by deriving the DJ
+   reference from the same time-invariant `TRUE_PLAYBACK_START_MS` constant
+   real devices use.
+
+**Tried and removed: entry-phase bold bootstrap.** Motivated by "get
+everything launching at the same time" — but found (honestly, not
+papered over) that it can never fire as modeled: injected "true error"
+only manifests in `refMs` gradually, via calibration reacting to `lagMs`,
+not immediately in `currentTime`. At the true moment of arrival there's no
+informative ref-comparable disagreement yet, regardless of mechanism. Real
+answer: launch timing is already handled by the existing scheduled-entry
+mechanism (`playback_started_at = play_at`); cascade consensus's job is the
+*ongoing* correction after, not the launch instant itself. Confirmed the
+handoff between them is already correct in the existing architecture — a
+track change (including a scheduled launch) already triggers `enterBurst()`
+in `layer.js` (self-exiting on convergence or timeout), and cascade
+correction is gated `if (!isBurst)`, same as v3 — no new gate needed.
+Removed the dead bold-entry code cleanly rather than leave a feature that
+doesn't do anything.
+
+**Ported for real into `ternary/layer.js`**: `computeOwnRefMs()`,
+`pickCascadeAnchor()` (single highest-weight peer, NOT a median),
+`maybeCascadeCorrect()` — wrap-guard (`CASCADE_WRAP_SANITY_MS`, mirrors
+`TH_SEEK_SANITY`) and one-authority-full-yield (`_cascadeEngaged`,
+permanent once true) both carried over from v3's hard-earned lessons.
+`refMs` added to the existing `trit` broadcast (`broadcastPeerTrit`/
+`receivePeerTrit`) — no new channel. `isCascadeEngaged()`/
+`getCascadeAnchorId()` exposed on `window._terLayer`.
+**`listener.html`**: `window._terAdjustClockOffset(deltaMs)` (mirrors
+`_terAdjustLatency`), `measureClockOffset()` gains the second
+one-authority gate. **NO DJ participation in this port** — deliberately
+deferred, would need `bridge.mjs` changes (a different, riskier file).
+
+**Re-validated against the REAL ported code**, not just the design
+prototype — important catch along the way: my first re-run accidentally
+kept the sim's own standalone `pickAnchor`/`maybeCascadeCorrect` running
+*alongside* the newly-ported real `layer.js` internal logic, double-
+correcting and invalidating that "ALL PASS." Rewrote the sim to exercise
+only the real internal mechanism via `tick()`. Clean result: **3/3
+phone-to-phone scenarios pass** (A: real-CSV-shape 3-device convergence;
+B: 4 devices, no pre-existing flagship; D: one latency-capped broken device
+correctly never chosen as anchor). `sync/sync-engine.test.js` 29/29
+unaffected. `sync/greenhorn-sim.mjs`'s pre-existing 3 failures (flagged
+last session, predates this work) unchanged — not made worse.
+
+**Status: built, sim-validated against the real ported code, not yet
+deployed.** Next: cast specifically on the deploy step, then a controlled
+live test (just the two of us, explicitly not a live party), watched
+closely, ready to revert immediately if anything looks wrong — same
+posture as both v3 attempts.

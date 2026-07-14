@@ -76,7 +76,51 @@
   let _debugChannel  = null;  // set to window._debugChannel when available
   let _peerChannel   = null;
   let _badge         = null;
-  let _peerTrits     = {};   // { deviceId → { trit, lagMs, ts } }
+  let _peerTrits     = {};   // { deviceId → { trit, lagMs, ts, octoState, refMs } }
+
+  // ── OCTONARY CASCADE CONSENSUS (2026-07-15) ─────────────────────────────────
+  // Ground-truth peer correction, v2 of the "make them all talk" layer (v1 =
+  // room-consensus v3, flat weighted median, sim-validated but never live-
+  // verified — see sync/TUNING_LOG.md). This version replaces the flat median
+  // with a single-anchor selection: each device locks onto its ONE highest-
+  // octonary-weight visible peer (ANCHORING > HOLDING > PULLING > ...) and
+  // corrects toward THAT peer's refMs — an NTP/PTP-stratum-style cascade
+  // rather than a democratic vote. Motivated by real CSV evidence
+  // (byob-obs-2026-07-14T17-37-57-018Z.csv): one device was the lowest/most-
+  // reference-like refMs in 106/106 five-second windows across a whole
+  // session — a stable natural flagship nothing in the flat-median approach
+  // recognized or used.
+  //
+  // Validated offline in sync/octonary-cascade-sim.mjs (multi-device harness,
+  // real layer.js × N interacting instances): 4/4 scenarios converge,
+  // including a real bug found and fixed along the way — requiring a peer to
+  // already be HOLDING/ANCHORING before ever acting creates a chicken-and-egg
+  // deadlock whenever no device can naturally reach that trust level WITHOUT
+  // the correction it's gated on (an uncorrected clock-type error plateaus
+  // calibration at Z/PULLING forever). Minimum weight lowered to accept a
+  // PULLING-level peer as a valid, if weak, bootstrap anchor.
+  //
+  // Same two structural fixes room-consensus v3 already earned: wrap-guard
+  // (CASCADE_WRAP_SANITY_MS, mirrors the engine's own TH_SEEK_SANITY) and one
+  // authority/full-yield (measureClockOffset must stay suspended for the rest
+  // of the session once this fires its first correction — see listener.html).
+  // Gated behind burst mode exactly like v3 was — a scheduled entry changes
+  // playback_started_at, which already triggers enterBurst() and self-exits
+  // on convergence or timeout, so this stays silent through any entry
+  // transient automatically, no separate gate needed.
+  const OCTO_WEIGHT_TABLE        = { 0: 2.0, 1: 1.5, 2: 1.0, 3: 0.8, 4: 0.5, 5: 0.3, 6: 0.5, 7: 0.0 };
+  const CASCADE_THRESHOLD_MS     = 60;    // avg peer-anchor disagreement to act on — deadband, not a target
+  const CASCADE_RATE_LIMIT_MS    = 30000; // min gap between corrections
+  const CASCADE_WINDOW_N         = 4;     // samples averaged before acting
+  const CASCADE_CHECK_MS         = 10000; // how often to sample the comparison
+  const CASCADE_WRAP_SANITY_MS   = 2000;  // mirrors TH_SEEK_SANITY — larger = wrap artifact, drop it
+  const CASCADE_MIN_WEIGHT       = 0.9;   // accept a PULLING-level peer (1.0) — see chicken-and-egg note above
+  let _cascadeSamples = [];
+  let _lastCascadeCheckTs = 0;
+  let _lastCascadeCorrectTs = 0;
+  let _cascadeEngaged = false; // one authority, full yield — see measureClockOffset's gate in listener.html
+  let _cascadeAnchorId = null; // diagnostic/HUD visibility only
+
   let _driftHistory  = [];
   let _calApplied    = false;  // true once any correction fires (for badge)
   let _calCount      = 0;     // corrections applied this track (max 4)
@@ -568,6 +612,12 @@
     broadcastPeerTrit(lagMs);
 
     _octoState = computeOctoState(lagMs);
+    // Cascade consensus check — internally rate-limited to CASCADE_CHECK_MS,
+    // safe to call every tick. Gated behind burst mode exactly like v3: a
+    // scheduled entry already triggers enterBurst() (self-exiting on
+    // convergence or timeout), so this stays silent through any entry
+    // transient with no separate gate needed.
+    if (!isBurst) maybeCascadeCorrect();
 
     _history.push({ ts: Date.now(), lagMs: Math.round(lagMs),
                     trit: TRIT_NAME[_trit], snapThreshold, burst: !!isBurst,
@@ -630,11 +680,75 @@
   }
 
   // ── PEER ──────────────────────────────────────────────────────────────────
-  function receivePeerTrit(deviceId, trit, lagMs, octoState, model, latencyMs, calSettled) {
+  function receivePeerTrit(deviceId, trit, lagMs, octoState, model, latencyMs, calSettled, refMs) {
     if (trit == null || deviceId === myId()) return;
     _peerTrits[deviceId] = { trit, lagMs: lagMs ?? null, octoState: octoState ?? OCTO.PULLING,
                              model: model ?? null, latencyMs: latencyMs ?? null,
-                             calSettled: calSettled === true, ts: Date.now() };
+                             calSettled: calSettled === true, ts: Date.now(),
+                             refMs: refMs ?? null };
+  }
+
+  // Reconstruct "what wall-clock instant do I believe the track started at" —
+  // time-invariant per device, so this is directly comparable across peers.
+  function computeOwnRefMs() {
+    const ts = window.syncedNow?.();
+    const ct = window._audio?.currentTime;
+    const lat = window._terGetDeviceLatencyMs?.() ?? 0;
+    if (ts == null || ct == null || !isFinite(ts) || !isFinite(ct)) return null;
+    return ts - (ct - lat / 1000) * 1000;
+  }
+
+  // Pick the single highest-octonary-weight visible peer — the cascade's
+  // core mechanism, replacing v3's flat weighted median with an NTP/PTP-
+  // stratum-style single anchor. No DJ participation yet (would need
+  // bridge.mjs changes — deliberately out of scope for this first live test,
+  // see sync/TUNING_LOG.md).
+  function pickCascadeAnchor() {
+    const now = Date.now();
+    let best = null, bestWeight = -1;
+    for (const [id, p] of Object.entries(_peerTrits)) {
+      if (now - p.ts >= 20000 || p.refMs == null) continue;
+      const weight = OCTO_WEIGHT_TABLE[p.octoState] ?? 0;
+      if (weight <= 0) continue;
+      if (weight > bestWeight) { best = { id, weight, refMs: p.refMs }; bestWeight = weight; }
+    }
+    return best;
+  }
+
+  // Discrete, averaged, rate-limited correction toward the chosen anchor's
+  // ground-truth refMs. Fix 1 (wrap-guard): a sample this large is a
+  // track-loop-wrap artifact, not real disagreement — drop it before it ever
+  // enters the averaging window, mirroring the engine's own TH_SEEK_SANITY.
+  function maybeCascadeCorrect() {
+    const now = Date.now();
+    if (now - _lastCascadeCheckTs < CASCADE_CHECK_MS) return;
+    _lastCascadeCheckTs = now;
+    if (typeof window._terAdjustClockOffset !== 'function') return;
+    const anchor = pickCascadeAnchor();
+    if (!anchor || anchor.weight < CASCADE_MIN_WEIGHT) return; // not enough trust in the room yet
+    _cascadeAnchorId = anchor.id;
+    const own = computeOwnRefMs();
+    if (own == null) return;
+    const sample = anchor.refMs - own;
+    if (Math.abs(sample) > CASCADE_WRAP_SANITY_MS) return; // fix 1: wrap-guard
+    _cascadeSamples.push(sample);
+    if (_cascadeSamples.length > CASCADE_WINDOW_N) _cascadeSamples.shift();
+    if (_cascadeSamples.length < CASCADE_WINDOW_N) return;
+    const avg = _cascadeSamples.reduce((a, v) => a + v, 0) / _cascadeSamples.length;
+    if (Math.abs(avg) <= CASCADE_THRESHOLD_MS) return; // tolerance — a peer within the deadband is left alone
+    if (now - _lastCascadeCorrectTs < CASCADE_RATE_LIMIT_MS) return;
+    _lastCascadeCorrectTs = now;
+    _cascadeEngaged = true; // fix 2: one authority, full yield from here on — see measureClockOffset's gate
+    _cascadeSamples = [];
+    const actualDelta = window._terAdjustClockOffset(avg);
+    console.log(`[ternary] cascade correction: ${Math.round(avg)}ms toward ${anchor.id} (w=${anchor.weight}) → clockOffset (actual ${Math.round(actualDelta ?? avg)}ms)`);
+    try {
+      const ch = _debugChannel || window._debugChannel;
+      ch?.send({ type: 'broadcast', event: 'sync_event',
+                 payload: { deviceId: myId(), kind: 'ter_cascade', anchorId: anchor.id,
+                            anchorWeight: anchor.weight, correctionMs: Math.round(avg),
+                            actualMs: Math.round(actualDelta ?? avg) } });
+    } catch (e) {}
   }
 
   // Median of all peer lagMs values (excludes nulls, expires stale peers)
@@ -713,7 +827,10 @@
                    // latency so greenhorns of the same hardware start correct.
                    model: DEVICE_MODEL,
                    latencyMs: window._terGetDeviceLatencyMs?.() ?? null,
-                   calSettled: _calApplied || !_greenhorn },
+                   calSettled: _calApplied || !_greenhorn,
+                   // Cascade consensus ground truth: time-invariant per
+                   // device, directly comparable across peers.
+                   refMs: computeOwnRefMs() },
       });
     } catch (e) {}
   }
@@ -727,7 +844,7 @@
       .on('broadcast', { event: 'trit' }, ({ payload }) => {
         if (payload?.deviceId && payload.deviceId !== myId()) {
           receivePeerTrit(payload.deviceId, payload.trit, payload.lagMs, payload.octoState,
-                          payload.model, payload.latencyMs, payload.calSettled);
+                          payload.model, payload.latencyMs, payload.calSettled, payload.refMs);
           // Feed peer data into the ternary engine for tcons() rate modulation
           window._terEngineReceivePeer?.(payload.deviceId, payload.trit, payload.lagMs);
           // Feed peer trits into arpeggiator for room consensus / voice harmony
@@ -746,6 +863,13 @@
       getOctoName:        () => OCTO_NAME[_octoState],
       isGlobalDisruption,
       weightedConsensus,
+      // Cascade consensus, fix 2 (one authority, full yield): once true,
+      // measureClockOffset's periodic RTT remeasure must stay suspended for
+      // the rest of the session, not just a timed window (a 45s window was
+      // tried for v3 and still let the two authorities clobber each other in
+      // sim — see sync/TUNING_LOG.md).
+      isCascadeEngaged: () => _cascadeEngaged,
+      getCascadeAnchorId: () => _cascadeAnchorId, // diagnostic/HUD visibility
       // External authorities (anchor-clock slew) announce reference moves so
       // floor sampling distrusts the following stretch — a 15ms clock slew is
       // invisible to the 120ms jump detector but poisons floors all the same
