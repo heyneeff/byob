@@ -641,3 +641,117 @@ Phones pick it up on next refresh. Live-verify checklist unchanged above.
   quiet but not tight; residual debt for auto-cal/zone_offset to close.
 - Monitor patch: `ter_greenhorn_cal`/`ter_crowd_prior` sync_events now
   print inline (🌱/👥) — they were silently dropped before.
+
+## 2026-07-13/14 — relay migration + first live audio + anchor-broadcast bug found
+
+**Context:** Jul 13 — Supabase retired for a self-hosted relay
+(`bridge/relay.mjs` + `byob-shim.js`, see repo CLAUDE.md "Architecture").
+Before this session NO audio reached any listener at all (root cause:
+absolute Cloudflare tunnel URLs baked into `tracks.public_url` /
+`zones.current_track_url` at upload time; tunnel host rotates every
+restart). Fixed by a read-time normalizer in `byob-shim.js` (rewrites any
+stale `*.trycloudflare.com` or `localhost:3100` `/storage/` URL to the
+client's current relay origin on every message) — heals existing rows with
+no migration, survives future rotations. Also fixed: `artist.html`
+`loadFromLibrary` was reading a nonexistent storage-list API against the
+wrong bucket path (`from('tracks')` instead of `from('boombox')`) — now
+lists the `tracks` table directly. Also added: one-active-zone-per-`host_id`
+enforcement in `relay.mjs` (`enforceOneActiveZone`, single choke point on
+insert/update/upsert), a bridge Play guard (won't broadcast `hard_sync`
+with no `track_url` — falls back to the zone's `current_track_url` or
+rejects with a toast), `deactivate_zone` command, and single-port WS
+(`:3000` upgrade, alongside legacy `:3001`) for Safari. `ternary/overlay.html`
+was still pointed at the retired Supabase project — repointed to the relay
+via `byob-shim.js`. Bridge UI got a **Broadcast Ableton** section — the
+WebRTC Go Live path (BlackHole capture → phones), ported verbatim from
+`artist.html`'s `toggleLive()`/`startWebRTCBroadcast()`, so the bridge can
+now do everything artist.html's Go Live did, just from the bridge's browser
+page instead. None of the above touches the corrector/anchor/calibration
+code — plumbing only.
+
+**Once audio reached phones, sync was messy** — "clip a bunch, snap in
+perfectly, then cut out and desync, cut out and resync" (Neeff's words),
+worse as the track played longer. Diagnosed with a live `byob_debug` capture
+plus a browser-exported CSV (`byob-obs-2026-07-14T02-05-05-315Z.csv`, 1082
+rows, kinds sync/health/event, 3 real devices dev_0ro7iy/dev_mkc9x4/dev_rd00fx
+across ~5.5 min):
+
+- `master_verdict` (bridge-computed, field vs. bridge's own `_playbackStartedAt`)
+  swung wildly and non-stationarily: −47000ms → −35000ms (rising) →
+  −59500ms (sign-flipped, then plateaued). A STABLE wrong offset would mean
+  a one-time bad anchor; a MOVING one means the thing being measured is
+  still sliding in real time.
+- `dev_0ro7iy`: idle↔warping the entire capture, drift sawing −245ms to
+  +141ms, **snapCount frozen at 4 for all 110 rows** — perpetually warping,
+  never converging (audible as continuous pitch-bend).
+- `dev_mkc9x4`: `deviceLatencyMs=0` all session (never calibrated), snapCount
+  crept 9→10→11 (**two real seek/mute/ramp events** — the literal audible
+  cut-outs) while cycling warping/seeking/idle throughout.
+- `dev_rd00fx`: joined late, snapCount frozen at 0 — never corrected once.
+- Isolated tick outliers (drift +2324ms, −1530ms, +1897ms) all traced to
+  `currentTime≈0` vs. a stale `expectedPos` at track-load — one-tick
+  transients the corrector's own wrap-guard already discards (`seekIntendedMs`
+  stayed small even when raw `driftMs` spiked). Not the live bug.
+
+**Root cause — traced code, not yet fixed (needs a cast before touching):**
+Two independently-reasonable changes compound:
+
+1. **Pre-existing scoping bug, `listener.html:4275-4284`.** The DJ's 5s
+   `anchor` broadcast handler unconditionally runs
+   `_anchorPlaybackStartedAtMs = payload.ts - payload.position * 1000` —
+   only the *extra smoothing* (`_anchorClockDiscipline`, the "anchor-
+   disciplined clock" from `c97364c`/oracle 64.2→35) is gated by
+   `window._anchorClockEnabled` (documented OFF/dormant, oracle 19.3→11).
+   The raw reference override is **not** gated. At `listener.html:6274`,
+   `_anchorPlaybackStartedAtMs ?? row's playback_started_at` is what the
+   corrector actually uses — so every listener has been silently re-deriving
+   its ground-truth reference from the DJ's *live* playhead every ~5s,
+   despite the system believing that path was shut off.
+2. **Last night's `a494a8f` self-nudge, `artist.html:2896-2926`.** When the
+   DJ's cached reference drifts 100–500ms from its own expectation, the DJ
+   hard-seeks (`audio.currentTime = ...`, no mute, no ramp) its *own* audio
+   to match — deliberately scoped as local-only/cosmetic, no
+   `noteStartedAt()`, no row write, no `hard_sync`. But because of (1), that
+   same jump-cut position gets broadcast via `anchor` 5s later and adopted
+   as every listener's new ground truth anyway.
+
+Together: a reference that moves (sometimes jump-cuts) every 5 seconds,
+faster than any single phone's own corrector can settle — reads exactly as
+"clip, snap in perfectly, cut out, resync, repeat," worsening the longer the
+track plays as the DJ's own cached reference accumulates more divergence to
+nudge against. This also fully explains the `master_verdict` swings: the
+bridge's verdict math compares listener-reported offsets to
+`_playbackStartedAt`, while listeners have actually been tracking a
+different, wobbling reference underneath the whole time.
+
+**Proposed fix (minimal, matches the two-nights-ago oracle intent that
+"dormant" should mean dormant):** gate the raw assignment at
+`listener.html:4277` behind the same `window._anchorClockEnabled` flag that
+already gates `_anchorClockDiscipline()` — a scoping fix, not new design.
+With it off (current default), listeners fall through to the stable row
+`playback_started_at` unconditionally, as intended. **Not yet cast or
+applied — do before touching per repo protocol.**
+
+**Also logged:** a related, smaller "follow the row" gap on the bridge side
+was found and cast on mid-session — 29→46 (Abysmal repeating → Pushing
+Upward), lines 3 and 5 moving. Reading: fix confirmed but scope constrained
+("fill the abyss only to the rim, no higher") — the bridge should adopt
+`playback_started_at` from the zone row whenever it changes and the bridge
+didn't mint the launch itself, nothing more (no new correction channel, no
+broadcast). Not yet implemented — smaller than the anchor-broadcast bug
+above and likely secondary to it.
+
+**Fix applied 2026-07-14** (cast 63.5.6→22 — After Completion, small offering
+outperforms the big one → Grace, keep it plain): gated the raw
+`_anchorPlaybackStartedAtMs` override at `listener.html:4277` behind
+`window._anchorClockEnabled`, matching the flag's original documented
+intent. With the flag off (current default), `_anchorPlaybackStartedAtMs`
+now stays `null` and listeners fall through unconditionally to the row
+`playback_started_at`. `_launchGuardUntil` clear left ungated (guard-clear
+only, not a reference override — line 6 of the cast said watch this
+carefully rather than assume one gate closes everything, so flagging it
+here explicitly as reviewed-and-intentional). Commit `9718f40`, pushed —
+phones pick it up on next refresh. **Live-verify next: same test as before
+(byob_debug capture / CSV export over a several-minute track) — expect
+snap counts to stop incrementing and master_verdict to stabilize instead
+of swinging.**
