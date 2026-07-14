@@ -979,3 +979,72 @@ trigger a correction, (2) average several peer refMs samples over a short
 window (e.g. 3-5 readings) before computing the jump, instead of acting on
 one comparison. Re-run this sim with those two changes before considering a
 cast to implement live. Not yet attempted tonight — clean stopping point.
+
+## 2026-07-14 (cont.) — room-consensus correction: shipped live, broke, reverted
+
+Deployed the sim-validated discrete room-consensus correction live (commit
+`38c5655`) after casting specifically on the deployment step: **53.1.4.5→30**
+(Development, gradual step-by-step progress with real doubt at early/middle
+stages, "no blame" → The Clinging, a fire that must be continually tended,
+not lit once and left). Read at the time as a genuine go-ahead, with the
+explicit expectation of watching closely and possibly not succeeding on the
+first try — which is exactly what happened. The cast's caution held up.
+
+Also mid-session: the Cloudflare quick tunnel silently died (process still
+running, hostname unresolvable) after running a long time — unrelated to
+the sync work, just an operational blip. Restarted via `bridge/start.command`
+(relay/bridge untouched, only the tunnel + `relay.json` republish needed).
+
+**Live watch caught two real bugs within ~3 minutes of deploy, before any
+harm beyond audible jumps on a handful of devices:**
+
+1. **`measureClockOffset()`'s existing independent 30s timer overwrites
+   `_clockOffset` with a fresh RTT measurement every cycle, with zero
+   awareness of the new room-consensus correction.** Its early-return guard
+   only trips when `_anchorClock.active` — which requires the (disabled)
+   anchor-clock discipline to have fired — so with that flag off, nothing
+   protects a room-consensus correction from being silently clobbered ~30s
+   after it lands. Confirmed live: multiple devices' `clockOffset` reverted
+   to their pre-correction value between firings and re-fired repeatedly
+   (`dev_zo12r3`, `dev_ldd9gh`, `dev_1uzrbr`, `dev_2nkyiv` all cycling every
+   ~30-40s). User confirmed audibly: "all are about a second or more off
+   from one another" — the correction never got the chance to help.
+2. **`computeOwnRefMs()` has no track-loop-wrap guard**, unlike
+   `bridge.mjs`'s `master_verdict` (which explicitly handles this — see the
+   wrap-ambiguity comment there). A track wrapping to `currentTime≈0`
+   produces a nonsensical `refMs` for one peer; averaged into the 4-sample
+   window, it poisons the whole correction. Live evidence: `dev_1uzrbr` got
+   hit with a **−67593ms** correction, then **+34779ms**, both wildly larger
+   than the true ~1000ms disagreement — the averaging window has no
+   defense against one contaminated sample.
+
+**Response:** reverted immediately (`git revert 38c5655` → `2713593`),
+pushed, confirmed deployed, confirmed via live monitor that all devices
+stopped firing once reloaded (~5min from bug discovery to fully clear).
+Tonight's two real fixes (anchor-broadcast scoping, `noteCalDebt` threshold)
+are UNAFFECTED — the revert only removes today's newest, broken piece.
+
+**Fix requirements for the next attempt (both must be addressed, then
+re-validate in `sync/room-consensus-sim.mjs` — which did NOT model either
+failure mode, a real gap in that sim, before ever trying live again):**
+1. Either gate `measureClockOffset()`'s periodic re-measurement behind an
+   `_anchorClock.active`-equivalent flag that room-consensus also sets, or
+   have `_terAdjustClockOffset` and `measureClockOffset` share one clock
+   authority explicitly (same "one authority per signal" principle the
+   anchor-clock postmortem already named but this new mechanism didn't
+   inherit).
+2. Add the same wrap-ambiguity guard `master_verdict` already has to
+   `computeOwnRefMs()`/`peerMedianRefMs()` — drop readings where
+   `currentTime` is near a track boundary, or wrap the comparison modulo
+   duration the same way.
+Extend `room-consensus-sim.mjs` with scenarios modeling BOTH: a periodic
+independent clock-remeasurement timer running concurrently, and a
+track-loop-wrap event during the averaging window. Neither was simulated —
+that's the real lesson, not "the concept is wrong."
+
+**On the state of things:** cutting-out (fixed, verified), the ratchet-reset
+bug (fixed, verified), and the room-consensus/ground-truth gap (correctly
+diagnosed, correctly speced, first live attempt correctly caught its own
+bugs and rolled back clean). The Room Spread gauge in `ternary/overlay.html`
+(commit `c800a71`, unaffected by this revert — pure telemetry) remains live
+and will show the true room spread whenever this is attempted again.
