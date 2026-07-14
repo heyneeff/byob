@@ -22,6 +22,12 @@ body{background:var(--bg);color:#8ab;font-family:monospace;font-size:12px;min-he
 #rec-toolbar{display:flex;gap:6px;align-items:center;flex-shrink:0;}
 #rec-toolbar button{background:var(--card);border:1px solid #1a2a36;color:#8ab;font-family:monospace;font-size:10px;padding:4px 8px;border-radius:3px;cursor:pointer;}
 #rec-toolbar button:hover{border-color:var(--teal);color:var(--teal);}
+.mark-sep{color:#335;margin:0 2px;}
+.mark-btn{font-weight:bold;}
+.mark-synced:hover{border-color:#00cc99!important;color:#00cc99!important;}
+.mark-jump:hover{border-color:#ef3c23!important;color:#ef3c23!important;}
+.mark-flash{animation:markflash .4s ease-out;}
+@keyframes markflash{0%{background:#fff;}100%{background:var(--card, #0e1a22);}}
 #rec-btn.active{border-color:var(--red);color:var(--red);}
 #rec-count{color:#444;font-size:10px;}
 
@@ -86,6 +92,8 @@ canvas.chart{display:block;width:100%;height:160px;}
 .ev-row{display:flex;gap:8px;font-size:10px;padding:2px 0;border-bottom:1px solid #0a1218;}
 .ev-ts{color:#335;flex-shrink:0;width:50px;}.ev-dev{color:var(--orange);width:80px;flex-shrink:0;}
 .ev-kind{color:var(--teal);width:90px;flex-shrink:0;}.ev-detail{color:#8ab;}
+.ev-row.mark{background:rgba(255,255,255,.06);}
+.ev-row.mark .ev-kind{color:#fff176;font-weight:bold;}
 </style>
 </head>
 <body>
@@ -98,6 +106,10 @@ canvas.chart{display:block;width:100%;height:160px;}
     <button id="rec-btn" onclick="toggleRecord()">⏺ Record</button>
     <button onclick="exportCSV()">⬇ CSV</button>
     <span id="rec-count">0 rows</span>
+    <span class="mark-sep">|</span>
+    <button class="mark-btn mark-synced" onclick="markAll('SYNCED')" title="Hit when phones sound perfectly locked">✅ Synced</button>
+    <button class="mark-btn mark-jump" onclick="markAll('JUMP')" title="Hit the instant audio jumps/resets">⚠ Jump</button>
+    <button class="mark-btn" onclick="markNote()" title="Free-text note — anything you can't hear in the data">📝 Note</button>
   </div>
 </div>
 
@@ -566,7 +578,7 @@ function renderEvents() {
   if (!_eventsOpen) return;
   el.innerHTML = events.slice(0, 40).map(e => {
     const ago = Math.round((Date.now()-e.at)/1000);
-    return `<div class="ev-row">
+    return `<div class="ev-row${e.kind==='mark'?' mark':''}">
       <span class="ev-ts">${ago}s ago</span>
       <span class="ev-dev">${(e.deviceId||'').slice(-8)}</span>
       <span class="ev-kind">${e.kind||''}</span>
@@ -627,6 +639,48 @@ function recordRow(kind, p) {
     row.terTrit = driftToTrit(p.driftMs);
   _records.push(row);
   document.getElementById('rec-count').textContent = _records.length + ' rows';
+}
+// ── Manual markers ────────────────────────────────────────────────────────
+// Ground truth beats inference: the human ear catches "perfectly synced" and
+// "it just jumped" instantly, faster than the corrector state can prove it.
+// One button press stamps the exact moment + a full snapshot of every
+// currently-visible device's state (drift/latency/rate/driftState/etc) —
+// always recorded (independent of the Record toggle) so a mark is never
+// lost because recording wasn't already on, and always shown live in the
+// events panel so it's visible without waiting for a CSV export.
+function markAll(label) {
+  const at = Date.now();
+  const ids = Object.keys(devs);
+  if (!ids.length) {
+    events.unshift({ kind: 'mark', deviceId: '(none)', note: label + ' — no devices visible', at });
+  }
+  ids.forEach(id => {
+    const snap = devs[id] || {};
+    const detail = `drift=${snap.driftMs ?? '?'}ms lat=${snap.deviceLatencyMs ?? '?'}ms `
+      + `rate=${snap.playbackRate ?? '?'} state=${snap.driftState ?? '?'}`;
+    _records.push({
+      timestamp: new Date(at).toISOString(), kind: 'mark', deviceId: id,
+      zone: snap.zone, driftMs: snap.driftMs, deviceLatencyMs: snap.deviceLatencyMs,
+      playbackRate: snap.playbackRate, driftState: snap.driftState,
+      snapCount: snap.snapCount, currentTime: snap.currentTime,
+      expectedPos: snap.expectedPos, note: label,
+    });
+    document.getElementById('rec-count').textContent = _records.length + ' rows';
+    events.unshift({ kind: 'mark', deviceId: id, note: label + ' — ' + detail, at });
+  });
+  if (events.length > 60) events.length = 60;
+  _eventsOpen = true; // surface marks immediately, don't make the user hunt for them
+  renderEvents();
+  flashMarkBtn(label);
+}
+function markNote() {
+  const text = prompt('Note (anything you can\'t hear in the data):');
+  if (text == null || !text.trim()) return;
+  markAll('NOTE: ' + text.trim());
+}
+function flashMarkBtn(label) {
+  document.getElementById('hdr').classList.add('mark-flash');
+  setTimeout(() => document.getElementById('hdr').classList.remove('mark-flash'), 400);
 }
 function exportCSV() {
   if (!_records.length) return;
