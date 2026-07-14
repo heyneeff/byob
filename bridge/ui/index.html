@@ -6,6 +6,7 @@
 <title>BYOB · Spatial Controller</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/byob-shim.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -285,6 +286,25 @@ input.num {
       <button class="btn go" id="play-btn" style="font-size:14px;padding:6px 14px" onclick="doPlay()">▶ PLAY</button>
       <button class="btn danger" onclick="doHardSync()">⚡ RE-SYNC</button>
     </div>
+  </div>
+
+  <!-- Broadcast Ableton — live WebRTC, same mechanism as artist.html Go Live:
+       Ableton master → BlackHole → this page captures it → streams to phones -->
+  <div class="sec">
+    <div class="sec-title">Broadcast Ableton <span style="color:var(--dim);font-size:9px">live via BlackHole</span></div>
+    <div class="pr" style="margin-top:0">
+      <select id="live-device" style="flex:1">
+        <option value="">— audio input —</option>
+      </select>
+      <button class="btn" onclick="scanLiveDevices()">↻</button>
+    </div>
+    <div id="live-meter" style="height:4px;background:#1a1e22;border-radius:2px;margin:6px 0;overflow:hidden">
+      <div id="live-meter-fill" style="height:100%;width:0%;background:var(--go,#27e0c0)"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn go" id="btn-live-rtc" onclick="toggleLiveRTC()">🔴 GO LIVE</button>
+    </div>
+    <div id="live-status" style="margin-top:6px;font-size:10px;color:var(--dim);min-height:14px">Route Ableton master → BlackHole 2ch, pick it above</div>
   </div>
 
   <!-- Tap tempo → pushes into Ableton Link -->
@@ -740,6 +760,149 @@ function updatePlayBtn() {
   btn.style.opacity = ok ? '' : '.4';
   document.getElementById('track-loaded').textContent =
     picked ? '' : (_zoneTrackName ? 'zone track: ' + _zoneTrackName : 'no track — pick one to enable Play');
+}
+
+// ── Broadcast Ableton — live WebRTC (ported from artist.html Go Live) ──
+// The bridge UI is a browser page, so it can capture BlackHole and stream
+// exactly like artist.html did. Signaling rides the relay's webrtc_{zone}
+// channel through byob-shim; listeners' joinWebRTCStream is untouched.
+const rtcDb = window.supabase ? window.supabase.createClient('http://localhost:3100') : null;
+let _rtcConfigCache = null, _rtcConfigAt = 0;
+async function getRTCConfig() {
+  if (_rtcConfigCache && Date.now() - _rtcConfigAt < 3 * 3600 * 1000) return _rtcConfigCache;
+  try {
+    const r = await fetch('https://boombox.metered.live/api/v1/turn/credentials?apiKey=9a607fe38bdbe377f60c3eccb7fd85918ae7');
+    _rtcConfigCache = { iceServers: await r.json() }; _rtcConfigAt = Date.now();
+  } catch (e) {
+    _rtcConfigCache = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }; _rtcConfigAt = Date.now();
+  }
+  return _rtcConfigCache;
+}
+
+let _peerConnections = {}, _signalingChannel = null, _liveStream = null, _sigRetryTimer = null, _liveMeterRAF = null;
+
+function patchSdpForMusic(sdp) {
+  // Force stereo Opus at 128kbps (same patch as artist.html)
+  return sdp.replace(/(a=rtpmap:(\d+) opus\/48000\/2\r\n)/, (match, line, pt) => {
+    const fmtpRe = new RegExp('a=fmtp:' + pt + ' .*\r\n');
+    if (fmtpRe.test(sdp)) return line;
+    return line + 'a=fmtp:' + pt + ' minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1;maxaveragebitrate=128000\r\n';
+  }).replace(/(a=fmtp:(\d+) opus[^\r]*)/g, line => {
+    if (!/stereo=/.test(line)) line += ';stereo=1;sprop-stereo=1';
+    if (!/maxaveragebitrate=/.test(line)) line += ';maxaveragebitrate=128000';
+    return line;
+  });
+}
+
+function buildRTCSignaling(zoneId) {
+  if (_signalingChannel) { _signalingChannel.unsubscribe(); _signalingChannel = null; }
+  _signalingChannel = rtcDb.channel('webrtc_' + zoneId)
+    .on('broadcast', { event: 'listener-joined' }, async ({ payload }) => { await createOfferFor(payload.listenerId); })
+    .on('broadcast', { event: 'answer' }, async ({ payload }) => {
+      const pc = _peerConnections[payload.from];
+      if (pc) await pc.setRemoteDescription({ type: 'answer', sdp: payload.sdp });
+    })
+    .on('broadcast', { event: 'ice-dj' }, async ({ payload }) => {
+      const pc = _peerConnections[payload.from];
+      if (pc && payload.candidate) await pc.addIceCandidate(payload.candidate).catch(() => {});
+    })
+    .subscribe(status => {
+      if (status === 'SUBSCRIBED') setLiveStatus('signaling ready 📡 — waiting for listeners');
+      else if (status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+        clearTimeout(_sigRetryTimer);
+        _sigRetryTimer = setTimeout(() => { if (_liveStream && _connectedZoneId) buildRTCSignaling(_connectedZoneId); }, 3000);
+      }
+    });
+}
+
+async function createOfferFor(listenerId) {
+  if (!_liveStream) return;
+  const pc = new RTCPeerConnection(await getRTCConfig());
+  _peerConnections[listenerId] = pc;
+  _liveStream.getAudioTracks().forEach(t => pc.addTrack(t, _liveStream));
+  pc.onicecandidate = ({ candidate }) => {
+    if (candidate && _signalingChannel) _signalingChannel.send({ type: 'broadcast', event: 'ice-listener', payload: { to: listenerId, from: 'dj', candidate } });
+  };
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'connected') {
+      setLiveStatus(Object.values(_peerConnections).filter(p => p.connectionState === 'connected').length + ' listener(s) connected 🎧');
+      const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
+      if (sender) { const p = sender.getParameters(); if (p.encodings?.length) { p.encodings[0].maxBitrate = 128000; sender.setParameters(p).catch(() => {}); } }
+    }
+    if (pc.connectionState === 'failed') { pc.close(); delete _peerConnections[listenerId]; }
+  };
+  const offer = await pc.createOffer({ offerToReceiveAudio: false });
+  await pc.setLocalDescription({ type: 'offer', sdp: patchSdpForMusic(offer.sdp) });
+  _signalingChannel.send({ type: 'broadcast', event: 'offer', payload: { to: listenerId, sdp: pc.localDescription.sdp } });
+}
+
+async function scanLiveDevices() {
+  try {
+    // Permission prompt needed once so device labels are visible
+    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+    tmp.getTracks().forEach(t => t.stop());
+  } catch (e) { setLiveStatus('mic permission denied: ' + e.message, true); return; }
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput');
+  const sel = document.getElementById('live-device');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">— audio input —</option>';
+  devs.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.deviceId; o.textContent = d.label || 'input';
+    if (/blackhole/i.test(d.label)) o.textContent = '🕳 ' + d.label;
+    sel.appendChild(o);
+  });
+  sel.value = cur;
+  // Auto-pick BlackHole if nothing chosen
+  if (!sel.value) { const bh = devs.find(d => /blackhole/i.test(d.label)); if (bh) sel.value = bh.deviceId; }
+  setLiveStatus(devs.length + ' inputs found' + (sel.value ? ' — ready' : ''));
+}
+
+function setLiveStatus(text, isErr) {
+  const el = document.getElementById('live-status');
+  el.textContent = text;
+  el.style.color = isErr ? '#e05027' : '';
+}
+
+async function toggleLiveRTC() {
+  const btn = document.getElementById('btn-live-rtc');
+  if (!rtcDb) { setLiveStatus('shim not loaded', true); return; }
+  if (_liveStream) {
+    _liveStream.getTracks().forEach(t => t.stop()); _liveStream = null;
+    clearTimeout(_sigRetryTimer);
+    if (_liveMeterRAF) cancelAnimationFrame(_liveMeterRAF);
+    document.getElementById('live-meter-fill').style.width = '0%';
+    Object.values(_peerConnections).forEach(pc => pc.close()); _peerConnections = {};
+    if (_signalingChannel) { _signalingChannel.unsubscribe(); _signalingChannel = null; }
+    btn.textContent = '🔴 GO LIVE'; btn.classList.remove('stop');
+    if (_connectedZoneId) await rtcDb.from('zones').update({ current_track_url: null, track_name: null }).eq('id', _connectedZoneId);
+    setLiveStatus('live ended');
+    showToast('Live ended');
+    return;
+  }
+  if (!_connectedZoneId) { setLiveStatus('connect a zone first', true); return; }
+  const deviceId = document.getElementById('live-device').value;
+  if (!deviceId) { setLiveStatus('pick an audio input first (↻ to scan)', true); return; }
+  const audioConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, sampleRate: 48000, channelCount: { ideal: 2 }, deviceId: { exact: deviceId } };
+  try {
+    _liveStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+    // Level meter
+    const actx = new AudioContext();
+    const an = actx.createAnalyser(); an.fftSize = 256;
+    actx.createMediaStreamSource(_liveStream).connect(an);
+    const data = new Uint8Array(an.frequencyBinCount);
+    const tick = () => { an.getByteFrequencyData(data); const avg = data.reduce((a, b) => a + b, 0) / data.length; document.getElementById('live-meter-fill').style.width = Math.min(avg * 2, 100) + '%'; _liveMeterRAF = requestAnimationFrame(tick); };
+    tick();
+    buildRTCSignaling(_connectedZoneId);
+    await rtcDb.from('zones').update({
+      current_track_url: 'webrtc-live',
+      track_name: '🔴 LIVE — Ableton',
+      playback_started_at: new Date().toISOString(),
+    }).eq('id', _connectedZoneId);
+    btn.textContent = '■ STOP LIVE'; btn.classList.add('stop');
+    setLiveStatus('LIVE — listeners connecting');
+    showToast('You are LIVE — Ableton → phones 🎛️');
+  } catch (e) { setLiveStatus('cannot open input: ' + e.message, true); }
 }
 
 // Small floating toast — log() is console-only, this one is visible.

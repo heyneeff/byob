@@ -678,7 +678,9 @@ async function handleUIMessage(msg, ws) {
 // ── HTTP server ───────────────────────────────────────────────
 const http = createServer((req, res) => {
   const url  = req.url === '/' ? '/index.html' : req.url;
-  const path = join(__dir, 'ui', url);
+  // The UI runs Go Live (WebRTC broadcast) in-browser and needs the relay
+  // client — serve the repo-root shim alongside the ui/ files.
+  const path = url === '/byob-shim.js' ? join(__dir, '..', 'byob-shim.js') : join(__dir, 'ui', url);
   if (!existsSync(path)) { res.writeHead(404); res.end('not found'); return; }
   const ext  = extname(path);
   res.writeHead(200, { 'Content-Type': MIME[ext] || 'text/plain' });

@@ -180,13 +180,12 @@ canvas.chart{display:block;width:100%;height:160px;}
   <div id="events-list"></div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Relay era (Jul 13 2026): byob-shim replaces supabase-js; resolves the
+     relay via ?server= / /relay.json / localhost default like every page. -->
+<script src="../byob-shim.js"></script>
 <script>
 const { createClient } = supabase;
-const db = createClient(
-  'https://ohacvuwzvuifpyqckise.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oYWN2dXd6dnVpZnB5cWNraXNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODc4NTcsImV4cCI6MjA5MjU2Mzg1N30.EX_DF-hFaQQuA1R9cZMKgR6TwjubwP61Ph4Gwa87beY'
-);
+const db = createClient('http://localhost:3100', 'local');
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const TRIT_COLOR  = { P:'#00cc99', Z:'#f57e20', N:'#40c4f0' };
