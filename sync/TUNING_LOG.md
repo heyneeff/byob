@@ -846,3 +846,100 @@ covering both authorities, per the original postmortem's "one authority per
 signal" requirement, never actually implemented). Sim harness
 (`sync/anchor-clock-sim.mjs`) is reusable for validating whichever redesign
 comes next — extend scenarios there before any live re-enable.
+
+## 2026-07-14 (cont.) — live tuning session + the real remaining gap: ground truth, not opinion
+
+**Live tuning session** (post noteCalDebt fix, ~03:15-03:42, growing to 5+
+phones with a full restart mid-session): individual devices calibrated
+cleanly all session — clean auto-cal/greenhorn/snap-cal corrections landing,
+no more stuck-forever devices (one exception below). `dev_k15e54` sat at
+`deviceLatencyMs=0` for 13+ minutes at one point with zero calibration
+attempts; root cause found live via a full hud_data payload capture:
+`"visibilityState": "hidden"` — the tab was backgrounded, and Safari heavily
+throttles JS on hidden tabs, starving the calibration loop of ticks. Not a
+code bug — the phone's screen was off. Resolved itself after the user's
+full restart. Separately found (and worth building, not fixing tonight): my
+own live-monitor script conflated "still reads 0 after a restart" with
+"still stuck from before" — track_change/hard_sync events now reset the
+stuck-timer in the monitor script so future live-watches don't misreport.
+
+**Referenced `91ee6c8` (May 16 2026, evening before "May 17"), user's memory
+of "it worked and was binary":** confirmed — that commit's drift correction
+was a pure binary threshold: `if (drift > 0.08) seekPreservingBT(expected)`,
+no proportional warp at all (matches the documented `6f4f5b0`/May 13
+"philosophical anchor" baseline in repo CLAUDE.md). Also confirmed its
+clock-sync was radically simpler: ONE single RTT sample taken once
+(`measureClockOffset` — one `t0`/`t1`/one `server_now()` call), no 8-sample
+median, no 30s re-measurement, no ternary layer, no auto-cal/greenhorn/
+snap-cal/debt-ratchet, no anchor-clock — none of tonight's whole apparatus
+existed yet.
+
+**The core finding, stated precisely by the user mid-session:** "It sounds
+fine individually, but misses the mark totally when many are playing." This
+reframes everything chased tonight. Traced to three real, distinct sources
+that all differ per-phone and are NEVER reconciled against each other:
+1. Each phone's own independently-measured `_clockOffset` (RTT-sampled,
+   noisy, no cross-device reconciliation).
+2. Cached `playback_started_at` can be stale on some phones for up to 60s
+   after a relaunch (syncZoneAudio poll interval) or a missed hard_sync.
+3. Each phone's own `deviceLatencyMs` — correctly meant to differ per
+   device, but frequently wrong-in-flight (calibration resets, stuck states,
+   snap-cal/debt-ratchet corrections chasing a moving true value).
+
+**Then the key design conversation.** User: "I thought that is why we made
+the ternary system... to make them all agree... and the octonary system."
+Checked the actual code (`weightedConsensus()`, `isGlobalDisruption()`,
+`peerMedianLag()` in `ternary/layer.js`): **all peer consensus in the
+current system operates on each phone's own SELF-REPORTED verdict** — trit,
+octoState, lagMs — every one of them already computed against that phone's
+own private (possibly-wrong) reference. `weightedConsensus` even gives
+ANCHORING peers 2× vote weight. None of it ever compares two phones' actual
+playback positions against each other. **It's consensus of opinions, not
+comparison of ground truth.** A room where every phone is confidently,
+consistently wrong (each converged to a different absolute instant) reads
+as full consensus (`P`) to this system — because it never checks agreement,
+only self-consistency. This is a precise, load-bearing distinction: ternary/
+octonary were built for (and are good at) detecting collective disruption
+and speeding up individual convergence (crowd-prior, ANCHORING-weighted
+vote) — not for verifying the room actually agrees on where the song is.
+
+**User confirmed: original design intent WAS the ground-truth version** —
+"when we were making it I wanted its purpose to be exactly that," "can we
+add a layer that makes them all talk?" This is the real, correctly-scoped
+next-session target.
+
+### Next-session build target: a comparable ground-truth peer layer
+
+**What to add** (purely additive — new broadcast field + new comparison
+function, does NOT touch any correction/seek/warp/cal decision logic, so it
+does not need a cast; it's telemetry, not corrector behavior):
+
+- In `broadcastPeerTrit()` (`ternary/layer.js` ~line 703), add one new field
+  to the existing `trit` broadcast payload: a reconstructed, directly-
+  comparable absolute reference point — e.g.
+  `refMs: payload.ts - (currentTime - deviceLatencyMs/1000) * 1000`
+  (same math the bridge's `master_verdict` already trusts: back-compute
+  "what wall-clock instant does this phone believe corresponds to
+  `playback_started_at`, given its own current audible position"). If every
+  phone truly agreed, every phone's `refMs` would be identical. If they've
+  diverged, this is a REAL, comparable number — not a self-report.
+- In `receivePeerTrit()` (~line 633), store the peer's `refMs` alongside the
+  existing fields.
+- New function, e.g. `roomSpreadMs()`: across all live peers + self,
+  extrapolate each stored `refMs` forward by elapsed real time since its
+  `ts`, and return max−min — a true, live "how far apart is the room
+  actually" number, comparable in spirit to what I computed by hand tonight
+  from the CSV (the 700-800ms cross-device `currentTime` gap).
+- Surface `roomSpreadMs()` in the existing `hud_data` broadcast (already
+  carries many fields) so it flows to `byob_debug` → `ternary/overlay.html`
+  for live display — a genuine, ground-truth "Room Spread: Xms" gauge,
+  distinct from and complementary to per-device drift.
+- **Stop here for a first pass.** Do NOT wire `roomSpreadMs()` into any
+  correction action yet (e.g., nudging a phone toward the room median) —
+  that would be a real corrector behavior change and needs its own cast,
+  once the comparison layer itself is live-verified to actually reveal true
+  room agreement/disagreement correctly.
+
+This is the honest fulfillment of the ternary system's original intent —
+consensus over what's actually true, not consensus over what everyone
+privately believes.
