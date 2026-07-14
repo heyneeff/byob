@@ -4274,13 +4274,21 @@ function buildSyncChannel(zoneId) {
   })
   .on('broadcast', { event: 'anchor' }, ({ payload }) => {
     if (payload?.position != null && payload?.ts) {
-      _anchorPlaybackStartedAtMs = payload.ts - payload.position * 1000;
       if (!window._trackLoading) _launchGuardUntil = 0; // only clear guard once track is ready
       // Dormant during stabilization (oracle 19.3→11 — the comfortable
       // approach of leaving it running has no advantage; re-awaken
       // deliberately with the validated gauge watching, plan Step 4):
       // window._anchorClockEnabled = true  from the console to arm.
-      if (window._anchorClockEnabled) _anchorClockDiscipline(payload);
+      // Scoping fix (cast 63.5.6→22, 2026-07-14): the reference override was
+      // NOT actually gated by this flag — only the discipline smoothing was.
+      // Every listener silently re-derived its ground truth from the DJ's
+      // live (occasionally jump-cut) playhead every ~5s regardless of the
+      // flag being off. Gate the raw override too, so "dormant" means
+      // dormant: fall through to the stable row playback_started_at.
+      if (window._anchorClockEnabled) {
+        _anchorPlaybackStartedAtMs = payload.ts - payload.position * 1000;
+        _anchorClockDiscipline(payload);
+      }
     }
   })
   .on('broadcast', { event: 'stream_end' }, () => {
