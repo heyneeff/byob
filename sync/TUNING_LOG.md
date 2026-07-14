@@ -1195,3 +1195,186 @@ deployed.** Next: cast specifically on the deploy step, then a controlled
 live test (just the two of us, explicitly not a live party), watched
 closely, ready to revert immediately if anything looks wrong — same
 posture as both v3 attempts.
+
+## 2026-07-14 — master-rooted cascade: sim scenarios built, harness blind spot found
+
+**Context:** bulletproof roadmap session (plan:
+`~/.claude/plans/i-want-you-do-inherited-jellyfish.md`). User's cast on the
+roadmap — **61.4.5→38** (Inner Truth, "the team horse goes astray" / "he
+possesses truth which links together" → Opposition) — read as: phones must
+orient to the MASTER, not each other; one truth-holder; two parallel
+truth-powers = the thrice-lived two-authority failure. Roadmap Phase 1
+became "root the cascade in the bridge (stratum-0)". Per that plan,
+extended `sync/octonary-cascade-sim.mjs` with master scenarios BEFORE any
+cast/port — harness work only, engine untouched.
+
+**Added:** synthetic MASTER bus participant (models bridge.mjs broadcasting
+on the trit channel: `octoState: ANCHORING`, `refMs` = true track-start,
+`calSettled: true`); absolute-truth check (phones' refs vs the master's
+truth — inexpressible in phone-only scenarios); scenario E (master at stock
+weight 2.0 — zero layer.js changes needed), F (adversarial tie: confidently-
+wrong phone inserted into `_peerTrits` first, so at equal weight it wins
+`pickCascadeAnchor`'s strict-> tie-break), G (SIM-ONLY what-if of the
+proposed 3.0 master weight, patched into the loaded source — on-disk code
+untouched, real change still needs its own cast).
+
+**Belief-level results:** E: 3/3 phones anchor to the master and the room
+converges to ABSOLUTE truth (absErr 17ms), not merely to itself — at stock
+weight 2.0, meaning a first live bridge experiment needs only bridge.mjs to
+*broadcast* (no layer.js change at all). F/G: master chosen 3/3 even with
+adversarial ordering.
+
+**The real finding — harness blind spot (applies to ALL scenarios, incl.
+A/B/D's historical passes and by extension the phone-only validation the
+deployed cascade shipped on):** this harness has NO engine model — device
+`currentTime` never seeks/warps in response to lag. Added a residual
+readout (the corrector's input signal) and every scenario carries large
+unresolved residual behind its perfect ref-spread (A: 1483ms, D: 4373ms,
+F: 350ms). In sim terms: refs agreeing ≠ audio agreeing; the harness
+validates **belief-consistency only**. Emitted as ⚠ WARN per scenario (not
+FAIL — a hard fail would over-claim; the ported code isn't proven wrong,
+the harness is proven incomplete). Corollary: in F, following the master
+reopens lag that budget-spent calibration can't re-close, so no wrong phone
+can ever re-earn ANCHORING — the adversarial tie never actually occurs, and
+**the 2.0-vs-3.0 master-weight question is still OPEN**, answerable only
+after the harness gets an engine-response model.
+
+**Before the stratum-0 cast/port, in order:** (1) add an engine-response
+model to the harness (ct seeks toward the device's own believed expected
+position; residual WARN promoted to hard check measuring true audible
+alignment), (2) re-run E/F/G — the weight question and the cal-budget
+interaction (master-follow reopening lag after `_calCount` is spent — smells
+like the anchor-clock plateau deadlock in new clothes; watch it explicitly)
+are the two things that sim must answer, (3) then cast on the bridge.mjs
+port. All engine changes still one-at-a-time per protocol.
+
+## 2026-07-14 (cont.) — V2 engine-model harness: cascade signal/lever mismatch found
+
+Built the engine-response model the previous entry named as the blocking
+gap (`makeDeviceV2` in `sync/octonary-cascade-sim.mjs`): real ct that snaps
+(≥500ms → own believed expected) and warps (15–500ms, ±2.5% cap) exactly
+like fastDriftCorrect; belief clock `synced = wall + trueClockError +
+clockOffset`; the REAL layer.js reads the REAL ct, so its computeOwnRefMs
+is now honest. New metric: `posErrMs` = ct-domain position vs the true
+schedule (what live CSV/hud actually measures). Scenarios H1–H3.
+
+**The algebra first (hand-checkable):** for a drift-converged phone,
+ct = (synced − S)/1000 − devLat/1000, so
+`computeOwnRefMs = synced − (ct − devLat/1000)·1000 = S + 2·devLat` —
+clock terms cancel COMPLETELY. Converged phones' refMs carries ONLY
+latency-belief information (×2), and none of the clock error the cascade
+was built to correct.
+
+**H1 — the live symptom, exactly** (3 phones converged, devLat beliefs
+[0,300,600], no clock error — "stable individually, 0.5-1s apart"):
+**RUNAWAY.** Cascade fires every rate-limit window forever (108 corrections
+/25min, one audible snap each), because corrections move clockOffset →
+position → but refMs is invariant to clockOffset → the disagreement it acts
+on NEVER closes. posSpread grew unboundedly (~2.4s/min, 63s by minute 24)
+while refSpread oscillated 600–1200ms. Mechanism verified by hand: d0
+corrects +600 toward d1 while d1 corrects −600 toward d0 — they swap and
+re-fire forever.
+
+**H2 — same room + master at 2.0: same runaway.** The master's truth refMs
+gives sample = −2·devLat — real INFORMATION (it's the latency belief!) —
+but the correction applies it to the CLOCK: right signal, wrong lever.
+Master weight (2.0 vs 3.0) is MOOT until the lever is fixed.
+
+**H3 — pure clock error [0,+400,−250], equal devLats — the designed-for
+case: cascade fires ZERO corrections.** Converged phones' positions absorb
+their clock error; refSpread = 0 while the room sits 650ms apart in real
+position. The error the cascade was designed for is INVISIBLE to refMs
+between converged phones. (It is exactly what LAN-first RTT symmetry fixes
+at the root — roadmap Phase 4.)
+
+**Why the Jul 15 live test looked clean anyway:** the one correction
+observed was on a SNAP-LOCKED device (~1300-1400ms raw drift, never
+converged) — for a non-converged phone, ct ≠ expected and refMs genuinely
+carries its offset, so the correction was real and worked. The cascade
+helps broken devices and fights/ignores converged ones. The runaway regime
+needs ≥2 mutually-visible CONVERGED phones with ΔdevLat > 30ms (deadband/2)
+— i.e., any normal healthy room — which the 2-3 device controlled test
+never had (the broken device had weight 0 and no healthy pair existed).
+
+**Deployed-code implication (cascade is LIVE on phones):** a healthy
+multi-device room is predicted to enter a mutual correction/snap loop at
+the ~30-40s cadence. Live signature to watch for: repeating `ter_cascade`
+sync_events on byob_debug with near-constant correctionMs magnitudes
+(~2×ΔdevLat), snapCount climbing in lockstep, refs/Room-Spread gauge NOT
+improving. Candidate mitigations (each ONE change, cast first, in
+preference order): (a) gate maybeCascadeCorrect on own drift-state being
+broken/snap-locked — preserves the proven rescue behavior, disarms the
+converged-room loop; (b) revert cascade from live until redesign; (c)
+redesign the lever: master-sample corrects LATENCY (sample/2) with
+auto-cal yield — bigger design, needs its own sim pass. Do NOT ship (c)
+hastily — it makes devLat two-authority.
+
+**Also check next session:** bridge.mjs `master_verdict` uses "the same
+math" as refMs reconstruction — if it shares the −lat/1000 form, verdicts
+carry the same 2·devLat bias vs converged listeners. Verify before
+trusting verdicts for anything corrective.
+
+**Harness caveats (honest):** no BT stall/floor physics yet (auto-cal had
+nothing legitimate to chase in these runs — devLat stayed put, which is
+WHY the refMs invariance is so clean here); no scheduled-entry phase; snap
+threshold 500ms flat. None of these plausibly rescue the H1/H3 mechanism —
+the algebra doesn't depend on them.
+
+## 2026-07-14 (cont.) — LIVE: orbit confirmed, sign fix shipped mid-broadcast (daab95f)
+
+**Controlled live test (user broadcasting, 3 phones: zu99i2/swflvr/6alag5,
+watched via live-monitor + a focused cascade watcher on byob_ternary+
+byob_debug).** The V2 harness's H1 prediction appeared live within minutes,
+numerically:
+
+- zu99i2 (lat 1200) fired −283, −260, −248, −421, +236 (five corrections,
+  clockOffset accumulating to −1388ms); 6alag5 (lat ~1076) fired +161, +163
+  BACK toward zu99i2 — mirror-image pairs; swflvr orbiting both (5 fires).
+  All fired at drift 11–105ms — i.e., on CONVERGED phones.
+- The room-table gap held at the predicted invariant: zu99i2−6alag5 refΔ
+  248–312ms vs 2·Δlat = 248ms; swflvr−6alag5 ~204ms vs 2·Δlat = 202ms.
+  Corrections could never close it; refSpread oscillated 131–854ms.
+- Bonus finding for Phase 3 (entry): one track launch was RECEIVED 18s
+  apart across the three phones (367s/382s/385s watcher clock) — launch
+  propagation itself is staggered (hidden-tab throttling suspected), before
+  any sync math runs.
+
+**Cast on the fix: 61.3→44** (Inner Truth line 3 — "he finds a comrade;
+now he beats the drum, now he stops" = the orbit described literally —
+resolving to Coming to Meet: small thing with big influence, contain it).
+Containment done before deploy: flipped-formula scenarios added to the V2
+harness (zero corrections, zero snaps, refSpread 0 in the rooms that
+unflipped produce 108 corrections/63s divergence) and refMs consumers
+enumerated (layer.js cascade+trit broadcast: the fix site; overlay Room
+Spread gauge inherits via broadcast, becomes honest; bridge master_verdict
+is separate math — audit pending, flagged).
+
+**Fix: `daab95f`** — computeOwnRefMs sign: `ts − (ct − lat/1000)·1000` →
+`ts − (ct + lat/1000)·1000`, with a comment documenting the algebra.
+User-confirmed ("go"), shipped mid-broadcast. Phone refresh required
+(refresh also clears accumulated clockOffset garbage).
+
+**Sim suite restructured against the fixed code (ALL PASS):** V2 scenarios
+are authoritative — H1 (shipped formula: quiet, refSpread 0), H1b (bugged
+pre-daab95f formula patched back in: MUST reproduce the orbit — regression
+guard on the sign), H2 (master w2.0: quiet agreement), H3 (honest null:
+clock error invisible to refMs, posSpread stays ~650ms — Phase 4/LAN
+territory, and if this ever "converges" something new is moving clocks).
+V1 belief-model scenarios (A–G) demoted to informational: no engine model,
+superseded by V2; kept for their scenario shapes.
+
+**Verification criteria post-refresh:** zero ter_cascade events between
+converged phones; overlay Room Spread reading near-0 for healthy phones
+(gauge is now honest); cascade fires still permitted on genuinely broken/
+stale devices (true-offset rescue preserved). Watch a full track through.
+
+**Post-fix open questions (cast before building):** (1) master/stratum-0
+value proposition changed — with honest refMs, converged phones agree at
+trackStart regardless of clock error, so the cascade (peer OR master) now
+corrects only broken/stale devices; pure clock error stays invisible
+(H3) and is LAN/Phase-4 work. Re-frame the bridge stratum-0 sub-step
+accordingly. (2) bridge master_verdict sign audit. (3) The devLat-belief
+spread that the orbit was falsely "seeing" is still REAL positional spread
+(H1 posSpread 600ms) — the true fix for that is calibration truth
+(acoustic referee / tap-cal / grounded prior), exactly as the roadmap has
+it.
