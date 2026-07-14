@@ -93,12 +93,31 @@
   // debt in turn) is a "creeper": monotone same-sign correction growth that
   // no single-correction threshold can distinguish from legitimate cal.
   // Boundedness is the tell — real calibration converges (signs mix, sums
-  // settle), a ratchet only climbs. Three same-sign corrections summing past
-  // 250ms inside 20min → the debt is structural contamination, not hardware:
-  // auto-fire the same reset the RESET CAL button does and relearn clean.
+  // settle), a ratchet only climbs. Same-sign corrections summing past
+  // DEBT_SUM_MS inside 20min → the debt is structural contamination, not
+  // hardware: auto-fire the same reset the RESET CAL button does and relearn
+  // clean.
+  //
+  // DEBT_MIN_RUN fixed 2026-07-14 (cast 8.1.5→24 — Holding Together, "beaters
+  // on three sides only," → Return: push forward, minimal touch): was 3,
+  // which fires WELL inside a single track's normal legitimate correction
+  // budget (auto-cal/snap-cal cap at 4 via _calCount, plus up to 1 greenhorn
+  // + 1 crowd-prior = 6 same-track corrections are all expected, especially
+  // for a device with genuinely large real latency needing several 50%-step
+  // corrections to reach it). The comment above already named the correct
+  // intent ("a ratchet only climbs") but the implementation never actually
+  // checked for climbing-without-settling — only sign-consistency + a raw
+  // sum — so it fired on ordinary multi-step convergence. Live-observed
+  // 2026-07-13/14 (sync/TUNING_LOG.md "relay migration + first live audio"):
+  // three phones converging legitimately (12→91→197ms, 112→246→312ms,
+  // 496→615→664ms — all plausible real BT floors) each got zeroed right as
+  // they approached their true value, then had to relearn from scratch —
+  // "once synced perfectly, audio jumps and resets." Raised past the max
+  // legitimate single-track budget so debt-detection only fires on genuine
+  // cross-track/persisting ratchets, not normal within-budget convergence.
   let _calDebt = [];                       // { deltaMs, ts } of every applied correction
   const DEBT_WINDOW_MS = 20 * 60 * 1000;   // sliding window
-  const DEBT_MIN_RUN   = 3;                // consecutive same-sign corrections
+  const DEBT_MIN_RUN   = 7;                // exceeds max legitimate same-track corrections (6)
   const DEBT_SUM_MS    = 250;              // |sum| within window — matches observed ratchet debt
 
   // ── GREENHORN FAST-CAL (oracle 14.2→30 — "a big wagon for loading") ──────
