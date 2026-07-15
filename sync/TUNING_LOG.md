@@ -1711,3 +1711,65 @@ Practical guidance until then: normal DJ pacing (3–5min+ per track) keeps
 the room tight; rapid-fire cycling splits it. Phase B (LAN A/B, enablers
 shipped as e8ce6b5: resolveStorageUrl + ?fix GPS stand-in) runs next —
 its money cell is LAN + high cadence vs today's tunnel + high cadence.
+
+## 2026-07-15 afternoon/evening — Phase B (LAN) partial + the instability
+anatomy; session close
+
+**Phase B setup:** lan.html launcher (LOCAL-ONLY, gitignored — first
+attempt to commit it was correctly blocked: it hard-codes home coordinates
+and the repo is public). Phones join via
+http://<mac-ip>:8080/lan.html → listener.html?server=<lan>:3100&fix=<zone
+center>. White-screen false start = phone reachability; "Location not
+available" false start = query params lost when tapping from the directory
+listing (that toast is unreachable when ?fix= is present — diagnostic).
+
+**Phase B results (partial — churn cell NOT completed):**
+- LAN room (13:54–14:07, 3 fresh-identity phones): joined staggered,
+  settled ~75ms, then the 14:06 track change landed with **0.3s stagger**
+  and TIGHTENED the room 75→48→43ms (budget refill + clean entry). First
+  launch all day that improved the room. 16:01 snapshot read 43ms but came
+  from a re-focused throttled tab — treat the "2h stable" read as
+  UNVERIFIED (later mess says the stretch wasn't clean).
+- 16:27–16:39 window: churn again (4 changes/12min) — full mess signature
+  regardless of LAN: splits 2.0s/4.3s/130.6s(wrap)/5.0s, launch staggers
+  10–46.7s, but also the day's best touch: **67ms at 16:35** right after a
+  clean change. Track-change-frees-wedge CONFIRMED live: 3vyxn5's 4.4s
+  wedge (cal budget spent, snap-cal+auto-cal impotent at floor scale)
+  collapsed 4265ms→101ms at the 16:31 different-URL launch, exactly as
+  predicted.
+
+**Instability anatomy (why the afternoon felt so much worse than the
+morning):**
+1. **Per-origin calibration wipes:** deviceLatencyMs lives in
+   localStorage, which is per-origin — every phone moved to the LAN origin
+   became a zero-state greenhorn mid-session. The morning's stable room was
+   hours-settled devices; the afternoon's rooms were perpetual re-learners.
+2. **LAN→tunnel defection (NEW mechanism, confirmed in code):** the shim's
+   recovery path re-fetches /relay.json after 6 failed reconnects — on the
+   LAN origin that resolves to the REPO's relay.json = the tunnel URL, so
+   a LAN phone that hits a rough WS patch silently becomes a tunnel phone
+   (mixed-path rooms; invalidates clean LAN attribution). Watchdog logged a
+   tunnel probe failure at 16:01:04 — right when a device "kicked off."
+3. **Wedge >2s has NO automated owner:** cascade's wedge rescue only works
+   inside CASCADE_WRAP_SANITY_MS (2s); fastDriftCorrect's snap no-ops on a
+   wedged element; cal corrections are floor-scale. Only a different-URL
+   relaunch (or page refresh) frees it today.
+
+**Queued for next session (cast where engine-adjacent):**
+1. Defection guard: shim must never let relay.json override an explicitly
+   set ?server= (provenance flag). Plumbing, not engine.
+2. The >2s wedge owner question — either fix same-URL relaunch (Phase 3
+   list) or give something bounded jurisdiction. CAST FIRST.
+3. Overlay: event-kind column in REC_COLS exports (launch forensics are
+   still inferential); wrapLag pass on overlay drift/refMs display lanes
+   (duration-scale ghosts + frozen mirror-image ter/dev readouts).
+4. Phase B churn cell, CLEAN: one origin, one join wave, 10min settle,
+   then 10min churn. Plus the screen-off throttling probe (entry thread).
+
+**Day's scoreboard:** warp-gate live-verified (0 cascade fires across
+every era — tunnel/churn/LAN — no false fires, no creep, nothing missed
+in its jurisdiction); baseline-sync-jul15 tagged (refSpread p50 33ms);
+guileless-clock A/B PASS; churn diagnosis complete; playlist auto-advance
+fixed end-to-end; LAN launch 0.3s stagger + 43ms room (n=1, promising);
+snap-cal+auto-cal live tag-team rescue observed; two permission-system
+saves (bulk data rewrite consent, home-coords-to-public-repo block).
