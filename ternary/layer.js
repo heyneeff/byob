@@ -115,6 +115,7 @@
   const CASCADE_CHECK_MS         = 10000; // how often to sample the comparison
   const CASCADE_WRAP_SANITY_MS   = 2000;  // mirrors TH_SEEK_SANITY — larger = wrap artifact, drop it
   const CASCADE_MIN_WEIGHT       = 0.9;   // accept a PULLING-level peer (1.0) — see chicken-and-egg note above
+  const CASCADE_WARP_RATE_GATE   = 0.003; // |playbackRate − base| beyond this ⇒ own refMs is sliding, not comparable
   let _cascadeSamples = [];
   let _lastCascadeCheckTs = 0;
   let _lastCascadeCorrectTs = 0;
@@ -788,6 +789,30 @@
     return best;
   }
 
+  // ── WARP-GATE (2026-07-15, cast 8→55 lines 1·3·4·5) ────────────────────
+  // computeOwnRefMs assumes ct advances 1:1 with wall time. Under warp it
+  // doesn't: refMs slides at (playbackRate−1)×1000 ms/s — measured live to
+  // ~0.1ms/s precision (TUNING_LOG "warp breaks refMs time-invariance";
+  // byob-obs-2026-07-15T02-01/02-17: slide −14.9ms/s at rate 1.015, flat at
+  // rate 1; warp duty 30–70% on restless devices, so most 40s windows held
+  // poisoned samples — the whole both-negative steady-state creep). While
+  // warping: (1) skip own samples, (2) broadcast refMs as null —
+  // pickCascadeAnchor already skips null-refMs peers, so a warping flagship
+  // stops being anchor-eligible with zero peer-side logic (line 4: hold to
+  // him outwardly too). BPM warp is a legitimate BASE rate, not corrective —
+  // compare against it, not against 1.0. Line 5's constraint: the gate only
+  // excludes, it adds nothing (no staleness compensation, no peer-side rate
+  // judging). Validated in sync/octonary-cascade-sim.mjs X1–X4; X4 there
+  // also documents the gate-NEUTRAL stale-reference orbit (row-repair and
+  // the anchor-scoping fix are load-bearing — the cascade cannot close a
+  // stale-row gap, it orbits it).
+  function cascadeWarpGated() {
+    const rate = window._audio?.playbackRate;
+    if (rate == null || !isFinite(rate)) return false;
+    const base = window.SpatialRouting?.getBpmWarpRate?.() ?? 1;
+    return Math.abs(rate - base) > CASCADE_WARP_RATE_GATE;
+  }
+
   // Discrete, averaged, rate-limited correction toward the chosen anchor's
   // ground-truth refMs. Fix 1 (wrap-guard): a sample this large is a
   // track-loop-wrap artifact, not real disagreement — drop it before it ever
@@ -796,6 +821,7 @@
     const now = Date.now();
     if (now - _lastCascadeCheckTs < CASCADE_CHECK_MS) return;
     _lastCascadeCheckTs = now;
+    if (cascadeWarpGated()) return; // warp-gate: own refMs is sliding right now, not comparable (cast 8→55)
     if (typeof window._terAdjustClockOffset !== 'function') return;
     const anchor = pickCascadeAnchor();
     if (!anchor || anchor.weight < CASCADE_MIN_WEIGHT) return; // not enough trust in the room yet
@@ -904,8 +930,10 @@
                    latencyMs: window._terGetDeviceLatencyMs?.() ?? null,
                    calSettled: _calApplied || !_greenhorn,
                    // Cascade consensus ground truth: time-invariant per
-                   // device, directly comparable across peers.
-                   refMs: computeOwnRefMs(),
+                   // device, directly comparable across peers — but only at
+                   // base rate. While warping it slides, so publish null;
+                   // peers' pickCascadeAnchor skips null-refMs entries.
+                   refMs: cascadeWarpGated() ? null : computeOwnRefMs(),
                    // The well gauge (observe-only — see invariant above):
                    ...(() => { const h = deviceHexagram(); return { hexKw: h.kw, hexLines: h.lines, hexMoving: h.moving }; })() },
       });

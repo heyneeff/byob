@@ -1532,3 +1532,69 @@ constant 185ms floor (p50≈p95) with cal budget spent — refills next track.
 (3) hexKw/hexLines/hexMoving missing from CSV exports — overlay REC_COLS
 needs the three columns (queue with warp-gate work). Accidental SYNCED
 marker = rows 604–608 of this export.
+
+## 2026-07-15 — WARP-GATE SHIPPED (cast 8→55 lines 1·3·4·5): creep mechanism
+measured exactly, gated at both ends; X4 finds a gate-neutral cascade limit
+
+Session goal declared by the user: play jungle/DnB — tightness target
+≤20–35ms sustained (a 16th at 172BPM is ~87ms) + entries that land clean.
+
+**Evidence pass (read-only, both recent exports, playing-pairs only):**
+d(refMs)/dt during warped pairs = −14.9 ms/s vs −(rate−1)·1000 predicted
+−15.0, on EVERY device in both exports; calm pairs 0.0 ms/s. The Jul-15
+"warp breaks refMs time-invariance" diagnosis is now measurement, to
+~0.1ms/s. Warp duty: mrviaw 70%, f4zzg4 63%, rrqkto 37%, c0tzzz 30%,
+6opr0z 6%, 1kv6s1 1%. One 10s check interval at 15ms/s = 150ms phantom =
+2.5× the deadband — most 40s windows on a restless device held poisoned
+samples. f4zzg4's flagship mystery fully explained by duty-cycled +1.5%
+corrective warp (rate 1.015 rows throughout); no BPM-warp involvement.
+
+**Cast:** 8 Holding Together → 55 Abundance, moving 1·3·4·5. Line 3 names
+the bug ("you hold together with the wrong people"); line 1 = the sincerity
+gate on own samples; line 4 = the outward gate (broadcast null); line 5 =
+exclusion without coercion — no staleness compensation, no peer rate-judging,
+gate only excludes. User approved via plan.
+
+**Sim (X scenarios, `octonary-cascade-sim.mjs`, committed first):** V2 model
+gains `stallStealSPerTick` (Class-C restlessness: ct loses real time, catch-up
+warp chases; standing deficit ≈ steal-rate/0.0002·1000) + `wedgeSeekBroken`/
+`wedgeOffsetS` (same-track-relaunch wedge) + `refErrorMs` (stale row belief)
++ per-device refMs-null broadcast counters. ensureGated/ensureUngated
+string-patchers keep scenarios valid regardless of whether layer.js carries
+the gate (X1 = permanent creep-reproduction guard, H1b's sibling).
+- X1 UNGATED stall room (steal 0.0375/0.025/clean): 38 false fires on
+  zero-clock-error devices, walk −2753ms, maxPosSpread 2633ms against the
+  clean witness — the live creep, reproduced with its signature.
+- X2 GATED identical room: 0 corrections, warper broadcasts 100% refMs:null
+  (anchor-side cover proven), spread bounded at the 97ms physical deficit.
+- X3 GATED wedge (seeks no-op, −800ms): exactly 1 correction, snap-thrash
+  ends, refs agree; posErr honestly stays −800 (physics can't move — that's
+  the relaunch fix's job). Offline twin of the first live rescue.
+- **X4 (NEW LIMIT FOUND, gate-neutral, fires at rate 1):** stale
+  playback_started_at + WORKING seeks = the cascade ORBITS — every pull is
+  re-absorbed by re-convergence to the stale row, refMs returns to the same
+  wrong value, physical position walks −800ms/cycle (14 fires, −12s in
+  10min, identical gated and ungated). Cascade corrections CANNOT close
+  persistent reference divergence; row-repair + anchor-scoping (9718f40) +
+  bridge follow-the-row are LOAD-BEARING for the cascade era. Guard checks
+  fail loud if this ever "goes quiet."
+
+**Change (ternary/layer.js, one mechanism):** `CASCADE_WARP_RATE_GATE=0.003`;
+`cascadeWarpGated()` compares `_audio.playbackRate` against
+`SpatialRouting.getBpmWarpRate() ?? 1` (BPM warp = legitimate base);
+`maybeCascadeCorrect` skips sampling while gated; `broadcastPeerTrit` sends
+`refMs: null` while gated (pickCascadeAnchor's existing null-skip drops
+warping devices from anchor eligibility — zero peer-side logic). Side
+benefit by construction: post-correction warp chases can't re-sample their
+own transient. Full suite ALL PASS against the real gated source; greenhorn-
+sim still exactly its 3 pre-existing failures (stash-verified unchanged);
+sync-engine.test.js 29/29. SYNC_ENGINE.md gains the cascade+gate section.
+Overlay REC_COLS now exports hexKw/hexLines/hexMoving (queued item closed).
+
+**Expected live signature:** steady-state cascade pulls collapse from
+−62..−125ms every 1–3min to rare one-shots; converged-device clockOffsets
+stop walking; rescues unaffected. Known display caveat: overlay Room Spread
+still shows sliding refs for warping devices (observe-only, honest); a
+future polish could gray warped rows. Live window = tonight's broadcast,
+bounded, revert-fast; calm 20min+ stretch doubles as the pending
+guileless-clock A/B vs the 01:35–02:01 baseline.

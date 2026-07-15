@@ -363,3 +363,49 @@ Validated offline via a node harness (stubbed `_terAdjustLatency`/channel,
 sawtooth snap-lock sequences): one snap-cal per episode at ~50% of floor,
 settle respected, calm precedence respected, debt reset exactly once on the
 third same-sign correction, never on mixed signs.
+
+## 2026-07-15 — Octonary cascade consensus + the warp-gate
+
+**The cascade (ternary/layer.js, `maybeCascadeCorrect`).** Each device
+reconstructs `refMs = syncedNow − (ct + devLat/1000)·1000` — "what wall-clock
+instant do I believe the track started at" — picks its single
+highest-octonary-weight visible peer (`pickCascadeAnchor`, NTP/PTP-stratum
+style, min weight 0.9 = PULLING), averages 4 samples of `anchor.refMs − own`
+taken 10s apart, and past a 60ms deadband applies the difference to
+`_clockOffset` (`_terAdjustClockOffset`), rate-limited to 30s. One authority,
+full yield: the first correction sets `_cascadeEngaged` and permanently
+silences `measureClockOffset` re-measures for the session. Samples are wiped
+on `enterBurst()` (launches) and wrap-guarded at 2s.
+
+**The sign lesson (`daab95f`).** Reconstruction must ADD devLat back — a
+converged device then reports the track start itself regardless of latency
+belief. The pre-fix minus form made converged phones report
+`trackStart + 2·devLat`, so the room orbited on latency echoes.
+
+**The warp-gate (cast 8→55, lines 1·3·4·5).** refMs is only time-invariant at
+base rate: while warping, it slides at `(playbackRate − 1)×1000 ms/s`
+(measured live to ~0.1ms/s: −14.9 ms/s at rate 1.015, flat at rate 1; warp
+duty ran 30–70% on restless devices). While
+`|playbackRate − getBpmWarpRate()| > 0.003` a device (1) skips its own
+cascade samples and (2) broadcasts `refMs: null`, which drops it from every
+peer's anchor selection with zero peer-side logic. This ended the
+steady-state both-negative creep (mutual −62..−125ms pulls every 1–3min,
+unbounded common-mode clockOffset walk). BPM warp is a legitimate base rate —
+the gate compares against it, not against 1.0.
+
+**What the cascade can and cannot fix** (all documented as guard scenarios in
+`sync/octonary-cascade-sim.mjs`):
+- CAN: one-shot belief rescue of a device whose engine cannot act — e.g. the
+  same-track-relaunch wedge (seeks no-op): one pull, thrash ends, refs agree
+  (X3; the physical position stays where it was — freeing the element is the
+  relaunch fix's job).
+- CANNOT: clock error on a converged device — refMs cancels it (H3, honest
+  null; that error line belongs to LAN-first clock, roadmap Phase 4).
+- CANNOT: slow clock wander — structurally invisible to refMs (W1/W2;
+  deadband tuning is not the lever).
+- MUST NOT MEET: a stale `playback_started_at` with working seeks — the
+  engine re-converges to the stale row after every pull and the cascade
+  ORBITS, walking physical position each cycle (X4, gate-neutral). Row-repair
+  (artist.html heartbeat), the anchor-scoping fix (`9718f40`), and bridge
+  follow-the-row are load-bearing for the cascade era: they must keep
+  reference divergence from ever persisting.
