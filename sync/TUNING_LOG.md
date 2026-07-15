@@ -1675,3 +1675,39 @@ Also this window: DJ playlist auto-advance fixed end-to-end (266cb4a +
 one-time library URL rewrite to relay.boombox.productions via relay API —
 14 rows had dead quick-tunnel/localhost-only origins; deck stalled without
 'ended' and the chain died. Error-skip added, bounded, resets on 'playing').
+
+## 2026-07-15 ~13:30 — THE CHURN ERA ANATOMIZED + PHASE A: cadence A/B
+verdict — launch churn IS the mess; steady tunnel state is a flatline
+
+User report: "much more messy than the last [session], I think the octonary
+layer needs tuning." Data cleared the octonary layer and named the real
+driver in two exports:
+
+**Churn era (13:07–13:28, auto-advance cycling every 40s–2.5min):** the
+"mess" = sustained ROOM SPLITS — refSpread wraps of 56.1s / 106s / 162.7s
+lasting ~3min each: phones stuck on the OLD track (missed/failed loads)
+while the room advanced, healing only at the next launch. Launch stagger up
+to 14.7s. Two double-advances 30–38s apart (error-skip on dead queue
+entries a plausible cause — user queue predated the URL rewrite). Cascade:
+0 fires all era, CORRECTLY (56s splits are beyond the 2s wrap-guard —
+load/reference layer's jurisdiction, not consensus). Between changes,
+same-track medians stayed 64–90ms — corrector healthy throughout. Mid-era,
+snap-cal (the deadlock transducer) + auto-cal rescued zuywr9 from 56s
+adrift down to a 169ms floor — first observed live tag-team rescue of the
+Jul 12 mechanisms.
+
+**Phase A (13:29–13:38, ONE 14-min track, same tunnel/phones/code):**
+ZERO track changes → refSpread FLAT 78–83ms for 10 straight minutes,
+per-device p95≈p50 (82–92ms static floors), warp duty 0–1%, no stalls, no
+excursions, no phantom advances. The spread number is dominated by
+zuywr9's still-uncalibrated 161ms floor (cal budget refills next track);
+the settled phones sit ~85ms apart mutually.
+
+**Conclusion:** the engine's steady state through the tunnel is solid; ALL
+observed messiness lives in the launch/load path under cadence pressure
+(fetch bursts + entry transients + missed loads). This is Phase 3 (entry)
++ Phase 4 (LAN/bandwidth) territory, exactly as the roadmap has it.
+Practical guidance until then: normal DJ pacing (3–5min+ per track) keeps
+the room tight; rapid-fire cycling splits it. Phase B (LAN A/B, enablers
+shipped as e8ce6b5: resolveStorageUrl + ?fix GPS stand-in) runs next —
+its money cell is LAN + high cadence vs today's tunnel + high cadence.
