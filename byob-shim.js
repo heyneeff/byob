@@ -13,6 +13,9 @@
 (function () {
   'use strict';
   const IS_BROWSER = typeof window !== 'undefined' && typeof document !== 'undefined';
+  // Provenance: true when this page load's server came from an explicit
+  // ?server= param — reResolveServer() honors this (defection guard below).
+  let explicitServer = false;
 
   // Relay discovery, in precedence order:
   //   1. ?server= query param (explicit override, persisted)
@@ -27,7 +30,7 @@
     if (IS_BROWSER) {
       try {
         const p = new URLSearchParams(location.search).get('server');
-        if (p) u = p;
+        if (p) { u = p; explicitServer = true; }
         else if (location.protocol.startsWith('http') &&
                  !/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
           try {
@@ -98,10 +101,20 @@
     // /relay.json on this origin is the recovery channel. After every 6
     // consecutive failed reconnects (~10s+), re-fetch it — if it names a
     // different relay, adopt it IN PLACE (httpUrl/wsUrl are read dynamically
-    // by connect() and normalizeUrls(), so no reload is needed). This
-    // deliberately outranks a stale ?server= override: a dead explicit URL
-    // is worse than any published fallback.
+    // by connect() and normalizeUrls(), so no reload is needed).
+    // DEFECTION GUARD (2026-07-15): an explicit ?server= is provenance — a
+    // deliberate choice of path (LAN test rig, venue router) — and must never
+    // be silently replaced. On a LAN origin /relay.json resolves to the
+    // repo's published file = the TUNNEL url, so one rough WS patch (6 failed
+    // reconnects) turned a LAN phone into a tunnel phone mid-session: mixed-
+    // path rooms, invalidated A/B attribution (TUNING_LOG "LAN→tunnel
+    // defection"). With the guard, reconnect keeps retrying the explicit URL;
+    // relay.json recovery stays available to param-less phones.
     async function reResolveServer() {
+      if (explicitServer) {
+        console.log('[byob-shim] relay.json recovery skipped — explicit ?server= set (defection guard)');
+        return;
+      }
       if (!IS_BROWSER || !location.protocol.startsWith('http') ||
           /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
       try {
