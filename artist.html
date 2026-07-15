@@ -1987,12 +1987,20 @@ async function playNext() {
     return;
   }
 
-  // Fallback: advance by DB upload order
+  // Fallback: advance by DB upload order. Only in-app uploads stamp zone_id;
+  // rows added via r2-add-track.sh / bridge/add-track.mjs are global library
+  // rows with zone_id null — since the R2/relay era that's all of them, so a
+  // zone_id-only filter finds nothing and auto-advance dies (track just
+  // loops). Include both (the relay shim has no OR filter, so filter here),
+  // but never advance into stems — they're scene-launcher loops, not
+  // playlist material (same stems/ classifier as the library crates).
   if (activeZone?.id) {
-    const { data: tracks } = await db.from('tracks')
-      .select('public_url,title')
-      .eq('zone_id', activeZone.id)
+    const { data: allTracks } = await db.from('tracks')
+      .select('public_url,title,zone_id,file_path')
       .order('created_at', { ascending: true });
+    const tracks = (allTracks || []).filter(t =>
+      (t.zone_id == null || t.zone_id === activeZone.id)
+      && !t.file_path?.startsWith('stems/'));
 
     if (tracks?.length > 1) {
       const { data: z } = await db.from('zones')
@@ -2047,7 +2055,25 @@ async function playNext() {
 
 
 audio.addEventListener('ended', playNext);
-  
+
+// A dead track src (stale baked public_url host, missing file) fires 'error'
+// and never reaches 'ended' — without this, one bad row silently kills
+// playlist auto-advance. Skip forward only when the track never started
+// (currentTime ≈ 0 = dead-source signature; mid-track blips are left to
+// resume), and stop after a full queue of consecutive failures so an
+// all-dead library can't spin forever.
+let _srcErrorSkips = 0;
+audio.addEventListener('playing', () => { _srcErrorSkips = 0; });
+audio.addEventListener('error', () => {
+  if (!audio.src || audio.srcObject) return;
+  if (audio.currentTime > 0.5) return;
+  if (playlist.length > 0 && queueIdx + 1 < playlist.length && _srcErrorSkips < playlist.length) {
+    _srcErrorSkips++;
+    showToast('⚠ Track failed to load — skipping', true);
+    setTimeout(playNext, 800);
+  }
+});
+
 audio.addEventListener('timeupdate',()=>{
   if(!audio.duration)return;
   document.getElementById('progress-fill').style.width=(audio.currentTime/audio.duration*100)+'%';
