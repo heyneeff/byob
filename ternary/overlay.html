@@ -711,7 +711,9 @@ const REC_COLS = [
   'driftState','driftPending','terTrit','terOctoState','terOctoName','terGlobalDisruption',
   'terCalState','terLastFloor','terConsecN','terPeerCount','terConsensus',
   'terSnapCount','terBurstSnaps','stallCount','snapCount','seekIntendedMs','seekMeasuredMs',
-  'readyState','visibilityState','currentTime','expectedPos','refMs','note',
+  'readyState','visibilityState','currentTime','expectedPos','refMs',
+  'hexKw','hexLines','hexMoving', // the well gauge — observe-only telemetry, rides along into exports
+  'note',
 ];
 function toggleRecord() {
   _recording = !_recording;
