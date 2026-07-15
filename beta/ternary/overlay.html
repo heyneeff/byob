@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BYOB — Sync Observatory</title>
+<style>
+:root {
+  --teal:#00cc99; --orange:#f57e20; --red:#ef3c23; --cyan:#40c4f0;
+  --purple:#ce93d8; --yellow:#fff176; --gray:#607080; --bg:#020408; --card:#080e14;
+  /* octonary role colors */
+  --octo-0:#00cc99; --octo-1:#4db88e; --octo-2:#f57e20; --octo-3:#ce93d8;
+  --octo-4:#40c4f0; --octo-5:#607080; --octo-6:#fff176; --octo-7:#ef3c23;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:#8ab;font-family:monospace;font-size:12px;min-height:100vh;}
+
+/* ── header ── */
+#hdr{display:flex;align-items:center;gap:16px;padding:10px 16px;border-bottom:1px solid #0e1a22;flex-wrap:wrap;}
+#hdr h1{font-size:13px;color:var(--teal);letter-spacing:.25em;text-transform:uppercase;white-space:nowrap;}
+#status{font-size:10px;color:#444;flex:1;min-width:120px;}
+#rec-toolbar{display:flex;gap:6px;align-items:center;flex-shrink:0;}
+#rec-toolbar button{background:var(--card);border:1px solid #1a2a36;color:#8ab;font-family:monospace;font-size:10px;padding:4px 8px;border-radius:3px;cursor:pointer;}
+#rec-toolbar button:hover{border-color:var(--teal);color:var(--teal);}
+.mark-sep{color:#335;margin:0 2px;}
+.mark-btn{font-weight:bold;}
+.mark-synced:hover{border-color:#00cc99!important;color:#00cc99!important;}
+.mark-jump:hover{border-color:#ef3c23!important;color:#ef3c23!important;}
+.mark-flash{animation:markflash .4s ease-out;}
+@keyframes markflash{0%{background:#fff;}100%{background:var(--card, #0e1a22);}}
+#rec-btn.active{border-color:var(--red);color:var(--red);}
+#rec-count{color:#444;font-size:10px;}
+
+/* ── overview row ── */
+#overview{display:grid;grid-template-columns:1fr 1fr 1fr 2fr auto;gap:8px;padding:10px 16px;border-bottom:1px solid #0e1a22;}
+.ov-panel{background:var(--card);border:1px solid #0e1a22;border-radius:5px;padding:8px 10px;}
+.ov-title{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#446;margin-bottom:6px;}
+#spread-val{font-size:26px;font-weight:bold;color:var(--teal);line-height:1;}
+#spread-sub{font-size:10px;color:#446;margin-top:2px;}
+#room-spread-val{font-size:26px;font-weight:bold;color:var(--teal);line-height:1;}
+#room-spread-sub{font-size:10px;color:#446;margin-top:2px;}
+#trit-bar-wrap{height:10px;border-radius:2px;overflow:hidden;display:flex;margin-bottom:5px;}
+#trit-counts{display:flex;gap:12px;font-size:10px;}
+#octo-bar-wrap{height:10px;border-radius:2px;overflow:hidden;display:flex;margin-bottom:5px;}
+#octo-legend{display:flex;flex-wrap:wrap;gap:6px;font-size:9px;}
+.octo-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:2px;vertical-align:middle;}
+#disruption-panel{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:90px;transition:border-color .3s;}
+#disruption-panel.active{border-color:var(--red)!important;}
+#disruption-label{font-size:8px;letter-spacing:.1em;text-transform:uppercase;color:#446;margin-bottom:4px;}
+#disruption-val{font-size:18px;font-weight:bold;color:#1a3a3a;transition:color .3s;}
+#disruption-panel.active #disruption-val{color:var(--red);}
+
+/* ── charts ── */
+#charts{padding:10px 16px 0;}
+#chart-tabs{display:flex;gap:4px;margin-bottom:8px;}
+.chart-tab{background:var(--card);border:1px solid #0e1a22;color:#446;font-family:monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:3px;cursor:pointer;}
+.chart-tab.active{border-color:var(--teal);color:var(--teal);}
+.chart-panel{display:none;background:var(--card);border:1px solid #0e1a22;border-radius:5px;padding:8px;}
+.chart-panel.active{display:block;}
+.chart-title{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#446;margin-bottom:6px;}
+canvas.chart{display:block;width:100%;height:160px;}
+#drift-legend,#warp-legend,#cal-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:5px;font-size:9px;}
+.legend-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;display:inline-block;}
+
+/* role timeline rows */
+#roles-canvas{display:block;width:100%;height:160px;}
+
+/* ── device grid ── */
+#devices{padding:10px 16px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:8px;}
+.card{background:var(--card);border:1px solid #0e1a22;border-radius:5px;padding:8px;}
+.card.trit-P{border-left:3px solid var(--teal);}
+.card.trit-Z{border-left:3px solid var(--orange);}
+.card.trit-N{border-left:3px solid var(--cyan);}
+.card-hdr{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px;}
+.dev-id{color:var(--orange);font-weight:bold;font-size:11px;}
+.dev-meta{color:#335;font-size:9px;text-align:right;}
+.badges{display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;}
+.badge{display:inline-block;padding:1px 6px;border-radius:2px;font-size:10px;font-weight:bold;letter-spacing:1px;}
+.badge-P{background:#00cc9918;color:var(--teal);border:1px solid #00cc9940;}
+.badge-Z{background:#f57e2018;color:var(--orange);border:1px solid #f57e2040;}
+.badge-N{background:#40c4f018;color:var(--cyan);border:1px solid #40c4f040;}
+.badge-burst{background:#fff17618;color:var(--yellow);border:1px solid #fff17640;}
+.badge-octo{border:1px solid currentColor;opacity:.85;}
+.row{display:flex;justify-content:space-between;border-bottom:1px solid #0a1218;padding:2px 0;}
+.k{color:#335;}.v{color:#8ab;text-align:right;}
+.warn{color:var(--orange);}.bad{color:var(--red);}.good{color:var(--teal);}
+
+/* ── events ── */
+#events-section{padding:8px 16px 16px;}
+#events-title{font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:#335;margin-bottom:6px;cursor:pointer;}
+#events-list{display:none;}
+#events-list.open{display:block;}
+.ev-row{display:flex;gap:8px;font-size:10px;padding:2px 0;border-bottom:1px solid #0a1218;}
+.ev-ts{color:#335;flex-shrink:0;width:50px;}.ev-dev{color:var(--orange);width:80px;flex-shrink:0;}
+.ev-kind{color:var(--teal);width:90px;flex-shrink:0;}.ev-detail{color:#8ab;}
+.ev-row.mark{background:rgba(255,255,255,.06);}
+.ev-row.mark .ev-kind{color:#fff176;font-weight:bold;}
+</style>
+</head>
+<body>
+
+<!-- header -->
+<div id="hdr">
+  <h1>⬡ BYOB Sync Observatory</h1>
+  <div id="status">Connecting…</div>
+  <div id="rec-toolbar">
+    <button id="rec-btn" onclick="toggleRecord()">⏺ Record</button>
+    <button onclick="exportCSV()">⬇ CSV</button>
+    <span id="rec-count">0 rows</span>
+    <span class="mark-sep">|</span>
+    <button class="mark-btn mark-synced" onclick="markAll('SYNCED')" title="Hit when phones sound perfectly locked">✅ Synced</button>
+    <button class="mark-btn mark-jump" onclick="markAll('JUMP')" title="Hit the instant audio jumps/resets">⚠ Jump</button>
+    <button class="mark-btn" onclick="markNote()" title="Free-text note — anything you can't hear in the data">📝 Note</button>
+  </div>
+</div>
+
+<!-- overview -->
+<div id="overview">
+  <!-- spread (self-reported — each phone's own driftMs vs ITS OWN reference;
+       can read low even when phones disagree with each other, see room-spread) -->
+  <div class="ov-panel">
+    <div class="ov-title">self-reported drift spread</div>
+    <div id="spread-val">—</div>
+    <div id="spread-sub">— devices playing</div>
+  </div>
+
+  <!-- room spread (ground truth — reconstructed absolute reference position
+       per device, compared directly; this is what actually answers "are the
+       phones playing the same instant of the song") -->
+  <div class="ov-panel">
+    <div class="ov-title">room spread (ground truth)</div>
+    <div id="room-spread-val">—</div>
+    <div id="room-spread-sub">— devices compared</div>
+  </div>
+
+  <!-- the well gauge — room hexagram, line-majority across devices;
+       contested lines (room disagreement) count as moving. Observe-only. -->
+  <div class="ov-panel">
+    <div class="ov-title">the well</div>
+    <div id="well-hex-val" style="font-size:30px;line-height:1;color:var(--teal)">—</div>
+    <div id="well-hex-sub">—</div>
+  </div>
+
+  <!-- ternary -->
+  <div class="ov-panel">
+    <div class="ov-title">ternary state</div>
+    <div id="trit-bar-wrap"></div>
+    <div id="trit-counts">
+      <span style="color:var(--cyan)">N <b id="tc-n">0</b></span>
+      <span style="color:var(--orange)">Z <b id="tc-z">0</b></span>
+      <span style="color:var(--teal)">P <b id="tc-p">0</b></span>
+    </div>
+  </div>
+
+  <!-- octonary -->
+  <div class="ov-panel">
+    <div class="ov-title">octonary roles</div>
+    <div id="octo-bar-wrap"></div>
+    <div id="octo-legend"></div>
+  </div>
+
+  <!-- disruption -->
+  <div class="ov-panel" id="disruption-panel">
+    <div id="disruption-label">global disruption</div>
+    <div id="disruption-val">CLEAR</div>
+  </div>
+</div>
+
+<!-- charts -->
+<div id="charts">
+  <div id="chart-tabs">
+    <button class="chart-tab active" onclick="switchTab('drift')">Drift</button>
+    <button class="chart-tab" onclick="switchTab('warp')">Warp Rate</button>
+    <button class="chart-tab" onclick="switchTab('roles')">Octo Roles</button>
+    <button class="chart-tab" onclick="switchTab('cal')">Auto-Cal</button>
+  </div>
+
+  <div class="chart-panel active" id="tab-drift">
+    <div class="chart-title">live drift — all devices (ms, ±200ms window)</div>
+    <canvas class="chart" id="drift-canvas" height="160"></canvas>
+    <div id="drift-legend"></div>
+  </div>
+
+  <div class="chart-panel" id="tab-warp">
+    <div class="chart-title">warp rate — playbackRate deviation from 1.0 (%)</div>
+    <canvas class="chart" id="warp-canvas" height="160"></canvas>
+    <div id="warp-legend"></div>
+  </div>
+
+  <div class="chart-panel" id="tab-roles">
+    <div class="chart-title">octonary role timeline — per device</div>
+    <canvas class="chart" id="roles-canvas" height="160"></canvas>
+    <div id="roles-legend" style="margin-top:5px;display:flex;flex-wrap:wrap;gap:8px;font-size:9px;"></div>
+  </div>
+
+  <div class="chart-panel" id="tab-cal">
+    <div class="chart-title">auto-cal convergence — deviceLatencyMs per device</div>
+    <canvas class="chart" id="cal-canvas" height="160"></canvas>
+    <div id="cal-legend"></div>
+  </div>
+</div>
+
+<!-- device cards -->
+<div id="devices">
+  <div class="grid" id="grid"></div>
+</div>
+
+<!-- events -->
+<div id="events-section">
+  <div id="events-title" onclick="toggleEvents()">▶ sync events (0)</div>
+  <div id="events-list"></div>
+</div>
+
+<!-- Relay era (Jul 13 2026): byob-shim replaces supabase-js; resolves the
+     relay via ?server= / /relay.json / localhost default like every page. -->
+<script src="../byob-shim.js"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient('http://localhost:3100', 'local');
+
+// ── Constants ──────────────────────────────────────────────────────────────
+const TRIT_COLOR  = { P:'#00cc99', Z:'#f57e20', N:'#40c4f0' };
+const TRIT_LABEL  = { P:'CONVERGED', Z:'NEGOTIATING', N:'DIVERGING' };
+const TER_SNAP_MS = 50;
+
+const OCTO_NAMES  = ['ANCHORING','HOLDING','PULLING','FOLLOWING','PUSHING','LISTENING','RESETTING','REACHING'];
+const OCTO_COLORS = ['#00cc99','#4db88e','#f57e20','#ce93d8','#40c4f0','#607080','#fff176','#ef3c23'];
+
+const CHART_COLORS = ['#00cc99','#f57e20','#ef3c23','#4fc3f7','#ce93d8','#fff176','#a5d6a7','#ff8a65','#80cbc4','#ffcc80'];
+const WINDOW_MS    = 180000; // 3 minutes
+
+// ── State ──────────────────────────────────────────────────────────────────
+const devs       = {};
+const events     = [];
+const devColorMap = {};
+let   colorIdx   = 0;
+const driftHist  = {};  // id → [{ts, v}]
+const warpHist   = {};  // id → [{ts, v}]  (playbackRate - 1)*100
+const calHist    = {};  // id → [{ts, v}]  deviceLatencyMs
+const roleHist   = {};  // id → [{ts, role}]
+let   _activeTab = 'drift';
+
+function devColor(id) {
+  if (!devColorMap[id]) devColorMap[id] = CHART_COLORS[colorIdx++ % CHART_COLORS.length];
+  return devColorMap[id];
+}
+
+function pushHist(store, id, val) {
+  if (val == null || isNaN(parseFloat(val))) return;
+  if (!store[id]) store[id] = [];
+  store[id].push({ ts: Date.now(), v: parseFloat(val) });
+  const cutoff = Date.now() - WINDOW_MS - 5000;
+  while (store[id].length && store[id][0].ts < cutoff) store[id].shift();
+}
+
+function pushRoleHist(id, octoState) {
+  if (octoState == null) return;
+  if (!roleHist[id]) roleHist[id] = [];
+  const h = roleHist[id];
+  if (!h.length || h[h.length-1].v !== octoState)
+    h.push({ ts: Date.now(), v: octoState });
+  const cutoff = Date.now() - WINDOW_MS - 5000;
+  while (h.length && h[0].ts < cutoff) h.shift();
+}
+
+// ── Trit ──────────────────────────────────────────────────────────────────
+function driftToTrit(driftMs) {
+  const abs = Math.abs(parseFloat(driftMs));
+  if (isNaN(abs)) return null;
+  if (abs >= TER_SNAP_MS) return 'N';
+  if (abs >= 10) return 'Z';
+  return 'P';
+}
+
+// Derive a rough octonary role from trit + drift if layer.js hasn't sent terOctoState yet
+function inferOctoState(p) {
+  if (p.terOctoState != null) return p.terOctoState;
+  const abs = Math.abs(parseFloat(p.driftMs));
+  if (isNaN(abs)) return 5; // LISTENING
+  if (abs >= 300) return 7; // REACHING
+  const t = p.terTrit || driftToTrit(p.driftMs);
+  if (t === 'N') return 4; // PUSHING
+  if (t === 'Z') return 2; // PULLING
+  if (t === 'P') return 1; // HOLDING
+  return 5; // LISTENING
+}
+
+// ── Tab switcher ──────────────────────────────────────────────────────────
+function switchTab(tab) {
+  _activeTab = tab;
+  document.querySelectorAll('.chart-tab').forEach((b,i) =>
+    b.classList.toggle('active', ['drift','warp','roles','cal'][i] === tab));
+  document.querySelectorAll('.chart-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  drawCharts();
+}
+
+// ── Chart drawing ─────────────────────────────────────────────────────────
+function prepCanvas(id) {
+  const c = document.getElementById(id);
+  if (!c) return null;
+  c.width  = c.offsetWidth  || 800;
+  c.height = c.offsetHeight || 160;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = '#020408'; ctx.fillRect(0, 0, c.width, c.height);
+  return { c, ctx, W: c.width, H: c.height };
+}
+
+function drawGrid(ctx, W, H, lines, yRange, yZero, color='#0e1a22') {
+  ctx.font = '8px monospace'; ctx.fillStyle = '#223';
+  lines.forEach(v => {
+    const y = H/2 - (v / yRange) * (H/2 - 6) + yZero;
+    ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillText(v + (yRange > 10 ? 'ms' : '%'), 3, y - 2);
+  });
+}
+
+function drawLine(ctx, W, H, points, color, yRange, yZero=0, labelSuffix='ms') {
+  if (points.length < 2) return;
+  const now = Date.now();
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+  ctx.beginPath(); let started = false;
+  points.forEach(p => {
+    const x = W * (1 - (now - p.ts) / WINDOW_MS);
+    if (x < 0) return;
+    const clamped = Math.max(-yRange, Math.min(yRange, p.v));
+    const y = H/2 - (clamped / yRange) * (H/2 - 6) + yZero;
+    if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+  // dot + label at right edge
+  const last = points[points.length-1];
+  const lx = W * (1 - (now - last.ts) / WINDOW_MS);
+  if (lx >= 0) {
+    const clamped = Math.max(-yRange, Math.min(yRange, last.v));
+    const ly = H/2 - (clamped / yRange) * (H/2 - 6) + yZero;
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI*2); ctx.fill();
+    ctx.font = '9px monospace';
+    ctx.fillText(last.v.toFixed(0) + labelSuffix, Math.max(4, lx - 36), ly - 6);
+  }
+}
+
+function drawDriftChart() {
+  const g = prepCanvas('drift-canvas'); if (!g) return;
+  const { ctx, W, H } = g;
+  // threshold lines
+  ctx.strokeStyle = '#40c4f022'; ctx.setLineDash([2,4]);
+  [-TER_SNAP_MS, TER_SNAP_MS, -10, 10].forEach(ms => {
+    const y = H/2 - (ms / 200) * (H/2 - 6);
+    ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  });
+  ctx.setLineDash([]);
+  drawGrid(ctx, W, H, [-150,-100,-50,50,100,150], 200, 0);
+  // zero line
+  ctx.strokeStyle = '#00cc9933'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  ctx.setLineDash([]);
+  const ids = Object.keys(driftHist).filter(id => driftHist[id].length >= 2);
+  ids.forEach(id => drawLine(ctx, W, H, driftHist[id], devColor(id), 200, 0, 'ms'));
+  const legend = document.getElementById('drift-legend');
+  if (legend) legend.innerHTML = ids.map(id =>
+    `<span><span class="legend-dot" style="background:${devColor(id)};display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;"></span><span style="color:${devColor(id)}">${id}</span></span>`
+  ).join('');
+}
+
+function drawWarpChart() {
+  const g = prepCanvas('warp-canvas'); if (!g) return;
+  const { ctx, W, H } = g;
+  drawGrid(ctx, W, H, [-1.5,-1,-0.5,0.5,1,1.5], 2, 0);
+  ctx.strokeStyle = '#00cc9933'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  ctx.setLineDash([]);
+  const ids = Object.keys(warpHist).filter(id => warpHist[id].length >= 2);
+  ids.forEach(id => drawLine(ctx, W, H, warpHist[id], devColor(id), 2, 0, '%'));
+  const legend = document.getElementById('warp-legend');
+  if (legend) legend.innerHTML = ids.map(id =>
+    `<span><span class="legend-dot" style="background:${devColor(id)};display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;"></span><span style="color:${devColor(id)}">${id}</span></span>`
+  ).join('');
+}
+
+function drawRolesChart() {
+  const g = prepCanvas('roles-canvas'); if (!g) return;
+  const { ctx, W, H } = g;
+  const ids = Object.keys(roleHist).filter(id => roleHist[id].length);
+  if (!ids.length) {
+    ctx.fillStyle = '#335'; ctx.font = '11px monospace';
+    ctx.fillText('waiting for octonary data…', 20, H/2);
+    return;
+  }
+  const rowH = Math.min(28, Math.floor((H - 4) / ids.length));
+  const now = Date.now();
+  ids.forEach((id, i) => {
+    const y = i * rowH + 2;
+    const h = rowH - 2;
+    const pts = roleHist[id];
+    // draw colored segments — first segment extends back to x=0 (role unknown before first
+    // observation, but current role is the best estimate for the whole unseen past window)
+    for (let j = 0; j < pts.length; j++) {
+      const p = pts[j];
+      const next = pts[j+1];
+      const x1 = j === 0 ? 0 : Math.max(0, W * (1 - (now - p.ts) / WINDOW_MS));
+      const x2 = next ? Math.max(0, W * (1 - (now - next.ts) / WINDOW_MS)) : W;
+      if (x2 <= x1) continue;
+      ctx.fillStyle = OCTO_COLORS[p.v] + '99';
+      ctx.fillRect(x1, y, x2 - x1, h);
+    }
+    // label
+    const last = pts[pts.length-1];
+    ctx.fillStyle = OCTO_COLORS[last.v];
+    ctx.font = '8px monospace';
+    ctx.fillText(id.slice(-6) + ' ' + OCTO_NAMES[last.v], 4, y + h - 3);
+  });
+  // legend
+  const legend = document.getElementById('roles-legend');
+  if (legend) legend.innerHTML = OCTO_NAMES.map((name, i) =>
+    `<span><span class="legend-dot" style="background:${OCTO_COLORS[i]};display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;"></span><span style="color:${OCTO_COLORS[i]}">${i} ${name}</span></span>`
+  ).join('');
+}
+
+function drawCalChart() {
+  const g = prepCanvas('cal-canvas'); if (!g) return;
+  const { ctx, W, H } = g;
+  drawGrid(ctx, W, H, [200,400,600,800,1000,1200], 1200, H/2 - 4);
+  // bottom baseline
+  ctx.strokeStyle = '#00cc9933'; ctx.lineWidth = 1; ctx.setLineDash([4,4]);
+  const bot = H - 6;
+  ctx.beginPath(); ctx.moveTo(0, bot); ctx.lineTo(W, bot); ctx.stroke();
+  ctx.setLineDash([]);
+  const ids = Object.keys(calHist).filter(id => calHist[id].length >= 2);
+  const now = Date.now();
+  ids.forEach(id => {
+    const pts = calHist[id];
+    const color = devColor(id);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.setLineDash([]);
+    ctx.beginPath(); let started = false;
+    pts.forEach(p => {
+      const x = W * (1 - (now - p.ts) / WINDOW_MS);
+      if (x < 0) return;
+      const y = bot - (Math.min(1200, Math.max(0, p.v)) / 1200) * (bot - 10);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    const last = pts[pts.length-1];
+    const lx = W * (1 - (now - last.ts) / WINDOW_MS);
+    if (lx >= 0) {
+      const ly = bot - (Math.min(1200, Math.max(0, last.v)) / 1200) * (bot - 10);
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI*2); ctx.fill();
+      ctx.font = '9px monospace';
+      ctx.fillText(Math.round(last.v) + 'ms', Math.max(4, lx - 36), ly - 6);
+    }
+  });
+  const legend = document.getElementById('cal-legend');
+  if (legend) legend.innerHTML = ids.map(id =>
+    `<span><span class="legend-dot" style="background:${devColor(id)};display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;"></span><span style="color:${devColor(id)}">${id} BT=${calHist[id].slice(-1)[0]?.v?.toFixed(0) ?? '?'}ms</span></span>`
+  ).join('');
+}
+
+function drawCharts() {
+  if (_activeTab === 'drift')  drawDriftChart();
+  if (_activeTab === 'warp')   drawWarpChart();
+  if (_activeTab === 'roles')  drawRolesChart();
+  if (_activeTab === 'cal')    drawCalChart();
+}
+
+// ── Overview ──────────────────────────────────────────────────────────────
+function updateOverview() {
+  const all = Object.values(devs);
+  const sync = all.filter(d => d._kind === 'sync');
+
+  // Spread
+  const playing = sync.filter(d => d.playing && !d.paused && parseFloat(d.currentTime) > 0);
+  const drifts = playing.map(d => parseFloat(d.driftMs)).filter(v => !isNaN(v));
+  const spread = drifts.length >= 2 ? Math.max(...drifts) - Math.min(...drifts) : null;
+  const sv = document.getElementById('spread-val');
+  const ss = document.getElementById('spread-sub');
+  if (spread != null) {
+    sv.textContent = spread.toFixed(0) + 'ms';
+    sv.style.color = spread > 200 ? 'var(--red)' : spread > 50 ? 'var(--orange)' : 'var(--teal)';
+  } else { sv.textContent = '—'; sv.style.color = 'var(--teal)'; }
+  ss.textContent = playing.length + ' device' + (playing.length !== 1 ? 's' : '') + ' playing';
+
+  // Room spread — ground truth. refMs is time-invariant per device (it's a
+  // reconstructed constant, "when did the track start" — not a live drift
+  // reading), so comparing each device's latest value directly is valid
+  // without extrapolating for capture-time skew.
+  const refs = playing.map(d => d.refMs).filter(v => v != null && isFinite(v));
+  const roomSpread = refs.length >= 2 ? Math.max(...refs) - Math.min(...refs) : null;
+  const rsv = document.getElementById('room-spread-val');
+  const rss = document.getElementById('room-spread-sub');
+  if (roomSpread != null) {
+    rsv.textContent = roomSpread.toFixed(0) + 'ms';
+    rsv.style.color = roomSpread > 500 ? 'var(--red)' : roomSpread > 100 ? 'var(--orange)' : 'var(--teal)';
+  } else { rsv.textContent = '—'; rsv.style.color = 'var(--teal)'; }
+  rss.textContent = refs.length + ' device' + (refs.length !== 1 ? 's' : '') + ' compared';
+
+  // The well gauge — room hexagram
+  const wh = roomHexagram(playing);
+  const whv = document.getElementById('well-hex-val');
+  const whs = document.getElementById('well-hex-sub');
+  if (wh) {
+    whv.textContent = hexGlyph(wh.kw) + ' ' + wh.kw;
+    whv.style.color = wh.contested ? 'var(--orange)' : 'var(--teal)';
+    whs.textContent = HEX_NAMES[wh.kw - 1] + (wh.contested ? ` · ${wh.contested} contested line${wh.contested > 1 ? 's' : ''}` : ' · settled');
+  } else { whv.textContent = '—'; whs.textContent = 'needs 2+ devices'; }
+
+  // Ternary bar
+  const tc = { N:0, Z:0, P:0 };
+  sync.forEach(d => { const t = d.terTrit || driftToTrit(d.driftMs); if (t) tc[t]++; });
+  const tt = sync.length || 1;
+  document.getElementById('tc-n').textContent = tc.N;
+  document.getElementById('tc-z').textContent = tc.Z;
+  document.getElementById('tc-p').textContent = tc.P;
+  document.getElementById('trit-bar-wrap').innerHTML =
+    (tc.N ? `<div style="flex:${tc.N};background:var(--cyan);"></div>` : '') +
+    (tc.Z ? `<div style="flex:${tc.Z};background:var(--orange);"></div>` : '') +
+    (tc.P ? `<div style="flex:${tc.P};background:var(--teal);"></div>` : '');
+
+  // Octonary bar + legend
+  const oc = new Array(8).fill(0);
+  sync.forEach(d => { oc[inferOctoState(d)]++; });
+  const ot = oc.reduce((a,v) => a+v, 0) || 1;
+  document.getElementById('octo-bar-wrap').innerHTML = oc.map((c,i) =>
+    c ? `<div style="flex:${c};background:${OCTO_COLORS[i]};"></div>` : ''
+  ).join('');
+  document.getElementById('octo-legend').innerHTML = oc.map((c,i) =>
+    c ? `<span><span class="octo-dot" style="background:${OCTO_COLORS[i]}"></span><span style="color:${OCTO_COLORS[i]}">${c} ${OCTO_NAMES[i].slice(0,5)}</span></span>` : ''
+  ).filter(Boolean).join('');
+
+  // Global disruption
+  const disrupted = sync.some(d => d.terGlobalDisruption);
+  const dp = document.getElementById('disruption-panel');
+  const dv = document.getElementById('disruption-val');
+  dp.classList.toggle('active', disrupted);
+  dv.textContent = disrupted ? '⚠ ACTIVE' : 'CLEAR';
+}
+
+// ── Device cards ──────────────────────────────────────────────────────────
+function r(key, val, cls='') {
+  return `<div class="row"><span class="k">${key}</span><span class="v ${cls}">${val ?? '—'}</span></div>`;
+}
+
+function octoB(state, name) {
+  if (state == null) return '';
+  return `<span class="badge badge-octo" style="color:${OCTO_COLORS[state]};border-color:${OCTO_COLORS[state]}40">${name || OCTO_NAMES[state]}</span>`;
+}
+
+function renderSyncCard(d, age) {
+  const trit = d.terTrit || driftToTrit(d.driftMs);
+  const dm = parseFloat(d.driftMs);
+  const dc = Math.abs(dm) > 200 ? 'bad' : Math.abs(dm) > 50 ? 'warn' : 'good';
+  const rate = parseFloat(d.playbackRate);
+  const warpPct = isNaN(rate) ? 0 : Math.abs(rate - 1) * 100;
+  return `<div class="card${trit?' trit-'+trit:''}">
+    <div class="card-hdr">
+      <div>
+        <div class="dev-id">${d.deviceId}</div>
+        <div style="font-size:9px;color:#335">${d.zone||'no zone'}</div>
+      </div>
+      <div class="dev-meta">${age}s ago<br>${d.build||'?'}</div>
+    </div>
+    <div class="badges">
+      ${trit ? `<span class="badge badge-${trit}">${trit} ${TRIT_LABEL[trit]}</span>` : ''}
+      ${d.terBurst ? `<span class="badge badge-burst">⚡ BURST ${d.terBurstSnaps||0}</span>` : ''}
+      ${octoB(inferOctoState(d), d.terOctoName)}
+      ${d.hexKw ? `<span class="badge" style="color:var(--teal);border:1px solid #00cc9940" title="${HEX_NAMES[d.hexKw-1]}${d.hexMoving ? ' — moving lines' : ''}">${hexGlyph(d.hexKw)} ${d.hexKw}${d.hexMoving ? ' ✶' : ''}</span>` : ''}
+      ${d.terGlobalDisruption ? `<span class="badge" style="color:var(--red);border:1px solid #ef3c2340">DISRUPTION</span>` : ''}
+      ${d.track ? `<span class="badge" style="color:#88aaff;border:1px solid #88aaff40" title="track-identity hash${d.slot?' · slot '+d.slot:''}">♪ ${d.track}${d.slot ? '·'+d.slot : ''}</span>` : ''}
+      ${d.visibilityState && d.visibilityState !== 'visible' ? `<span class="badge" style="color:#ff9900;border:1px solid #ff990040" title="tab throttled — may miss launches">⏾ THROTTLED</span>` : ''}
+      ${!isNaN(dm) && Math.abs(dm) > 2500 ? `<span class="badge" style="color:var(--red);border:1px solid #ef3c2340" title="duration-scale offset — split/wedge, off the chart lane">✂ OFF-REF ${(dm/1000).toFixed(1)}s</span>` : ''}
+    </div>
+    ${r('drift',       dm != null && !isNaN(dm) ? dm.toFixed(0)+'ms' : '—', dc)}
+    ${r('warp rate',   isNaN(rate) ? '—' : (rate-1>=0?'+':'')+(rate-1)*100+'%', warpPct > 1.2 ? 'warn' : '')}
+    ${r('BT latency',  d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
+    ${r('drift state', (d.driftState||'—')+(d.driftPending?' ↺':''), d.driftState==='seeking'?'warn':d.driftState==='warping'?'':'')}
+    ${r('floor',       d.terLastFloor!=null ? d.terLastFloor+'ms' : '—', d.terLastFloor!=null&&Math.abs(d.terLastFloor)>30?'warn':'')}
+    ${r('cal state',   d.terCalState!=null ? ['never','done','no fn','no floor','tiny','fired'][d.terCalState]||d.terCalState : '—',
+        d.terCalState===5?'good':'')}
+    ${r('consec N',    d.terConsecN ?? '—', d.terConsecN>=8?'warn':'')}
+    ${r('peer count',  d.terPeerCount ?? '—')}
+    ${r('consensus',   d.terConsensus ? `${d.terConsensus}` : '—')}
+    ${r('snaps',       d.terSnapCount ?? d.snapCount ?? 0)}
+    ${r('stalls',      d.stallCount ?? 0, d.stallCount>0?'warn':'')}
+    ${r('seek landed', d.seekMeasuredMs!=null&&d.seekIntendedMs!=null ?
+        d.seekMeasuredMs+'ms / '+d.seekIntendedMs+'ms' : '—',
+        d.seekIntendedMs!=null&&d.seekMeasuredMs!=null&&
+        Math.abs(d.seekIntendedMs)>100&&Math.abs(d.seekMeasuredMs)<Math.abs(d.seekIntendedMs)*0.3?'bad':'')}
+    ${r('ready',       d.readyState??'—', d.readyState!=null&&d.readyState<3?'warn':'')}
+    ${r('visibility',  d.visibilityState||'—', d.visibilityState==='hidden'?'warn':'')}
+  </div>`;
+}
+
+function renderHealthCard(d, age) {
+  return `<div class="card">
+    <div class="card-hdr">
+      <div class="dev-id">📡 ${d.deviceId}</div>
+      <div class="dev-meta">${age}s ago</div>
+    </div>
+    ${r('zone',     d.zone||'—')}
+    ${r('status',   d.syncState||'—')}
+    ${r('presence', d.deviceLatencyMs ? '✓ broadcasting' : '✗ idle', d.deviceLatencyMs?'good':'warn')}
+  </div>`;
+}
+
+function render() {
+  const ids = Object.keys(devs);
+  document.getElementById('grid').innerHTML = ids.map(id => {
+    const d = devs[id]; const age = Math.round((Date.now()-d.lastSeen)/1000);
+    return d._kind === 'sync' ? renderSyncCard(d, age) : renderHealthCard(d, age);
+  }).join('');
+  updateOverview();
+}
+
+// ── Events ────────────────────────────────────────────────────────────────
+let _eventsOpen = false;
+function toggleEvents() { _eventsOpen = !_eventsOpen; renderEvents(); }
+function renderEvents() {
+  const el = document.getElementById('events-list');
+  el.classList.toggle('open', _eventsOpen);
+  document.getElementById('events-title').textContent =
+    (_eventsOpen ? '▼' : '▶') + ' sync events (' + events.length + ')';
+  if (!_eventsOpen) return;
+  el.innerHTML = events.slice(0, 40).map(e => {
+    const ago = Math.round((Date.now()-e.at)/1000);
+    return `<div class="ev-row${e.kind==='mark'?' mark':''}">
+      <span class="ev-ts">${ago}s ago</span>
+      <span class="ev-dev">${(e.deviceId||'').slice(-8)}</span>
+      <span class="ev-kind">${e.kind||''}</span>
+      <span class="ev-detail">${e.floorMs!=null?'floor '+e.floorMs+'ms → ':''}`+
+      `${e.correctionMs!=null?'Δ'+e.correctionMs+'ms ':''}`+
+      `${e.note||''}</span>
+    </div>`;
+  }).join('');
+}
+
+// ── Channels ──────────────────────────────────────────────────────────────
+// Ground-truth room spread (2026-07-14 — see sync/TUNING_LOG.md "the real
+// remaining gap"): ternary's existing consensus (weightedConsensus, the
+// driftMs spread above) is built entirely from each phone's own SELF-REPORT
+// — its drift against ITS OWN private reference. Two phones can each report
+// near-zero drift while sitting seconds apart in the actual track, because
+// nothing ever compares their absolute positions. refMs fixes that: back out
+// each phone's own latency compensation from its current audible position to
+// reconstruct "what wall-clock instant does this phone believe corresponds
+// to the track's start" — the same math bridge.mjs's master_verdict already
+// trusts. If phones agree, refMs matches across all of them; if they don't,
+// this is where it shows, directly, not inferred from driftMs looking calm.
+// Read-only: purely a dashboard number, never fed back into any correction.
+// Sign matches layer.js computeOwnRefMs post-daab95f (ct PLUS lat — the old
+// minus form made every converged phone report trackStart + 2·devLat, which
+// is the false gap that drove the 2026-07-14 cascade orbit).
+function computeRefMs(p) {
+  const ts = parseFloat(p.ts), ct = parseFloat(p.currentTime), lat = parseFloat(p.deviceLatencyMs) || 0;
+  if (!isFinite(ts) || !isFinite(ct)) return null;
+  return ts - (ct + lat / 1000) * 1000;
+}
+
+// ── THE WELL GAUGE (observe-only; see layer.js deviceHexagram invariant) ────
+const HEX_NAMES = ['Creative','Receptive','Difficulty at the Beginning','Youthful Folly','Waiting','Conflict','The Army','Holding Together','Small Taming','Treading','Peace','Standstill','Fellowship','Great Possession','Modesty','Enthusiasm','Following','Work on the Spoiled','Approach','Contemplation','Biting Through','Grace','Splitting Apart','Return','Innocence','Great Taming','Nourishment','Great Excess','The Abysmal','The Clinging','Influence','Duration','Retreat','Power of the Great','Progress','Darkening of the Light','The Family','Opposition','Obstruction','Deliverance','Decrease','Increase','Breakthrough','Coming to Meet','Gathering','Pushing Upward','Oppression','The Well','Revolution','The Cauldron','The Arousing','Keeping Still','Development','Marrying Maiden','Abundance','The Wanderer','The Gentle','The Joyous','Dispersion','Limitation','Inner Truth','Small Excess','After Completion','Before Completion'];
+const HEX_TRI = { '111':0,'110':1,'101':2,'100':3,'011':4,'010':5,'001':6,'000':7 };
+const HEX_KW = [[1,43,14,34,9,5,26,11],[10,58,38,54,61,60,41,19],[13,49,30,55,37,63,22,36],[25,17,21,51,42,3,27,24],[44,28,50,32,57,48,18,46],[6,47,64,40,59,29,4,7],[33,31,56,62,53,39,52,15],[12,45,35,16,20,8,23,2]];
+const hexGlyph = kw => String.fromCharCode(0x4DC0 + kw - 1);
+// Room hexagram: per-line MAJORITY across live devices; a line where the
+// room disagrees (mixed yin/yang) is rendered as "moving" — the room's own
+// contested lines, its live tension made visible.
+function roomHexagram(devices) {
+  const rows = devices.map(d => d.hexLines).filter(v => v != null);
+  if (rows.length < 2) return null;
+  const bits = [], contested = [];
+  for (let i = 0; i < 6; i++) {
+    const yang = rows.filter(v => (v >> i) & 1).length;
+    bits.push(yang * 2 >= rows.length ? 1 : 0);
+    contested.push(yang > 0 && yang < rows.length);
+  }
+  const kw = HEX_KW[HEX_TRI[bits.slice(0,3).join('')]][HEX_TRI[bits.slice(3).join('')]];
+  return { kw, contested: contested.filter(Boolean).length };
+}
+
+db.channel('byob_debug')
+  .on('broadcast', { event: 'hud_data' }, ({ payload: p }) => {
+    p.refMs = computeRefMs(p); // attach so it flows into recordRow('sync', p) below via REC_COLS
+    devs[p.deviceId] = { ...p, _kind: 'sync', lastSeen: Date.now() };
+    // Display-only wrap guard: a split/wedged device reads at duration
+    // scale (±10s–160s) and flattens every other line to a pixel on the
+    // shared y-axis. Keep it off the chart (card badge + CSV keep the raw
+    // value); nulls/NaN pass through unchanged as gaps.
+    const _dmChart = parseFloat(p.driftMs);
+    if (!isFinite(_dmChart) || Math.abs(_dmChart) <= 2500) pushHist(driftHist,  p.deviceId, p.driftMs);
+    pushHist(warpHist,   p.deviceId, ((parseFloat(p.playbackRate)||1) - 1) * 100);
+    pushHist(calHist,    p.deviceId, p.deviceLatencyMs);
+    pushRoleHist(p.deviceId, inferOctoState(p));
+    if (_recording) recordRow('sync', p);
+    render(); drawCharts();
+  })
+  .on('broadcast', { event: 'listener_health' }, ({ payload: p }) => {
+    devs[p.deviceId] = { ...p, _kind: 'health', lastSeen: Date.now() };
+    if (_recording) recordRow('health', p);
+    render();
+  })
+  .on('broadcast', { event: 'sync_event' }, ({ payload: p }) => {
+    events.unshift({ ...p, at: Date.now() });
+    if (events.length > 60) events.length = 60;
+    if (_recording) recordRow('event', { ...p, eventKind: p.kind });
+    renderEvents();
+  })
+  .subscribe(s => {
+    document.getElementById('status').textContent =
+      s === 'SUBSCRIBED' ? '● live — open a listener HUD to stream data' : s;
+  });
+
+// ── Recording ─────────────────────────────────────────────────────────────
+let _recording = false, _records = [];
+const REC_COLS = [
+  'timestamp','kind','deviceId','zone','driftMs','deviceLatencyMs','playbackRate',
+  'driftState','driftPending','terTrit','terOctoState','terOctoName','terGlobalDisruption',
+  'terCalState','terLastFloor','terConsecN','terPeerCount','terConsensus',
+  'terSnapCount','terBurstSnaps','stallCount','snapCount','seekIntendedMs','seekMeasuredMs',
+  'readyState','visibilityState','currentTime','expectedPos','refMs',
+  'hexKw','hexLines','hexMoving', // the well gauge — observe-only telemetry, rides along into exports
+  'track','slot',    // track-identity hash + spatial slot — splits become filterable, not inferential
+  'eventKind',       // launch vs correction vs join, no longer guesswork in exports
+  'note',
+];
+function toggleRecord() {
+  _recording = !_recording;
+  const btn = document.getElementById('rec-btn');
+  btn.textContent = _recording ? '⏺ Recording…' : '⏺ Record';
+  btn.classList.toggle('active', _recording);
+  if (_recording) { _records = []; document.getElementById('rec-count').textContent = '0 rows'; }
+}
+function recordRow(kind, p) {
+  const row = { timestamp: new Date().toISOString(), kind };
+  REC_COLS.slice(2).forEach(c => row[c] = p[c]);
+  if (kind === 'sync' && row.terTrit == null && p.driftMs != null)
+    row.terTrit = driftToTrit(p.driftMs);
+  _records.push(row);
+  document.getElementById('rec-count').textContent = _records.length + ' rows';
+}
+// ── Manual markers ────────────────────────────────────────────────────────
+// Ground truth beats inference: the human ear catches "perfectly synced" and
+// "it just jumped" instantly, faster than the corrector state can prove it.
+// One button press stamps the exact moment + a full snapshot of every
+// currently-visible device's state (drift/latency/rate/driftState/etc) —
+// always recorded (independent of the Record toggle) so a mark is never
+// lost because recording wasn't already on, and always shown live in the
+// events panel so it's visible without waiting for a CSV export.
+function markAll(label) {
+  const at = Date.now();
+  const ids = Object.keys(devs);
+  if (!ids.length) {
+    events.unshift({ kind: 'mark', deviceId: '(none)', note: label + ' — no devices visible', at });
+  }
+  ids.forEach(id => {
+    const snap = devs[id] || {};
+    const detail = `drift=${snap.driftMs ?? '?'}ms lat=${snap.deviceLatencyMs ?? '?'}ms `
+      + `rate=${snap.playbackRate ?? '?'} state=${snap.driftState ?? '?'}`;
+    _records.push({
+      timestamp: new Date(at).toISOString(), kind: 'mark', deviceId: id,
+      zone: snap.zone, driftMs: snap.driftMs, deviceLatencyMs: snap.deviceLatencyMs,
+      playbackRate: snap.playbackRate, driftState: snap.driftState,
+      snapCount: snap.snapCount, currentTime: snap.currentTime,
+      expectedPos: snap.expectedPos, refMs: snap.refMs, note: label,
+    });
+    document.getElementById('rec-count').textContent = _records.length + ' rows';
+    events.unshift({ kind: 'mark', deviceId: id, note: label + ' — ' + detail, at });
+  });
+  if (events.length > 60) events.length = 60;
+  _eventsOpen = true; // surface marks immediately, don't make the user hunt for them
+  renderEvents();
+  flashMarkBtn(label);
+}
+function markNote() {
+  const text = prompt('Note (anything you can\'t hear in the data):');
+  if (text == null || !text.trim()) return;
+  markAll('NOTE: ' + text.trim());
+}
+function flashMarkBtn(label) {
+  document.getElementById('hdr').classList.add('mark-flash');
+  setTimeout(() => document.getElementById('hdr').classList.remove('mark-flash'), 400);
+}
+function exportCSV() {
+  if (!_records.length) return;
+  const lines = [REC_COLS.join(',')];
+  _records.forEach(row => lines.push(REC_COLS.map(c => {
+    const v = row[c]; return v == null ? '' : String(v).replace(/,/g,';');
+  }).join(',')));
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'byob-obs-' + new Date().toISOString().replace(/[:.]/g,'-') + '.csv';
+  a.click();
+}
+
+// ── Housekeeping ──────────────────────────────────────────────────────────
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  Object.keys(devs).forEach(id => { if (now - devs[id].lastSeen > 30000) { delete devs[id]; changed = true; } });
+  if (changed) render();
+  drawCharts();
+}, 3000);
+</script>
+</body>
+</html>

@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>BYOB — Sync Dashboard</title>
+<style>
+:root{--teal:#00cc99;--orange:#f57e20;--red:#ef3c23;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#000;color:#0f0;font-family:monospace;font-size:12px;padding:16px;}
+h1{font-size:14px;color:var(--teal);letter-spacing:.2em;text-transform:uppercase;margin-bottom:12px;}
+#status{font-size:11px;color:#555;margin-bottom:12px;}
+#diff{display:none;margin-bottom:12px;padding:10px;border:1px solid var(--teal);border-radius:6px;}
+#diff-label{font-size:10px;color:var(--teal);margin-bottom:4px;letter-spacing:.1em;text-transform:uppercase;}
+#diff-val{font-size:20px;font-weight:bold;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px;}
+.card{background:#0a0a0a;border:1px solid #1a1a1a;border-radius:6px;padding:10px;}
+.card-hdr{display:flex;justify-content:space-between;margin-bottom:6px;}
+.dev-id{color:var(--orange);font-weight:bold;}
+.dev-age{color:#444;font-size:10px;}
+.row{display:flex;justify-content:space-between;border-bottom:1px solid #111;padding:2px 0;}
+.k{color:#555;}.v{color:#0f0;text-align:right;}
+.warn{color:var(--orange);}.bad{color:var(--red);}
+#rec-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;}
+#rec-toolbar button{background:#0a0a0a;border:1px solid #333;color:#0f0;font-family:monospace;font-size:11px;padding:6px 10px;border-radius:4px;cursor:pointer;}
+#rec-toolbar button:hover{border-color:var(--teal);}
+#rec-btn.active{border-color:var(--red);color:var(--red);}
+#rec-count{color:#555;font-size:10px;}
+#drift-chart-wrap{margin-bottom:12px;background:#050505;border:1px solid #1a1a1a;border-radius:6px;padding:8px;}
+#drift-chart-title{font-size:10px;color:var(--teal);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;}
+#drift-chart{display:block;width:100%;height:140px;}
+#drift-legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;font-size:10px;}
+.legend-item{display:flex;align-items:center;gap:4px;}
+.legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+</style>
+</head>
+<body>
+<h1>📡 BYOB Sync Dashboard</h1>
+<div id="status">Connecting…</div>
+<div id="rec-toolbar">
+  <button id="rec-btn" onclick="toggleRecord()">⏺ Record</button>
+  <button onclick="exportCSV()">⬇ Export CSV</button>
+  <span id="rec-count">0 rows</span>
+</div>
+<div id="drift-chart-wrap">
+  <div id="drift-chart-title">live drift — all devices</div>
+  <canvas id="drift-chart"></canvas>
+  <div id="drift-legend"></div>
+</div>
+<div id="cal-chart-wrap" style="margin-bottom:12px;background:#050505;border:1px solid #1a1a1a;border-radius:6px;padding:8px;">
+  <div style="font-size:10px;color:var(--orange);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;">
+    latency convergence — deviceLatencyMs per device  <span style="color:#444;font-size:9px;margin-left:8px;">▼ = auto-cal correction fired</span>
+  </div>
+  <canvas id="cal-chart" style="display:block;width:100%;height:120px;"></canvas>
+</div>
+<div id="diff">
+  <div id="diff-label">position delta between devices</div>
+  <div id="diff-val">—</div>
+</div>
+<div id="events" class="card" style="display:none;margin-bottom:12px;">
+  <div class="card-hdr"><span class="dev-id">↻ resync events</span></div>
+</div>
+<div class="grid" id="grid"></div>
+<script src="byob-shim.js"></script>
+<script>
+const { createClient } = supabase;
+const db = createClient('http://localhost:3100', 'local');
+
+const devs = {};
+const _events = [];
+
+// ── Drift chart ───────────────────────────────────────────
+const CHART_COLORS = ['#00cc99','#f57e20','#ef3c23','#4fc3f7','#ce93d8','#fff176','#a5d6a7','#ff8a65'];
+const CHART_WINDOW_MS = 180000; // 3 minutes
+const CHART_Y_RANGE   = 200;    // ±200ms
+const driftHistory = {};        // deviceId → [{ts, driftMs}]
+const calHistory   = {};        // deviceId → [{ts, latencyMs, correction, correctionMs?}]
+const devColorMap  = {};        // deviceId → color (stable across renders)
+let   _colorIdx    = 0;
+
+function devColor(id) {
+  if (!devColorMap[id]) devColorMap[id] = CHART_COLORS[_colorIdx++ % CHART_COLORS.length];
+  return devColorMap[id];
+}
+
+function pushDriftHistory(deviceId, driftMs) {
+  if (!driftHistory[deviceId]) driftHistory[deviceId] = [];
+  const h = driftHistory[deviceId];
+  h.push({ ts: Date.now(), driftMs: parseFloat(driftMs) });
+  // Keep only points within the window
+  const cutoff = Date.now() - CHART_WINDOW_MS - 5000;
+  while (h.length && h[0].ts < cutoff) h.shift();
+}
+
+function drawDriftChart() {
+  const canvas = document.getElementById('drift-chart');
+  if (!canvas) return;
+  // Match canvas pixel size to CSS display size
+  canvas.width  = canvas.offsetWidth  || 800;
+  canvas.height = canvas.offsetHeight || 140;
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#050505';
+  ctx.fillRect(0, 0, W, H);
+
+  // Horizontal grid lines at ±50, ±100, ±150ms
+  ctx.font = '9px monospace';
+  [-150,-100,-50,50,100,150].forEach(ms => {
+    const y = H/2 - (ms / CHART_Y_RANGE) * (H/2 - 6);
+    ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = '#333';
+    ctx.fillText(ms + 'ms', 3, y - 2);
+  });
+
+  // Zero line
+  ctx.strokeStyle = '#00cc9944'; ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#00cc9988'; ctx.font = '9px monospace';
+  ctx.fillText('0ms', 3, H/2 - 2);
+
+  const now = Date.now();
+  const deviceIds = Object.keys(driftHistory).filter(id => driftHistory[id].length >= 2);
+
+  deviceIds.forEach(id => {
+    const points = driftHistory[id];
+    const color  = devColor(id);
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    let started = false;
+    points.forEach(p => {
+      const x = W * (1 - (now - p.ts) / CHART_WINDOW_MS);
+      if (x < 0) return;
+      const clamped = Math.max(-CHART_Y_RANGE, Math.min(CHART_Y_RANGE, p.driftMs));
+      const y = H/2 - (clamped / CHART_Y_RANGE) * (H/2 - 6);
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Current value dot
+    const last = points[points.length - 1];
+    const lx = W * (1 - (now - last.ts) / CHART_WINDOW_MS);
+    if (lx >= 0) {
+      const clamped = Math.max(-CHART_Y_RANGE, Math.min(CHART_Y_RANGE, last.driftMs));
+      const ly = H/2 - (clamped / CHART_Y_RANGE) * (H/2 - 6);
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(lx, ly, 3, 0, Math.PI*2); ctx.fill();
+      // Label: deviceId short + current drift
+      ctx.fillStyle = color; ctx.font = '9px monospace';
+      ctx.fillText(id.slice(-5) + ' ' + Math.round(last.driftMs) + 'ms', Math.max(4, lx - 40), ly - 6);
+    }
+  });
+
+  // Legend
+  const legend = document.getElementById('drift-legend');
+  if (legend) {
+    legend.innerHTML = deviceIds.map(id =>
+      `<span class="legend-item"><span class="legend-dot" style="background:${devColor(id)}"></span><span style="color:${devColor(id)}">${id}</span></span>`
+    ).join('');
+  }
+}
+
+function drawCalChart() {
+  const canvas = document.getElementById('cal-chart');
+  if (!canvas) return;
+  canvas.width  = canvas.offsetWidth  || 800;
+  canvas.height = canvas.offsetHeight || 120;
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const CAL_WINDOW_MS = 300000; // 5 minutes
+  const now = Date.now();
+
+  ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, W, H);
+
+  // Y axis: 0 to 1200ms
+  const Y_MAX = 1200, Y_MIN = 0;
+  const toY = ms => H - ((ms - Y_MIN) / (Y_MAX - Y_MIN)) * H;
+  const toX = ts => W * (1 - (now - ts) / CAL_WINDOW_MS);
+
+  // Grid lines at 200, 400, 600, 800, 1000ms
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 0.5;
+  [200, 400, 600, 800, 1000].forEach(ms => {
+    const y = toY(ms);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.fillStyle = '#333'; ctx.font = '9px monospace'; ctx.textAlign = 'right';
+    ctx.fillText(ms + 'ms', W - 2, y - 2);
+  });
+
+  // One line per device
+  const devices = Object.keys(calHistory);
+  devices.forEach(id => {
+    const h = calHistory[id].filter(p => now - p.ts < CAL_WINDOW_MS);
+    if (h.length < 1) return;
+    const col = devColor(id);
+
+    // Draw line
+    ctx.strokeStyle = col; ctx.lineWidth = 2;
+    ctx.beginPath();
+    h.forEach((p, i) => {
+      const x = toX(p.ts), y = toY(p.latencyMs);
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // Correction event markers — vertical tick + label
+    h.filter(p => p.correction).forEach(p => {
+      const x = toX(p.ts);
+      ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = col; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left';
+      const label = (p.correctionMs > 0 ? '+' : '') + p.correctionMs + 'ms';
+      ctx.fillText(label, x + 2, toY(p.latencyMs) - 4);
+    });
+
+    // Device label at right edge
+    const last = h[h.length - 1];
+    const lx = toX(last.ts);
+    ctx.fillStyle = col; ctx.font = '9px monospace'; ctx.textAlign = 'left';
+    ctx.fillText(id.slice(-6) + ' ' + Math.round(last.latencyMs) + 'ms', Math.min(lx + 4, W - 80), toY(last.latencyMs) - 4);
+  });
+}
+
+function sendLatencyCmd(deviceId, deltaMs) {
+  debugCh.send({ type: 'broadcast', event: 'latency_cmd', payload: { deviceId, deltaMs } });
+}
+
+// Reset calibration: -1200 clamps stored latency to 0 on the listener, forcing
+// auto-cal to relearn the device's true BT latency from scratch. The live fix
+// for cap-pinned devices (corrections swallowed at 1200ms) and for stale
+// ratchet-era values that leave a phone audibly behind with clean drift numbers.
+function resetCal(deviceId) {
+  sendLatencyCmd(deviceId, -1200);
+}
+
+function nudgeCal(deviceId) {
+  const el = document.getElementById('nudge-' + deviceId);
+  const ms = parseFloat(el?.value);
+  if (!isNaN(ms) && ms !== 0) sendLatencyCmd(deviceId, ms);
+  if (el) el.value = '';
+}
+
+// Straggler detection — the two signatures visible in telemetry:
+//  cap-pinned: stored latency at the 1200ms cap (auto-cal corrections swallowed)
+//  constant offset: drift parked at a stable nonzero value (roving/floor — the
+//  corrector reads it but can't close it). The ear-only case (sound late,
+//  drift clean) is NOT detectable here — that one stays ear → nudge.
+function stragglerFlag(d) {
+  if (parseFloat(d.deviceLatencyMs) >= 1200) return 'CAP-PINNED';
+  const h = (driftHistory[d.deviceId] || []).slice(-10);
+  if (h.length >= 8) {
+    const vals = h.map(p => p.driftMs).sort((a, b) => a - b);
+    const med = vals[Math.floor(vals.length / 2)];
+    const spread = vals[vals.length - 1] - vals[0];
+    if (Math.abs(med) > 60 && spread < 50) return 'CONST OFFSET ' + Math.round(med) + 'ms';
+  }
+  return null;
+}
+
+function renderEvents() {
+  const el = document.getElementById('events');
+  if (!_events.length) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = '<div class="card-hdr"><span class="dev-id">↻ resync events</span></div>' +
+    _events.map(e =>
+      `<div class="row"><span class="k">${e.deviceId}</span><span class="v">${e.kind} · ${Math.round((Date.now()-e.at)/1000)}s ago</span></div>`
+    ).join('');
+}
+
+// Two distinct telemetry streams share the byob_debug channel with incompatible
+// schemas — keep them tagged and rendered separately rather than merging (that's
+// what caused the garbled "epoch-ms as playback position" display before):
+//   'hud_data'        — broadcastHUD(): real audio-sync data, only sent while a
+//                       listener has their in-app HUD panel open
+//   'listener_health' — broadcastDebug(): always-on GPS/connection health probe
+const debugCh = db.channel('byob_debug')
+  .on('broadcast', { event: 'hud_data' }, ({ payload }) => {
+    devs[payload.deviceId] = { ...payload, _kind: 'sync', lastSeen: Date.now() };
+    if (payload.driftMs != null && !isNaN(parseFloat(payload.driftMs))) {
+      pushDriftHistory(payload.deviceId, payload.driftMs);
+    }
+    // Track latency for convergence chart
+    const latMs = parseFloat(payload.deviceLatencyMs);
+    if (!isNaN(latMs) && latMs > 0) {
+      if (!calHistory[payload.deviceId]) calHistory[payload.deviceId] = [];
+      const h = calHistory[payload.deviceId];
+      const last = h[h.length - 1];
+      // Only push if value changed or first reading — avoids redundant flat segments
+      if (!last || last.latencyMs !== latMs) {
+        h.push({ ts: Date.now(), latencyMs: latMs, correction: false });
+        if (h.length > 200) h.shift();
+      }
+    }
+    if (_recording) recordRow('sync', payload);
+    render();
+    drawDriftChart();
+    drawCalChart();
+  })
+  .on('broadcast', { event: 'listener_health' }, ({ payload }) => {
+    devs[payload.deviceId] = { ...payload, _kind: 'health', lastSeen: Date.now() };
+    if (_recording) recordRow('health', payload);
+    render();
+  })
+  // Forced re-sync markers (track change / DJ's hard_sync) — broadcast by
+  // listener.html so the recorded timeline shows exactly when each
+  // device freshly anchored to playback_started_at, for comparing drift
+  // right before/after.
+  .on('broadcast', { event: 'sync_event' }, ({ payload }) => {
+    _events.unshift({ ...payload, at: Date.now() });
+    if (_events.length > 20) _events.length = 20;
+    if (_recording) recordRow('event', { ...payload, note: payload.kind });
+    renderEvents();
+  })
+  .on('broadcast', { event: 'correction_event' }, ({ payload }) => {
+    // Auto-cal correction — log to convergence chart
+    const id = payload.deviceId;
+    if (!calHistory[id]) calHistory[id] = [];
+    calHistory[id].push({ ts: Date.now(), latencyMs: payload.newLatencyMs, correction: true,
+                          prevMs: payload.prevLatencyMs, correctionMs: payload.correctionMs });
+    if (calHistory[id].length > 200) calHistory[id].shift();
+    drawCalChart();
+  })
+  .subscribe(s => {
+    document.getElementById('status').textContent =
+      s === 'SUBSCRIBED' ? '● Listening — open a listener\'s HUD for full sync data; GPS/connection health streams automatically' : s;
+  });
+
+// Session recording — buffers every hud_data/listener_health row (with a wall-clock
+// timestamp) so a baseline-vs-engine comparison run can be exported and diffed
+// offline rather than eyeballed live. CSV columns cover both 'sync' and 'health'
+// payload shapes; unused fields per row are left blank.
+let _recording = false;
+let _records = [];
+const REC_COLS = ['timestamp','kind','deviceId','build','browser','zone','elapsed','currentTime','expectedPos',
+  'driftMs','duration','deviceLatencyMs','outputLatencyMs','calOffset','syncState','playbackRate',
+  'driftState','driftPending','src','visibilityState','lastDriftCheckAgoMs','readyState','stallCount','isMuted',
+  'engineLagMs','snapCount','seekIntendedMs','seekMeasuredMs','note'];
+
+function toggleRecord() {
+  _recording = !_recording;
+  const btn = document.getElementById('rec-btn');
+  btn.textContent = _recording ? '⏺ Recording…' : '⏺ Record';
+  btn.classList.toggle('active', _recording);
+  if (_recording) { _records = []; document.getElementById('rec-count').textContent = '0 rows'; }
+}
+
+function recordRow(kind, p) {
+  const row = { timestamp: new Date().toISOString(), kind };
+  REC_COLS.slice(2).forEach(c => row[c] = p[c]);
+  _records.push(row);
+  document.getElementById('rec-count').textContent = _records.length + ' rows';
+}
+
+function exportCSV() {
+  if (!_records.length) { return; }
+  const lines = [REC_COLS.join(',')];
+  _records.forEach(row => {
+    lines.push(REC_COLS.map(c => {
+      const v = row[c];
+      return v === undefined || v === null ? '' : String(v).replace(/,/g, ';');
+    }).join(','));
+  });
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'byob-debug-session-' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function render() {
+  const ids = Object.keys(devs);
+  document.getElementById('grid').innerHTML = ids.map(id => {
+    const d = devs[id];
+    const age = Math.round((Date.now() - d.lastSeen) / 1000);
+    return d._kind === 'sync' ? renderSyncCard(d, age) : renderHealthCard(d, age);
+  }).join('');
+
+  // Only devices actually playing count — a phone parked at 0 waiting for its
+  // start-tap isn't "drifted", it's silent. Two honest numbers:
+  //   drift spread — how far apart the correctors think they are AFTER each
+  //     device's intentional latency/scatter compensation; this is the number
+  //     that approximates audible misalignment (if calibration is right).
+  //   position delta — raw currentTime gap, but projected to a common instant
+  //     first (snapshots arrive seconds apart; comparing them raw double-counts
+  //     the sampling skew, which is how this readout used to overstate).
+  const playing = ids.filter(id => devs[id]._kind === 'sync')
+    .map(id => devs[id])
+    .filter(d => d.playing && !d.paused && parseFloat(d.currentTime) > 0 && !isNaN(parseFloat(d.elapsed)));
+  if (playing.length >= 2) {
+    const drifts = playing.map(d => parseFloat(d.driftMs)).filter(v => !isNaN(v));
+    const spread = drifts.length >= 2 ? Math.max(...drifts) - Math.min(...drifts) : NaN;
+    const e0 = Math.max(...playing.map(d => parseFloat(d.elapsed)));
+    const pos = playing.map(d => parseFloat(d.currentTime) + (e0 - parseFloat(d.elapsed)) * (parseFloat(d.playbackRate) || 1));
+    const delta = (Math.max(...pos) - Math.min(...pos)) * 1000;
+    const el = document.getElementById('diff-val');
+    el.textContent = (isNaN(spread) ? '—' : spread.toFixed(0) + 'ms drift spread') +
+      ' · ' + delta.toFixed(0) + 'ms raw (incl. intentional latency offsets)';
+    const worst = isNaN(spread) ? delta : spread;
+    el.style.color = worst > 500 ? '#ef3c23' : worst > 100 ? '#f57e20' : '#00cc99';
+    document.getElementById('diff-label').textContent =
+      'sync across ' + playing.length + ' playing device' + (playing.length > 1 ? 's' : '');
+    document.getElementById('diff').style.display = 'block';
+  }
+}
+
+function renderSyncCard(d, age) {
+  const dm = parseFloat(d.driftMs);
+  const dc = Math.abs(dm) > 500 ? 'bad' : Math.abs(dm) > 100 ? 'warn' : '';
+  return `<div class="card">
+    <div class="card-hdr">
+      <span class="dev-id">🎧 ${d.deviceId} <span style="color:${d.build==='listener'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'} · ${d.browser || '?'}</span></span>
+      <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
+    </div>
+    ${r('elapsed',     d.elapsed    ? d.elapsed + 's'    : '—')}
+    ${r('currentTime', d.currentTime? d.currentTime+'s'  : '—')}
+    ${r('expectedPos', d.expectedPos? d.expectedPos+'s'  : '—')}
+    ${r('DRIFT',       d.driftMs !== null && d.driftMs !== undefined ? d.driftMs+'ms':'—', dc)}
+    ${r('engineLag',   d.engineLagMs!=null ? d.engineLagMs+'ms' : '—',
+        d.engineLagMs!=null && Math.abs(d.engineLagMs - (parseFloat(d.driftMs)||0)) > 100 ? 'warn' : '')}
+    ${r('BT latency',  d.deviceLatencyMs+'ms', d.deviceLatencyMs===0?'warn':'')}
+    ${r('outputLatency', d.outputLatencyMs != null ? d.outputLatencyMs+'ms' : 'n/a',
+        d.outputLatencyMs != null && Math.abs(d.outputLatencyMs - d.deviceLatencyMs) > 150 ? 'warn' : '')}
+    ${r('calOffset',   d.calOffset!=null ? (d.calOffset>=0?'+':'')+d.calOffset+'ms' : '—', d.calOffset===0?'warn':'')}
+    ${r('syncState',   d.syncState || '—')}
+    ${r('rate',        d.playbackRate || '—', d.playbackRate && Math.abs(parseFloat(d.playbackRate) - 1) > 0.012 ? 'warn' : '')}
+    ${r('driftState',  (d.driftState || '—') + (d.driftPending ? ' (pending)' : ''), d.driftState==='ducking'?'bad':d.driftState==='warping'?'warn':'')}
+    ${r('src',         d.src || '—')}
+    ${r('visibility',  d.visibilityState || '—', d.visibilityState==='hidden'?'warn':'')}
+    ${r('lastDriftChk', d.lastDriftCheckAgoMs!=null ? d.lastDriftCheckAgoMs+'ms ago' : '—',
+        d.lastDriftCheckAgoMs!=null && d.lastDriftCheckAgoMs>10000 ? 'bad' : d.lastDriftCheckAgoMs!=null && d.lastDriftCheckAgoMs>6000 ? 'warn' : '')}
+    ${r('readyState',  d.readyState ?? '—', (d.readyState!=null && d.readyState<3)?'warn':'')}
+    ${r('stalls',      d.stallCount ?? 0, (d.stallCount>0)?'warn':'')}
+    ${r('muted',       d.isMuted ? 'yes' : 'no', d.isMuted?'warn':'')}
+    ${r('snaps',       d.snapCount ?? 0)}
+    ${r('seek intend', d.seekIntendedMs!=null ? d.seekIntendedMs+'ms' : '—')}
+    ${r('seek landed', d.seekMeasuredMs!=null ? d.seekMeasuredMs+'ms' : '—',
+        d.seekIntendedMs!=null && d.seekMeasuredMs!=null && Math.abs(d.seekIntendedMs) > 100 && Math.abs(d.seekMeasuredMs) < Math.abs(d.seekIntendedMs) * 0.3 ? 'bad' : '')}
+    ${(() => { const f = stragglerFlag(d); return f ? `<div class="row" style="border-bottom:none;"><span class="k" style="color:#f5443c;font-weight:bold;">⚠ STRAGGLER</span><span class="v" style="color:#f5443c;">${f}</span></div>` : ''; })()}
+    <div class="row" style="padding-top:6px;gap:4px;justify-content:flex-end;border-bottom:none;flex-wrap:wrap;">
+      <button onclick="sendLatencyCmd('${d.deviceId}',-50)" style="background:#0a0a0a;border:1px solid #333;color:#f57e20;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">−50ms BT</button>
+      <button onclick="sendLatencyCmd('${d.deviceId}',+50)" style="background:#0a0a0a;border:1px solid #333;color:#f57e20;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">+50ms BT</button>
+      <input id="nudge-${d.deviceId}" type="number" step="10" placeholder="±ms" style="width:52px;background:#0a0a0a;border:1px solid #333;color:#eee;font-family:monospace;font-size:10px;padding:3px 5px;border-radius:3px;">
+      <button onclick="nudgeCal('${d.deviceId}')" style="background:#0a0a0a;border:1px solid #333;color:#f57e20;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">NUDGE</button>
+      <button onclick="resetCal('${d.deviceId}')" style="background:#1a0505;border:1px solid #f5443c;color:#f5443c;font-family:monospace;font-size:10px;padding:3px 7px;border-radius:3px;cursor:pointer;">RESET CAL</button>
+    </div>
+  </div>`;
+}
+
+function renderHealthCard(d, age) {
+  const distM = parseFloat(d.driftMs); // meters from zone center (see broadcastDebug)
+  const dc = isNaN(distM) ? '' : (distM > 300 ? 'bad' : distM > (d.zone !== 'none' ? 100 : 1e9) ? 'warn' : '');
+  return `<div class="card">
+    <div class="card-hdr">
+      <span class="dev-id">📡 ${d.deviceId} <span style="color:${d.build==='listener'?'var(--teal)':'#888'};font-size:9px;">${d.build || '?'} · ${d.browser || '?'}</span></span>
+      <span class="dev-age">${age}s ago · ${d.zone || 'no zone'}</span>
+    </div>
+    ${r('dist to zone', !isNaN(distM) ? distM.toFixed(0)+'m' : '—', dc)}
+    ${r('GPS coords',   d.expectedPos || '—')}
+    ${r('bearing',      d.src || '—')}
+    ${r('presence',     d.deviceLatencyMs ? '✓ broadcasting' : '✗ idle', d.deviceLatencyMs ? '' : 'warn')}
+    ${r('status',       d.syncState || '—')}
+  </div>`;
+}
+
+function r(key, val, cls='') {
+  return `<div class="row"><span class="k">${key}</span><span class="v ${cls}">${val}</span></div>`;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+  Object.keys(devs).forEach(id => { if (now - devs[id].lastSeen > 30000) { delete devs[id]; changed = true; } });
+  if (changed) render();
+  drawDriftChart(); // keep chart ticking even without new data (moves x-axis forward)
+}, 5000);
+</script>
+</body>
+</html>
