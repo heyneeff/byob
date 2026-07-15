@@ -1304,7 +1304,7 @@ function onBoomyTap(){
   if(audio.src && audio.src !== ''){
     startFadedPlay();
   } else if(activeZone?.current_track_url){
-    audio.src = activeZone.current_track_url;
+    audio.src = resolveStorageUrl(activeZone.current_track_url);
     audio.loop = true;
     audio.load();
     audio.addEventListener('loadedmetadata', ()=>{
@@ -1360,6 +1360,23 @@ function zoomToRally() {
 // ════════════════════════════════════════════════════════════
 // LOAD TRACK — uses <audio> element, no fetch needed
 // ════════════════════════════════════════════════════════════
+// Storage URLs resolve against the ACTIVE relay origin (LAN or tunnel), not
+// whatever origin was baked into the tracks row at upload time. Same file,
+// nearest door: a phone on ?server=http://<lan-ip>:3100 streams off the LAN;
+// a tunnel phone resolves to the identical canonical URL (no-op). Also makes
+// listeners immune to baked-origin drift (dead quick-tunnel hosts, localhost
+// rows). Track identity (window._currentTrackUrl, zone-row comparisons)
+// keeps the ORIGINAL url — resolution happens only at the src assignment.
+function resolveStorageUrl(url) {
+  try {
+    const u = new URL(url);
+    if (!u.pathname.startsWith('/storage/')) return url;
+    const server = localStorage.getItem('byob_server');
+    if (!server) return url;
+    return new URL(server).origin + u.pathname + u.search;
+  } catch (e) { return url; }
+}
+
 function loadTrack(url, title, startedAt, playAt, playFromS) {
   // Prevent double-load: zone channel + hard_sync can both fire for the same
   // track change within milliseconds. A second loadTrack while the first is
@@ -1429,7 +1446,7 @@ function loadTrack(url, title, startedAt, playAt, playFromS) {
   // Silence before load — prevents hearing position 0 while the browser
   // buffers and seekToSync waits for loadedmetadata (can take 1-5s on BT).
   audio.volume = 0;
-  audio.src = url;
+  audio.src = resolveStorageUrl(url);
   audio.loop = true;
 
   audio.addEventListener('loadedmetadata', function onMeta() {
@@ -2971,6 +2988,25 @@ function onZoneBtn() {
 
   // ── MAP — starts at exact GPS location ───────────────────
 function initMap() {
+  // LAN-test GPS fix: geolocation requires a secure context, so a page
+  // served over plain http on the LAN (?server=http://<lan-ip>:3100 A/B
+  // sessions) gets no fixes at all. `?fix=lat,lng` injects a fixed position
+  // through the exact same handlers watchPosition would call — everything
+  // downstream (markers, presence, checkGeofences) is unchanged. Absent the
+  // param, this is byte-for-byte the native geolocation object.
+  window._geo = (() => {
+    const fix = new URLSearchParams(location.search).get('fix');
+    if (!fix) return navigator.geolocation;
+    const [flat, flng] = fix.split(',').map(Number);
+    if (!isFinite(flat) || !isFinite(flng)) return navigator.geolocation;
+    const mk = () => ({ coords: { latitude: flat, longitude: flng, accuracy: 5 }, timestamp: Date.now() });
+    return {
+      getCurrentPosition: (ok) => ok(mk()),
+      watchPosition: (ok) => { ok(mk()); return setInterval(() => ok(mk()), 5000); },
+      clearWatch: (id) => clearInterval(id),
+    };
+  })();
+
   // Start zoomed out to show zones, no user marker yet
   leafletMap = L.map('map', { zoomControl:true, attributionControl:false, preferCanvas:true })
     .setView([39.7392, -104.9903], 13);
@@ -2985,7 +3021,7 @@ function initMap() {
   [100,300,700].forEach(ms => setTimeout(() => leafletMap.invalidateSize(), ms));
 
   // Get real GPS — only THEN place the user marker
-  navigator.geolocation.getCurrentPosition(pos => {
+  window._geo.getCurrentPosition(pos => {
     userLat = pos.coords.latitude;
     userLng = pos.coords.longitude;
     placeUserMarker(userLat, userLng);
@@ -2997,7 +3033,7 @@ function initMap() {
   }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
 
   // Continuously update position — also checks geofences automatically
-  navigator.geolocation.watchPosition(pos => {
+  window._geo.watchPosition(pos => {
     userLat = pos.coords.latitude;
     userLng = pos.coords.longitude;
     if (!userMarker) {
@@ -3040,7 +3076,7 @@ function centerOnUser() {
     return;
   }
   // GPS not yet locked — request it now
-  navigator.geolocation.getCurrentPosition(pos => {
+  window._geo.getCurrentPosition(pos => {
     userLat = pos.coords.latitude;
     userLng = pos.coords.longitude;
     if (!userMarker) placeUserMarker(userLat, userLng);
