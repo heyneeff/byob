@@ -1442,3 +1442,43 @@ three relay restarts — bridge restart fixed the backend path (probe
 create_zone via WS → 21ms success); remaining failures were the stale
 browser page. Lesson for the runbook: after any relay restart, bounce the
 bridge AND reload its page. Zone "Honest Signal" (723ad9b2, r=20km) active.
+
+## 2026-07-14 (night) — the well gauge (casts 48 / 42.1.4→12 / 51.2.3→34)
+
+User's idea: each phone weighs where it's at as a hexagram; the channel
+carries a hexagram that categorizes it. Cast 48 (The Well) reframed it
+precisely: the shared reference is the well — sound, central, unchanging —
+and what differs per phone is its ACCESS: rope and jug. 42.1.4→12 gave the
+architecture (deep foundation; a mediator that reports upward to the
+console; resolved-state Standstill = the gauge NEVER acts — written
+invariant). 51.2.3→34: it helps the way thunder helps — revelation met
+with discipline, don't chase every lost treasure it shows.
+
+Implementation (`8687bbc`, observe-only, additive telemetry lane):
+- `layer.js deviceHexagram()` — lower trigram from lived access state,
+  bottom-up: JUG (calibration settled), ROPE (clock steady — no cascade
+  pull in 120s), WATER (currently trit-P). Upper trigram = octo role
+  (ANCHORING=☰ … REACHING=☷). Moving lines = bits flipped within 120s.
+  King Wen via verified 8×8 table. Broadcast as hexKw/hexLines/hexMoving
+  on both the trit channel and hud_data. NOTHING reads it back — invariant
+  in the code comment: "the well gauge observes; it never acts."
+- `overlay.html` — per-device glyph badge (䷀–䷿, ✶ = moving lines); new
+  "the well" panel: ROOM hexagram by per-line majority across playing
+  devices, lines where the room disagrees rendered as contested/moving.
+- Found & fixed while there: overlay's own `computeRefMs` still used the
+  pre-daab95f minus form — the Room Spread gauge had been measuring the
+  retired formula since the sign fix. Now matched.
+- Discovered: the `_calSeq` octonary trigram documented in SYNC_ENGINE.md
+  Step 7 is RETIRED from the code (doc-only survivor of an old design) —
+  Step 7 needs a doc pass next session.
+- Emergent semantics, verified in the math: perfect device = 1 Creative;
+  lost device = 2 Receptive; uncalibrated-but-flowing mid-listen = 48 The
+  Well itself; and a device with broken access wearing an ANCHORING face —
+  the confident liar — reads 12 Standstill. The gauge names untrustworthy
+  confidence with its own invariant hexagram.
+
+Live during the build: rrqkto↔mrviaw trading small mutual pulls
+(−63..−120ms, 1-4min cadence, both-negative) — the named creep target,
+unchanged, next session's first analysis. Verify the gauge live: refresh
+phones + overlay, expect glyphs per card and a room hexagram that reads
+Creative-adjacent when the room is truly settled.
