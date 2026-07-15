@@ -215,8 +215,33 @@ const server = createServer((req, res) => {
 });
 
 const wss = new WebSocketServer({ server });
+
+// A socket error with no 'error' listener THROWS and kills the whole
+// process — an ECONNRESET from any one phone on a flaky tunnel was enough
+// to take the relay down silently (observed live 2026-07-14, twice).
+// Every socket gets a listener; the process gets last-resort traps that
+// log loudly and keep serving (a live room is better served degraded than
+// dead).
+wss.on('error', e => console.error(`[${new Date().toISOString()}] wss error:`, e.message));
+server.on('error', e => console.error(`[${new Date().toISOString()}] http error:`, e.message));
+process.on('uncaughtException', e => console.error(`[${new Date().toISOString()}] UNCAUGHT:`, e.stack || e.message));
+process.on('unhandledRejection', e => console.error(`[${new Date().toISOString()}] UNHANDLED REJECTION:`, e && (e.stack || e.message || e)));
+
+// Keepalive: tunneled sockets idle out invisibly; ping every 25s, reap
+// sockets that miss two pongs.
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) { try { ws.terminate(); } catch (e) {} continue; }
+    ws.isAlive = false;
+    try { ws.ping(); } catch (e) {}
+  }
+}, 25_000);
+
 wss.on('connection', ws => {
   ws.channels = new Set();
+  ws.isAlive = true;
+  ws.on('pong', () => { ws.isAlive = true; });
+  ws.on('error', e => console.error(`[${new Date().toISOString()}] socket error:`, e.message));
   ws.on('message', raw => {
     let msg; try { msg = JSON.parse(raw); } catch { return; }
     const reply = obj => ws.readyState === 1 && ws.send(JSON.stringify({ id: msg.id, ...obj }));

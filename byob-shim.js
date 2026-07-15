@@ -92,6 +92,31 @@
 
     // ---------- one WebSocket, auto-reconnect, resubscribe ----------
     let ws = null, wsOpen = false, nextId = 1;
+    let wsFailures = 0;
+
+    // A quick tunnel can die while this page lives; the published
+    // /relay.json on this origin is the recovery channel. After every 6
+    // consecutive failed reconnects (~10s+), re-fetch it — if it names a
+    // different relay, adopt it IN PLACE (httpUrl/wsUrl are read dynamically
+    // by connect() and normalizeUrls(), so no reload is needed). This
+    // deliberately outranks a stale ?server= override: a dead explicit URL
+    // is worse than any published fallback.
+    async function reResolveServer() {
+      if (!IS_BROWSER || !location.protocol.startsWith('http') ||
+          /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) return;
+      try {
+        const r = await fetch('/relay.json?t=' + Date.now(), { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+        if (!r.ok) return;
+        const j = await r.json();
+        const fresh = j && j.relay && String(j.relay).replace(/\/+$/, '');
+        if (fresh && fresh !== httpUrl) {
+          console.log('[byob-shim] relay moved — adopting', fresh, '(was', httpUrl + ')');
+          httpUrl = fresh;
+          wsUrl = fresh.replace(/^http/, 'ws');
+          store.set('byob_server', fresh);
+        }
+      } catch (e) {}
+    }
     const pending = new Map();      // id -> resolve
     const sendQueue = [];
     const channelSubs = new Map();  // channelName -> Set<handlerFns for bcast>
@@ -114,6 +139,7 @@
       ws = new WebSocket(wsUrl);
       ws.onopen = () => {
         wsOpen = true;
+        wsFailures = 0;
         for (const raw of resubs) ws.send(raw);
         while (sendQueue.length) ws.send(sendQueue.shift());
       };
@@ -140,9 +166,12 @@
       };
       ws.onclose = () => {
         wsOpen = false;
+        wsFailures++;
         for (const [, resolve] of pending) resolve({ data: null, error: { message: 'relay connection lost' } });
         pending.clear();
-        setTimeout(connect, 1000 + Math.random() * 1000);
+        if (wsFailures % 6 === 0) reResolveServer();
+        // mild backoff, capped — a dead hostname shouldn't be hammered at 1Hz
+        setTimeout(connect, Math.min(5000, 1000 + wsFailures * 300) + Math.random() * 1000);
       };
       ws.onerror = () => { try { ws.close(); } catch (e) {} };
     }
