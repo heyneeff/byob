@@ -1818,3 +1818,32 @@ resyncs were unaffected.
 **Next (per approved plan):** telemetry pack (track-identity hash in
 hud/trit/CSV rows, event-kind column, throttled flag, wrapLag display
 pass) — observe-only, no cast; then throttle probe + clean LAN churn cell.
+
+## 2026-07-15 (evening, cont.) — telemetry pack: splits become visible, not inferential
+
+Entry-campaign step 1 (observe-only gate — no cast per ENTRY_AND_ORCHESTRA
+sequence). All additions are broadcast-payload/display fields; no engine
+read-path consults any of them (well-gauge law).
+
+- **Track identity everywhere:** `_trackIdHash()` (listener.html) — djb2/
+  base36 hash of the CANONICAL `window._currentTrackUrl`, so LAN- and
+  tunnel-origin phones on the same file report the same id; 'live' on
+  streams. Rides in hud_data (dev_ + ter_ lanes), the byob_ternary trit
+  broadcast (observe-only until the same-epoch consensus rule gets its own
+  cast), overlay REC_COLS (`track`,`slot`), and the monitor CSV.
+- **Event kind in exports:** sync_event rows now carry `eventKind`
+  (track_change / hard_sync / …) in REC_COLS — launch forensics stop being
+  guesswork.
+- **Throttle visibility:** ter_ hud rows now carry `visibilityState`;
+  overlay shows ⏾ THROTTLED badge, monitor tags devices `⏾ hidden` —
+  stragglers visible BEFORE they miss a launch.
+- **Display wrap-guard:** overlay chart lane skips |drift|>2.5s points
+  (card badge ✂ OFF-REF + CSV keep raw values); monitor stats() no longer
+  renders an all-beyond-sanity device as med=0/max=-Infinity (live today:
+  cco7vf pinned +53.7s) — reports OFF-REFERENCE with the real offset, and
+  the report prints a ROOM SPLIT block when active devices disagree on
+  track hash.
+
+Verification: `node --check` clean on all four files; octonary-cascade-sim
+V2 suite ALL PASS after the layer.js payload additions (X1–X4 warp-gate
+guards included). Live fields appear once listener/overlay deploy.

@@ -569,6 +569,9 @@ function renderSyncCard(d, age) {
       ${octoB(inferOctoState(d), d.terOctoName)}
       ${d.hexKw ? `<span class="badge" style="color:var(--teal);border:1px solid #00cc9940" title="${HEX_NAMES[d.hexKw-1]}${d.hexMoving ? ' — moving lines' : ''}">${hexGlyph(d.hexKw)} ${d.hexKw}${d.hexMoving ? ' ✶' : ''}</span>` : ''}
       ${d.terGlobalDisruption ? `<span class="badge" style="color:var(--red);border:1px solid #ef3c2340">DISRUPTION</span>` : ''}
+      ${d.track ? `<span class="badge" style="color:#88aaff;border:1px solid #88aaff40" title="track-identity hash${d.slot?' · slot '+d.slot:''}">♪ ${d.track}${d.slot ? '·'+d.slot : ''}</span>` : ''}
+      ${d.visibilityState && d.visibilityState !== 'visible' ? `<span class="badge" style="color:#ff9900;border:1px solid #ff990040" title="tab throttled — may miss launches">⏾ THROTTLED</span>` : ''}
+      ${!isNaN(dm) && Math.abs(dm) > 2500 ? `<span class="badge" style="color:var(--red);border:1px solid #ef3c2340" title="duration-scale offset — split/wedge, off the chart lane">✂ OFF-REF ${(dm/1000).toFixed(1)}s</span>` : ''}
     </div>
     ${r('drift',       dm != null && !isNaN(dm) ? dm.toFixed(0)+'ms' : '—', dc)}
     ${r('warp rate',   isNaN(rate) ? '—' : (rate-1>=0?'+':'')+(rate-1)*100+'%', warpPct > 1.2 ? 'warn' : '')}
@@ -681,7 +684,12 @@ db.channel('byob_debug')
   .on('broadcast', { event: 'hud_data' }, ({ payload: p }) => {
     p.refMs = computeRefMs(p); // attach so it flows into recordRow('sync', p) below via REC_COLS
     devs[p.deviceId] = { ...p, _kind: 'sync', lastSeen: Date.now() };
-    pushHist(driftHist,  p.deviceId, p.driftMs);
+    // Display-only wrap guard: a split/wedged device reads at duration
+    // scale (±10s–160s) and flattens every other line to a pixel on the
+    // shared y-axis. Keep it off the chart (card badge + CSV keep the raw
+    // value); nulls/NaN pass through unchanged as gaps.
+    const _dmChart = parseFloat(p.driftMs);
+    if (!isFinite(_dmChart) || Math.abs(_dmChart) <= 2500) pushHist(driftHist,  p.deviceId, p.driftMs);
     pushHist(warpHist,   p.deviceId, ((parseFloat(p.playbackRate)||1) - 1) * 100);
     pushHist(calHist,    p.deviceId, p.deviceLatencyMs);
     pushRoleHist(p.deviceId, inferOctoState(p));
@@ -696,7 +704,7 @@ db.channel('byob_debug')
   .on('broadcast', { event: 'sync_event' }, ({ payload: p }) => {
     events.unshift({ ...p, at: Date.now() });
     if (events.length > 60) events.length = 60;
-    if (_recording) recordRow('event', p);
+    if (_recording) recordRow('event', { ...p, eventKind: p.kind });
     renderEvents();
   })
   .subscribe(s => {
@@ -713,6 +721,8 @@ const REC_COLS = [
   'terSnapCount','terBurstSnaps','stallCount','snapCount','seekIntendedMs','seekMeasuredMs',
   'readyState','visibilityState','currentTime','expectedPos','refMs',
   'hexKw','hexLines','hexMoving', // the well gauge — observe-only telemetry, rides along into exports
+  'track','slot',    // track-identity hash + spatial slot — splits become filterable, not inferential
+  'eventKind',       // launch vs correction vs join, no longer guesswork in exports
   'note',
 ];
 function toggleRecord() {

@@ -34,7 +34,7 @@ const ts = new Date().toISOString().slice(0, 16).replace('T', '_').replace(':', 
 const csvPath = join(logDir, `${ts}.csv`);
 const csvStream = createWriteStream(csvPath, { flags: 'a' });
 
-const CSV_HEADER = 'wall_ts,deviceId,driftMs,terTritLabel,playbackRate,terSnapCount,terLastFloor,terCalState,terConsecN,masterOffMs';
+const CSV_HEADER = 'wall_ts,deviceId,driftMs,terTritLabel,playbackRate,terSnapCount,terLastFloor,terCalState,terConsecN,masterOffMs,track,visibility';
 csvStream.write(CSV_HEADER + '\n');
 
 const db = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -190,7 +190,13 @@ function stats(dev) {
   if (t.length < 3) return null;
 
   const valid = t.filter(x => Math.abs(x.drift) < 2000);
-  const drifts = valid.map(x => x.drift).sort((a, b) => a - b);
+  // Every tick beyond the 2s sanity bound = a split/wedged device (playing
+  // the wrong audio, or a no-op-seek element). Surface it as OFF-REFERENCE
+  // with its real offset instead of rendering med=0 / max=-Infinity from an
+  // empty filter (seen live 2026-07-15: cco7vf pinned at +53.7s).
+  const offRef = valid.length === 0;
+  const pool = offRef ? t : valid;
+  const drifts = pool.map(x => x.drift).sort((a, b) => a - b);
   const med = drifts[Math.floor(drifts.length / 2)] ?? 0;
   const max = Math.max(...drifts.map(Math.abs));
 
@@ -220,6 +226,7 @@ function stats(dev) {
     pnCount: dev.pnTransitions.length,
     pnMed: Math.round(pnMed),
     last: dev.ticks.at(-1),
+    offRef,
   };
 }
 
@@ -256,15 +263,32 @@ function report(final = false) {
       ? `  P→N jumps=${s.pnCount} med=${s.pnMed}ms`
       : '';
 
-    const driftColor = s.N > 50 ? '⚠' : s.P > 30 ? '✓' : '~';
+    const driftColor = s.offRef ? '✂' : s.N > 50 ? '⚠' : s.P > 30 ? '✓' : '~';
+    const trkTag = dev.track ? `  trk=${dev.track}` : '';
+    const visTag = dev.visibility && dev.visibility !== 'visible' ? `  ⏾ ${dev.visibility}` : '';
 
-    console.log(`\n  ${driftColor} ${dev.id}  (${s.n} ticks)`);
-    console.log(`    drift  med=${s.med}ms  max=${s.max}ms`);
+    console.log(`\n  ${driftColor} ${dev.id}  (${s.n} ticks)${trkTag}${visTag}`);
+    if (s.offRef) {
+      console.log(`    OFF-REFERENCE  med=${(s.med/1000).toFixed(1)}s — split/wedge; today's cure is a different-URL launch`);
+    } else {
+      console.log(`    drift  med=${s.med}ms  max=${s.max}ms`);
+    }
     console.log(`    state  ${stateBar}`);
     console.log(`    ${stallInfo}${pnInfo}`);
     if (dev.calEvents.length) {
       dev.calEvents.slice(-2).forEach(e => console.log(`    ${e}`));
     }
+  }
+
+  // Room split: active devices reporting different track hashes are playing
+  // different audio — the "spread" between them is duration-scale nonsense
+  // and the room is audibly split (no longer inferential; direct evidence).
+  const trkGroups = {};
+  for (const d of active) if (d.track) (trkGroups[d.track] ||= []).push(d.id);
+  if (Object.keys(trkGroups).length > 1) {
+    console.log(`\n  ⚠ ROOM SPLIT — devices on different tracks:`);
+    for (const [trk, ids] of Object.entries(trkGroups))
+      console.log(`    ${trk}: ${ids.join(', ')}`);
   }
 
   const inactive = Object.values(devices).filter(d => {
@@ -336,6 +360,8 @@ db.channel('byob_debug')
     if (!isFinite(drift) || Math.abs(drift) > 200000) return; // skip wrap artifacts
 
     const dev = getDevice(id);
+    if (p.track != null) dev.track = p.track;
+    if (p.visibilityState) dev.visibility = p.visibilityState;
     detectStall(dev, drift, label);
     launchTick(id, drift, p.terSnapCount != null ? parseInt(p.terSnapCount) : null);
 
@@ -376,6 +402,8 @@ db.channel('byob_debug')
       p.terCalState  ?? '',
       p.terConsecN   ?? '',
       freshMasterOff(dev) ?? '',
+      p.track ?? '',
+      p.visibilityState ?? '',
     ].join(',');
     csvStream.write(row + '\n');
 

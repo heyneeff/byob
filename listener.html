@@ -5864,6 +5864,20 @@ function broadcastSyncEvent(kind) {
   });
 }
 
+// Track identity for telemetry: short stable hash of the CANONICAL track url
+// (window._currentTrackUrl — the identity domain, so LAN- and tunnel-origin
+// phones playing the same file report the same id). 'live' when on a stream.
+// Observe-only by the well-gauge law: no engine read-path may consult it.
+function _trackIdHash() {
+  if (audio.srcObject) return 'live';
+  const u = window._currentTrackUrl;
+  if (!u) return null;
+  let h = 5381;
+  for (let i = 0; i < u.length; i++) h = ((h << 5) + h + u.charCodeAt(i)) >>> 0;
+  return h.toString(36).slice(0, 6);
+}
+window._terTrackId = _trackIdHash;
+
 function broadcastHUD() {
   ensureHUDChannel();
   const now = syncedNow();
@@ -5900,6 +5914,12 @@ function broadcastHUD() {
       driftPending: window.SyncEngine.getDriftPendingRecheck(),
       zone:        activeZone?.name || null,
       src:         audio.src ? audio.src.split('/').pop().slice(0, 25) : null,
+      // Track identity + slot: room splits become directly visible in
+      // overlay/monitor instead of inferential (duration-scale "spread"
+      // ghosts become filterable by track).
+      track:       _trackIdHash(),
+      slot:        (window._spatialConfig && typeof getSpatialSlot === 'function')
+                     ? getSpatialSlot(window._spatialConfig) : null,
       // Diagnostics for the timeupdate-driven drift-check fix (2026-06-11
       // session showed driftState stuck 'idle' for minutes on backgrounded
       // tabs) — visibilityState/lastDriftCheckAgoMs/readyState/stallCount

@@ -910,6 +910,11 @@
           duration:      window._audio?.duration ?? null,
           deviceLatencyMs: window._terGetDeviceLatencyMs?.() ?? null,
           zone:          window.activeZone?.name ?? 'unknown',
+          // Track identity + throttle state (observe-only, like the well
+          // gauge): ter_ rows are the graded lane in live-monitor, so split
+          // and straggler forensics need these here, not just on dev_ rows.
+          track:         window._terTrackId?.() ?? null,
+          visibilityState: typeof document !== 'undefined' ? document.visibilityState : null,
         },
       });
     } catch (e) {}
@@ -934,6 +939,10 @@
                    // base rate. While warping it slides, so publish null;
                    // peers' pickCascadeAnchor skips null-refMs entries.
                    refMs: cascadeWarpGated() ? null : computeOwnRefMs(),
+                   // Track identity (observe-only for now — the same-
+                   // reference+track-epoch consensus rule is a separate,
+                   // cast-gated change; until then nothing reads this):
+                   track: window._terTrackId?.() ?? null,
                    // The well gauge (observe-only — see invariant above):
                    ...(() => { const h = deviceHexagram(); return { hexKw: h.kw, hexLines: h.lines, hexMoving: h.moving }; })() },
       });
