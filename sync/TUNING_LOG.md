@@ -1630,3 +1630,48 @@ Tagged `baseline-sync-jul15` at `d32faec` (the code those phones ran — the
 gate shipped after their last refresh). New regression floor: post-gate
 sessions must beat THIS room, not jul14. Phones refreshed onto gated code
 right after this export — gate live-verification follows.
+
+## 2026-07-15 ~13:05 — GATE LIVE-VERIFIED: zero cascade fires in the whole
+gated era; room holds baseline tightness through constant track changes
+
+Export byob-obs-2026-07-15T13-04-39-238Z.csv (15.9min, 4 phones — glhde0/
+pjq6er/lvula0/c0tzzz, gated code from ~12:48) + live-monitor log since 12:45:
+- **Cascade corrections: 0** across ~20min of gated room (pre-gate steady
+  state: 9 fires/13min at −62..−125ms). User's ear-report mid-window:
+  "perfectly synced." Warp duty 0–20%; calm-pair refMs slides 0.0ms/s on
+  every device; warped-pair slides still −14.8/−15.0 (physics unchanged —
+  the gate stops SAMPLING it, display still shows it, known caveat).
+- Room refMs spread p50 37ms (baseline floor: 33ms — held, through a window
+  with track changes every ~1–4min from the fixed auto-advance). |drift| p50
+  74–88ms, comparable to floor. AUTO-CAL healthy small fires (21–23ms).
+- Honest scope: no genuinely-stuck device appeared, so the live RESCUE path
+  wasn't exercised this window (sim X3 covers it; watch for the first
+  organic rescue).
+- **Telemetry artifact named (user + data agree):** overlay showed huge
+  "drift spread" while the room was audibly synced — duration-scale twins
+  (109.15s on two devices; refMs deltas ~148.9s flapping bucket-to-bucket
+  against 40ms) at track boundaries. The overlay's own computeRefMs/drift
+  lanes don't wrap at track/loop boundaries the way the engine's wrapLag
+  does; with auto-advance cycling, boundary rows are frequent. Display-only.
+  Queue: wrapLag pass on overlay math (with the earlier frozen mirror-image
+  ter/dev drift observation — one bookkeeping cleanup, not engine code).
+
+**Entry evidence #2 (organic launches, same export):** event clusters at
+auto-advance cadence reached all 4 phones within **0.0–0.1s** in 7 of 9
+clusters — propagation for awake phones is essentially simultaneous. The
+two bad clusters are ONE device (c0tzzz) at **+26.7s and +29.0s** — same
+profile as the morning's 34s stagger and the older 18s stale-tab finding.
+Interim thread-B diagnosis: **bimodal propagation — instant when awake,
+tens-of-seconds when a tab is throttled/backgrounded**; the entry math is
+fine for phones that hear the launch. (Event rows still carry no kind
+column in exports — REC_COLS gap noted before, makes attribution
+inferential.) Cheap controlled probe for next window: screen-off one phone
+across a track change; if its entry lags ~20–30s, throttling is confirmed
+and Phase 7's wake-lock/keep-screen-on UX is the fix lane (plus possibly a
+bridge launch-state re-broadcast so late wakers re-arm fast — cast before
+building that).
+
+Also this window: DJ playlist auto-advance fixed end-to-end (266cb4a +
+one-time library URL rewrite to relay.boombox.productions via relay API —
+14 rows had dead quick-tunnel/localhost-only origins; deck stalled without
+'ended' and the chain died. Error-skip added, bounded, resets on 'playing').
