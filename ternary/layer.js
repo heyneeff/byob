@@ -695,6 +695,59 @@
                              refMs: refMs ?? null };
   }
 
+  // ── THE WELL GAUGE ─────────────────────────────────────────────────────────
+  // (casts 48 unchanging / 42.1.4→12 / 51.2.3→34, 2026-07-14.) Each device
+  // reads its own hexagram from its LIVED state — never cast from randomness.
+  // The well (the shared reference) is sound; what differs per phone is its
+  // access, and the lower trigram names exactly that, bottom-up:
+  //   line 1 — the JUG:   calibration settled (yang) or still forming (yin)
+  //   line 2 — the ROPE:  clock steady (yang) — no cascade pull in 120s
+  //   line 3 — the WATER: currently converged, trit P (yang)
+  // Upper trigram = the octo role, the device's face toward the room:
+  //   ANCHORING=☰ (pure yang) … REACHING=☷ (pure yin).
+  // Moving lines = bits that flipped within the last 120s — real transitions.
+  //
+  // INVARIANT (42.4→12, Standstill): THE WELL GAUGE OBSERVES; IT NEVER ACTS.
+  // No correction, gate, weight, or threshold may ever read deviceHexagram()
+  // or the hex* broadcast fields. Pure emission, upward only (phone →
+  // broadcast → overlay/console). The moment it participates, it is corrupt.
+  //
+  // (The _calSeq trigram documented in SYNC_ENGINE.md Step 7 was found
+  // retired from the code — these lines are derived fresh from live state.)
+  const HEX_TRI = { '111':0,'110':1,'101':2,'100':3,'011':4,'010':5,'001':6,'000':7 }; // bottom-up bits → axis index [☰☱☲☳☴☵☶☷]
+  const HEX_KW = [ // King Wen number, KW[lowerTrigram][upperTrigram]
+    [ 1,43,14,34, 9, 5,26,11],
+    [10,58,38,54,61,60,41,19],
+    [13,49,30,55,37,63,22,36],
+    [25,17,21,51,42, 3,27,24],
+    [44,28,50,32,57,48,18,46],
+    [ 6,47,64,40,59,29, 4, 7],
+    [33,31,56,62,53,39,52,15],
+    [12,45,35,16,20, 8,23, 2],
+  ];
+  let _hexMovingUntil = [0, 0, 0, 0, 0, 0];
+  let _hexLastBits = null;
+  function deviceHexagram() {
+    const now = Date.now();
+    const jug   = (_calApplied || !_greenhorn) ? 1 : 0;
+    const rope  = (now - _lastCascadeCorrectTs > 120000) ? 1 : 0;
+    const water = (_trit === P) ? 1 : 0;
+    const o = 7 - _octoState;
+    const bits = [jug, rope, water, (o >> 2) & 1, (o >> 1) & 1, o & 1];
+    if (_hexLastBits) {
+      for (let i = 0; i < 6; i++) if (bits[i] !== _hexLastBits[i]) _hexMovingUntil[i] = now + 120000;
+    }
+    _hexLastBits = bits;
+    const lower = HEX_TRI[bits.slice(0, 3).join('')];
+    const upper = HEX_TRI[bits.slice(3).join('')];
+    let lines = 0, moving = 0;
+    for (let i = 0; i < 6; i++) {
+      if (bits[i]) lines |= (1 << i);
+      if (_hexMovingUntil[i] > now) moving |= (1 << i);
+    }
+    return { kw: HEX_KW[lower][upper], lines, moving };
+  }
+
   // Reconstruct "what wall-clock instant do I believe the track started at" —
   // time-invariant per device, so this is directly comparable across peers.
   //
@@ -819,6 +872,8 @@
           terOctoState:  _octoState,
           terOctoName:   OCTO_NAME[_octoState],
           terGlobalDisruption: isGlobalDisruption(),
+          // The well gauge (observe-only — see deviceHexagram invariant):
+          ...(() => { const h = deviceHexagram(); return { hexKw: h.kw, hexLines: h.lines, hexMoving: h.moving }; })(),
           playbackRate:  window._audio?.playbackRate ?? 1,
           driftState:    window._driftState ?? 'unknown',
           currentTime:   window._audio?.currentTime ?? null,
@@ -850,7 +905,9 @@
                    calSettled: _calApplied || !_greenhorn,
                    // Cascade consensus ground truth: time-invariant per
                    // device, directly comparable across peers.
-                   refMs: computeOwnRefMs() },
+                   refMs: computeOwnRefMs(),
+                   // The well gauge (observe-only — see invariant above):
+                   ...(() => { const h = deviceHexagram(); return { hexKw: h.kw, hexLines: h.lines, hexMoving: h.moving }; })() },
       });
     } catch (e) {}
   }
@@ -881,6 +938,7 @@
       tick, enterBurst, exitBurst, isBurstMode: () => _burstMode, history: () => _history, exportCSV,
       getOctoState:       () => _octoState,
       getOctoName:        () => OCTO_NAME[_octoState],
+      deviceHexagram, // the well gauge — observe-only, never feeds correction logic
       isGlobalDisruption,
       weightedConsensus,
       // Cascade consensus, fix 2 (one authority, full yield): once true,

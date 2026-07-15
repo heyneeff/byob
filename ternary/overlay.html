@@ -134,6 +134,14 @@ canvas.chart{display:block;width:100%;height:160px;}
     <div id="room-spread-sub">— devices compared</div>
   </div>
 
+  <!-- the well gauge — room hexagram, line-majority across devices;
+       contested lines (room disagreement) count as moving. Observe-only. -->
+  <div class="ov-panel">
+    <div class="ov-title">the well</div>
+    <div id="well-hex-val" style="font-size:30px;line-height:1;color:var(--teal)">—</div>
+    <div id="well-hex-sub">—</div>
+  </div>
+
   <!-- ternary -->
   <div class="ov-panel">
     <div class="ov-title">ternary state</div>
@@ -490,6 +498,16 @@ function updateOverview() {
   } else { rsv.textContent = '—'; rsv.style.color = 'var(--teal)'; }
   rss.textContent = refs.length + ' device' + (refs.length !== 1 ? 's' : '') + ' compared';
 
+  // The well gauge — room hexagram
+  const wh = roomHexagram(playing);
+  const whv = document.getElementById('well-hex-val');
+  const whs = document.getElementById('well-hex-sub');
+  if (wh) {
+    whv.textContent = hexGlyph(wh.kw) + ' ' + wh.kw;
+    whv.style.color = wh.contested ? 'var(--orange)' : 'var(--teal)';
+    whs.textContent = HEX_NAMES[wh.kw - 1] + (wh.contested ? ` · ${wh.contested} contested line${wh.contested > 1 ? 's' : ''}` : ' · settled');
+  } else { whv.textContent = '—'; whs.textContent = 'needs 2+ devices'; }
+
   // Ternary bar
   const tc = { N:0, Z:0, P:0 };
   sync.forEach(d => { const t = d.terTrit || driftToTrit(d.driftMs); if (t) tc[t]++; });
@@ -549,6 +567,7 @@ function renderSyncCard(d, age) {
       ${trit ? `<span class="badge badge-${trit}">${trit} ${TRIT_LABEL[trit]}</span>` : ''}
       ${d.terBurst ? `<span class="badge badge-burst">⚡ BURST ${d.terBurstSnaps||0}</span>` : ''}
       ${octoB(inferOctoState(d), d.terOctoName)}
+      ${d.hexKw ? `<span class="badge" style="color:var(--teal);border:1px solid #00cc9940" title="${HEX_NAMES[d.hexKw-1]}${d.hexMoving ? ' — moving lines' : ''}">${hexGlyph(d.hexKw)} ${d.hexKw}${d.hexMoving ? ' ✶' : ''}</span>` : ''}
       ${d.terGlobalDisruption ? `<span class="badge" style="color:var(--red);border:1px solid #ef3c2340">DISRUPTION</span>` : ''}
     </div>
     ${r('drift',       dm != null && !isNaN(dm) ? dm.toFixed(0)+'ms' : '—', dc)}
@@ -628,10 +647,34 @@ function renderEvents() {
 // trusts. If phones agree, refMs matches across all of them; if they don't,
 // this is where it shows, directly, not inferred from driftMs looking calm.
 // Read-only: purely a dashboard number, never fed back into any correction.
+// Sign matches layer.js computeOwnRefMs post-daab95f (ct PLUS lat — the old
+// minus form made every converged phone report trackStart + 2·devLat, which
+// is the false gap that drove the 2026-07-14 cascade orbit).
 function computeRefMs(p) {
   const ts = parseFloat(p.ts), ct = parseFloat(p.currentTime), lat = parseFloat(p.deviceLatencyMs) || 0;
   if (!isFinite(ts) || !isFinite(ct)) return null;
-  return ts - (ct - lat / 1000) * 1000;
+  return ts - (ct + lat / 1000) * 1000;
+}
+
+// ── THE WELL GAUGE (observe-only; see layer.js deviceHexagram invariant) ────
+const HEX_NAMES = ['Creative','Receptive','Difficulty at the Beginning','Youthful Folly','Waiting','Conflict','The Army','Holding Together','Small Taming','Treading','Peace','Standstill','Fellowship','Great Possession','Modesty','Enthusiasm','Following','Work on the Spoiled','Approach','Contemplation','Biting Through','Grace','Splitting Apart','Return','Innocence','Great Taming','Nourishment','Great Excess','The Abysmal','The Clinging','Influence','Duration','Retreat','Power of the Great','Progress','Darkening of the Light','The Family','Opposition','Obstruction','Deliverance','Decrease','Increase','Breakthrough','Coming to Meet','Gathering','Pushing Upward','Oppression','The Well','Revolution','The Cauldron','The Arousing','Keeping Still','Development','Marrying Maiden','Abundance','The Wanderer','The Gentle','The Joyous','Dispersion','Limitation','Inner Truth','Small Excess','After Completion','Before Completion'];
+const HEX_TRI = { '111':0,'110':1,'101':2,'100':3,'011':4,'010':5,'001':6,'000':7 };
+const HEX_KW = [[1,43,14,34,9,5,26,11],[10,58,38,54,61,60,41,19],[13,49,30,55,37,63,22,36],[25,17,21,51,42,3,27,24],[44,28,50,32,57,48,18,46],[6,47,64,40,59,29,4,7],[33,31,56,62,53,39,52,15],[12,45,35,16,20,8,23,2]];
+const hexGlyph = kw => String.fromCharCode(0x4DC0 + kw - 1);
+// Room hexagram: per-line MAJORITY across live devices; a line where the
+// room disagrees (mixed yin/yang) is rendered as "moving" — the room's own
+// contested lines, its live tension made visible.
+function roomHexagram(devices) {
+  const rows = devices.map(d => d.hexLines).filter(v => v != null);
+  if (rows.length < 2) return null;
+  const bits = [], contested = [];
+  for (let i = 0; i < 6; i++) {
+    const yang = rows.filter(v => (v >> i) & 1).length;
+    bits.push(yang * 2 >= rows.length ? 1 : 0);
+    contested.push(yang > 0 && yang < rows.length);
+  }
+  const kw = HEX_KW[HEX_TRI[bits.slice(0,3).join('')]][HEX_TRI[bits.slice(3).join('')]];
+  return { kw, contested: contested.filter(Boolean).length };
 }
 
 db.channel('byob_debug')
