@@ -1598,3 +1598,35 @@ still shows sliding refs for warping devices (observe-only, honest); a
 future polish could gray warped rows. Live window = tonight's broadcast,
 bounded, revert-fast; calm 20min+ stretch doubles as the pending
 guileless-clock A/B vs the 01:35–02:01 baseline.
+
+## 2026-07-15 ~12:47 — baseline-sync-jul15 (`d32faec`): THE STABLE ROOM,
+marked by the user mid-session ("most stable it's ever been, rough entry")
+
+The user ran a broadcast on pre-gate code while the gate was being built.
+Export byob-obs-2026-07-15T12-46-54-201Z.csv (8.4min, 4 settled phones +
+2 transient joiners, THREE deliberate SYNCED ground-truth markers at
+12:42:14 / 12:43:10 / 12:45:16 — 4-phone room, unlike the accidental 2-phone
+marker of 02:2x):
+- **Settled phones:** |drift| p50 54–85ms, p95 71–122ms (2c4eua p95 71ms!),
+  warp duty 0–3%. All six devices cap-pinned lat=1200 — the accidental-
+  equalizer regime (standing note: don't "fix" naively).
+- **Room refMs spread p50 33ms / p95 53ms**, pinned flat at 33–34ms for the
+  final 90s. First time the DnB tightness band (≤20–35ms) shows up as a
+  sustained digital p50.
+- **Guileless-clock A/B: PASS.** vs the 01:35–02:01 pre-fix baseline (p50
+  79–91 / p95 181–349ms): the calm-stretch comparison the fix was waiting
+  for. p95 tail collapse 181–349 → 71–122ms. (Caveats: different daypart +
+  device mix; magnitude convincing anyway.)
+- **The rough entry, quantified (thread B evidence #1):** the 12:39 launch
+  event cluster reached devices staggered over **34 seconds** (12:39:14 →
+  :26 → :29 → :37 → :48) while the 12:42:26 and 12:46:50 clusters landed on
+  all phones within ~1s. Both late joiners never settled (su8kup: p50 161ms,
+  p95 2605ms, 61% warp duty; mc9oh5: 44s off, then gone). Propagation before
+  math — consistent with the 18s-stale-tab evidence from the launch era.
+  Note: overlay `event` rows carry no event-kind column (REC_COLS drops the
+  payload specifics) — worth adding `note`-style detail for events so launch
+  forensics don't need inference.
+Tagged `baseline-sync-jul15` at `d32faec` (the code those phones ran — the
+gate shipped after their last refresh). New regression floor: post-gate
+sessions must beat THIS room, not jul14. Phones refreshed onto gated code
+right after this export — gate live-verification follows.
