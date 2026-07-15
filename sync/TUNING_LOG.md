@@ -1378,3 +1378,41 @@ spread that the orbit was falsely "seeing" is still REAL positional spread
 (H1 posSpread 600ms) — the true fix for that is calibration truth
 (acoustic referee / tap-cal / grounded prior), exactly as the roadmap has
 it.
+
+## 2026-07-14 — session close: post-fix steady state, relay blip, next targets
+
+**Burst-clear shipped live (`4b9d9fc`, cast 11.1→46)** on the user's "ship
+it" — `_cascadeSamples` cleared in `enterBurst()`; full sim suite ALL PASS
+before push. Mid-session the relay process died (~3min outage, cause
+unconfirmed — a second Claude instance was concurrently working on playlist
+continuity in artist.html; bridge+tunnel never blinked). Restarted from
+committed code, rows intact, phones auto-reconnected without reload
+(same device IDs — NOTE: the shim's reconnect works when the relay URL is
+unchanged; the stale-URL problem is only about tunnel-hostname rotation).
+
+**Post-refresh steady state (fresh IDs on burst-clear code, final ~13min,
+2 trit-visible phones):** 9 cascade corrections, −62 to −125ms, cadence
+53–147s, and — the notable signature — **all negative from BOTH sides**
+(each device pulling toward the other, downward), with room refSpread
+breathing 5→150→8ms between fires. Only 6 track_changes in the stretch, so
+these are NOT launch contamination: this is deadband-edge shepherding of
+genuinely wandering hardware, plus a same-sign creep worth understanding.
+Mutual sync stays good (that's why it sounded right) but both clockOffsets
+walk downward together — common-mode, inaudible, yet unbounded over hours.
+
+**Named next targets (cast before building):**
+1. **Deadband hysteresis** — fire only past ~75–80ms (avg), correct back
+   toward ~0: spaces out the minimum-size chatter that currently hovers at
+   the 60ms edge every 1–3 minutes.
+2. **Both-negative creep** — analyze why alternating anchors produce
+   same-direction pulls on both devices; candidate guard: bound cumulative
+   cascade |clockOffset| per session, or re-zero common mode against the
+   bridge (natural stratum-0 job — folds into the master question).
+3. Session ended with a 3.5s refSpread blip as a third device
+   appeared/left at the last tick — entry/exit transients, Phase 3 world.
+
+**Where this leaves the night:** `baseline-sync-jul14` tagged; sign fix +
+burst-clear both live; the user's verdict mid-session: "sync is perfect,
+never heard this before." The engine's remaining audible artifacts are now
+small (≤125ms one-shot pulls, minutes apart) and all four named error
+sources have owners on the roadmap.
