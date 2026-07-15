@@ -1512,3 +1512,8 @@ Baseline CSV (01:35–02:01, pre-guileless-clock generation): drift p50
 ~80ms, p95 180–350ms, latencies pinned stable at 1200 all hour (ratchet
 dead), heavy threshold-crossing counts. A/B against the post-clock-fix
 generation pending next export.
+
+**Marker caveat (2026-07-15 ~02:2x):** the ✅ Synced ground-truth marker
+stamped during this live session (~row 700 of the next overlay CSV export)
+was ACCIDENTAL — 2-phone room only, not a verified full-sync moment.
+Disregard it when correlating markers against calibration/cascade events.
