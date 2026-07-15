@@ -156,6 +156,7 @@ function makeDevice(id, { clock, trueClockErrorMs, trueLatencyMs, model = 'Linux
 //   posErrMs = (ct - (wall - trackStart)/1000) * 1000
 // which is exactly what live CSV / hud_data capture measures.
 function makeDeviceV2(id, { clock, trueClockErrorMs = 0, initialDeviceLatencyMs = 0,
+                            wanderMsPerTick = 0,
                             model = 'Linux; Android 13; Pixel 7', src, bugged = false }) {
   const handlers = {};
   const outbox = [];
@@ -231,6 +232,9 @@ function makeDeviceV2(id, { clock, trueClockErrorMs = 0, initialDeviceLatencyMs 
     posErrMs: () => (currentTime - (clock.now() - S) / 1000) * 1000,
     tick() {
       currentTime += 2.5 * playbackRate;                 // physics
+      // slow clock wander — the live steady-state signature (2026-07-14:
+      // room refSpread breathing 5→150→8ms between rate-limited pulls)
+      if (wanderMsPerTick) trueClockErrorMs += (Math.random() * 2 - 1) * wanderMsPerTick;
       const lagMs = (currentTime - expectedS()) * 1000
                     + (Math.random() * 2 - 1) * 8;       // measurement noise
       if (Math.abs(lagMs) >= 500) {                      // fastDriftCorrect: snap
@@ -455,10 +459,10 @@ runScenario({
 });
 
 // ── V2 scenarios: engine-response model ─────────────────────────────────────
-function runScenarioV2({ label, minutes, deviceSpecs, master = null, bugged = false, checks }) {
+function runScenarioV2({ label, minutes, deviceSpecs, master = null, bugged = false, srcOverride = null, checks }) {
   console.log(`\n[${label}] ${deviceSpecs.length} devices${master ? ` + MASTER (${master})` : ''}${bugged ? ' [BUGGED refMs demo]' : ''}, ${minutes}min  (V2 engine model)`);
   const clock = makeClock();
-  const src = bugged ? layerSrcBugged : (master === 'w3' ? layerSrcW3 : layerSrc);
+  const src = srcOverride ?? (bugged ? layerSrcBugged : (master === 'w3' ? layerSrcW3 : layerSrc));
   const phones = deviceSpecs.map((spec, i) => makeDeviceV2(`d${i}`, { clock, src, bugged, ...spec }));
   const participants = master ? [...phones, makeMaster()] : phones;
 
@@ -496,6 +500,8 @@ function runScenarioV2({ label, minutes, deviceSpecs, master = null, bugged = fa
     refSpread: final.refSpread,
     lateSnapTotal: lateSnaps.reduce((a, b) => a + b, 0),
     cascTotal: final.casc.reduce((a, b) => a + b, 0),
+    meanPosSpread: history.reduce((a, h) => a + h.posSpread, 0) / history.length,
+    maxPosSpread: Math.max(...history.map(h => h.posSpread)),
   };
   console.log(`  final: posSpread=${result.posSpread.toFixed(0)}ms posAbs=${result.posAbs.toFixed(0)}ms refSpread=${result.refSpread.toFixed(0)}ms snapsLast5min=${result.lateSnapTotal} cascadeCorrections=${result.cascTotal}`);
   checks(result, phones);
@@ -576,6 +582,54 @@ runScenarioV2({
     check('steady state quiet (no snaps last 5min)', r.lateSnapTotal === 0, `snaps=${r.lateSnapTotal}`);
     check('clock error remains invisible (posSpread ≥500ms) — Phase 4 territory', r.posSpread >= 500, `pos=${r.posSpread.toFixed(0)}ms`);
   },
+});
+
+// ── W: wander scenarios — the tightening question (2026-07-14 late) ─────────
+// Live steady state on the honest signal: room refSpread breathes as clocks
+// wander; cascade pulls it back whenever the 4-sample avg crosses the 60ms
+// deadband. Those pulls are warp-sized (<500ms) — inaudible — so the
+// deadband is NOT an audibility guard, it's just the allowed room spread.
+// Tightening candidate: CASCADE_THRESHOLD_MS 60 → 35 (still >> the ±8ms
+// measurement noise after 4-sample averaging). W1/W2 compare them under
+// identical wander.
+const T35_FIND = 'const CASCADE_THRESHOLD_MS     = 60;';
+const layerSrcT35 = layerSrc.replace(T35_FIND, 'const CASCADE_THRESHOLD_MS     = 35;');
+if (layerSrcT35 === layerSrc) console.error('WARN: T35 patch anchor not found — W2 runs stock');
+
+const WANDER_SPECS = [
+  { wanderMsPerTick: 6 },
+  { wanderMsPerTick: 6, initialDeviceLatencyMs: 300 },
+  { wanderMsPerTick: 6, initialDeviceLatencyMs: 150 },
+];
+
+// FINDING (first run, 2026-07-14): the deadband is irrelevant here — ZERO
+// corrections fired at 60ms OR 35ms while posSpread wandered to 300-500ms.
+// Converged phones' refMs ≡ trackStart regardless of clock state, so
+// refMs consensus is STRUCTURALLY BLIND to slow clock wander. These
+// scenarios now document that blindness (and note: this harness omits the
+// real system's 30s measureClockOffset loop, which bounds wander live —
+// EXCEPT on devices where _cascadeEngaged has permanently silenced it).
+// The tightening levers for wander are LAN clock (kills it at the source)
+// and a position-domain master signal (master_verdict math) — not refMs.
+const wanderChecks = (r) => {
+  check('no snaps in steady state (corrections stay warp-sized)', r.lateSnapTotal === 0, `snaps=${r.lateSnapTotal}`);
+  check('cascade is BLIND to slow clock wander (zero corrections) — if this fails, refMs can suddenly see clocks: investigate', r.cascTotal === 0, `corrections=${r.cascTotal}`);
+  console.log(`  → meanSpread=${r.meanPosSpread.toFixed(0)}ms maxSpread=${r.maxPosSpread.toFixed(0)}ms corrections=${r.cascTotal} (unbounded wander — no NTP loop modeled)`);
+};
+
+runScenarioV2({
+  label: 'W1: wandering clocks (±6ms/tick), stock deadband 60ms — documents refMs wander-blindness',
+  minutes: 40,
+  deviceSpecs: WANDER_SPECS,
+  checks: wanderChecks,
+});
+
+runScenarioV2({
+  label: 'W2: same wander, deadband 35ms — identical blindness (deadband is not the lever)',
+  minutes: 40,
+  srcOverride: layerSrcT35,
+  deviceSpecs: WANDER_SPECS,
+  checks: wanderChecks,
 });
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASS');
