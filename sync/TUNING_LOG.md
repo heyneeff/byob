@@ -1847,3 +1847,17 @@ read-path consults any of them (well-gauge law).
 Verification: `node --check` clean on all four files; octonary-cascade-sim
 V2 suite ALL PASS after the layer.js payload additions (X1–X4 warp-gate
 guards included). Live fields appear once listener/overlay deploy.
+
+## 2026-07-15 (evening, cont.) — wake lock (entry campaign step 3, listener UX)
+
+Screen wake lock held while in a zone (`acquireWakeLock` in listener.html):
+requested at `activateZone`, re-acquired on every visibility wake (the OS
+silently drops it whenever the page hides), released in `stopEverything`.
+Where the API is missing (iOS <16.4) Boomy nudges once: "keep your screen
+on." Rationale: propagation is bimodal — awake phones hear launches in
+0.0–0.1s, throttled tabs +18–46.7s; the monitor's new ⏾ flag showed a
+live one within minutes of shipping (lowb8z, hidden, corrector starved at
+a flat 97ms). Not engine code — no cast per ENTRY_AND_ORCHESTRA sequence
+(step 4 there / plan step 3). Verify live: throttle probe should show the
+wake-locked phone never entering ⏾, and launch staggers on it staying
+sub-second.

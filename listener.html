@@ -2067,6 +2067,7 @@ function playWarpSound() {
 
 
 function stopEverything() {
+  releaseWakeLock();
   audio.pause(); audio.currentTime = 0; audio.src = ''; audio.load(); audio.srcObject = null;
   if (typeof rtcPeer !== 'undefined' && rtcPeer) { rtcPeer.close(); rtcPeer = null; }
   if (typeof rtcChannel !== 'undefined' && rtcChannel) { rtcChannel.unsubscribe(); rtcChannel = null; }
@@ -2444,6 +2445,8 @@ document.addEventListener('visibilitychange', () => {
   buildZonesChannel();
   loadZones();
   if (!activeZone) return;
+  // The OS drops the wake lock whenever the page hides — take it back.
+  acquireWakeLock();
   // WebRTC live — resume if OS suspended playback while screen was locked
   if (audio.srcObject && _webAudioPlaying && audio.paused) {
     audio.play().catch(() => {});
@@ -4053,11 +4056,40 @@ async function previewZone(z) {
 }
 
 // Called when geofence is physically crossed — this plays the music
+// ── SCREEN WAKE LOCK ──────────────────────────────────────
+// A hidden/locked tab gets JS-throttled and hears launches 18–46.7s late
+// (TUNING_LOG: propagation is bimodal — awake phones 0.0–0.1s, throttled
+// tabs +18–46.7s; live-monitor tags them ⏾). Hold a screen wake lock while
+// in a zone; the OS silently releases it every time the page hides, so
+// re-acquire on every visibility wake. Where the API is missing
+// (iOS <16.4), Boomy asks for the screen instead — once.
+let _wakeLock = null, _wakeLockNudged = false;
+async function acquireWakeLock() {
+  if (!activeZone) return;
+  if (!('wakeLock' in navigator)) {
+    if (!_wakeLockNudged) {
+      _wakeLockNudged = true;
+      boomSay('Keep your screen on — locked phones fall behind the drop! 📱✨', 800, false, 'regular');
+    }
+    return;
+  }
+  if (_wakeLock) return;
+  try {
+    _wakeLock = await navigator.wakeLock.request('screen');
+    _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+  } catch (e) { /* low battery or policy — harmless, retried on next wake */ }
+}
+function releaseWakeLock() {
+  try { _wakeLock?.release(); } catch (e) {}
+  _wakeLock = null;
+}
+
 async function activateZone(z) {
   await window._syncEngineReady; // sync/sync-engine.js module — see Phase 5, sync/ROADMAP.md
   activeZone = z;
   _scatterOffsetMs = 0; // clear any sweep offset from a previous zone
   unlockUI(z);
+  acquireWakeLock();
 
 
   // Start real guest list
