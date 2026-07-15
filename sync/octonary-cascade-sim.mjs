@@ -156,7 +156,8 @@ function makeDevice(id, { clock, trueClockErrorMs, trueLatencyMs, model = 'Linux
 //   posErrMs = (ct - (wall - trackStart)/1000) * 1000
 // which is exactly what live CSV / hud_data capture measures.
 function makeDeviceV2(id, { clock, trueClockErrorMs = 0, initialDeviceLatencyMs = 0,
-                            wanderMsPerTick = 0,
+                            wanderMsPerTick = 0, stallStealSPerTick = 0, refErrorMs = 0,
+                            wedgeSeekBroken = false, wedgeOffsetS = 0,
                             model = 'Linux; Android 13; Pixel 7', src, bugged = false }) {
   const handlers = {};
   const outbox = [];
@@ -165,21 +166,32 @@ function makeDeviceV2(id, { clock, trueClockErrorMs = 0, initialDeviceLatencyMs 
   const adjustCalls = [];
   const clockAdjustCalls = [];
   let snapCount = 0;
+  let refNullCount = 0, refSentCount = 0; // trit broadcasts with gated (null) vs live refMs
   let playbackRate = 1;
   const duration = 300;
-  const S = TRUE_REF_MS; // row playback_started_at, assumed correct (reference staleness is a different error line)
+  const S = TRUE_REF_MS;           // the TRUE start instant — posErrMs grades against this
+  const S_belief = S + refErrorMs; // what THIS device believes (refErrorMs models a stale
+                                   // playback_started_at — error line 2, the cascade's
+                                   // legitimate rescue territory; see X3)
 
   const syncedNowMs = () => clock.now() + trueClockErrorMs + clockOffsetMs;
-  const expectedS = () => (syncedNowMs() - S) / 1000 - deviceLatencyMs / 1000;
+  const expectedS = () => (syncedNowMs() - S_belief) / 1000 - deviceLatencyMs / 1000;
 
   // enter already converged to OWN belief — models post-entry steady state,
-  // the regime the live "stable but 0.5-1s apart" symptom lives in
-  let currentTime = expectedS();
+  // the regime the live "stable but 0.5-1s apart" symptom lives in.
+  // wedgeOffsetS shifts the entry point; with wedgeSeekBroken the engine can
+  // never seek it away (the same-track-relaunch wedge: currentTime writes
+  // no-op, only rate still works) — the regime of the first live rescue.
+  let currentTime = expectedS() - wedgeOffsetS;
 
   const chan = {
     on(type, filter, handler) { handlers[filter?.event] = handler; return chan; },
     subscribe() { return chan; },
-    send(msg) { if (msg?.event === 'trit') outbox.push({ from: id, event: 'trit', payload: msg.payload }); },
+    send(msg) {
+      if (msg?.event !== 'trit') return;
+      if (msg.payload?.refMs == null) refNullCount++; else refSentCount++;
+      outbox.push({ from: id, event: 'trit', payload: msg.payload });
+    },
   };
 
   const window = {
@@ -226,19 +238,27 @@ function makeDeviceV2(id, { clock, trueClockErrorMs = 0, initialDeviceLatencyMs 
     get clockOffsetMs() { return clockOffsetMs; },
     get deviceLatencyMs() { return deviceLatencyMs; },
     get snapCount() { return snapCount; },
+    get refNullCount() { return refNullCount; },
+    get refSentCount() { return refSentCount; },
     // mirror whichever computeOwnRefMs formula this scenario's layer runs
     // (shipped = plus form; bugged demo = the old minus form)
     ownRefMs: () => syncedNowMs() - (currentTime + (bugged ? -1 : 1) * deviceLatencyMs / 1000) * 1000,
     posErrMs: () => (currentTime - (clock.now() - S) / 1000) * 1000,
     tick() {
-      currentTime += 2.5 * playbackRate;                 // physics
+      // physics — stallStealSPerTick models Class-C restlessness: the audio
+      // element loses real time (BT buffer underruns / render stalls) and the
+      // engine's catch-up warp perpetually chases the deficit. Mean steal per
+      // 2.5s tick ≈ the option value; standing deficit settles where warp
+      // capacity (0.0002·|lag| ≤ 2.5%) cancels the steal rate.
+      const stolen = stallStealSPerTick ? Math.min(2, stallStealSPerTick * (0.5 + Math.random())) : 0;
+      currentTime += (2.5 - stolen) * playbackRate;
       // slow clock wander — the live steady-state signature (2026-07-14:
       // room refSpread breathing 5→150→8ms between rate-limited pulls)
       if (wanderMsPerTick) trueClockErrorMs += (Math.random() * 2 - 1) * wanderMsPerTick;
       const lagMs = (currentTime - expectedS()) * 1000
                     + (Math.random() * 2 - 1) * 8;       // measurement noise
       if (Math.abs(lagMs) >= 500) {                      // fastDriftCorrect: snap
-        currentTime = expectedS();
+        if (!wedgeSeekBroken) currentTime = expectedS(); // wedged: the seek no-ops
         playbackRate = 1;
         snapCount++;
       } else if (Math.abs(lagMs) >= 15) {                // proportional warp
@@ -631,5 +651,153 @@ runScenarioV2({
   deviceSpecs: WANDER_SPECS,
   checks: wanderChecks,
 });
+
+// ── X: warp-gate scenarios — warp breaks refMs time-invariance (2026-07-15) ──
+// Cast 8→55 lines 1·3·4·5. Measured live to ~0.1ms/s precision
+// (byob-obs-2026-07-15T02-01 / 02-17): while a device warps, its refMs slides
+// at exactly -(rate-1)*1000 ms/s; at rate 1 it is flat (calm-pair slide 0.0).
+// Live warp duty ran 30-70% on restless devices, so most 40s cascade windows
+// contained poisoned samples — the whole steady-state both-negative creep
+// (-62..-125ms pulls every 1-3min, common-mode clockOffset walk, unbounded).
+//
+// THE GATE: while |playbackRate - base| > 0.003 (base = BPM-warp rate, 1.0
+// when none), skip own cascade samples AND broadcast refMs as null.
+// pickCascadeAnchor already skips null-refMs peers, so a warping flagship
+// stops being anchor-eligible with zero peer-side logic (line 4: hold to him
+// outwardly too). Line 5 constraint: the gate only excludes — no staleness
+// compensation, no peer-side rate judging.
+//
+// ensureGated/ensureUngated make these scenarios independent of whether the
+// real layer.js carries the gate yet: X1 strips it (permanent creep-
+// reproduction guard, mirroring H1b), X2/X3 add it if absent.
+//
+// Modeling note: constant steal ⇒ ~100% warp duty at the standing deficit
+// (live duty is 30-70%, oscillating). That's the conservative direction on
+// both sides — maximal slide for the creep reproduction, maximal gating for
+// the gate scenarios.
+function ensureGated(src) {
+  if (src.includes('cascadeWarpGated')) return src;
+  let out = src.replace(/(const CASCADE_MIN_WEIGHT[^\n]*\n)/,
+    `$1  const CASCADE_WARP_RATE_GATE   = 0.003; // |rate-base| beyond this ⇒ refMs is sliding, not comparable\n`);
+  if (out === src) { console.error('FATAL: gate-const anchor not found'); process.exit(1); }
+  const withFn = out.replace('function maybeCascadeCorrect() {',
+`function cascadeWarpGated() {
+    const rate = window._audio?.playbackRate;
+    if (rate == null || !isFinite(rate)) return false;
+    const base = window.SpatialRouting?.getBpmWarpRate?.() ?? 1;
+    return Math.abs(rate - base) > CASCADE_WARP_RATE_GATE;
+  }
+
+  function maybeCascadeCorrect() {`);
+  if (withFn === out) { console.error('FATAL: maybeCascadeCorrect anchor not found'); process.exit(1); }
+  out = withFn.replace('    _lastCascadeCheckTs = now;',
+    '    _lastCascadeCheckTs = now;\n    if (cascadeWarpGated()) return;');
+  const final = out.replace('refMs: computeOwnRefMs(),',
+    'refMs: cascadeWarpGated() ? null : computeOwnRefMs(),');
+  if (final === out) { console.error('FATAL: broadcast refMs anchor not found'); process.exit(1); }
+  return final;
+}
+function ensureUngated(src) {
+  if (!src.includes('cascadeWarpGated')) return src;
+  let out = src.replace(/\n[ \t]*if \(cascadeWarpGated\(\)\) return;[^\n]*/, '');
+  if (out === src) { console.error('FATAL: ungate sample-site anchor not found'); process.exit(1); }
+  const final = out.replace(/refMs: cascadeWarpGated\(\) \? null : computeOwnRefMs\(\),/, 'refMs: computeOwnRefMs(),');
+  if (final === out) { console.error('FATAL: ungate broadcast anchor not found'); process.exit(1); }
+  return final;
+}
+const layerSrcUngated = ensureUngated(layerSrc);
+const layerSrcGated   = ensureGated(layerSrc);
+
+const STALL_ROOM = [
+  { stallStealSPerTick: 0.0375 }, // heavy: ~15ms/s steal → standing deficit ~75ms, rate ~1.015 (the live mrviaw/f4zzg4 picture)
+  { stallStealSPerTick: 0.025 },  // moderate: ~10ms/s → deficit ~50ms, mostly under the 60ms deadband
+  {},                             // clean witness — never fires, and makes the creep VISIBLE as posSpread
+];
+
+runScenarioV2({
+  label: 'X1: stall-warp room, UNGATED — must reproduce the both-negative creep',
+  minutes: 25,
+  srcOverride: layerSrcUngated,
+  deviceSpecs: STALL_ROOM,
+  checks: (r, phones) => {
+    const stallFires = phones[0].clockAdjustCalls.length + phones[1].clockAdjustCalls.length;
+    const walk = [...phones[0].clockAdjustCalls, ...phones[1].clockAdjustCalls]
+      .reduce((a, c) => a + c.deltaMs, 0);
+    check('false fires on zero-clock-error stall devices (≥3)', stallFires >= 3, `fires=${stallFires}`);
+    check('clean witness never fires', phones[2].clockAdjustCalls.length === 0, `fires=${phones[2].clockAdjustCalls.length}`);
+    check('same-sign negative walk (≤-150ms cumulative)', walk <= -150, `walk=${walk.toFixed(0)}ms`);
+    check('creep is audible against the clean witness (maxPosSpread ≥500ms)', r.maxPosSpread >= 500, `max=${r.maxPosSpread.toFixed(0)}ms`);
+  },
+});
+
+runScenarioV2({
+  label: 'X2: identical room, GATED — the creep must go quiet',
+  minutes: 25,
+  srcOverride: layerSrcGated,
+  deviceSpecs: STALL_ROOM,
+  checks: (r, phones) => {
+    check('zero cascade corrections (every fire here would be false)', r.cascTotal === 0, `corrections=${r.cascTotal}`);
+    const d0 = phones[0], nullShare = d0.refNullCount / Math.max(1, d0.refNullCount + d0.refSentCount);
+    check('warping device broadcasts refMs:null (≥50% of trits) — anchor-side cover', nullShare >= 0.5, `nullShare=${(100 * nullShare).toFixed(0)}%`);
+    check('spread bounded at the physical deficit (maxPosSpread ≤250ms)', r.maxPosSpread <= 250, `max=${r.maxPosSpread.toFixed(0)}ms`);
+    check('no snaps', r.lateSnapTotal === 0, `snaps=${r.lateSnapTotal}`);
+  },
+});
+
+// X3 — the rescue the cascade legitimately owns must SURVIVE the gate: the
+// WEDGED device (same-track-relaunch wedge — currentTime writes no-op, so
+// the engine attempts a snap every tick, each one an audible mute+ramp cut,
+// forever). It sits at rate 1 (snap branch, not warping) so its samples
+// flow through the gate; one correction moves its BELIEF to its immovable
+// physics; the thrash ends and the room's references agree. Offline twin of
+// the first live rescue (Jul 15: one -1111ms pull, settled, no repeat).
+// Honest scope: the physical position stays off — freeing the audio element
+// is the same-track-relaunch fix's job, not the cascade's.
+runScenarioV2({
+  label: 'X3: wedged device (seeks no-op, -800ms), GATED — one-shot belief rescue',
+  minutes: 10,
+  srcOverride: layerSrcGated,
+  deviceSpecs: [
+    { initialDeviceLatencyMs: 0 },
+    { initialDeviceLatencyMs: 150 },
+    { wedgeSeekBroken: true, wedgeOffsetS: 0.8 },
+  ],
+  checks: (r, phones) => {
+    const rescued = phones[2];
+    check('rescue fires despite the gate (1-2 corrections)', rescued.clockAdjustCalls.length >= 1 && rescued.clockAdjustCalls.length <= 2, `fires=${rescued.clockAdjustCalls.length}`);
+    check('snap thrash ends (no snap attempts last 5min)', r.lateSnapTotal === 0, `snaps=${r.lateSnapTotal}`);
+    check('room refs agree after rescue (refSpread <60ms)', r.refSpread < 60, `ref=${r.refSpread.toFixed(0)}ms`);
+    check('honest physics: wedged audio does NOT move (~-800ms posErr) — if this "improves", seeks started working: re-scope', Math.abs(rescued.posErrMs() + 800) <= 150, `posErr=${rescued.posErrMs().toFixed(0)}ms`);
+  },
+});
+
+// X4 — HONEST LIMIT (H3's sibling), found by this harness while building X3:
+// a stale-REFERENCE device with WORKING seeks cannot be rescued by clockOffset
+// corrections at all — the engine re-converges ct to the stale row belief
+// after every pull, refMs returns to the same wrong value, and the cascade
+// orbits (each cycle shifts the physical position another step). GATE-NEUTRAL:
+// fires happen at rate 1, so the warp-gate neither causes nor stops it.
+// Live exposure is low because reference divergence has dedicated owners
+// (artist.html row-repair heartbeat, anchor-scoping fix 9718f40, bridge
+// follow-the-row) — this scenario documents that those owners are LOAD-
+// BEARING for the cascade era: if row-repair regresses, the cascade will
+// actively walk stale-row devices away, not fix them.
+for (const [tag, src] of [['GATED', layerSrcGated], ['UNGATED', layerSrcUngated]]) {
+  runScenarioV2({
+    label: `X4-${tag}: stale playback_started_at (+800ms), working seeks — documents the orbit`,
+    minutes: 10,
+    srcOverride: src,
+    deviceSpecs: [
+      { initialDeviceLatencyMs: 0 },
+      { initialDeviceLatencyMs: 150 },
+      { refErrorMs: 800 },
+    ],
+    checks: (r, phones) => {
+      const stale = phones[2];
+      check('orbit reproduces (≥4 fires on the stale-row device) — if quiet, something new owns reference repair: investigate', stale.clockAdjustCalls.length >= 4, `fires=${stale.clockAdjustCalls.length}`);
+      check('each pull walks physical position (|posErr| grows past 2000ms)', Math.abs(stale.posErrMs()) > 2000, `posErr=${stale.posErrMs().toFixed(0)}ms`);
+    },
+  });
+}
 
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nALL PASS');
