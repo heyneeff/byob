@@ -75,22 +75,36 @@ function killCloudflared() {
   try { execSync('pkill -f "cloudflared tunnel" 2>/dev/null'); } catch (e) {}
 }
 
+// Named tunnel (2026-07-14): ~/.cloudflared/config.yml routes the
+// permanent hostname relay.boombox.productions → localhost:3100. When the
+// named credentials exist, "rotation" is just a respawn — the URL is a
+// constant, phones never chase hostnames again. Quick tunnels remain the
+// fallback for machines without credentials.
+const NAMED_URL = 'https://relay.boombox.productions';
+const HOME = process.env.HOME || '/Users/neeff';
+const hasNamedTunnel = () => existsSync(join(HOME, '.cloudflared', 'config.yml'));
+
 async function rotateTunnel() {
   if (rotating) return;
   rotating = true;
   try {
-    log('tunnel rotation: killing old cloudflared, starting fresh');
+    log(`tunnel rotation: killing old cloudflared, starting fresh (${hasNamedTunnel() ? 'named' : 'quick'})`);
     killCloudflared();
     await new Promise(r => setTimeout(r, 1000));
     const tunnelLog = join(DIR, 'tunnel.log');
     try { writeFileSync(tunnelLog, ''); } catch (e) {}
-    spawnDetached('cloudflared', ['tunnel', '--url', 'http://localhost:3100'], tunnelLog);
 
     let url = null;
-    for (let i = 0; i < 60; i++) {
-      await new Promise(r => setTimeout(r, 500));
-      const m = readFileSync(tunnelLog, 'utf8').match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
-      if (m) { url = m[0]; break; }
+    if (hasNamedTunnel()) {
+      spawnDetached('cloudflared', ['tunnel', 'run', 'byob'], tunnelLog);
+      url = NAMED_URL;
+    } else {
+      spawnDetached('cloudflared', ['tunnel', '--url', 'http://localhost:3100'], tunnelLog);
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        const m = readFileSync(tunnelLog, 'utf8').match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/);
+        if (m) { url = m[0]; break; }
+      }
     }
     if (!url) { log('tunnel rotation FAILED — no URL in cloudflared output after 30s'); return; }
 
