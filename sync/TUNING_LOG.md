@@ -1517,3 +1517,18 @@ generation pending next export.
 stamped during this live session (~row 700 of the next overlay CSV export)
 was ACCIDENTAL — 2-phone room only, not a verified full-sync moment.
 Disregard it when correlating markers against calibration/cascade events.
+
+## 2026-07-15 ~02:20 — guileless-clock A/B: inconclusive; flagship-warp confirmed 3rd time
+
+Export byob-obs-2026-07-15T02-17-49 (9.5min, 3 devices, churn-heavy: one
+rejoin + one join + track changes) vs the 01:35–02:01 baseline: drift p50
+WORSE (101–185 vs 79–91ms) but p95 tail tighter (189–222 vs 181–349ms).
+Too short + too churned to grade the clock fix — needs a calm 20min+
+stretch. Real findings: (1) the FLAGSHIP f4zzg4 warped continuously
+(refSlope −317ms/min ≈ +0.5%) — the room's anchor was feeding sliding
+references downstream; third independent confirmation that the warp-gate
+must cover ANCHOR selection, not just own sampling. (2) c0tzzz held a
+constant 185ms floor (p50≈p95) with cal budget spent — refills next track.
+(3) hexKw/hexLines/hexMoving missing from CSV exports — overlay REC_COLS
+needs the three columns (queue with warp-gate work). Accidental SYNCED
+marker = rows 604–608 of this export.
