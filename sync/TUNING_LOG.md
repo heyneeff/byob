@@ -1416,3 +1416,29 @@ burst-clear both live; the user's verdict mid-session: "sync is perfect,
 never heard this before." The engine's remaining audible artifacts are now
 small (≤125ms one-shot pulls, minutes apart) and all four named error
 sources have owners on the roadmap.
+
+## 2026-07-14 (late) — connection layer fixed end-to-end + named tunnel
+
+"Zone relay connection constantly lost" diagnosed as four stacked failures,
+all fixed (`350b805`): (1) relay killed by its own clients — ws socket
+errors (ECONNRESET) had no handler and threw fatally; per-socket handlers +
+process traps + 25s ping/pong keepalive added. (2) tunnel dies silently —
+new bridge/watchdog.mjs supervises relay (15s) + tunnel end-to-end (60s),
+respawn/rotate + republish automatically. (3) phones retried dead hostnames
+forever — byob-shim.js now re-fetches /relay.json after 6 failed reconnects
+and adopts a moved relay IN PLACE (no reload). (4) start.command process-
+group coupling — bridge restarts no longer kill the backend.
+
+Then quick tunnels failed SYSTEMATICALLY (three fresh hostnames, none
+routed — CF free-tier degradation/rate-limit) → executed the named-tunnel
+plan live: **relay.boombox.productions** (tunnel `byob`, CNAME via
+`cloudflared tunnel route dns`, ingress → localhost:3100, `1c08a05`).
+Verified end-to-end. Watchdog named mode: URL constant, rotation = respawn.
+Closes the "Named Cloudflare Tunnel" open item.
+
+Bridge zone-create mystery resolved in layers: half-transaction (deactivate
+lands, insert doesn't) from a bridge process running since morning across
+three relay restarts — bridge restart fixed the backend path (probe
+create_zone via WS → 21ms success); remaining failures were the stale
+browser page. Lesson for the runbook: after any relay restart, bounce the
+bridge AND reload its page. Zone "Honest Signal" (723ad9b2, r=20km) active.
