@@ -1482,3 +1482,33 @@ Live during the build: rrqkto↔mrviaw trading small mutual pulls
 unchanged, next session's first analysis. Verify the gauge live: refresh
 phones + overlay, expect glyphs per card and a room hexagram that reads
 Creative-adjacent when the room is truly settled.
+
+## 2026-07-15 early — the both-negative creep DIAGNOSED: warp breaks refMs time-invariance
+
+Live trigger: two fresh-generation phones fired simultaneous mutual
+negative pulls (−81/−71) — impossible for a true static gap. CSV analysis
+(byob-obs-2026-07-15T02-01-40, playing-segment-only refMs slopes): mrviaw
+−753 ms/min sustained, rrqkto −800 in stretches, 6opr0z flat. −13..−15 ms/s
+= (playbackRate−1)×1000 at ~+1.4% warp: **computeOwnRefMs assumes ct
+advances 1:1; under sustained warp it doesn't, so a warping phone's refMs
+SLIDES at the warp rate** — not time-invariant, the design's core
+assumption broken exactly while the corrector is busiest. The cascade
+reads the slide as real disagreement (14ms/s × 40s window ≫ deadband),
+pulls, warp continues, gap re-opens → the endless same-sign mutual creep
+observed across three device generations tonight. Whole-span slopes also
+showed +1000ms/s segments = idle/paused rows (ct frozen) polluting
+naive fits — always slope playing-segments only.
+
+**Fix candidate for next session (cast first): warp-gate cascade sampling**
+— in maybeCascadeCorrect, skip the sample when |playbackRate − 1| > ~0.003
+(and consider the same gate on the refMs broadcast, or send rate so peers
+can judge). Only compare references from phones whose reconstruction
+assumption holds. Sim first in the V2 harness (add a perpetual-warp
+device). Secondary finding: mrviaw warped continuously ~25min (Class-C
+restlessness lives) — the gate also stops such devices from feeding
+everyone else's clockOffset.
+
+Baseline CSV (01:35–02:01, pre-guileless-clock generation): drift p50
+~80ms, p95 180–350ms, latencies pinned stable at 1200 all hour (ratchet
+dead), heavy threshold-crossing counts. A/B against the post-clock-fix
+generation pending next export.
