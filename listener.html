@@ -4272,11 +4272,18 @@ function buildSyncChannel(zoneId) {
     if (payload.resetOffsets || payload.clearScatter) { _scatterOffsetMs = 0; }
     const delay = Math.max(0, waitMs);
     boomSay('Syncing…', delay + 300, false, 'regular');
-    // Track change: load NOW, don't wait out resyncAt — buffering happens
-    // silently inside the wait and the scheduled start fires at resyncAt.
-    // audio.src is origin-resolved; resolve the payload side too, or every
-    // same-URL launch on a LAN phone takes this reload branch.
-    if (payload.track_url && audio.src !== resolveStorageUrl(payload.track_url)) {
+    // Track change OR same-URL relaunch: load NOW, don't wait out resyncAt —
+    // buffering happens silently inside the wait and the scheduled start
+    // fires at resyncAt. audio.src is origin-resolved; resolve the payload
+    // side too, or every same-URL launch on a LAN phone reads as a change.
+    // A NEW reference on the SAME url is a genuine relaunch and must reload
+    // the element (cast 57→44.1, contained): a wedged element ignores seeks,
+    // and until now only a different-URL launch handed it a fresh decode
+    // pipeline (TUNING_LOG "wedge >2s has NO automated owner"). Same url +
+    // SAME reference stays a pure resync (seek path below); loadTrack's
+    // same-reference guard (14.5→1) is untouched.
+    const _refChanged = String(payload.playback_started_at ?? '') !== String(window._currentTrackStartedAt ?? '');
+    if (payload.track_url && (audio.src !== resolveStorageUrl(payload.track_url) || _refChanged)) {
       _anchorPlaybackStartedAtMs = null;
       loadTrack(payload.track_url, payload.track_name, payload.playback_started_at, payload.resyncAt, 0);
       showToast('Now playing: ' + (payload.track_name || 'new track'));

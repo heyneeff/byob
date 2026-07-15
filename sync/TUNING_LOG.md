@@ -1861,3 +1861,39 @@ a flat 97ms). Not engine code — no cast per ENTRY_AND_ORCHESTRA sequence
 (step 4 there / plan step 3). Verify live: throttle probe should show the
 wake-locked phone never entering ⏾, and launch staggers on it staying
 sub-second.
+
+## 2026-07-15 (evening, cont.) — wedge owner decided by cast; same-URL relaunch fix landed
+
+User live report driving priority: "the devices aren't even playing the
+same song half the time" — the room-split mechanism, now the campaign's
+confirmed #1 target.
+
+**Cast trail (wedge owner, ENTRY_AND_ORCHESTRA workstream 2.4):**
+- Option (a), bounded automated owner (persistent beyond-sanity same-sign
+  refMs → self-administered element reload): **64→6 line 5** — Before
+  Completion resolving to CONFLICT, a hold hexagram. Read: a new actor
+  with jurisdiction over the element = the two-authority failure, again
+  (the repo's own "two uncoordinated seeks fighting over currentTime"
+  invariant). NOT implemented.
+- Option (b), same-URL relaunch fix: **57→44 line 1** — the Gentle,
+  success through what is small, ride the existing path; line 1 = stop
+  wavering, commit; →44 = small thing big influence, CONTAIN it. User
+  confirmed. Implemented.
+
+**The fix (listener.html hard_sync handler):** loadTrack already ends in
+an explicit audio.load(), so row-poll relaunches reload correctly — the
+gap was hard_sync's fast path skipping loadTrack whenever the URL matched.
+Now: track_url present AND (url differs OR playback_started_at differs
+from window._currentTrackStartedAt) → loadTrack (fresh pipeline, scheduled
+entry at resyncAt). Containment per →44: same url + same reference is
+still a pure resync (seek path); loadTrack's 14.5→1 same-reference guard
+untouched; triggerResync carries no track_url and is unaffected. Cost on
+healthy phones: a same-URL relaunch re-buffers (HTTP cache warm) instead
+of seeking — same behavior as every different-URL launch, which live
+evidence says tightens rooms (14:06: 75→43ms).
+
+Verify (next live window): wedge a phone (screen-off through a launch),
+then relaunch the SAME track — it must come back within one launch cycle
+without a URL change. Watch the monitor's ✂ OFF-REF and ROOM SPLIT lanes.
+Sim guard: octonary-cascade-sim ALL PASS after (listener-side change,
+X3 wedge-rescue scenario unaffected).
