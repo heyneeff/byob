@@ -1773,3 +1773,48 @@ guileless-clock A/B PASS; churn diagnosis complete; playlist auto-advance
 fixed end-to-end; LAN launch 0.3s stagger + 43ms room (n=1, promising);
 snap-cal+auto-cal live tag-team rescue observed; two permission-system
 saves (bulk data rewrite consent, home-coords-to-public-repo block).
+
+## 2026-07-15 (evening) — entry campaign opens: defection guard + LAN identity fix landed
+
+**Session diagnosis (answers "why desynced after the stable room"):** the
+corrector did not regress — the event mix changed. Only engine change since
+`baseline-sync-jul15` is the live-verified warp-gate. But playlist
+auto-advance now *works* (266cb4a), so launches fire every few minutes
+(the stable room was one track looping on hours-settled devices), and the
+LAN A/B added origin churn (per-origin cal wipes, defection). Launches are
+the documented weak path; we simply do many more of them now.
+
+**Live monitor 17:02 (2 phones, tunnel):** msqhmf healthy — settles P/4ms,
+kicked every ~25–30s by a 90–190ms BT stall, warps back down (owned
+sawtooth, med 65ms). cco7vf SPLIT at +53.7s for the entire window, 100% N,
+never healing — the ">2s wedge has no owner" mechanism live on screen. The
+±53723 mirror pair in the ter/dev lanes is the known display artifact
+(wrapLag pass still queued).
+
+**Regression found in e8ce6b5 (LAN enablers):** syncZoneAudio's `wrongSrc`
+(listener:2419) and the hard_sync track_url check (listener:4242) compared
+origin-rewritten `audio.src` against RAW canonical URLs — on LAN phones
+wrongSrc was permanently true (absorbed by loadTrack's same-reference
+guard, so no churn, but the missed-load detector was degraded) and every
+same-URL launch took the full-reload branch + nulled
+`_anchorPlaybackStartedAtMs` (LAN/tunnel behavior divergence, extra cold
+fetches in the launch path). triggerResync carries no track_url, so pure
+resyncs were unaffected.
+
+**Landed (plan: entry campaign, step 0):**
+1. **Defection guard** (`byob-shim.js`, plumbing — queue item 1): explicit
+   `?server=` sets a provenance flag; `reResolveServer()` no longer
+   overrides it (log line instead). Param-less phones keep relay.json
+   recovery. `node --check` clean. LAN smoke (kill LAN relay → phone must
+   retry, not defect) rides with the next live window.
+2. **Identity-comparison fix** (`listener.html:2419`, `:4242` — cast
+   **27→2 lines 1·6**, user-confirmed: line 1 = the comparison abandoned
+   its own domain to gaze at another's; line 6 = repair at the source of
+   nourishment, cross the water; resolved 2 = purely receptive fix that
+   adds nothing): both comparisons now resolve the expected side through
+   `resolveStorageUrl()` — element domain vs element domain. Tunnel
+   phones: byte-identical no-op. All inline scripts `node --check` clean.
+
+**Next (per approved plan):** telemetry pack (track-identity hash in
+hud/trit/CSV rows, event-kind column, throttled flag, wrapLag display
+pass) — observe-only, no cast; then throttle probe + clean LAN churn cell.

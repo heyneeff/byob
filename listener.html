@@ -2416,7 +2416,10 @@ async function syncZoneAudio() {
       return z.zone_tracks[getSpatialSlot(src)] || z.zone_tracks['C'] || z.current_track_url;
     })();
     const startedAtChanged = z.playback_started_at && z.playback_started_at !== activeZone.playback_started_at;
-    const wrongSrc = expectedUrl && expectedUrl !== 'webrtc-live' && audio.src && audio.src !== expectedUrl;
+    // Element-domain comparison: audio.src was assigned through
+    // resolveStorageUrl(), so the expected side must resolve too — a raw
+    // canonical URL never matches a LAN-rewritten src (27→2 lines 1·6).
+    const wrongSrc = expectedUrl && expectedUrl !== 'webrtc-live' && audio.src && audio.src !== resolveStorageUrl(expectedUrl);
     if ((startedAtChanged || wrongSrc) && expectedUrl && expectedUrl !== 'webrtc-live') {
       activeZone = { ...activeZone, ...z };
       loadTrack(expectedUrl, z.track_name, z.playback_started_at, z.play_at, z.play_from_s);
@@ -4239,7 +4242,9 @@ function buildSyncChannel(zoneId) {
     boomSay('Syncing…', delay + 300, false, 'regular');
     // Track change: load NOW, don't wait out resyncAt — buffering happens
     // silently inside the wait and the scheduled start fires at resyncAt.
-    if (payload.track_url && audio.src !== payload.track_url) {
+    // audio.src is origin-resolved; resolve the payload side too, or every
+    // same-URL launch on a LAN phone takes this reload branch.
+    if (payload.track_url && audio.src !== resolveStorageUrl(payload.track_url)) {
       _anchorPlaybackStartedAtMs = null;
       loadTrack(payload.track_url, payload.track_name, payload.playback_started_at, payload.resyncAt, 0);
       showToast('Now playing: ' + (payload.track_name || 'new track'));
