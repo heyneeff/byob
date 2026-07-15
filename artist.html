@@ -4796,9 +4796,13 @@ let _libFilter = '';
 async function fetchRealTracks() {
   if(!currentUser) return [];
   try {
+    // No user_id filter: the self-hosted relay is one party's library, and the
+    // shim's anonymous identity is per-origin localStorage — it churns (LAN
+    // origins, cleared storage), which silently emptied the library while the
+    // relay was healthy (Jul 15). Same relay-era reasoning as playNext's
+    // zone_id-null fallback: rows on the relay are global library rows.
     const { data } = await db.from('tracks')
       .select('id,title,public_url,file_path,created_at')
-      .eq('user_id', currentUser.id)
       .order('created_at', { ascending: false })
       .limit(200);
     return (data || []).map((t,i) => ({
