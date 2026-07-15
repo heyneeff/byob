@@ -5040,6 +5040,7 @@ let _syncLastTrackUrl = null;
 let _syncReverifyTimer = null;
 let _syncEnabled = localStorage.getItem('byob_sync_enabled') !== '0';
 let _clockOffset = 0; // ms: our clock vs Supabase server clock
+let _clockMeasured = false; // first RTT measurement adopts fully; later ones descend guilelessly (see measureClockOffset)
 if (new URLSearchParams(location.search).get('resetbt') === '1') {
   localStorage.removeItem('byob_device_latency');
   history.replaceState(null, '', location.pathname); // clean URL
@@ -5124,7 +5125,20 @@ async function measureClockOffset() {
     } catch(e) {}
     if (i < count - 1) await new Promise(r => setTimeout(r, 50));
   }
-  if (samples.length) _clockOffset = samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)];
+  if (!samples.length) return;
+  const measured = samples.sort((a, b) => a - b)[Math.floor(samples.length / 2)];
+  // Guileless descent (cast 11.4→34, 2026-07-14): every re-measure carries
+  // tunnel RTT-asymmetry noise (±50-200ms observed live) — adopting each
+  // one as a step every 30s is the "launch is perfect, then the room
+  // second-guesses itself apart" symptom. One authority, steadier hand:
+  // bootstrap adopts fully; small deltas are noise (hold); medium deltas
+  // slew geometrically (consistent readings converge in ~3-4 cycles);
+  // only large deltas (a real path change) step immediately.
+  if (!_clockMeasured) { _clockOffset = measured; _clockMeasured = true; return; }
+  const delta = measured - _clockOffset;
+  if (Math.abs(delta) < 40) return;                              // asymmetry noise — hold
+  if (Math.abs(delta) < 250) { _clockOffset += delta * 0.3; return; } // slew toward it
+  _clockOffset = measured;                                       // something real moved — step
 }
 // zone_offset_ms (DJ-tunable via spatial_config) shifts this listener's whole
 // effective timeline by one constant — the single choke point for trimming the
