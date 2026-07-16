@@ -1773,3 +1773,49 @@ guileless-clock A/B PASS; churn diagnosis complete; playlist auto-advance
 fixed end-to-end; LAN launch 0.3s stagger + 43ms room (n=1, promising);
 snap-cal+auto-cal live tag-team rescue observed; two permission-system
 saves (bulk data rewrite consent, home-coords-to-public-repo block).
+
+## 2026-07-15/16 (late night) — LAN window: library root cause, the lat-regime snap war, and the first near-M2 entries
+
+**Library "missing" solved** (blocked all launch testing): `fetchRealTracks`
+filtered `.eq('user_id', currentUser.id)`; browser's per-origin anon identity
+no longer matched the `5e6504a9-…` on all rows → 0 rows → demo-TRACKS
+fallback ("midnight grooves"). Fix `2193460` (dev): drop the filter — the
+self-hosted relay IS the party's library (same relay-era reasoning as
+playNext's zone_id-null fallback). Backend was healthy throughout, as the
+evening's evidence said. Ops heal for stable: claim identity via localStorage.
+
+**Kill-broadcast landmine (found live):** the deck's armed stop nulls
+`current_track_url`/`track_name`/`playback_started_at` and sets
+active:false — room loses its reference AND artist.html can't restore the
+zone on reload (restore needs track or reference). Fired mid-window
+(attribution unknown: double-tap or stale tab); revived server-side by
+rewriting the row with a fresh reference. → structural fix queued.
+
+**The lat-regime snap war (tonight's main event):** room common-mode offset
+vs the row clock stepped ~+80ms per launch (60 → 140 → 225ms); when it
+crossed snap territory, every cap-pinned lat=1200 device went into lockstep
+snap-thrash (8–15 snaps/window, audible mute/ramp chop = "chaotic as heck"),
+while fresh lat=0 identities sat calm at 64–77ms. Two authorities (row clock
+vs DJ anchor) disagree by a latency-scale constant on high-lat devices —
+same family as the jul14 refMs sign bug. Suspected accumulator: DJ auto-
+resync rewriting `playback_started_at` from its own lagging audio position.
+NOT fixed tonight (needs sim + cast). **Ops cure that worked: clear site
+data on the lat=1200 phones → one calibration regime → war over.**
+
+**Recovery (post-cleanup):** 5 devices at 45–77ms, zero snaps, spread
+31ms, first ✓-healthy badges of the night. Then the night's best launch:
+**4/5 devices PASSED the entry bar** — t3p7gs 0.3s→−2ms, 404em4 0.6s→−3ms,
+y6ot8k 1.4s→6ms, z7m1xs 2.5s. Three phones entered at single-digit ms.
+First appearance of the M2 shape on real phones.
+
+**Honest caveats:** heavy identity churn (18 ids in one 9-min CSV — reloads
+mint fresh identities) made device attribution fuzzy all night; most
+"LAUNCH DETECTED" lines were rejoin events, not deck launches; no deliberate
+SYNCED ear-marker was captured for the recovered room; the one persistent
+~250ms-true-latency phone (m01p9h/jmqxhx/lwxif2 incarnations) never finished
+learning — it is the greenhorn-fast-cal test case.
+
+**Next session:** `PLAN_PERFECT_SYNC.md` — (0) anchor-vs-row reconciliation
+on high-lat devices [sim first, cast], (1) greenhorn fast-cal from first-snap
+evidence [cast], (2) kill-broadcast guard [cast], then the campaign's launch
+re-broadcast + prefetch. Merge dev→main still gated on the LAN checklist.
